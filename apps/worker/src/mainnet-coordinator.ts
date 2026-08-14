@@ -274,9 +274,8 @@ export class MainnetPaymentCoordinator extends DurableObject<MainnetCoordinatorE
       this.sql.exec("DELETE FROM payment WHERE singleton=1 AND state='OUTBOUND_PREPARED'");
       return;
     }
-    if (row.state === "OUTBOUND_STARTED" && age >= STARTED_STALE_MS) {
+    if (row.state === "OUTBOUND_STARTED" && age >= STARTED_STALE_MS)
       await this.markAmbiguous("outbound_started_stale");
-    }
   }
 
   private enqueue(event: ProjectionEvent): void {
@@ -399,9 +398,9 @@ async function projectSettlement(
   const state = event.state === "SETTLED" ? "AMBIGUOUS" : event.state;
   await db
     .prepare(
-      `INSERT INTO settlement_projection(logical_payment_key,request_fingerprint,payment_identifier,network,facilitator_id,state,transaction_hash,testnet,fee_micro_usd,downstream_cost_micro_usd,recorded_at,reason_code)
-       VALUES(?,?,NULL,?,?,?,?,0,0,0,?,?)
-       ON CONFLICT(logical_payment_key) DO UPDATE SET facilitator_id=excluded.facilitator_id,state=excluded.state,transaction_hash=excluded.transaction_hash,recorded_at=excluded.recorded_at,reason_code=excluded.reason_code`,
+      `INSERT INTO settlement_projection(logical_payment_key,request_fingerprint,payment_identifier,network,facilitator_id,state,transaction_hash,testnet,fee_micro_usd,downstream_cost_micro_usd,recorded_at)
+       VALUES(?,?,NULL,?,?,?,?,0,0,0,?)
+       ON CONFLICT(logical_payment_key) DO UPDATE SET facilitator_id=excluded.facilitator_id,state=excluded.state,transaction_hash=excluded.transaction_hash,recorded_at=excluded.recorded_at`,
     )
     .bind(
       event.logicalPaymentKey,
@@ -411,20 +410,19 @@ async function projectSettlement(
       state,
       event.transactionHash,
       event.recordedAt,
-      event.reasonCode,
     )
     .run();
   if (event.state === "AMBIGUOUS") {
     await db
       .prepare(
-        `INSERT INTO reconciliation_cases(case_id,logical_payment_key,state,reason,opened_at,updated_at)
-         VALUES(?,?,'OPEN',?,?,?) ON CONFLICT(case_id) DO NOTHING`,
+        `INSERT INTO reconciliation_cases(case_id,logical_payment_key,reason_code,details_json,state,created_at)
+         VALUES(?,?,?,?,'OPEN',?) ON CONFLICT(case_id) DO NOTHING`,
       )
       .bind(
         `mainnet:${event.logicalPaymentKey}`,
         event.logicalPaymentKey,
         event.reasonCode ?? "mainnet_settlement_ambiguous",
-        event.recordedAt,
+        JSON.stringify({ facilitatorId: event.facilitatorId }),
         event.recordedAt,
       )
       .run();
