@@ -153,13 +153,13 @@ describe("mainnet merchant prepaid billing", () => {
     expect(first.state).toBe("HELD");
     expect(second.state).toBe("HELD");
     expect(await merchantBalance(env.DB, created.merchantId)).toMatchObject({
-      availableMicroUsd: 18_000,
+      availableMicroUsd: created.balance.availableMicroUsd - 2_000,
       heldMicroUsd: 2_000,
     });
 
     await releaseSettlementFee(env.DB, created.merchantId, key);
     expect(await merchantBalance(env.DB, created.merchantId)).toMatchObject({
-      availableMicroUsd: 20_000,
+      availableMicroUsd: created.balance.availableMicroUsd,
       heldMicroUsd: 0,
     });
   });
@@ -170,7 +170,7 @@ describe("mainnet merchant prepaid billing", () => {
     await reserveSettlementFee(env.DB, created.merchantId, key, 2_000);
     await markSettlementFeeAmbiguous(env.DB, created.merchantId, key);
     expect(await merchantBalance(env.DB, created.merchantId)).toMatchObject({
-      availableMicroUsd: 18_000,
+      availableMicroUsd: created.balance.availableMicroUsd - 2_000,
       heldMicroUsd: 2_000,
     });
 
@@ -179,7 +179,7 @@ describe("mainnet merchant prepaid billing", () => {
     await earnSettlementFee(env.DB, created.merchantId, key);
 
     expect(await merchantBalance(env.DB, created.merchantId)).toMatchObject({
-      availableMicroUsd: 18_000,
+      availableMicroUsd: created.balance.availableMicroUsd - 2_000,
       heldMicroUsd: 0,
     });
     const usage = await env.DB.prepare(
