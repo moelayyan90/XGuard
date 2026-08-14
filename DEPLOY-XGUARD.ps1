@@ -1,47 +1,71 @@
+[CmdletBinding()]
+param(
+    [switch]$NonInteractive
+)
+
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 Write-Host "XGuard Cloudflare testnet deploy" -ForegroundColor Cyan
-Write-Host "This script never stores your Cloudflare token in the project." -ForegroundColor DarkGray
+Write-Host "Uses existing Cloudflare authorization when available and never stores credentials in the repository." -ForegroundColor DarkGray
 
-# Always work from the folder containing this script.
 Set-Location -LiteralPath $PSScriptRoot
 
-# The public config is safe to commit. The ignored local config keeps the
-# currently authorized Cloudflare account and D1 identifiers off GitHub.
+$PublicConfigPath = "apps/worker/wrangler.jsonc"
 $LocalConfigPath = "apps/worker/wrangler.local.jsonc"
-$ConfigPath = if (Test-Path -LiteralPath $LocalConfigPath) {
-    $LocalConfigPath
-} else {
-    "apps/worker/wrangler.jsonc"
-}
+$ResolvedConfigPath = $null
+$ConfigPath = $null
+$PromptedForToken = $false
+$BSTR = [IntPtr]::Zero
 
-# Basic local prerequisites.
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    throw "Node.js is not installed. XGuard requires Node.js 22 or newer."
-}
-if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-    throw "npm is not available. Install Node.js 22 or newer first."
-}
-
-$NodeVersionText = (& node -p "process.versions.node").Trim()
-$NodeMajor = [int]($NodeVersionText.Split('.')[0])
-if ($NodeMajor -lt 22) {
-    throw "Node.js $NodeVersionText is installed, but XGuard requires Node.js 22 or newer."
-}
-Write-Host "Node.js $NodeVersionText OK" -ForegroundColor Green
-
-# Ask for token without echoing it on screen.
-$SecureToken = Read-Host "Paste the Cloudflare XGuard-Deploy token, then press Enter" -AsSecureString
-$BSTR = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureToken)
 try {
-    $PlainToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
-    if ([string]::IsNullOrWhiteSpace($PlainToken)) { throw "No token was entered." }
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        throw "Node.js is not installed. XGuard requires Node.js 22 or newer."
+    }
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        throw "npm is not available. Install Node.js 22 or newer first."
+    }
 
-    $env:CLOUDFLARE_API_TOKEN = $PlainToken
+    $NodeVersionText = (& node -p "process.versions.node").Trim()
+    $NodeMajor = [int]($NodeVersionText.Split('.')[0])
+    if ($NodeMajor -lt 22) {
+        throw "Node.js $NodeVersionText is installed, but XGuard requires Node.js 22 or newer."
+    }
+    Write-Host "Node.js $NodeVersionText OK" -ForegroundColor Green
+
     Write-Host "Installing locked dependencies..." -ForegroundColor Cyan
     & npm ci --ignore-scripts
     if ($LASTEXITCODE -ne 0) { throw "npm ci failed." }
+
+    $HasApiToken = -not [string]::IsNullOrWhiteSpace($env:CLOUDFLARE_API_TOKEN)
+    if (-not $HasApiToken) {
+        & npx wrangler whoami *> $null
+        $HasWranglerSession = ($LASTEXITCODE -eq 0)
+
+        if (-not $HasWranglerSession) {
+            if ($NonInteractive) {
+                throw "Cloudflare authorization is unavailable in this environment. The existing live deployment was not changed."
+            }
+
+            $SecureToken = Read-Host "Paste the Cloudflare XGuard-Deploy token, then press Enter" -AsSecureString
+            $BSTR = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureToken)
+            $PlainToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
+            if ([string]::IsNullOrWhiteSpace($PlainToken)) { throw "No token was entered." }
+            $env:CLOUDFLARE_API_TOKEN = $PlainToken
+            $PromptedForToken = $true
+        }
+    }
+
+    if (Test-Path -LiteralPath $LocalConfigPath) {
+        $ConfigPath = $LocalConfigPath
+        Write-Host "Using authorized local Wrangler configuration." -ForegroundColor Green
+    } else {
+        $ResolvedConfigPath = Join-Path ([System.IO.Path]::GetTempPath()) ("xguard-wrangler-" + [guid]::NewGuid().ToString("N") + ".jsonc")
+        Write-Host "Resolving the existing Cloudflare D1 binding automatically..." -ForegroundColor Cyan
+        & node "scripts/resolve-cloudflare-config.mjs" --template $PublicConfigPath --output $ResolvedConfigPath --database-name "xguard-testnet"
+        if ($LASTEXITCODE -ne 0) { throw "Could not resolve the existing xguard-testnet D1 database." }
+        $ConfigPath = $ResolvedConfigPath
+    }
 
     Write-Host "Running Cloudflare type/config validation..." -ForegroundColor Cyan
     & npx wrangler types --config $ConfigPath --env-interface CloudflareBindings
@@ -68,21 +92,29 @@ try {
                 $Response = Invoke-WebRequest -Uri ($BaseUrl + $Path) -Method GET -UseBasicParsing -TimeoutSec 30
                 Write-Host ("PASS {0} -> HTTP {1}" -f $Path, $Response.StatusCode) -ForegroundColor Green
             } catch {
-                Write-Host ("CHECK {0} -> {1}" -f $Path, $_.Exception.Message) -ForegroundColor Yellow
+                throw ("Post-deploy check failed for {0}: {1}" -f $Path, $_.Exception.Message)
             }
         }
     } else {
-        Write-Host "Deployment completed, but the workers.dev URL was not parsed automatically. Copy it from the deploy output above." -ForegroundColor Yellow
+        throw "Deployment completed but the permanent workers.dev URL could not be verified from Wrangler output."
     }
+
+    Write-Host ""
+    Write-Host "XGuard testnet deployment completed and verified." -ForegroundColor Cyan
 }
 finally {
+    if ($ResolvedConfigPath -and (Test-Path -LiteralPath $ResolvedConfigPath)) {
+        Remove-Item -LiteralPath $ResolvedConfigPath -Force -ErrorAction SilentlyContinue
+    }
     if ($BSTR -ne [IntPtr]::Zero) {
         [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
     }
     Remove-Variable PlainToken -ErrorAction SilentlyContinue
-    Remove-Item Env:CLOUDFLARE_API_TOKEN -ErrorAction SilentlyContinue
+    if ($PromptedForToken) {
+        Remove-Item Env:CLOUDFLARE_API_TOKEN -ErrorAction SilentlyContinue
+    }
 }
 
-Write-Host ""
-Write-Host "Done. You can close this window after copying the final XGuard URL." -ForegroundColor Cyan
-Read-Host "Press Enter to close"
+if (-not $NonInteractive) {
+    Read-Host "Press Enter to close"
+}
