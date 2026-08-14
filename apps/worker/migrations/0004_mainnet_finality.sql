@@ -9,6 +9,7 @@ CREATE TABLE settlement_finality_jobs (
   expected_amount_micro_usd INTEGER NOT NULL CHECK (
     expected_amount_micro_usd > 0 AND expected_amount_micro_usd <= 9007199254740991
   ),
+  settle_result_json TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('PENDING','CONFIRMED','FAILED','AMBIGUOUS')),
   attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
   last_error_code TEXT,
