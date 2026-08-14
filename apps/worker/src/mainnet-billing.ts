@@ -97,7 +97,9 @@ export async function authenticateMerchant(
     )
     .bind(apiKeyHash)
     .first<MerchantRow>();
-  return row === null ? null : { merchantId: row.merchant_id, name: row.name };
+  return row === null
+    ? null
+    : { merchantId: row.merchant_id, name: row.name };
 }
 
 export async function merchantBalance(
@@ -131,6 +133,13 @@ export async function createTopUpIntent(
     requestedMicroUsd > MAX_TOP_UP_MICRO_USD
   )
     throw new Error("invalid_top_up_amount");
+
+  await db
+    .prepare(
+      "UPDATE top_up_intents SET state='EXPIRED' WHERE state='OPEN' AND expires_at_epoch<?",
+    )
+    .bind(nowEpochSeconds)
+    .run();
 
   const claimToken = `xg_topup_${randomToken(24)}`;
   const claimTokenHash = await sha256(claimToken);
@@ -201,7 +210,9 @@ export async function claimTopUp(
   const createdAt = new Date(nowEpochSeconds * 1000).toISOString();
   const externalReference = `${input.network}:${input.deposit.transactionHash}:${input.deposit.logIndex}`;
   const asset = input.asset.toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(asset)) throw new Error("invalid_top_up_asset");
+  if (!/^0x[0-9a-f]{40}$/.test(asset))
+    throw new Error("invalid_top_up_asset");
+  const eventId = `topup:${topUpId}`;
 
   await db.batch([
     db
@@ -249,30 +260,33 @@ export async function claimTopUp(
       ),
     db
       .prepare(
-        "INSERT INTO ledger_entries(entry_id,event_id,account,debit_micro_usd,credit_micro_usd,related_id,created_at) SELECT ?,?,'TREASURY_ASSET',?,0,?,? WHERE EXISTS(SELECT 1 FROM top_ups WHERE top_up_id=?)",
+        "INSERT INTO ledger_entries(entry_id,event_id,account,side,amount_micro_usd,created_at) SELECT ?,?,'CUSTOMER_BALANCES','DEBIT',?,? WHERE EXISTS(SELECT 1 FROM top_ups WHERE top_up_id=?)",
       )
       .bind(
-        crypto.randomUUID(),
-        `topup:${topUpId}`,
+        `${eventId}:debit`,
+        eventId,
         input.deposit.amountMicroUsd,
-        topUpId,
         createdAt,
         topUpId,
       ),
     db
       .prepare(
-        "INSERT INTO ledger_entries(entry_id,event_id,account,debit_micro_usd,credit_micro_usd,related_id,created_at) SELECT ?,?,'UNEARNED_LIABILITY',0,?,?,? WHERE EXISTS(SELECT 1 FROM top_ups WHERE top_up_id=?)",
+        "INSERT INTO ledger_entries(entry_id,event_id,account,side,amount_micro_usd,created_at) SELECT ?,?,'UNEARNED_LIABILITY','CREDIT',?,? WHERE EXISTS(SELECT 1 FROM top_ups WHERE top_up_id=?)",
       )
       .bind(
-        crypto.randomUUID(),
-        `topup:${topUpId}`,
+        `${eventId}:credit`,
+        eventId,
         input.deposit.amountMicroUsd,
-        topUpId,
         createdAt,
         topUpId,
       ),
   ]);
 
+  const credited = await db
+    .prepare("SELECT top_up_id FROM top_ups WHERE top_up_id=? AND merchant_id=?")
+    .bind(topUpId, input.merchantId)
+    .first<{ top_up_id: string }>();
+  if (credited === null) throw new Error("top_up_claim_race_lost");
   return merchantBalance(db, input.merchantId);
 }
 
@@ -348,8 +362,8 @@ export async function releaseSettlementFee(
   logicalPaymentKey: string,
 ): Promise<FeeReservation> {
   const row = await requireReservation(db, merchantId, logicalPaymentKey);
-  if (row.state === "RELEASED" || row.state === "EARNED")
-    return publicReservation(row);
+  if (row.state === "RELEASED") return publicReservation(row);
+  if (row.state === "EARNED") throw new Error("earned_fee_cannot_be_released");
   if (row.state !== "HELD" && row.state !== "AMBIGUOUS")
     throw new Error("invalid_fee_transition");
   const operationId = crypto.randomUUID();
@@ -374,9 +388,9 @@ export async function releaseSettlementFee(
         operationId,
       ),
   ]);
-  return publicReservation(
-    await requireReservation(db, merchantId, logicalPaymentKey),
-  );
+  const final = await requireReservation(db, merchantId, logicalPaymentKey);
+  if (final.state !== "RELEASED") throw new Error("fee_transition_race_lost");
+  return publicReservation(final);
 }
 
 export async function earnSettlementFee(
@@ -386,7 +400,8 @@ export async function earnSettlementFee(
 ): Promise<FeeReservation> {
   const row = await requireReservation(db, merchantId, logicalPaymentKey);
   if (row.state === "EARNED") return publicReservation(row);
-  if (row.state === "RELEASED") throw new Error("released_fee_cannot_be_earned");
+  if (row.state === "RELEASED")
+    throw new Error("released_fee_cannot_be_earned");
   if (row.state !== "HELD" && row.state !== "AMBIGUOUS")
     throw new Error("invalid_fee_transition");
   const operationId = crypto.randomUUID();
@@ -412,7 +427,7 @@ export async function earnSettlementFee(
       ),
     db
       .prepare(
-        "INSERT INTO usage_events(event_id,logical_payment_key,event_type,fee_micro_usd,created_at) SELECT ?,?,'SUCCESSFUL_BILLABLE_SETTLEMENT',?,? WHERE EXISTS(SELECT 1 FROM fee_reservations WHERE logical_payment_key=? AND merchant_id=? AND state='EARNED' AND operation_id=?)",
+        "INSERT INTO usage_events(event_id,logical_payment_key,kind,fee_micro_usd,created_at) SELECT ?,?,'SUCCESSFUL_BILLABLE_SETTLEMENT',?,? WHERE EXISTS(SELECT 1 FROM fee_reservations WHERE logical_payment_key=? AND merchant_id=? AND state='EARNED' AND operation_id=?)",
       )
       .bind(
         eventId,
@@ -425,13 +440,12 @@ export async function earnSettlementFee(
       ),
     db
       .prepare(
-        "INSERT INTO ledger_entries(entry_id,event_id,account,debit_micro_usd,credit_micro_usd,related_id,created_at) SELECT ?,?,'UNEARNED_LIABILITY',?,0,?,? WHERE EXISTS(SELECT 1 FROM fee_reservations WHERE logical_payment_key=? AND merchant_id=? AND state='EARNED' AND operation_id=?)",
+        "INSERT INTO ledger_entries(entry_id,event_id,account,side,amount_micro_usd,created_at) SELECT ?,?,'UNEARNED_LIABILITY','DEBIT',?,? WHERE EXISTS(SELECT 1 FROM fee_reservations WHERE logical_payment_key=? AND merchant_id=? AND state='EARNED' AND operation_id=?)",
       )
       .bind(
-        crypto.randomUUID(),
+        `${eventId}:debit`,
         eventId,
         row.amount_micro_usd,
-        logicalPaymentKey,
         now,
         logicalPaymentKey,
         merchantId,
@@ -439,22 +453,21 @@ export async function earnSettlementFee(
       ),
     db
       .prepare(
-        "INSERT INTO ledger_entries(entry_id,event_id,account,debit_micro_usd,credit_micro_usd,related_id,created_at) SELECT ?,?,'EARNED_REVENUE',0,?,?,? WHERE EXISTS(SELECT 1 FROM fee_reservations WHERE logical_payment_key=? AND merchant_id=? AND state='EARNED' AND operation_id=?)",
+        "INSERT INTO ledger_entries(entry_id,event_id,account,side,amount_micro_usd,created_at) SELECT ?,?,'EARNED_REVENUE','CREDIT',?,? WHERE EXISTS(SELECT 1 FROM fee_reservations WHERE logical_payment_key=? AND merchant_id=? AND state='EARNED' AND operation_id=?)",
       )
       .bind(
-        crypto.randomUUID(),
+        `${eventId}:credit`,
         eventId,
         row.amount_micro_usd,
-        logicalPaymentKey,
         now,
         logicalPaymentKey,
         merchantId,
         operationId,
       ),
   ]);
-  return publicReservation(
-    await requireReservation(db, merchantId, logicalPaymentKey),
-  );
+  const final = await requireReservation(db, merchantId, logicalPaymentKey);
+  if (final.state !== "EARNED") throw new Error("fee_transition_race_lost");
+  return publicReservation(final);
 }
 
 async function transitionNoMoney(
@@ -518,12 +531,20 @@ function publicReservation(row: FeeReservationRow): FeeReservation {
 }
 
 function validateFee(value: number): void {
-  if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_SAFE_MICRO_USD)
+  if (
+    !Number.isSafeInteger(value) ||
+    value <= 0 ||
+    value > MAX_SAFE_MICRO_USD
+  )
     throw new Error("invalid_fee_amount");
 }
 
 function safeMoney(value: number): number {
-  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_SAFE_MICRO_USD)
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > MAX_SAFE_MICRO_USD
+  )
     throw new Error("invalid_money_value");
   return value;
 }
