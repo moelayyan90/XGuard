@@ -6,7 +6,6 @@ on:
     paths:
       - "apps/worker/src/base-usdc.ts"
       - "tests/base-usdc.test.ts"
-      - "apps/worker/migrations/0002_mainnet_billing.sql"
       - ".github/workflows/format-mainnet-branch.yml"
 
 permissions:
@@ -24,7 +23,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npx prettier --write apps/worker/src/base-usdc.ts tests/base-usdc.test.ts apps/worker/migrations/0002_mainnet_billing.sql
+      - run: npx prettier --write apps/worker/src/base-usdc.ts tests/base-usdc.test.ts
       - name: Commit formatting if needed
         run: |
           if git diff --quiet; then
@@ -32,6 +31,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/worker/src/base-usdc.ts tests/base-usdc.test.ts apps/worker/migrations/0002_mainnet_billing.sql
+          git add apps/worker/src/base-usdc.ts tests/base-usdc.test.ts
           git commit -m "Format Base USDC billing files"
           git push origin HEAD:mainnet/base-usdc-treasury
