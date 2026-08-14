@@ -1,0 +1,79 @@
+name: Normalize mainnet schema
+
+on:
+  push:
+    branches: [mainnet/live-worker]
+    paths:
+      - ".github/workflows/normalize-mainnet-schema.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: mainnet/live-worker
+      - name: Align accounting and projection SQL
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          billing = Path("apps/worker/src/mainnet-billing.ts")
+          b = billing.read_text()
+          b = b.replace("'CUSTOMER_BALANCES','DEBIT'", "'CASH','DEBIT'")
+          billing.write_text(b)
+
+          coord = Path("apps/worker/src/mainnet-coordinator.ts")
+          s = coord.read_text()
+          s = s.replace(
+              "settlement_projection(logical_payment_key,request_fingerprint,payment_identifier,network,facilitator_id,state,transaction_hash,testnet,fee_micro_usd,downstream_cost_micro_usd,recorded_at,reason_code)",
+              "settlement_projection(logical_payment_key,request_fingerprint,payment_identifier,network,facilitator_id,state,transaction_hash,testnet,fee_micro_usd,downstream_cost_micro_usd,recorded_at)",
+          )
+          s = s.replace(
+              "VALUES(?,?,NULL,?,?,?,?,0,0,0,?,?)",
+              "VALUES(?,?,NULL,?,?,?,?,0,0,0,?)",
+          )
+          s = s.replace(
+              ",reason_code=excluded.reason_code",
+              "",
+          )
+          s = s.replace(
+              "event.recordedAt,\n      event.reasonCode,",
+              "event.recordedAt,",
+          )
+          old = '''        `INSERT INTO reconciliation_cases(case_id,logical_payment_key,state,reason,opened_at,updated_at)
+         VALUES(?,?,'OPEN',?,?,?) ON CONFLICT(case_id) DO NOTHING`,
+      )
+      .bind(
+        `mainnet:${event.logicalPaymentKey}`,
+        event.logicalPaymentKey,
+        event.reasonCode ?? "mainnet_settlement_ambiguous",
+        event.recordedAt,
+        event.recordedAt,
+      )'''
+          new = '''        `INSERT INTO reconciliation_cases(case_id,logical_payment_key,reason_code,details_json,state,created_at)
+         VALUES(?,?,?,?, 'OPEN',?) ON CONFLICT(case_id) DO NOTHING`,
+      )
+      .bind(
+        `mainnet:${event.logicalPaymentKey}`,
+        event.logicalPaymentKey,
+        event.reasonCode ?? "mainnet_settlement_ambiguous",
+        JSON.stringify({ facilitatorId: event.facilitatorId }),
+        event.recordedAt,
+      )'''
+          if old not in s:
+              raise SystemExit("reconciliation SQL pattern not found")
+          s = s.replace(old, new, 1)
+          coord.write_text(s)
+          PY
+          npx prettier --write apps/worker/src/mainnet-billing.ts apps/worker/src/mainnet-coordinator.ts
+      - name: Commit schema alignment
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/mainnet-billing.ts apps/worker/src/mainnet-coordinator.ts
+          git commit -m "Align mainnet accounting with D1 projection schema"
+          git push origin HEAD:mainnet/live-worker
