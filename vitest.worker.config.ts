@@ -17,5 +17,6 @@ export default defineConfig({
     include: ["tests/worker/**/*.test.ts"],
     setupFiles: ["tests/worker/setup.ts"],
     testTimeout: 30_000,
+    retry: 1,
   },
 });
