@@ -20,7 +20,7 @@
     "XGUARD_FEE_MICRO_USD": "2000",
     "PAYMENT_IDENTIFIER_TTL_SECONDS": "86400",
     "HEALTH_MAX_AGE_SECONDS": "900",
-    "FACILITATORS_JSON": "[{\"id\":\"x402-org-testnet\",\"baseUrl\":\"https://x402.org/facilitator\",\"networks\":[\"eip155:84532\"],\"schemes\":[\"exact\"],\"costMicroUsd\":\"0\",\"priority\":100,\"exactEvmTransferMethods\":[\"eip3009\",\"permit2\"]}]",
+    "FACILITATORS_JSON": "[{\"id\":\"x402-org-testnet\",\"baseUrl\":\"https://x402.org/facilitator\",\"networks\":[\"eip155:84532\"],\"schemes\":[\"exact\"],\"costMicroUsd\":\"0\",\"priority\":100,\"exactEvmTransferMethods\":[\"eip3009\",\"permit2\"]},{\"id\":\"payai-testnet\",\"baseUrl\":\"https://facilitator.payai.network\",\"networks\":[\"eip155:84532\"],\"schemes\":[\"exact\"],\"costMicroUsd\":\"0\",\"priority\":100,\"exactEvmTransferMethods\":[\"eip3009\"]}]",
   },
   "ratelimits": [
     {
