@@ -132,7 +132,7 @@ export function enforceBaseMainnetUsdc(
 ): void {
   if (requirements.network !== BASE_MAINNET)
     throw new XGuardError(
-      "UNSUPPORTED_NETWORK",
+      "UNSUPPORTED",
       "XGuard mainnet currently supports Base mainnet only",
       400,
     );
@@ -197,7 +197,7 @@ export async function payAIVerify(
     if (payer.toLowerCase() !== expectedPayer.toLowerCase())
       throw new Error("verify_payer_conflict");
   }
-  return record as VerifyResponse;
+  return record as unknown as VerifyResponse;
 }
 
 export async function payAISettle(
@@ -230,7 +230,7 @@ export async function payAISettle(
     if (payer.toLowerCase() !== expectedPayer.toLowerCase())
       throw new Error("settlement_payer_conflict");
   }
-  return record as SettleResponse;
+  return record as unknown as SettleResponse;
 }
 
 export async function fetchPayAISupported(
@@ -269,7 +269,7 @@ export async function fetchPayAISupported(
     if (!compatible) throw new Error("payai_base_mainnet_not_supported");
     if (!Array.isArray(parsed.extensions)) parsed.extensions = [];
     if (parsed.signers === undefined) parsed.signers = {};
-    return parsed as SupportedResponse;
+    return parsed as unknown as SupportedResponse;
   } finally {
     clearTimeout(timer);
   }
@@ -321,8 +321,8 @@ function evmAddress(value: unknown, field: string): string {
   return value;
 }
 
-function asRecord(value: unknown): Record<string, any> {
+function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new XGuardError("BAD_REQUEST", "Expected a JSON object", 400);
-  return value as Record<string, any>;
+  return value as Record<string, unknown>;
 }
