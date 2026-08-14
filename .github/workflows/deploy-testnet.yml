@@ -1,0 +1,60 @@
+name: Deploy live testnet
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xguard-live-testnet-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - run: npm ci --ignore-scripts
+
+      - name: Validate release candidate
+        run: npm run verify:release
+        env:
+          WRANGLER_SEND_METRICS: "false"
+
+      - name: Deploy when Cloudflare CI authorization is available
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::notice::Cloudflare CI authorization is not available to GitHub Actions. The current live XGuard deployment is left untouched."
+            exit 0
+          fi
+
+          CONFIG_PATH="${RUNNER_TEMP}/xguard-wrangler.jsonc"
+          node scripts/resolve-cloudflare-config.mjs \
+            --template apps/worker/wrangler.jsonc \
+            --output "${CONFIG_PATH}" \
+            --database-name xguard-testnet
+
+          npx wrangler types --config "${CONFIG_PATH}" --env-interface CloudflareBindings
+          npx wrangler d1 migrations apply xguard-testnet --remote --config "${CONFIG_PATH}"
+          npx wrangler deploy --config "${CONFIG_PATH}"
+
+          npm run smoke:live
