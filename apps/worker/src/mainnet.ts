@@ -33,6 +33,7 @@ import {
 import {
   MainnetPaymentCoordinator,
   MainnetRequestGate,
+  type MainnetPrepareResult,
 } from "./mainnet-coordinator.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
@@ -334,12 +335,12 @@ app.post("/settle", async (context) => {
     const stub = context.env.PAYMENT_COORDINATOR.getByName(
       identities.logicalPaymentKey,
     );
-    const prepared = await stub.prepare({
+    const prepared = (await stub.prepare({
       logicalPaymentKey: identities.logicalPaymentKey,
       requestFingerprint: identities.requestFingerprint,
       merchantId: merchant.merchantId,
       network,
-    });
+    })) as MainnetPrepareResult;
     if (prepared.kind === "CACHED")
       return context.json(prepared.result, 200, {
         "X-XGuard-Replayed": "true",
