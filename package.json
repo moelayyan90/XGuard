@@ -43,7 +43,7 @@
     "@x402/express": "2.22.0",
     "@x402/extensions": "2.22.0",
     "@x402/mcp": "2.22.0",
-    "commander": "14.0.2",
+    "commander": "15.0.0",
     "express": "5.2.1",
     "fast-glob": "3.3.3",
     "hono": "4.13.2",

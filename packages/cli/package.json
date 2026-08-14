@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "@x402/core": "2.22.0",
-    "commander": "14.0.2",
+    "commander": "15.0.0",
     "fast-glob": "3.3.3",
     "picocolors": "1.1.1",
     "typescript": "5.9.3"
