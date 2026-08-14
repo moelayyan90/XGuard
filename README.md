@@ -9,7 +9,15 @@
 
 ## Adopt or remove
 
-After the alpha CLI is published, the intended migration is:
+The CLI can be executed directly from this GitHub repository before the npm package is published. The exact GitHub execution path is tested in CI:
+
+```bash
+npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard init --gateway https://xguard-testnet.maqamapp.workers.dev
+npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard doctor --endpoint https://YOUR-TESTNET-PAID-ENDPOINT
+npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard rollback
+```
+
+After the alpha CLI is published to npm, the shorter intended migration is:
 
 ```bash
 npx xguard@next init --gateway https://xguard-testnet.maqamapp.workers.dev
@@ -60,7 +68,7 @@ The client implements the official `FacilitatorClient` interface, so existing x4
 
 This is `0.1.0-alpha.0`, **testnet only**. The [public source repository](https://github.com/moelayyan90/XGuard) and [testnet Worker](https://xguard-testnet.maqamapp.workers.dev) are live. A real x402 Base Sepolia flow has completed from `402` through signed payment, `/verify`, `/settle`, HTTP `200`, and confirmed onchain USDC transfer. Testnet billing remains disabled: actual XGuard revenue, treasury, and owner payout activity are all `$0.00`.
 
-XGuard is not an official x402 or Coinbase product. Mainnet remains hard-disabled until the legal, security, reconciliation, operational, funding, provider, and independent-finality gates in [DEPLOYMENT.md](DEPLOYMENT.md) are satisfied.
+XGuard is not an official x402 or Coinbase product. Mainnet remains hard-disabled until the security, reconciliation, operational, funding, provider, and independent-finality gates in [DEPLOYMENT.md](DEPLOYMENT.md) are satisfied.
 
 ## Verify locally
 
@@ -71,7 +79,7 @@ npm run smoke:live
 node apps/gateway/dist/demo.js
 ```
 
-The demo is explicitly a deterministic protocol simulation: it broadcasts no chain transaction and charges no fee. The live smoke command also submits no payment; it checks readiness, compatibility, reconciliation status, malformed-input rejection, and the mainnet hard gate. See [reports/TEST_RESULTS.md](reports/TEST_RESULTS.md) for executed evidence and [docs/EXTERNAL_BLOCKERS.md](docs/EXTERNAL_BLOCKERS.md) for the remaining actions that require authenticated or regulated third parties.
+The demo is explicitly a deterministic protocol simulation: it broadcasts no chain transaction and charges no fee. The live smoke command also submits no payment; it checks readiness, compatibility, reconciliation status, malformed-input rejection, and the mainnet hard gate. See [reports/TEST_RESULTS.md](reports/TEST_RESULTS.md) for executed evidence and [docs/EXTERNAL_BLOCKERS.md](docs/EXTERNAL_BLOCKERS.md) for the remaining actions that require authenticated third parties.
 
 ## Documentation
 
