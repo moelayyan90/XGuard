@@ -1,0 +1,57 @@
+name: Fix mainnet RPC typing
+on:
+  push:
+    branches: [mainnet/live-worker]
+    paths: [".github/workflows/fix-mainnet-types.yml"]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: mainnet/live-worker
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Apply explicit RPC union typing
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps/worker/src/mainnet.ts')
+          s = p.read_text()
+          s = s.replace(
+'''import {
+  MainnetPaymentCoordinator,
+  MainnetRequestGate,
+} from "./mainnet-coordinator.js";''',
+'''import {
+  MainnetPaymentCoordinator,
+  MainnetRequestGate,
+  type MainnetPrepareResult,
+} from "./mainnet-coordinator.js";''')
+          s = s.replace(
+'''    const prepared = await stub.prepare({
+      logicalPaymentKey: identities.logicalPaymentKey,
+      requestFingerprint: identities.requestFingerprint,
+      merchantId: merchant.merchantId,
+      network,
+    });''',
+'''    const prepared = (await stub.prepare({
+      logicalPaymentKey: identities.logicalPaymentKey,
+      requestFingerprint: identities.requestFingerprint,
+      merchantId: merchant.merchantId,
+      network,
+    })) as MainnetPrepareResult;''')
+          p.write_text(s)
+          PY
+          npx prettier --write apps/worker/src/mainnet.ts
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/mainnet.ts
+          git commit -m "Fix mainnet coordinator RPC result typing"
+          git push origin HEAD:mainnet/live-worker
