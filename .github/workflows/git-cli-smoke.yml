@@ -1,0 +1,46 @@
+name: GitHub CLI install smoke
+
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "packages/cli/**"
+      - ".github/workflows/git-cli-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "packages/cli/**"
+      - ".github/workflows/git-cli-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  git-cli:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Resolve source commit
+        id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$PUSH_SHA" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Execute XGuard directly from GitHub
+        run: >-
+          npm exec --yes
+          --package="github:${{ github.repository }}#${{ steps.source.outputs.sha }}"
+          -- xguard --help
