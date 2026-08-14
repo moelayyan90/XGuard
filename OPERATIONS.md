@@ -6,12 +6,15 @@ Normal traffic is designed to require no owner processing. Financial ambiguity i
 | ------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------- |
 | every request                   | structured request/latency/result metrics; no raw payment body                   | sanitized error and request ID                  |
 | every 5 minutes on Worker       | facilitator capability/health probe, expired-ID cleanup, D1 ledger-balance check | degrade/open/quarantine route or reconciliation |
+| every 30 minutes on GitHub      | non-billable live smoke check of the public testnet                              | open one monitor issue; auto-close on recovery  |
 | each started Durable Object     | stale-submission alarm and durable outbox retry                                  | mark ambiguous; never retry settlement          |
 | every minute on Node process    | refresh capabilities; expire prepared work; quarantine stale started work        | keep last safe state and log sanitized failure  |
 | operator reconciliation command | ledger/ambiguity/recovery report                                                 | non-zero exit; payout considered suspended      |
 | weekly / dependency event       | locked build, tests, audit, CodeQL/Dependabot review                             | block release on high/critical finding          |
 
-The testnet Worker, Durable Objects, D1 projection, and five-minute health cron are live. Daily external treasury/provider reconciliation, encrypted off-platform backup rotation, external alert delivery, and owner payout submission remain mainnet activation requirements: there is no authorized mainnet provider, treasury, off-ramp, or alert/backup destination to connect them to. Testnet has no billable money or owner payout.
+The testnet Worker, Durable Objects, D1 projection, five-minute health cron, and GitHub-based live smoke monitor are configured. The smoke monitor performs no payment: it checks public health/readiness/capabilities, reconciliation state, malformed-input rejection, and the mainnet hard gate. Repeated failures are deduplicated into one GitHub issue and a later successful run closes that issue automatically.
+
+Daily external treasury/provider reconciliation, encrypted off-platform backup rotation, off-platform alert delivery, and owner payout submission are not connected in the testnet release. Testnet has no billable money or owner payout.
 
 ## Portable commands
 
