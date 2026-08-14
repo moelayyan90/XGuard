@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.git
+.wrangler
+backups
+*.db
+*.sqlite
+.env*
+.xguard*.env

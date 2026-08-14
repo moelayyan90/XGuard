@@ -1,0 +1,291 @@
+openapi: 3.1.0
+info:
+  title: XGuard Testnet API
+  version: 0.1.0-alpha.0
+  description: >-
+    Testnet-only x402 v2 facilitator-compatible safety and routing gateway.
+    Base Sepolia is non-billable and mainnet is hard-disabled.
+  license:
+    name: Apache-2.0
+servers:
+  - url: https://xguard-testnet.maqamapp.workers.dev
+    description: Live Base Sepolia testnet Worker
+tags:
+  - name: Operations
+  - name: x402
+paths:
+  /:
+    get:
+      tags: [Operations]
+      summary: Discover the release and safety boundary
+      responses:
+        "200":
+          description: Gateway metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootResponse"
+  /healthz:
+    get:
+      tags: [Operations]
+      summary: Check Worker liveness
+      responses:
+        "200":
+          description: Worker is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, mode, version]
+                properties:
+                  status: { const: ok }
+                  mode: { const: testnet-only }
+                  version: { type: string }
+  /readyz:
+    get:
+      tags: [Operations]
+      summary: Check D1 and measured facilitator readiness
+      responses:
+        "200":
+          description: At least one fresh compatible route exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: Database or measured-route readiness failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+  /supported:
+    get:
+      tags: [x402]
+      summary: Return measured x402 v2 capabilities
+      responses:
+        "200":
+          description: Facilitator capability response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportedResponse"
+  /status:
+    get:
+      tags: [Operations]
+      summary: Return routing and reconciliation status
+      responses:
+        "200":
+          description: Current measured status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+  /verify:
+    post:
+      tags: [x402]
+      summary: Verify an x402 v2 authorization without submitting value
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FacilitatorRequest"
+      responses:
+        "200":
+          description: Verification result, including definitive invalid results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResponse"
+        "400":
+          description: Malformed or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResponse"
+        "413": { description: Request body exceeded the hard limit }
+        "415": { description: Content-Type was not application/json }
+        "429": { description: Rate or concurrency limit exceeded }
+        "503": { description: Unsupported network or unavailable safe route }
+  /settle:
+    post:
+      tags: [x402]
+      summary: Settle once through the selected Base Sepolia facilitator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FacilitatorRequest"
+      responses:
+        "200":
+          description: Final settlement result or a cached final result
+          headers:
+            X-XGuard-Replayed:
+              schema: { type: boolean }
+              description: Whether this response came from the durable replay cache
+            X-XGuard-Payment-Key:
+              schema: { type: string }
+              description: Immutable logical authorization identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettleResponse"
+        "400": { description: Malformed or invalid request }
+        "409":
+          {
+            description: Conflicting authorization binding or settlement already in progress,
+          }
+        "413": { description: Request body exceeded the hard limit }
+        "415": { description: Content-Type was not application/json }
+        "429": { description: Rate or concurrency limit exceeded }
+        "503":
+          description: Unsupported network, unavailable route, or ambiguous post-submit outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettleResponse"
+components:
+  schemas:
+    RootResponse:
+      type: object
+      required: [name, version, protocol, mode, price, endpoints]
+      properties:
+        name: { const: XGuard }
+        description: { type: string }
+        version: { type: string }
+        protocol: { const: x402-v2 }
+        mode: { const: testnet-only }
+        price:
+          type: object
+          required: [amount, currency, event, testnetCharged]
+          properties:
+            amount: { const: "0.002" }
+            currency: { const: USD }
+            event: { const: successful_billable_settlement }
+            testnetCharged: { const: false }
+        endpoints:
+          type: object
+          additionalProperties: { type: string }
+    ReadinessResponse:
+      type: object
+      required: [status, mainnet]
+      properties:
+        status: { enum: [ready, not_ready] }
+        mainnet: { const: false }
+        measuredRoutes: { type: integer, minimum: 0 }
+    CapabilityKind:
+      type: object
+      required: [x402Version, scheme, network]
+      properties:
+        x402Version: { const: 2 }
+        scheme: { const: exact }
+        network: { const: "eip155:84532" }
+        extra:
+          type: object
+          additionalProperties: true
+    SupportedResponse:
+      type: object
+      required: [kinds, extensions, signers]
+      properties:
+        kinds:
+          type: array
+          items: { $ref: "#/components/schemas/CapabilityKind" }
+        extensions:
+          type: array
+          items: { type: string }
+        signers:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+    StatusResponse:
+      type: object
+      required:
+        [
+          gateway,
+          verification,
+          settlement,
+          mode,
+          facilitators,
+          openReconciliationCases,
+          measuredAt,
+        ]
+      properties:
+        gateway: { const: operational }
+        verification: { enum: [operational, degraded] }
+        settlement: { enum: [operational, degraded] }
+        mode: { const: testnet-only }
+        facilitators:
+          type: array
+          items:
+            type: object
+            required: [facilitator_id, state, checked_at]
+            properties:
+              facilitator_id: { type: string }
+              state:
+                {
+                  enum:
+                    [HEALTHY, DEGRADED, OPEN, HALF_OPEN, QUARANTINED, DISABLED],
+                }
+              latency_ms: { type: [integer, "null"], minimum: 0 }
+              checked_at: { type: string, format: date-time }
+        openReconciliationCases: { type: integer, minimum: 0 }
+        measuredAt: { type: string, format: date-time }
+    FacilitatorRequest:
+      type: object
+      required: [x402Version, paymentPayload, paymentRequirements]
+      additionalProperties: false
+      properties:
+        x402Version: { const: 2 }
+        paymentPayload:
+          type: object
+          required: [x402Version, accepted, payload]
+          additionalProperties: true
+          properties:
+            x402Version: { const: 2 }
+            resource:
+              type: object
+              additionalProperties: true
+            accepted:
+              $ref: "#/components/schemas/PaymentRequirements"
+            payload:
+              type: object
+              additionalProperties: true
+            extensions:
+              type: object
+              additionalProperties: true
+        paymentRequirements:
+          $ref: "#/components/schemas/PaymentRequirements"
+    PaymentRequirements:
+      type: object
+      required: [scheme, network, asset, amount, payTo, maxTimeoutSeconds]
+      additionalProperties: true
+      properties:
+        scheme: { const: exact }
+        network: { const: "eip155:84532" }
+        asset: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
+        amount: { type: string, pattern: "^[0-9]+$" }
+        payTo: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
+        maxTimeoutSeconds: { type: integer, minimum: 1 }
+        extra:
+          type: object
+          additionalProperties: true
+    VerifyResponse:
+      type: object
+      required: [isValid]
+      properties:
+        isValid: { type: boolean }
+        invalidReason: { type: string }
+        invalidMessage: { type: string }
+        payer: { type: string }
+    SettleResponse:
+      type: object
+      required: [success, transaction, network]
+      properties:
+        success: { type: boolean }
+        transaction: { type: string }
+        network: { type: string }
+        payer: { type: string }
+        errorReason: { type: string }
+        errorMessage: { type: string }

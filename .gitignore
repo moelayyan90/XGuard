@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+.xguard*.env
+apps/worker/wrangler.local.jsonc
+*.db
+*.db-shm
+*.db-wal
+.wrangler/
+.dev.vars
+*.log
+backups/
+.xguard/

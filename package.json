@@ -1,0 +1,70 @@
+{
+  "name": "xguard-monorepo",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "description": "XGuard: safety and health-aware facilitator routing for x402 v2",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "test": "tsc -b && vitest run",
+    "test:worker": "vitest run --config vitest.worker.config.ts",
+    "test:coverage": "tsc -b && vitest run --coverage",
+    "lint": "eslint . --max-warnings=0",
+    "format:check": "prettier --check .",
+    "security:secrets": "node scripts/secret-scan.mjs",
+    "security:deps": "npm audit --audit-level=high",
+    "quality:no-todos": "node scripts/check-no-todos.mjs",
+    "quality:docs": "node scripts/check-docs.mjs",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run test:worker && npm run security:secrets && npm run quality:no-todos && npm run quality:docs && npm run build",
+    "verify:release": "npm run check && npm run security:deps && npm --workspace @xguard/worker run types -- --check && npm --workspace @xguard/worker run build && npm pack --dry-run --workspace @xguard/core && npm pack --dry-run --workspace @xguard/sdk && npm pack --dry-run --workspace xguard",
+    "smoke:live": "node scripts/smoke-live.mjs",
+    "dev": "tsx apps/gateway/src/server.ts",
+    "demo": "tsx apps/gateway/src/demo.ts",
+    "ops:reconcile": "node scripts/reconcile.mjs",
+    "ops:payout-check": "node scripts/payout-check.mjs",
+    "ops:backup": "node scripts/backup-sqlite.mjs",
+    "xguard": "tsx packages/cli/src/bin.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "1.19.17",
+    "@types/express": "5.0.6",
+    "@x402/core": "2.22.0",
+    "@x402/evm": "2.22.0",
+    "@x402/express": "2.22.0",
+    "@x402/extensions": "2.22.0",
+    "@x402/mcp": "2.22.0",
+    "commander": "14.0.2",
+    "express": "5.2.1",
+    "fast-glob": "3.3.3",
+    "hono": "4.13.2",
+    "ipaddr.js": "2.5.0",
+    "picocolors": "1.1.1",
+    "undici": "8.10.0",
+    "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.21.3",
+    "@eslint/js": "9.39.1",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@types/node": "24.10.0",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "9.39.1",
+    "js-yaml": "4.3.1",
+    "prettier": "3.6.2",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.4",
+    "vitest": "4.1.10",
+    "wrangler": "4.123.0"
+  }
+}

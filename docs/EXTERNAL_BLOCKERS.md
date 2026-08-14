@@ -1,0 +1,68 @@
+# External blockers
+
+Only actions that require a regulated decision, identity/account authorization, third-party credential, or independent third-party acceptance are listed. Ordinary engineering work is not shifted to the owner.
+
+Former blockers now completed: the Cloudflare account is authorized, the Worker and D1 database are deployed, and funded Base Sepolia settlement has succeeded onchain. Those are no longer owner actions. Mainnet remains disabled.
+
+---
+
+**EXTERNAL_BLOCKER**  
+**Name:** Jordan legal classification and authorization  
+**Why automation cannot legally/technically complete it:** Jordan's [Virtual Asset Service Providers Licensing Regulation No. 94 of 2025](https://www.jsc.gov.jo/Uploads/Files/The%20Virtual%20Asset%20Service%20Providers%20Licensing%20Regulation%20for%20the%20year%202025-.pdf), issued under Law No. 14 of 2025, is now in force. Whether XGuard's final routing, fee, custody, merchant-funding, and payout model falls within a licensed activity is a legal/regulatory determination; automation cannot supply a legal opinion, legal person, or regulator approval.  
+**Everything already completed:** Both shipped gateways reject mainnet in code; testnet has zero fees; custody/liability separation and regulated-provider assumptions are documented.  
+**Exact smallest human action required:** Obtain a written Jordan-qualified classification of the final operating model and, only if required by that advice, form/authorize the legal person and obtain the applicable Jordan Securities Commission license or approval before a reviewed mainnet release.  
+**Whether XGuard can continue operating without it:** Public testnet diagnostics and non-billable settlement can operate; mainnet settlement, revenue collection, and payout cannot.
+
+---
+
+**EXTERNAL_BLOCKER**  
+**Name:** Mainnet facilitator and merchant-funding authorization  
+**Why automation cannot legally/technically complete it:** No authorized provider contract, business account, KYC decision, production credential, current tariff, or merchant funding authorization exists. These cannot be fabricated or accepted for the owner.  
+**Everything already completed:** Normalized routing, capability polling, safe verification failover, settle-once ownership, prepaid accounting, negative-margin exclusion, and the independent-finality boundary are implemented. No environment variable can enable mainnet in the shipped gateways.  
+**Exact smallest human action required:** After legal clearance, authorize an eligible facilitator/provider business account, accept its contract, complete any required KYC, approve the actual tariff, and permit its least-privilege production credential to be stored as an encrypted deployment secret. Each merchant must separately authorize its funding source.  
+**Whether XGuard can continue operating without it:** Testnet and free diagnostics continue; mainnet settlement and billing cannot.
+
+---
+
+**EXTERNAL_BLOCKER**  
+**Name:** Regulated off-ramp and verified payout destination  
+**Why automation cannot legally/technically complete it:** A regulated provider must independently approve the eligible account holder, complete KYC/AML and sanctions checks, accept the business destination, and issue API authorization. Country availability alone is not approval.  
+**Everything already completed:** Fail-closed payout policy, reserve, atomic gross reservation including provider fees, idempotent payout states, typed provider evidence, return accounting, and ambiguity stops are implemented; no destination or private credential appears in source.  
+**Exact smallest human action required:** Complete truthful institutional onboarding with the selected provider and verify the business payout destination once; authorize storage of only the resulting scoped credential and destination reference in encrypted secrets.  
+**Whether XGuard can continue operating without it:** Testnet can; owner payout stays disabled, and mainnet must not accumulate funds without an approved treasury/off-ramp plan.
+
+---
+
+**EXTERNAL_BLOCKER**  
+**Name:** Independent mainnet security review  
+**Why automation cannot legally/technically complete it:** The author cannot provide independent assurance over its own mainnet implementation, production provider adapter, finality adapter, and operational deployment. A qualified outside reviewer and their acceptance are separate parties.  
+**Everything already completed:** Static checks, dependency audit, adversarial replay/idempotency/concurrency tests, Workers-runtime regressions, threat model, security review, and hard mainnet gates are present for the testnet release.  
+**Exact smallest human action required:** After the remaining mainnet engineering and provider integration are complete, appoint and authorize a qualified independent reviewer; do not approve launch until all Critical/High findings are closed and the review covers deployed configuration as well as code. No paid engagement is assumed or initiated under the `$0` owner budget.  
+**Whether XGuard can continue operating without it:** Testnet can; mainnet cannot be called safe or launched.
+
+---
+
+**EXTERNAL_BLOCKER**  
+**Name:** GitHub security-control availability  
+**Why automation cannot legally/technically complete it:** The public `moelayyan90/XGuard` repository now exists, but some repository rules or private vulnerability reporting controls may depend on GitHub account capabilities and an explicit owner security decision.  
+**Everything already completed:** Source, Apache-2.0 notices, README, contribution/security policies, CI, CodeQL, Dependabot, artifact-only release workflow, secret checks, and release assets are prepared.  
+**Exact smallest human action required:** If GitHub does not permit automation to enable the desired rules on this account, enable private vulnerability reporting and a main-branch rule requiring the successful CI and CodeQL checks shown in repository settings.  
+**Whether XGuard can continue operating without it:** Yes on testnet; these controls remain a release-governance requirement before accepting external production changes.
+
+---
+
+**EXTERNAL_BLOCKER**  
+**Name:** npm package ownership and trusted publishing  
+**Why automation cannot legally/technically complete it:** The npm CLI is not authenticated and no organization/scope authority or trusted-publisher binding exists. Registry search showed the candidate names unregistered at the time checked, but availability is not ownership.  
+**Everything already completed:** Core, SDK, and CLI manifests/builds, repository metadata, package-local licenses, narrow file allowlists, dry-pack checks, examples, and artifact-only release workflow are prepared.  
+**Exact smallest human action required:** Sign in to the intended npm owner account, claim or approve the final package names, and bind npm trusted publishing to `moelayyan90/XGuard` and the reviewed release workflow. Only then may CI receive an explicit publishing job without a long-lived token.  
+**Whether XGuard can continue operating without it:** Local packages and the source release candidate work; public `npx xguard@latest` is unavailable.
+
+---
+
+**EXTERNAL_BLOCKER**  
+**Name:** x402/Bazaar/MCP ecosystem listing acceptance  
+**Why automation cannot legally/technically complete it:** Listings require authenticated submission and independent ecosystem acceptance. The live URL is a testnet gateway, not a public paid resource, and the packages are not yet published.  
+**Everything already completed:** Schema-complete Bazaar starter metadata, MCP example, pricing/security/docs, compatibility checker, and accurate listing boundaries are prepared.  
+**Exact smallest human action required:** After GitHub/npm publication and the listing quality gate pass, authorize accurate official submissions; ecosystem maintainers make the acceptance decision.  
+**Whether XGuard can continue operating without it:** Yes; only official-directory discovery is unavailable.

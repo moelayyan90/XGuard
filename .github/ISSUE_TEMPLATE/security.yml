@@ -1,0 +1,13 @@
+name: Security report redirect
+description: Do not disclose vulnerabilities in a public issue.
+title: "Do not submit sensitive details here"
+body:
+  - type: markdown
+    attributes:
+      value: Please stop and use the private reporting process described in SECURITY.md. Never include payment payloads, API keys, wallet secrets, or banking data in a public issue.
+  - type: checkboxes
+    attributes:
+      label: Confirmation
+      options:
+        - label: I will use the private security reporting channel instead.
+          required: true

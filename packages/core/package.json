@@ -1,0 +1,50 @@
+{
+  "name": "@xguard/core",
+  "version": "0.1.0-alpha.0",
+  "description": "Safety, routing, replay protection, and financial accounting primitives for x402 v2",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moelayyan90/XGuard.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/moelayyan90/XGuard#readme",
+  "bugs": {
+    "url": "https://github.com/moelayyan90/XGuard/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./edge": {
+      "types": "./dist/edge.d.ts",
+      "import": "./dist/edge.js"
+    }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@x402/core": "2.22.0",
+    "@x402/evm": "2.22.0",
+    "@x402/extensions": "2.22.0",
+    "ipaddr.js": "2.5.0",
+    "undici": "8.10.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

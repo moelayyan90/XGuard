@@ -1,0 +1,21 @@
+{
+  "name": "x402-xguard-starter",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@x402/core": "2.22.0",
+    "@x402/evm": "2.22.0",
+    "@x402/express": "2.22.0",
+    "@x402/extensions": "2.22.0",
+    "@xguard/sdk": "0.1.0-alpha.0",
+    "express": "5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6"
+  }
+}
