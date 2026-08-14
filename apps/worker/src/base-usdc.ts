@@ -91,7 +91,9 @@ export async function verifyFinalizedBaseUsdcDeposit(input: {
     input.timeoutMs ?? 8_000,
   );
   if (receiptBlock === null) throw new Error("receipt_block_unavailable");
-  if (parseRpcInteger(receiptBlock.number, "receipt_block_number") !== blockNumber)
+  if (
+    parseRpcInteger(receiptBlock.number, "receipt_block_number") !== blockNumber
+  )
     throw new Error("receipt_block_mismatch");
   const blockTimestampSeconds = parseRpcInteger(
     receiptBlock.timestamp,
