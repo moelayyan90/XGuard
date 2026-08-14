@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "wrangler deploy --dry-run --outdir ../../dist/worker",
+    "build:mainnet": "wrangler deploy --dry-run --config wrangler.mainnet.jsonc --outdir ../../dist/worker-mainnet",
     "dev": "wrangler dev",
     "types": "wrangler types --config wrangler.test.jsonc --env-interface CloudflareBindings"
   },
