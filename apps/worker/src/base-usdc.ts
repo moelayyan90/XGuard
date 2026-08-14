@@ -67,19 +67,16 @@ export async function verifyFinalizedBaseUsdcDeposit(input: {
   ]);
 
   if (receipt === null) throw new Error("transaction_not_found");
-  if (receipt.status !== "0x1")
-    throw new Error("transaction_not_successful");
+  if (receipt.status !== "0x1") throw new Error("transaction_not_successful");
   const blockNumber = parseRpcInteger(receipt.blockNumber, "receipt_block");
-  if (finalizedBlock === null)
-    throw new Error("finalized_block_unavailable");
+  if (finalizedBlock === null) throw new Error("finalized_block_unavailable");
   const finalizedNumber = parseRpcInteger(
     finalizedBlock.number,
     "finalized_block",
   );
   if (blockNumber > finalizedNumber)
     throw new Error("transaction_not_finalized");
-  if (!Array.isArray(receipt.logs))
-    throw new Error("malformed_receipt_logs");
+  if (!Array.isArray(receipt.logs)) throw new Error("malformed_receipt_logs");
 
   const treasuryTopic = addressTopic(input.treasuryAddress);
   const contract = input.usdcContractAddress.toLowerCase();
@@ -118,8 +115,7 @@ export async function verifyFinalizedBaseUsdcDeposit(input: {
     });
   }
 
-  if (matches.length === 0)
-    throw new Error("treasury_usdc_transfer_not_found");
+  if (matches.length === 0) throw new Error("treasury_usdc_transfer_not_found");
   if (matches.length !== 1)
     throw new Error("ambiguous_multiple_treasury_transfers");
   return matches[0]!;
