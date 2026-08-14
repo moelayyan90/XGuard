@@ -67,7 +67,7 @@ describe("Base USDC deposit verification", () => {
       recipient: TREASURY,
       amountMicroUsd: 5_000_000,
       blockNumber: 255,
-      blockTimestampSeconds: 2_000_000_768,
+      blockTimestampSeconds: 1_999_999_744,
       logIndex: 2,
     });
   });
