@@ -12,12 +12,12 @@
 
 The manifests use the candidate names `xguard`, `@xguard/core`, and `@xguard/sdk`. No package is published or reserved, and registry search is not a substitute for ownership; an authorized publisher must re-check and claim the names at publication time or apply the documented scoped rename consistently.
 
-The public repository is `moelayyan90/XGuard`. Its release workflow runs the full release verification, creates the three npm tarballs, and retains them as GitHub artifacts without publishing. Public npm publication stays intentionally separate until package ownership, npm authentication, and trusted-publisher configuration are proven.
+The public repository is [`moelayyan90/XGuard`](https://github.com/moelayyan90/XGuard). CI and CodeQL pass; `main` is protected by pull-request, up-to-date `verify`, conversation-resolution, CodeQL, deletion, and force-push rules. Dependabot, secret scanning/push protection, and private vulnerability reporting are enabled. Its release workflow runs the full release verification, creates the three npm tarballs, and retains them as GitHub artifacts without publishing. Public npm publication stays intentionally separate until package ownership, npm authentication, and trusted-publisher configuration are proven.
 
 ## Legitimate publication sequence
 
 1. Keep the working testnet URL green and run `npm run verify:release` plus `npm run smoke:live`.
-2. Require CI and CodeQL on the public GitHub repository, keep Dependabot enabled, and enable private vulnerability reporting and branch protection where the account supports them.
+2. Keep the active CI, CodeQL, protected-branch, Dependabot, secret-scanning/push-protection, and private-vulnerability-reporting controls green.
 3. After an authorized npm owner binds trusted publishing to this repository, add a reviewed publish job and publish provenance-enabled prerelease packages with the `next` tag only.
 4. Verify a fresh `npx xguard@latest init`, `doctor`, starter install, rollback, health, status, pricing, and security links.
 5. Expose eligible paid-resource/MCP Bazaar metadata through a facilitator that supports current cataloging.

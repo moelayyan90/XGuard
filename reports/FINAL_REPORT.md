@@ -20,6 +20,8 @@ The public testnet Worker is live at `https://xguard-testnet.maqamapp.workers.de
 - lint, formatting, TypeScript, build, secret scan, D1 SQL, backup, restore, reconciliation, payout fail-closed check, compiled CLI, and local HTTP smoke passed.
 - coverage: 76.85% statements, 70.66% branches, 87.24% functions, 78.16% lines.
 - live smoke, Base Sepolia receipt verification, D1 reconciliation, dependency audit, Worker generated-type validation/dry build, npm dry packs, isolated tarball installation/import, CLI loading, and live starter HTTP `402` smoke passed.
+- the current Worker bundle passed startup analysis at 269.44 KiB (80.14 KiB gzip) with 19.9 ms active time in the local profile.
+- the public GitHub CI and CodeQL workflows pass; the release branch and repository security controls are active.
 - exact evidence is in [TEST_RESULTS.md](TEST_RESULTS.md).
 
 ## SECURITY
@@ -46,7 +48,7 @@ Today, build the archive locally and invoke `node packages/cli/dist/bin.js`. Mig
 
 ## DISTRIBUTION
 
-Actually deployed: the Cloudflare public testnet Worker and D1 database. GitHub/npm packages and ecosystem listings remain unpublished. CI, CodeQL, Dependabot, OIDC prerelease workflow, package contents, release content, listing text, metadata, examples, and quality gates are prepared; GitHub repository ownership and npm trusted-publisher authorization are external blockers.
+Actually live: the Cloudflare public testnet Worker and D1 database, plus the public [`moelayyan90/XGuard`](https://github.com/moelayyan90/XGuard) source repository. CI, CodeQL, protected `main`, Dependabot, secret scanning/push protection, private vulnerability reporting, and the artifact-only release workflow are active. npm packages and ecosystem listings remain unpublished; npm ownership/trusted-publisher authorization and independent listing acceptance are external blockers.
 
 ## TRANSACTIONS
 
@@ -78,7 +80,7 @@ Actual externally invoiced operating cost: **$0.00**. No owner payment method wa
 
 ## EXTERNAL BLOCKERS
 
-The remaining outside decisions are Jordan legal classification/licensing if applicable; mainnet facilitator/merchant funding contracts and KYC; regulated off-ramp/destination approval; independent security review; GitHub repository ownership; npm trusted publishing; and independent ecosystem listing acceptance. Cloudflare authorization and funded Base Sepolia settlement are complete. Exact minimum actions are recorded in [EXTERNAL_BLOCKERS.md](../docs/EXTERNAL_BLOCKERS.md).
+The remaining outside decisions are Jordan legal classification/licensing if applicable; mainnet facilitator/merchant funding contracts and KYC; regulated off-ramp/destination approval; independent security review; npm package ownership/trusted publishing; and independent ecosystem listing acceptance. Cloudflare authorization, funded Base Sepolia settlement, GitHub publication, and repository security controls are complete. Exact minimum actions are recorded in [EXTERNAL_BLOCKERS.md](../docs/EXTERNAL_BLOCKERS.md).
 
 ## AUTONOMOUS OPERATIONS
 

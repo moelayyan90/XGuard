@@ -7,28 +7,31 @@
 
 ## Release checks
 
-| Check                            | Executed result                                                                                                 |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Prettier                         | PASS — all repository files matched                                                                             |
-| ESLint                           | PASS — zero warnings/errors                                                                                     |
-| TypeScript project build         | PASS                                                                                                            |
-| Node Vitest suite                | PASS — 10 files, 72 tests                                                                                       |
-| Cloudflare Workers-runtime suite | PASS — 1 file, 13 tests                                                                                         |
-| Dependency audit                 | PASS — zero vulnerabilities at `high` threshold                                                                 |
-| Secret scan                      | PASS — repository files checked; local wallet secret values neither scanned into output nor printed             |
-| Executable TODO/FIXME/HACK scan  | PASS — none                                                                                                     |
-| D1 migration SQL                 | PASS — applied to a clean SQLite database; integrity `ok`                                                       |
-| Node SQLite backup/restore       | PASS — restored to a new path, reconciled, fixture present, integrity `ok`                                      |
-| Reconciliation                   | PASS — balanced local ledger; live D1 has zero open ambiguity after evidence-based repair                       |
-| Payout dry policy check          | PASS — `DISABLED`, no transfer submitted, provider `EXTERNAL_BLOCKER`                                           |
-| CLI executable surface           | PASS — `init`, `doctor`, and `rollback` help loaded from compiled output                                        |
-| Local HTTP smoke                 | PASS — root, health, status, supported, metrics; readiness correctly failed without a measured live local route |
-| Worker generated types/build     | PASS — generated-type check and Cloudflare dry build                                                            |
-| npm package dry packs            | PASS — core, SDK, and CLI include only allowlisted runtime/types/docs/license files                             |
-| npm tarball install/import       | PASS — all three tarballs installed in an empty project; core/SDK imports and CLI executable loaded             |
-| Starter example smoke            | PASS — compiled starter initialized through the live facilitator and returned `402` with `PAYMENT-REQUIRED`     |
-| Live Cloudflare smoke            | PASS — live/ready/supported/status, malformed-input rejection, zero reconciliation, and mainnet rejection       |
-| Base Sepolia chain evidence      | PASS — successful USDC Transfer receipts independently retrieved for all five recorded test settlements         |
+| Check                            | Executed result                                                                                                   |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Prettier                         | PASS — all repository files matched                                                                               |
+| ESLint                           | PASS — zero warnings/errors                                                                                       |
+| TypeScript project build         | PASS                                                                                                              |
+| Node Vitest suite                | PASS — 10 files, 72 tests                                                                                         |
+| Cloudflare Workers-runtime suite | PASS — 1 file, 13 tests                                                                                           |
+| Dependency audit                 | PASS — zero vulnerabilities at `high` threshold                                                                   |
+| Secret scan                      | PASS — repository files checked; local wallet secret values neither scanned into output nor printed               |
+| Executable TODO/FIXME/HACK scan  | PASS — none                                                                                                       |
+| D1 migration SQL                 | PASS — applied to a clean SQLite database; integrity `ok`                                                         |
+| Node SQLite backup/restore       | PASS — restored to a new path, reconciled, fixture present, integrity `ok`                                        |
+| Reconciliation                   | PASS — balanced local ledger; live D1 has zero open ambiguity after evidence-based repair                         |
+| Payout dry policy check          | PASS — `DISABLED`, no transfer submitted, provider `EXTERNAL_BLOCKER`                                             |
+| CLI executable surface           | PASS — `init`, `doctor`, and `rollback` help loaded from compiled output                                          |
+| Local HTTP smoke                 | PASS — root, health, status, supported, metrics; readiness correctly failed without a measured live local route   |
+| Worker generated types/build     | PASS — generated-type check and Cloudflare dry build                                                              |
+| Worker startup analysis          | PASS — 269.44 KiB bundle (80.14 KiB gzip); 19.9 ms active local startup profile                                   |
+| npm package dry packs            | PASS — core, SDK, and CLI include only allowlisted runtime/types/docs/license files                               |
+| npm tarball install/import       | PASS — all three tarballs installed in an empty project; core/SDK imports and CLI executable loaded               |
+| Starter example smoke            | PASS — compiled starter initialized through the live facilitator and returned `402` with `PAYMENT-REQUIRED`       |
+| Live Cloudflare smoke            | PASS — active Worker ready with one measured route, zero open reconciliation, and mainnet rejection               |
+| Live D1 financial state          | PASS — five settled testnet projections; zero billable events, revenue, owner distributions, and ledger imbalance |
+| Base Sepolia chain evidence      | PASS — successful USDC Transfer receipts independently retrieved for all five recorded test settlements           |
+| GitHub release governance        | PASS — public repository, CI, CodeQL, protected `main`, Dependabot, secret scanning, and private reporting active |
 
 ## Coverage
 
@@ -62,4 +65,4 @@ Separately, the live Worker completed a real signed x402 Base Sepolia flow from 
 
 The three historical `DataCloneError` records were not retried. Each was matched to a successful USDC Transfer using immutable payment evidence and timing: [0xc309…c0c](https://sepolia.basescan.org/tx/0xc3098efdf6fa94ebc6aec09d29aff2791230c4a88dea7ad84782274c4cf14c0c), [0xb650…467](https://sepolia.basescan.org/tx/0xb650b46aa2e1ed09ed97d6b398efae63329097e0fe172d95fb86ace116c11467), and [0x576f…27d](https://sepolia.basescan.org/tx/0x576fc417dbc2c19a55c2916c7f2a4dfdb69ce5785f7099b015a6f1a9989927d3). Conditional D1 updates changed only those projections from `AMBIGUOUS` to `SETTLED` and their cases from `OPEN` to `RESOLVED`.
 
-After reconciliation, live `/status` reported zero open cases. D1 reported zero billable events and zero billed micro-USD. No testnet fee or revenue was created.
+After reconciliation, live `/status` reported zero open cases. A fresh read-only D1 audit reported five settled testnet projections, zero billable events, zero billed micro-USD, zero owner distributions, and a zero ledger imbalance. No testnet fee or revenue was created.
