@@ -19,41 +19,38 @@ describe("Base USDC deposit verification", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string, init?: RequestInit) => {
-        const request = JSON.parse(String(init?.body)) as { method: string };
+        const request = JSON.parse(String(init?.body)) as {
+          method: string;
+          params: unknown[];
+        };
+        let result: unknown;
         if (request.method === "eth_getTransactionReceipt") {
-          return new Response(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              result: {
-                status: "0x1",
-                blockNumber: "0xff",
-                logs: [
-                  {
-                    address: USDC,
-                    topics: [
-                      TRANSFER,
-                      addressTopic(SENDER),
-                      addressTopic(TREASURY),
-                    ],
-                    data: "0x4c4b40",
-                    logIndex: "0x2",
-                    removed: false,
-                  },
+          result = {
+            status: "0x1",
+            blockNumber: "0xff",
+            logs: [
+              {
+                address: USDC,
+                topics: [
+                  TRANSFER,
+                  addressTopic(SENDER),
+                  addressTopic(TREASURY),
                 ],
+                data: "0x4c4b40",
+                logIndex: "0x2",
+                removed: false,
               },
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } },
-          );
+            ],
+          };
+        } else if (request.params[0] === "finalized") {
+          result = { number: "0x100", timestamp: "0x77359400" };
+        } else {
+          result = { number: "0xff", timestamp: "0x77359300" };
         }
-        return new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            result: { number: "0x100" },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }),
     );
 
@@ -70,6 +67,7 @@ describe("Base USDC deposit verification", () => {
       recipient: TREASURY,
       amountMicroUsd: 5_000_000,
       blockNumber: 255,
+      blockTimestampSeconds: 1_999_999_744,
       logIndex: 2,
     });
   });
@@ -82,7 +80,7 @@ describe("Base USDC deposit verification", () => {
         const result =
           request.method === "eth_getTransactionReceipt"
             ? { status: "0x1", blockNumber: "0x101", logs: [] }
-            : { number: "0x100" };
+            : { number: "0x100", timestamp: "0x77359400" };
         return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
           status: 200,
         });
@@ -109,18 +107,25 @@ describe("Base USDC deposit verification", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string, init?: RequestInit) => {
-        const request = JSON.parse(String(init?.body)) as { method: string };
-        const result =
-          request.method === "eth_getTransactionReceipt"
-            ? {
-                status: "0x1",
-                blockNumber: "0xff",
-                logs: [
-                  { ...log, logIndex: "0x1" },
-                  { ...log, logIndex: "0x2" },
-                ],
-              }
-            : { number: "0x100" };
+        const request = JSON.parse(String(init?.body)) as {
+          method: string;
+          params: unknown[];
+        };
+        let result: unknown;
+        if (request.method === "eth_getTransactionReceipt") {
+          result = {
+            status: "0x1",
+            blockNumber: "0xff",
+            logs: [
+              { ...log, logIndex: "0x1" },
+              { ...log, logIndex: "0x2" },
+            ],
+          };
+        } else if (request.params[0] === "finalized") {
+          result = { number: "0x100", timestamp: "0x77359400" };
+        } else {
+          result = { number: "0xff", timestamp: "0x77359300" };
+        }
         return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
           status: 200,
         });
