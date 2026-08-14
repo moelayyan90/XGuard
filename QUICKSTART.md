@@ -35,7 +35,29 @@ curl -i http://127.0.0.1:3000/paid
 
 The expected first response is HTTP `402` with a `PAYMENT-REQUIRED` header. An official x402 client can sign the selected Base Sepolia requirement and retry with `PAYMENT-SIGNATURE`; the resource server then calls XGuard `/verify` and `/settle`.
 
-## 3. Integrate the SDK
+## 3. Run the migration CLI directly from GitHub
+
+The CLI does not require an npm registry release. The repository install path is tested in GitHub Actions:
+
+```bash
+npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard doctor
+```
+
+To migrate a compatible x402 resource server to the live XGuard testnet gateway:
+
+```bash
+npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard init --gateway https://xguard-testnet.maqamapp.workers.dev
+```
+
+To undo that migration from its local backup:
+
+```bash
+npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard rollback
+```
+
+`init` changes only a compatible literal facilitator URL, refuses provider-specific credential-bearing configurations, runs the project's test script, and rolls back automatically if that test fails.
+
+## 4. Integrate the SDK
 
 Until the prerelease is published, use the workspace build:
 
