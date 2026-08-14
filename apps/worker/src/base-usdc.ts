@@ -16,6 +16,11 @@ interface TransactionReceipt {
   logs?: unknown;
 }
 
+interface RpcBlock {
+  number?: unknown;
+  timestamp?: unknown;
+}
+
 interface RpcLog {
   address?: unknown;
   topics?: unknown;
@@ -30,6 +35,7 @@ export interface FinalizedUsdcDeposit {
   recipient: string;
   amountMicroUsd: number;
   blockNumber: number;
+  blockTimestampSeconds: number;
   logIndex: number;
 }
 
@@ -58,7 +64,7 @@ export async function verifyFinalizedBaseUsdcDeposit(input: {
       [input.transactionHash],
       input.timeoutMs ?? 8_000,
     ),
-    rpc<{ number?: unknown }>(
+    rpc<RpcBlock>(
       rpcUrl.toString(),
       "eth_getBlockByNumber",
       ["finalized", false],
@@ -77,6 +83,20 @@ export async function verifyFinalizedBaseUsdcDeposit(input: {
   if (blockNumber > finalizedNumber)
     throw new Error("transaction_not_finalized");
   if (!Array.isArray(receipt.logs)) throw new Error("malformed_receipt_logs");
+
+  const receiptBlock = await rpc<RpcBlock>(
+    rpcUrl.toString(),
+    "eth_getBlockByNumber",
+    [receipt.blockNumber, false],
+    input.timeoutMs ?? 8_000,
+  );
+  if (receiptBlock === null) throw new Error("receipt_block_unavailable");
+  if (parseRpcInteger(receiptBlock.number, "receipt_block_number") !== blockNumber)
+    throw new Error("receipt_block_mismatch");
+  const blockTimestampSeconds = parseRpcInteger(
+    receiptBlock.timestamp,
+    "receipt_block_timestamp",
+  );
 
   const treasuryTopic = addressTopic(input.treasuryAddress);
   const contract = input.usdcContractAddress.toLowerCase();
@@ -111,6 +131,7 @@ export async function verifyFinalizedBaseUsdcDeposit(input: {
       recipient: input.treasuryAddress.toLowerCase(),
       amountMicroUsd: amount,
       blockNumber,
+      blockTimestampSeconds,
       logIndex,
     });
   }
