@@ -1,5 +1,8 @@
 # XGuard
 
+[![CI](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml)
+
 **One safe route for x402 payments.** XGuard is a testnet-first, facilitator-compatible routing and safety layer for x402 v2. A resource server integrates once; XGuard filters routes by capability, health, latency, reliability, and known cost, then prevents unsafe settlement retries.
 
 **Price:** `$0.002` per successful billable settlement. There is no monthly subscription. Testnet, malformed requests, failed verification, declined or failed settlements, ambiguous outcomes, health checks, and duplicate retries of the same payment are not billed. Any downstream facilitator, chain, funding, or off-ramp cost is separate.
@@ -55,7 +58,7 @@ The client implements the official `FacilitatorClient` interface, so existing x4
 
 ## Release status
 
-This is `0.1.0-alpha.0`, **testnet only**. The public testnet Worker is live at [xguard-testnet.maqamapp.workers.dev](https://xguard-testnet.maqamapp.workers.dev). A real x402 Base Sepolia flow has completed from `402` through signed payment, `/verify`, `/settle`, HTTP `200`, and confirmed onchain USDC transfer. Testnet billing remains disabled: actual XGuard revenue, treasury, and owner payout activity are all `$0.00`.
+This is `0.1.0-alpha.0`, **testnet only**. The [public source repository](https://github.com/moelayyan90/XGuard) and [testnet Worker](https://xguard-testnet.maqamapp.workers.dev) are live. A real x402 Base Sepolia flow has completed from `402` through signed payment, `/verify`, `/settle`, HTTP `200`, and confirmed onchain USDC transfer. Testnet billing remains disabled: actual XGuard revenue, treasury, and owner payout activity are all `$0.00`.
 
 XGuard is not an official x402 or Coinbase product. Mainnet remains hard-disabled until the legal, security, reconciliation, operational, funding, provider, and independent-finality gates in [DEPLOYMENT.md](DEPLOYMENT.md) are satisfied.
 

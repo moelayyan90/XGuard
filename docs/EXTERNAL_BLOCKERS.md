@@ -2,7 +2,7 @@
 
 Only actions that require a regulated decision, identity/account authorization, third-party credential, or independent third-party acceptance are listed. Ordinary engineering work is not shifted to the owner.
 
-Former blockers now completed: the Cloudflare account is authorized, the Worker and D1 database are deployed, and funded Base Sepolia settlement has succeeded onchain. Those are no longer owner actions. Mainnet remains disabled.
+Former blockers now completed: the Cloudflare account is authorized; the Worker and D1 database are deployed; funded Base Sepolia settlement has succeeded onchain; and the public GitHub repository has passing CI/CodeQL, protected `main`, Dependabot, secret scanning/push protection, and private vulnerability reporting. Those are no longer owner actions. Mainnet remains disabled.
 
 ---
 
@@ -43,18 +43,9 @@ Former blockers now completed: the Cloudflare account is authorized, the Worker 
 ---
 
 **EXTERNAL_BLOCKER**  
-**Name:** GitHub security-control availability  
-**Why automation cannot legally/technically complete it:** The public `moelayyan90/XGuard` repository now exists, but some repository rules or private vulnerability reporting controls may depend on GitHub account capabilities and an explicit owner security decision.  
-**Everything already completed:** Source, Apache-2.0 notices, README, contribution/security policies, CI, CodeQL, Dependabot, artifact-only release workflow, secret checks, and release assets are prepared.  
-**Exact smallest human action required:** If GitHub does not permit automation to enable the desired rules on this account, enable private vulnerability reporting and a main-branch rule requiring the successful CI and CodeQL checks shown in repository settings.  
-**Whether XGuard can continue operating without it:** Yes on testnet; these controls remain a release-governance requirement before accepting external production changes.
-
----
-
-**EXTERNAL_BLOCKER**  
 **Name:** npm package ownership and trusted publishing  
 **Why automation cannot legally/technically complete it:** The npm CLI is not authenticated and no organization/scope authority or trusted-publisher binding exists. Registry search showed the candidate names unregistered at the time checked, but availability is not ownership.  
-**Everything already completed:** Core, SDK, and CLI manifests/builds, repository metadata, package-local licenses, narrow file allowlists, dry-pack checks, examples, and artifact-only release workflow are prepared.  
+**Everything already completed:** The public GitHub repository and its security controls are active. Core, SDK, and CLI manifests/builds, repository metadata, package-local licenses, narrow file allowlists, dry-pack checks, examples, and artifact-only release workflow are prepared.  
 **Exact smallest human action required:** Sign in to the intended npm owner account, claim or approve the final package names, and bind npm trusted publishing to `moelayyan90/XGuard` and the reviewed release workflow. Only then may CI receive an explicit publishing job without a long-lived token.  
 **Whether XGuard can continue operating without it:** Local packages and the source release candidate work; public `npx xguard@latest` is unavailable.
 
