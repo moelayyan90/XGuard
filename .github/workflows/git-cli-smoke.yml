@@ -42,5 +42,6 @@ jobs:
       - name: Execute XGuard directly from GitHub
         run: >-
           npm exec --yes
+          --package="typescript@5.9.3"
           --package="github:${{ github.repository }}#${{ steps.source.outputs.sha }}"
           -- xguard --help
