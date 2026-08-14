@@ -33,12 +33,12 @@ describe("mainnet merchant prepaid billing", () => {
   it("registers and authenticates a high-entropy merchant API key", async () => {
     const created = await registerMerchant(env.DB, "Acme Merchant");
     expect(created.apiKey).toMatch(/^xg_live_[A-Za-z0-9_-]{40,}$/);
-    await expect(
-      authenticateMerchant(env.DB, created.apiKey),
-    ).resolves.toEqual({
-      merchantId: created.merchant.merchantId,
-      name: "Acme Merchant",
-    });
+    await expect(authenticateMerchant(env.DB, created.apiKey)).resolves.toEqual(
+      {
+        merchantId: created.merchant.merchantId,
+        name: "Acme Merchant",
+      },
+    );
     await expect(authenticateMerchant(env.DB, "wrong")).resolves.toBeNull();
   });
 
@@ -219,7 +219,9 @@ describe("mainnet merchant prepaid billing", () => {
         2_000,
       ),
     ).rejects.toThrow("insufficient_service_balance");
-    expect(await merchantBalance(env.DB, created.merchant.merchantId)).toMatchObject({
+    expect(
+      await merchantBalance(env.DB, created.merchant.merchantId),
+    ).toMatchObject({
       availableMicroUsd: 0,
       heldMicroUsd: 0,
     });
@@ -227,7 +229,10 @@ describe("mainnet merchant prepaid billing", () => {
 });
 
 async function fundedMerchant(amountMicroUsd: number) {
-  const created = await registerMerchant(env.DB, `Merchant ${crypto.randomUUID()}`);
+  const created = await registerMerchant(
+    env.DB,
+    `Merchant ${crypto.randomUUID()}`,
+  );
   const intent = await createTopUpIntent(
     env.DB,
     created.merchant.merchantId,

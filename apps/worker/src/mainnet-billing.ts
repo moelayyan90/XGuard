@@ -97,9 +97,7 @@ export async function authenticateMerchant(
     )
     .bind(apiKeyHash)
     .first<MerchantRow>();
-  return row === null
-    ? null
-    : { merchantId: row.merchant_id, name: row.name };
+  return row === null ? null : { merchantId: row.merchant_id, name: row.name };
 }
 
 export async function merchantBalance(
@@ -210,8 +208,7 @@ export async function claimTopUp(
   const createdAt = new Date(nowEpochSeconds * 1000).toISOString();
   const externalReference = `${input.network}:${input.deposit.transactionHash}:${input.deposit.logIndex}`;
   const asset = input.asset.toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(asset))
-    throw new Error("invalid_top_up_asset");
+  if (!/^0x[0-9a-f]{40}$/.test(asset)) throw new Error("invalid_top_up_asset");
   const eventId = `topup:${topUpId}`;
 
   await db.batch([
@@ -283,7 +280,9 @@ export async function claimTopUp(
   ]);
 
   const credited = await db
-    .prepare("SELECT top_up_id FROM top_ups WHERE top_up_id=? AND merchant_id=?")
+    .prepare(
+      "SELECT top_up_id FROM top_ups WHERE top_up_id=? AND merchant_id=?",
+    )
     .bind(topUpId, input.merchantId)
     .first<{ top_up_id: string }>();
   if (credited === null) throw new Error("top_up_claim_race_lost");
@@ -531,20 +530,12 @@ function publicReservation(row: FeeReservationRow): FeeReservation {
 }
 
 function validateFee(value: number): void {
-  if (
-    !Number.isSafeInteger(value) ||
-    value <= 0 ||
-    value > MAX_SAFE_MICRO_USD
-  )
+  if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_SAFE_MICRO_USD)
     throw new Error("invalid_fee_amount");
 }
 
 function safeMoney(value: number): number {
-  if (
-    !Number.isSafeInteger(value) ||
-    value < 0 ||
-    value > MAX_SAFE_MICRO_USD
-  )
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_SAFE_MICRO_USD)
     throw new Error("invalid_money_value");
   return value;
 }
