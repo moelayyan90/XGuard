@@ -12,8 +12,23 @@ CREATE TABLE merchants (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE top_up_intents (
+  intent_id TEXT PRIMARY KEY,
+  merchant_id TEXT NOT NULL REFERENCES merchants(merchant_id),
+  claim_token_hash TEXT NOT NULL UNIQUE,
+  expected_amount_micro_usd INTEGER NOT NULL CHECK (
+    expected_amount_micro_usd > 0 AND expected_amount_micro_usd <= 9007199254740991
+  ),
+  state TEXT NOT NULL CHECK (state IN ('OPEN','CLAIMED','EXPIRED')),
+  expires_at_epoch INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  claimed_at TEXT
+);
+CREATE INDEX top_up_intents_merchant_idx ON top_up_intents(merchant_id, state, expires_at_epoch);
+
 CREATE TABLE top_ups (
   top_up_id TEXT PRIMARY KEY,
+  intent_id TEXT NOT NULL UNIQUE REFERENCES top_up_intents(intent_id),
   merchant_id TEXT NOT NULL REFERENCES merchants(merchant_id),
   external_reference TEXT NOT NULL UNIQUE,
   network TEXT NOT NULL CHECK (network = 'eip155:8453'),
