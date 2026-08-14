@@ -9,7 +9,7 @@ const migrations = await readD1Migrations("apps/worker/migrations");
 export default defineConfig({
   plugins: [
     cloudflareTest({
-      wrangler: { configPath: "apps/worker/wrangler.jsonc" },
+      wrangler: { configPath: "apps/worker/wrangler.test.jsonc" },
       miniflare: { bindings: { TEST_MIGRATIONS: migrations } },
     }),
   ],
