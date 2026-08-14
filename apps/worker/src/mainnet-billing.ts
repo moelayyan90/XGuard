@@ -227,7 +227,7 @@ export async function claimTopUp(
       ),
     db
       .prepare(
-        "INSERT INTO top_ups(top_up_id,intent_id,merchant_id,external_reference,network,asset,transaction_hash,transfer_log_index,payer,treasury_address,amount_micro_usd,finalized_block,created_at) SELECT ?,intent_id,merchant_id,?,?,?,?,?,?,?,?,?,?,? FROM top_up_intents WHERE intent_id=? AND merchant_id=? AND state='CLAIMED' AND claim_operation_id=?",
+        "INSERT INTO top_ups(top_up_id,intent_id,merchant_id,external_reference,network,asset,transaction_hash,transfer_log_index,payer,treasury_address,amount_micro_usd,finalized_block,created_at) SELECT ?,intent_id,merchant_id,?,?,?,?,?,?,?,?,?,? FROM top_up_intents WHERE intent_id=? AND merchant_id=? AND state='CLAIMED' AND claim_operation_id=?",
       )
       .bind(
         topUpId,
