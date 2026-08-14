@@ -12,7 +12,10 @@ function valueAfter(flag, fallback) {
 }
 
 const templatePath = valueAfter("--template", "apps/worker/wrangler.jsonc");
-const outputPath = valueAfter("--output", "apps/worker/wrangler.resolved.jsonc");
+const outputPath = valueAfter(
+  "--output",
+  "apps/worker/wrangler.resolved.jsonc",
+);
 const databaseName = valueAfter("--database-name", "xguard-testnet");
 const placeholder = "00000000-0000-0000-0000-000000000000";
 
@@ -20,7 +23,14 @@ const template = readFileSync(templatePath, "utf8");
 
 if (!template.includes(placeholder)) {
   writeFileSync(outputPath, template, "utf8");
-  console.log(JSON.stringify({ outputPath, databaseName, resolved: false, reason: "database id already configured" }));
+  console.log(
+    JSON.stringify({
+      outputPath,
+      databaseName,
+      resolved: false,
+      reason: "database id already configured",
+    }),
+  );
   process.exit(0);
 }
 
@@ -50,12 +60,16 @@ if (!Array.isArray(databases)) {
 
 const database = databases.find((item) => item?.name === databaseName);
 if (!database) {
-  throw new Error(`Cloudflare D1 database '${databaseName}' was not found in the authorized account.`);
+  throw new Error(
+    `Cloudflare D1 database '${databaseName}' was not found in the authorized account.`,
+  );
 }
 
 const databaseId = database.uuid ?? database.id ?? database.database_id;
 if (typeof databaseId !== "string" || databaseId.length < 10) {
-  throw new Error(`Cloudflare D1 database '${databaseName}' did not expose a usable database id.`);
+  throw new Error(
+    `Cloudflare D1 database '${databaseName}' did not expose a usable database id.`,
+  );
 }
 
 const resolved = template.replaceAll(placeholder, databaseId);
