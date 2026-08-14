@@ -88,7 +88,9 @@ export class MainnetPaymentCoordinator extends DurableObject<MainnetCoordinatorE
     });
   }
 
-  public async prepare(input: MainnetPrepareInput): Promise<MainnetPrepareResult> {
+  public async prepare(
+    input: MainnetPrepareInput,
+  ): Promise<MainnetPrepareResult> {
     await this.recoverStale();
     const existing = this.payment();
     if (existing === null) {
@@ -132,10 +134,14 @@ export class MainnetPaymentCoordinator extends DurableObject<MainnetCoordinatorE
   public async abandonPrepared(): Promise<boolean> {
     const row = this.payment();
     if (row === null || row.state !== "OUTBOUND_PREPARED") return false;
-    await releaseSettlementFee(this.env.DB, row.merchant_id, row.logical_key).catch(
-      () => undefined,
+    await releaseSettlementFee(
+      this.env.DB,
+      row.merchant_id,
+      row.logical_key,
+    ).catch(() => undefined);
+    this.sql.exec(
+      "DELETE FROM payment WHERE singleton=1 AND state='OUTBOUND_PREPARED'",
     );
-    this.sql.exec("DELETE FROM payment WHERE singleton=1 AND state='OUTBOUND_PREPARED'");
     await this.ensureAlarm();
     return true;
   }
@@ -166,7 +172,8 @@ export class MainnetPaymentCoordinator extends DurableObject<MainnetCoordinatorE
       JSON.stringify(result),
       now,
     );
-    if (cursor.rowsWritten !== 1) throw new Error("coordinator_finalize_conflict");
+    if (cursor.rowsWritten !== 1)
+      throw new Error("coordinator_finalize_conflict");
     this.enqueue({
       eventId: `${row.logical_key}:${state}`,
       logicalPaymentKey: row.logical_key,
@@ -249,7 +256,11 @@ export class MainnetPaymentCoordinator extends DurableObject<MainnetCoordinatorE
   }
 
   private payment(): PaymentRow | null {
-    return [...this.sql.exec<PaymentRow>("SELECT * FROM payment WHERE singleton=1")][0] ?? null;
+    return (
+      [
+        ...this.sql.exec<PaymentRow>("SELECT * FROM payment WHERE singleton=1"),
+      ][0] ?? null
+    );
   }
 
   private requireStarted(): PaymentRow {
@@ -271,7 +282,9 @@ export class MainnetPaymentCoordinator extends DurableObject<MainnetCoordinatorE
         row.merchant_id,
         row.logical_key,
       ).catch(() => undefined);
-      this.sql.exec("DELETE FROM payment WHERE singleton=1 AND state='OUTBOUND_PREPARED'");
+      this.sql.exec(
+        "DELETE FROM payment WHERE singleton=1 AND state='OUTBOUND_PREPARED'",
+      );
       return;
     }
     if (row.state === "OUTBOUND_STARTED" && age >= STARTED_STALE_MS)
@@ -292,13 +305,17 @@ export class MainnetPaymentCoordinator extends DurableObject<MainnetCoordinatorE
     if (row !== null) {
       const updated = Date.parse(row.updated_at);
       if (Number.isFinite(updated)) {
-        if (row.state === "OUTBOUND_PREPARED") due = updated + PREPARED_STALE_MS;
+        if (row.state === "OUTBOUND_PREPARED")
+          due = updated + PREPARED_STALE_MS;
         if (row.state === "OUTBOUND_STARTED") due = updated + STARTED_STALE_MS;
       }
     }
-    const pending = [
-      ...this.sql.exec("SELECT 1 FROM outbox WHERE dispatched_at IS NULL LIMIT 1"),
-    ].length > 0;
+    const pending =
+      [
+        ...this.sql.exec(
+          "SELECT 1 FROM outbox WHERE dispatched_at IS NULL LIMIT 1",
+        ),
+      ].length > 0;
     if (pending) {
       const outboxDue = Date.now() + OUTBOX_RETRY_MS;
       due = due === null ? outboxDue : Math.min(due, outboxDue);
@@ -313,7 +330,8 @@ export class MainnetPaymentCoordinator extends DurableObject<MainnetCoordinatorE
 
   private async scheduleNoLaterThan(dueAt: number): Promise<void> {
     const current = await this.ctx.storage.getAlarm();
-    if (current === null || current > dueAt) await this.ctx.storage.setAlarm(dueAt);
+    if (current === null || current > dueAt)
+      await this.ctx.storage.setAlarm(dueAt);
   }
 }
 
@@ -344,12 +362,18 @@ export class MainnetRequestGate extends DurableObject<MainnetCoordinatorEnv> {
   ): Promise<boolean> {
     this.prune(nowMs);
     if (
-      [...this.sql.exec("SELECT 1 FROM leases WHERE lease_id=? LIMIT 1", leaseId)]
-        .length > 0
+      [
+        ...this.sql.exec(
+          "SELECT 1 FROM leases WHERE lease_id=? LIMIT 1",
+          leaseId,
+        ),
+      ].length > 0
     )
       return true;
     const count = [
-      ...this.sql.exec<{ count: number }>("SELECT COUNT(*) AS count FROM leases"),
+      ...this.sql.exec<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM leases",
+      ),
     ][0]?.count;
     if (count === undefined || count >= maximumConcurrent) return false;
     this.sql.exec(

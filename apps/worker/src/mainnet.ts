@@ -226,7 +226,9 @@ app.post("/v1/register", async (context) => {
 app.get("/v1/balance", async (context) => {
   try {
     const merchant = await requireMerchant(context);
-    return context.json(await merchantBalance(context.env.DB, merchant.merchantId));
+    return context.json(
+      await merchantBalance(context.env.DB, merchant.merchantId),
+    );
   } catch (error) {
     return errorJson(context, error);
   }
@@ -269,8 +271,15 @@ app.post("/v1/topups/claim", async (context) => {
     assertRuntimeConfig(context.env);
     const merchant = await requireMerchant(context);
     const body = await jsonBody(context.req.raw);
-    if (typeof body.claimToken !== "string" || typeof body.transactionHash !== "string")
-      throw new XGuardError("BAD_REQUEST", "claimToken and transactionHash are required", 400);
+    if (
+      typeof body.claimToken !== "string" ||
+      typeof body.transactionHash !== "string"
+    )
+      throw new XGuardError(
+        "BAD_REQUEST",
+        "claimToken and transactionHash are required",
+        400,
+      );
     const deposit = await verifyFinalizedBaseUsdcDeposit({
       rpcUrl: context.env.BASE_RPC_URL,
       transactionHash: body.transactionHash,
@@ -338,23 +347,40 @@ app.post("/settle", async (context) => {
       });
     if (prepared.kind === "FAILED")
       return context.json(
-        prepared.result ?? failure(network, "xguard_settlement_failed", "Previous settlement failed"),
+        prepared.result ??
+          failure(
+            network,
+            "xguard_settlement_failed",
+            "Previous settlement failed",
+          ),
         200,
         { "X-XGuard-Replayed": "true" },
       );
     if (prepared.kind === "CONFLICT")
       return context.json(
-        failure(network, "xguard_payment_conflict", "Authorization is bound to different terms"),
+        failure(
+          network,
+          "xguard_payment_conflict",
+          "Authorization is bound to different terms",
+        ),
         409,
       );
     if (prepared.kind === "AMBIGUOUS")
       return context.json(
-        failure(network, "xguard_ambiguous", "Settlement outcome is uncertain; automatic retry is disabled"),
+        failure(
+          network,
+          "xguard_ambiguous",
+          "Settlement outcome is uncertain; automatic retry is disabled",
+        ),
         503,
       );
     if (prepared.kind === "IN_PROGRESS")
       return context.json(
-        failure(network, "xguard_in_progress", "Settlement is already in progress"),
+        failure(
+          network,
+          "xguard_in_progress",
+          "Settlement is already in progress",
+        ),
         409,
       );
 
@@ -368,7 +394,10 @@ app.post("/settle", async (context) => {
     } catch (error) {
       await stub.abandonPrepared();
       if (errorCode(error) === "insufficient_service_balance") {
-        const balance = await merchantBalance(context.env.DB, merchant.merchantId);
+        const balance = await merchantBalance(
+          context.env.DB,
+          merchant.merchantId,
+        );
         return context.json(
           {
             ...failure(
@@ -393,7 +422,11 @@ app.post("/settle", async (context) => {
         identities.logicalPaymentKey,
       ).catch(() => undefined);
       return context.json(
-        failure(network, "xguard_state_conflict", "Settlement ownership changed before submission"),
+        failure(
+          network,
+          "xguard_state_conflict",
+          "Settlement ownership changed before submission",
+        ),
         409,
       );
     }
@@ -533,7 +566,11 @@ async function abuseProtection(
 async function requireMerchant(context: AppContext): Promise<MerchantIdentity> {
   const authorization = context.req.header("authorization");
   if (authorization === undefined || !authorization.startsWith("Bearer "))
-    throw new XGuardError("UNAUTHORIZED", "Bearer merchant API key is required", 401);
+    throw new XGuardError(
+      "UNAUTHORIZED",
+      "Bearer merchant API key is required",
+      401,
+    );
   const merchant = await authenticateMerchant(
     context.env.DB,
     authorization.slice("Bearer ".length),
@@ -588,12 +625,18 @@ async function claimPaymentIdentifier(
 async function runMaintenance(env: MainnetEnv): Promise<void> {
   assertRuntimeConfig(env);
   await refreshPayAIHealth(env).catch((error) =>
-    console.error(JSON.stringify({ event: "payai_health_failed", code: errorCode(error) })),
+    console.error(
+      JSON.stringify({ event: "payai_health_failed", code: errorCode(error) }),
+    ),
   );
   const nowEpoch = Math.floor(Date.now() / 1_000);
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM payment_identifiers WHERE expires_at_epoch<?").bind(nowEpoch),
-    env.DB.prepare("UPDATE top_up_intents SET state='EXPIRED' WHERE state='OPEN' AND expires_at_epoch<?").bind(nowEpoch),
+    env.DB.prepare(
+      "DELETE FROM payment_identifiers WHERE expires_at_epoch<?",
+    ).bind(nowEpoch),
+    env.DB.prepare(
+      "UPDATE top_up_intents SET state='EXPIRED' WHERE state='OPEN' AND expires_at_epoch<?",
+    ).bind(nowEpoch),
   ]);
   await processFinalityJobs(env);
 }
@@ -687,9 +730,11 @@ async function processFinalityJobs(env: MainnetEnv): Promise<void> {
           .run();
         continue;
       }
-      await releaseSettlementFee(env.DB, job.merchant_id, job.logical_payment_key).catch(
-        () => undefined,
-      );
+      await releaseSettlementFee(
+        env.DB,
+        job.merchant_id,
+        job.logical_payment_key,
+      ).catch(() => undefined);
       await env.DB.batch([
         env.DB.prepare(
           "UPDATE settlement_finality_jobs SET state='FAILED',attempts=attempts+1,last_error_code=?,updated_at=? WHERE logical_payment_key=? AND state='PENDING'",
@@ -718,7 +763,12 @@ async function currentPayAIHealth(env: MainnetEnv): Promise<{
 } | null> {
   const cutoff = new Date(
     Date.now() -
-      boundedInteger(env.HEALTH_MAX_AGE_SECONDS, 30, 3_600, "HEALTH_MAX_AGE_SECONDS") *
+      boundedInteger(
+        env.HEALTH_MAX_AGE_SECONDS,
+        30,
+        3_600,
+        "HEALTH_MAX_AGE_SECONDS",
+      ) *
         1_000,
   ).toISOString();
   return env.DB.prepare(
@@ -756,7 +806,12 @@ function assertRuntimeConfig(env: MainnetEnv): void {
 }
 
 function feeMicroUsd(env: MainnetEnv): number {
-  return boundedInteger(env.XGUARD_FEE_MICRO_USD, 1, 1_000_000, "XGUARD_FEE_MICRO_USD");
+  return boundedInteger(
+    env.XGUARD_FEE_MICRO_USD,
+    1,
+    1_000_000,
+    "XGUARD_FEE_MICRO_USD",
+  );
 }
 
 function downstreamCostMicroUsd(env: MainnetEnv): number {
@@ -786,7 +841,11 @@ async function jsonBody(request: Request): Promise<Record<string, unknown>> {
     request.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase() !==
     "application/json"
   )
-    throw new XGuardError("BAD_REQUEST", "Content-Type must be application/json", 415);
+    throw new XGuardError(
+      "BAD_REQUEST",
+      "Content-Type must be application/json",
+      415,
+    );
   const parsed = parseJsonStrict(
     await readHttpBodyTextCapped(request, MAX_JSON_BYTES, "JSON request body"),
   );
@@ -796,7 +855,10 @@ async function jsonBody(request: Request): Promise<Record<string, unknown>> {
 }
 
 function parseUsdToMicro(value: unknown): number {
-  if (typeof value !== "string" || !/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(value))
+  if (
+    typeof value !== "string" ||
+    !/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(value)
+  )
     throw new XGuardError(
       "BAD_REQUEST",
       "amountUsd must be a non-negative decimal string with at most 6 decimals",
@@ -825,7 +887,11 @@ function abuseClientKey(request: Request): string {
   return `anonymous:${sha256Hex(ip)}`;
 }
 
-function failure(network: string, reason: string, message: string): SettleResponse {
+function failure(
+  network: string,
+  reason: string,
+  message: string,
+): SettleResponse {
   return {
     success: false,
     transaction: "",
@@ -853,11 +919,14 @@ function errorCode(error: unknown): string {
 
 function errorMessage(error: unknown): string {
   if (error instanceof XGuardError) return error.message;
-  if (error instanceof Error) return "XGuard could not safely complete the request";
+  if (error instanceof Error)
+    return "XGuard could not safely complete the request";
   return "XGuard could not safely complete the request";
 }
 
-function errorStatus(error: unknown): 400 | 401 | 402 | 409 | 415 | 429 | 500 | 503 {
+function errorStatus(
+  error: unknown,
+): 400 | 401 | 402 | 409 | 415 | 429 | 500 | 503 {
   if (error instanceof XGuardError) {
     const status = error.status;
     if ([400, 401, 402, 409, 415, 429, 500, 503].includes(status))

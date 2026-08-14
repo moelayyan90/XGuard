@@ -101,7 +101,10 @@ export async function parseMainnetFacilitatorRequest(
     asRecord(paymentPayload.payload).authorization,
   );
   const payer = evmAddress(authorization.from, "authorization.from");
-  const payTo = evmAddress(paymentRequirements.payTo, "paymentRequirements.payTo");
+  const payTo = evmAddress(
+    paymentRequirements.payTo,
+    "paymentRequirements.payTo",
+  );
   const amount = parseUnsignedInteger(
     paymentRequirements.amount,
     "paymentRequirements.amount",
@@ -160,7 +163,11 @@ export function enforceBaseMainnetUsdc(
     );
 
   if (!("accepted" in payload))
-    throw new XGuardError("BAD_REQUEST", "paymentPayload.accepted is required", 400);
+    throw new XGuardError(
+      "BAD_REQUEST",
+      "paymentPayload.accepted is required",
+      400,
+    );
   const accepted = payload.accepted;
   if (
     accepted.network !== requirements.network ||
@@ -238,7 +245,8 @@ export async function fetchPayAISupported(
       redirect: "manual",
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error(`payai_supported_http_${response.status}`);
+    if (!response.ok)
+      throw new Error(`payai_supported_http_${response.status}`);
     const parsed = asRecord(
       parseJsonStrict(
         await readHttpBodyTextCapped(
@@ -289,7 +297,8 @@ async function payAIRequest(
       redirect: "manual",
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error(`payai_${operation}_http_${response.status}`);
+    if (!response.ok)
+      throw new Error(`payai_${operation}_http_${response.status}`);
     return parseJsonStrict(
       await readHttpBodyTextCapped(
         response,
@@ -304,7 +313,11 @@ async function payAIRequest(
 
 function evmAddress(value: unknown, field: string): string {
   if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value))
-    throw new XGuardError("BAD_REQUEST", `${field} must be an EVM address`, 400);
+    throw new XGuardError(
+      "BAD_REQUEST",
+      `${field} must be an EVM address`,
+      400,
+    );
   return value;
 }
 

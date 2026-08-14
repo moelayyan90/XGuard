@@ -62,13 +62,18 @@ export async function verifyFinalizedBaseUsdcSettlement(input: {
 
   const timeout = input.timeoutMs ?? 8_000;
   const [receipt, finalizedBlock] = await Promise.all([
-    rpc<TransactionReceipt>(rpcUrl.toString(), "eth_getTransactionReceipt", [
-      input.transactionHash,
-    ], timeout),
-    rpc<RpcBlock>(rpcUrl.toString(), "eth_getBlockByNumber", [
-      "finalized",
-      false,
-    ], timeout),
+    rpc<TransactionReceipt>(
+      rpcUrl.toString(),
+      "eth_getTransactionReceipt",
+      [input.transactionHash],
+      timeout,
+    ),
+    rpc<RpcBlock>(
+      rpcUrl.toString(),
+      "eth_getBlockByNumber",
+      ["finalized", false],
+      timeout,
+    ),
   ]);
   if (receipt === null) throw new Error("transaction_not_found");
   if (receipt.status !== "0x1") throw new Error("transaction_failed_finalized");
@@ -78,7 +83,8 @@ export async function verifyFinalizedBaseUsdcSettlement(input: {
     finalizedBlock.number,
     "finalized_block",
   );
-  if (blockNumber > finalizedNumber) throw new Error("transaction_not_finalized");
+  if (blockNumber > finalizedNumber)
+    throw new Error("transaction_not_finalized");
   if (!Array.isArray(receipt.logs)) throw new Error("malformed_receipt_logs");
 
   const contract = input.usdcContractAddress.toLowerCase();
