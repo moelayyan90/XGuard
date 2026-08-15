@@ -98,3 +98,35 @@ jobs:
             printf '%s' "${PAYAI_API_KEY_ID}" | npx wrangler secret put PAYAI_API_KEY_ID --config "${CONFIG_PATH}"
             printf '%s' "${PAYAI_API_KEY_SECRET}" | npx wrangler secret put PAYAI_API_KEY_SECRET --config "${CONFIG_PATH}"
           fi
+
+      - name: Verify live mainnet readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
+
+          curl -fsS --max-time 15 "${BASE_URL}/healthz" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'
+
+          ready=0
+          for attempt in {1..18}; do
+            response="$(curl -sS --max-time 15 -w $'\n%{http_code}' "${BASE_URL}/readyz" || true)"
+            code="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ready"||x.mainnet!==true||x.facilitator!=="operational")process.exit(1)})'; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+          if [[ "${ready}" -ne 1 ]]; then
+            echo "::error::XGuard mainnet did not become ready within 90 seconds."
+            exit 1
+          fi
+
+          curl -fsS --max-time 15 "${BASE_URL}/supported" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||!x.kinds.some(k=>k&&k.x402Version===2&&k.network==="eip155:8453"&&k.scheme==="exact"))process.exit(1)})'
+
+          curl -fsS --max-time 15 "${BASE_URL}/status" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet"||x.facilitator!=="HEALTHY")process.exit(1)})'
