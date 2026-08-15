@@ -175,7 +175,14 @@ paths:
                 properties:
                   credited: { const: true }
                   balance: { $ref: "#/components/schemas/BalanceResponse" }
-        "400": { description: Invalid, mismatched, unfinalized, expired, or already-claimed deposit }
+        "400":
+          {
+            description: Invalid,
+            mismatched,
+            unfinalized,
+            expired,
+            or already-claimed deposit,
+          }
         "401": { description: Invalid or missing merchant API key }
   /verify:
     post:
@@ -231,11 +238,13 @@ paths:
         "400": { description: Malformed or unsupported payment request }
         "401": { description: Invalid or missing merchant API key }
         "402": { description: Insufficient XGuard prepaid service balance }
-        "409": { description: Conflicting binding or settlement already in progress }
+        "409":
+          { description: Conflicting binding or settlement already in progress }
         "413": { description: Request body exceeded the hard limit }
         "415": { description: Content-Type was not application/json }
         "429": { description: Rate or concurrency limit exceeded }
-        "503": { description: Unavailable route or ambiguous post-submit outcome }
+        "503":
+          { description: Unavailable route or ambiguous post-submit outcome }
 components:
   securitySchemes:
     bearerAuth:
@@ -245,7 +254,8 @@ components:
   schemas:
     RootResponse:
       type: object
-      required: [name, version, protocol, mode, network, asset, price, endpoints]
+      required:
+        [name, version, protocol, mode, network, asset, price, endpoints]
       properties:
         name: { const: XGuard }
         version: { type: string }
