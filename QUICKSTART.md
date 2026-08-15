@@ -1,87 +1,154 @@
-# XGuard testnet quickstart
+# XGuard quickstart
 
-This path uses the live Base Sepolia Worker and never charges an XGuard fee. It requires Node.js 22 or newer and a Base Sepolia receiving address. Never place a private key in the resource server.
+XGuard has two live gateways:
 
-## 1. Verify the gateway
+- Base mainnet: `https://xguard-mainnet.maqamapp.workers.dev`
+- Base Sepolia testnet: `https://xguard-testnet.maqamapp.workers.dev`
+
+Mainnet charges `$0.002` only for a successful billable settlement after independent Base finality. Testnet is non-billable.
+
+## 1. Verify mainnet readiness
+
+```bash
+curl https://xguard-mainnet.maqamapp.workers.dev/healthz
+curl https://xguard-mainnet.maqamapp.workers.dev/readyz
+curl https://xguard-mainnet.maqamapp.workers.dev/supported
+curl https://xguard-mainnet.maqamapp.workers.dev/status
+```
+
+A ready mainnet gateway reports `mode: "mainnet"`, `mainnet: true`, a healthy facilitator, and an x402 v2 `exact` capability for `eip155:8453`.
+
+## 2. Register a merchant
+
+Registration creates a merchant identifier and a high-entropy API key. The API key is returned in the response and should be stored as a secret.
+
+```bash
+curl -sS -X POST https://xguard-mainnet.maqamapp.workers.dev/v1/register \
+  -H 'Content-Type: application/json' \
+  --data '{"name":"my-x402-service"}'
+```
+
+Save the returned key:
+
+```bash
+export XGUARD_URL=https://xguard-mainnet.maqamapp.workers.dev
+export XGUARD_API_KEY='xg_live_...'
+```
+
+Do not commit `XGUARD_API_KEY`.
+
+## 3. Create a prepaid top-up intent
+
+Mainnet XGuard service fees are deducted from a merchant service balance. Request a one-time deposit intent:
+
+```bash
+curl -sS -X POST "$XGUARD_URL/v1/topups/intents" \
+  -H "Authorization: Bearer $XGUARD_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"amountUsd":"1.00"}'
+```
+
+The response contains:
+
+- `claimToken` — one-time secret used to claim the deposit;
+- `treasuryAddress` — the configured Base USDC treasury destination;
+- `exactDepositUsdc` — the exact USDC amount to send;
+- `network` — `eip155:8453`;
+- `asset` — native Base USDC.
+
+Send **exactly** `exactDepositUsdc` native USDC on Base to `treasuryAddress`. Do not send another token, bridged `USDC.e`, or use another network.
+
+Merchant top-ups are prepaid customer service balances. They are not XGuard earned revenue when deposited.
+
+## 4. Claim the finalized deposit
+
+After the Base transaction is finalized, claim it using the one-time token and transaction hash:
+
+```bash
+curl -sS -X POST "$XGUARD_URL/v1/topups/claim" \
+  -H "Authorization: Bearer $XGUARD_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"claimToken":"YOUR_CLAIM_TOKEN","transactionHash":"0xYOUR_TX_HASH"}'
+```
+
+Check the credited service balance:
+
+```bash
+curl -sS "$XGUARD_URL/v1/balance" \
+  -H "Authorization: Bearer $XGUARD_API_KEY"
+```
+
+## 5. Point an x402 v2 resource server at XGuard
+
+Production does not require an XGuard npm package. Existing TypeScript projects that already use the official x402 HTTP client can configure it directly:
+
+```ts
+import { HTTPFacilitatorClient } from "@x402/core/http";
+
+const createAuthHeaders = async () => {
+  const headers = {
+    Authorization: `Bearer ${process.env.XGUARD_API_KEY!}`,
+  };
+  return {
+    verify: headers,
+    settle: headers,
+    supported: headers,
+    bazaar: headers,
+  };
+};
+
+const facilitatorClient = new HTTPFacilitatorClient({
+  url: process.env.XGUARD_URL ?? "https://xguard-mainnet.maqamapp.workers.dev",
+  createAuthHeaders,
+});
+```
+
+The resource server continues using the official x402 v2 `FacilitatorClient` interface. XGuard currently accepts Base mainnet native USDC, `exact`, EIP-3009 authorization payments.
+
+The workspace SDK implements the same flow:
+
+```ts
+import { createXGuardFacilitator } from "@xguard/sdk";
+
+const facilitatorClient = createXGuardFacilitator({
+  url: process.env.XGUARD_URL!,
+  apiKey: process.env.XGUARD_API_KEY,
+});
+```
+
+The repository does not claim an npm release until publishing is activated, so the direct official-client configuration above is the zero-registry-dependency production path.
+
+## 6. Understand the billing boundary
+
+For each eligible mainnet settlement:
+
+1. XGuard reserves `$0.002` from the merchant service balance.
+2. It verifies and submits at most one settlement route.
+3. A downstream success is not enough to earn the fee.
+4. XGuard independently checks finalized Base USDC settlement state.
+5. Only then does the reservation become earned XGuard revenue.
+6. A definitive finality failure releases the reserved fee.
+7. An ambiguous result is held and quarantined for reconciliation instead of being blindly resubmitted.
+
+Duplicate retries of the same logical payment do not create another billable fee.
+
+## Testnet path
+
+The Base Sepolia gateway remains available for non-billable integration testing:
 
 ```bash
 curl https://xguard-testnet.maqamapp.workers.dev/readyz
 curl https://xguard-testnet.maqamapp.workers.dev/supported
 ```
 
-Readiness must return HTTP `200`, `mainnet: false`, and at least one measured route. The capability response must advertise only x402 v2 `exact` on `eip155:84532`.
-
-## 2. Run the included paid-resource example
-
-From the repository root:
-
-```bash
-npm ci --ignore-scripts
-npm run build
-cp examples/x402-xguard-starter/.env.example examples/x402-xguard-starter/.env
-```
-
-Set only `PAY_TO_TESTNET_ADDRESS` in the copied file to a non-zero Base Sepolia address, then run:
-
-```bash
-node --env-file=examples/x402-xguard-starter/.env examples/x402-xguard-starter/dist/server.js
-```
-
-In another terminal:
-
-```bash
-curl -i http://127.0.0.1:3000/paid
-```
-
-The expected first response is HTTP `402` with a `PAYMENT-REQUIRED` header. An official x402 client can sign the selected Base Sepolia requirement and retry with `PAYMENT-SIGNATURE`; the resource server then calls XGuard `/verify` and `/settle`.
-
-## 3. Run the migration CLI directly from GitHub
-
-The CLI does not require an npm registry release. The repository install path is tested in GitHub Actions:
+The repository CLI can perform conservative testnet URL migration and rollback directly from GitHub:
 
 ```bash
 npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard doctor
-```
-
-To migrate a compatible x402 resource server to the live XGuard testnet gateway:
-
-```bash
 npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard init --gateway https://xguard-testnet.maqamapp.workers.dev
-```
-
-To undo that migration from its local backup:
-
-```bash
 npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard rollback
 ```
 
-`init` changes only a compatible literal facilitator URL, refuses provider-specific credential-bearing configurations, runs the project's test script, and rolls back automatically if that test fails.
-
-## 4. Integrate the SDK
-
-Until the prerelease is published, use the workspace build:
-
-```ts
-import { createXGuardFacilitator } from "@xguard/sdk";
-
-const facilitator = createXGuardFacilitator({
-  url: "https://xguard-testnet.maqamapp.workers.dev",
-});
-```
-
-After npm trusted publishing is active, the alpha install path becomes:
-
-```bash
-npm install @xguard/sdk@next
-npx xguard@next doctor
-```
-
-## Safety checks
-
-- `npm run verify:release` runs the complete local release gate.
-- `npm run smoke:live` validates the public deployment without making a payment.
-- duplicate authorization retries return the cached settlement result and do not create another downstream submission;
-- ambiguous post-submit outcomes are quarantined for reconciliation and are never blindly retried;
-- Base Sepolia is non-billable and mainnet is hard-disabled.
+`xguard init` is intentionally URL-only and refuses provider-specific authentication. Use the authenticated client configuration above for mainnet.
 
 See [API.md](docs/API.md) and [openapi.yaml](docs/openapi.yaml) for the HTTP contract.

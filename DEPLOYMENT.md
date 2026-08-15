@@ -1,52 +1,71 @@
 # Deployment
 
-XGuard is testnet-only. The lowest-cash deployment candidate is the prepared Cloudflare Worker because a payment-key Durable Object serializes settlement ownership and D1 stores the operational projection. The portable Node gateway is useful for local testing and a single-instance testnet deployment.
+XGuard currently has separate live Cloudflare Workers for Base Sepolia testnet and Base mainnet.
 
-## Local testnet
+- Testnet: `https://xguard-testnet.maqamapp.workers.dev`
+- Mainnet: `https://xguard-mainnet.maqamapp.workers.dev`
 
-Requirements: Node.js 22 or newer.
+The mainnet endpoint is **technically deployed**, not a claim of regulatory authorization, independent security certification, provider-contract completion, or unrestricted commercial availability in every jurisdiction.
+
+## Mainnet technical deployment
+
+The mainnet Worker uses:
+
+- Base mainnet `eip155:8453`;
+- native Base USDC;
+- x402 v2 `exact` EIP-3009 authorization flow;
+- SQLite Durable Objects for one-outbound settlement ownership and concurrency control;
+- D1 for merchant balances, top-up claims, settlement projection, reconciliation, and accounting events;
+- independent Base finality checks before a reserved XGuard fee becomes earned revenue;
+- the configured Base USDC treasury address through an encrypted GitHub Actions secret;
+- scheduled facilitator health and finality maintenance.
+
+The deployment workflow creates/resolves `xguard-mainnet`, applies D1 migrations, deploys the Worker, and then requires live `/healthz`, `/readyz`, `/supported`, and `/status` checks to pass. A failed readiness verification fails the deployment job.
+
+Reproduce the checked-in release validation locally without deploying:
 
 ```bash
 npm ci --ignore-scripts
-npm run check
-cp .env.example .env
-npm run build
-node apps/gateway/dist/server.js
+npm run verify:release
 ```
 
-`GET /healthz` proves process liveness. `GET /readyz` additionally requires the financial database and at least one current compatible facilitator capability. A green health check alone is not settlement readiness.
+The authorized GitHub Actions workflow performs the actual Cloudflare deployment using encrypted `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `XGUARD_TREASURY_USDC_ADDRESS` repository secrets. Secret values are not stored in source.
 
-For Docker, populate `XGUARD_API_KEY_PEPPER` through the host's secret mechanism and run `docker compose up --build`. The container is non-root, read-only, capability-dropped, and persists SQLite only in its named volume.
+## Live monitoring
 
-## Live Cloudflare testnet
-
-The checked-in `apps/worker/wrangler.jsonc` is a public-safe template and contains no account-specific identifiers or secret values. This working copy keeps the authorized testnet bindings in ignored `apps/worker/wrangler.local.jsonc`. The deployed endpoint is `https://xguard-testnet.maqamapp.workers.dev`. Reproduce and verify this deployment from the authorized working copy with:
+The repository contains non-payment smoke checks for both public gateways:
 
 ```bash
-npm --workspace @xguard/worker run types -- --check
-npx wrangler d1 migrations apply xguard-testnet --remote --config apps/worker/wrangler.local.jsonc
-npx wrangler deploy --config apps/worker/wrangler.local.jsonc
 npm run smoke:live
+npm run smoke:mainnet
 ```
 
-Any future facilitator credential must be added with `wrangler secret put` and referenced by name. Never place it in the configuration or repository. The live smoke check performs no payment and verifies `/healthz`, `/readyz`, `/supported`, `/status`, malformed-input rejection, and the mainnet hard gate.
+The mainnet smoke test checks liveness, readiness, Base x402 capability, facilitator health, configured unit economics, and fail-closed merchant authentication. It does not register a merchant, fund a balance, sign a payment, or submit a settlement.
 
-The Worker, SQLite Durable Objects, D1 projection, rate limits, and five-minute health cron are deployed. A real Base Sepolia x402 request completed `402 -> signed payment -> /verify -> /settle -> HTTP 200`, and the USDC transfer was independently confirmed through the public Base Sepolia RPC. Three earlier settlements whose Worker RPC response hit `DataCloneError` were reconciled only after matching their immutable payment records to successful onchain transfers; all three cases are resolved and the live open-reconciliation count is zero. No bill or fee was created.
+GitHub Actions runs testnet and mainnet monitoring every 30 minutes and records a GitHub issue when a target fails.
 
-## Mainnet release gate
+## Mainnet billing deployment boundary
 
-Mainnet remains disabled until all of the following evidence exists:
+Merchant registration creates a bearer XGuard API key. Mainnet is prepaid: a merchant creates a one-time top-up intent, sends the exact native-USDC amount on Base to the returned treasury address, and claims the finalized transaction. The deposit credits a customer service balance and remains a liability until service is earned.
 
-- current Jordan legal classification and any required entity/license approval;
-- a regulated, contractually authorized facilitator and billing/funding rail;
-- repeated Base Sepolia release-candidate settlement and replay evidence after any settlement-path change;
-- critical/high security findings closed and dependency audit current;
-- permanent replay, 1,000-way duplicate, settlement-boundary, restore, and reconciliation tests passing;
-- production PostgreSQL or another reviewed transactional multi-instance source of truth;
-- verified alerts, backups, restore exercise, runbooks, on-call ownership, rate limits, and DDoS controls;
-- fee, downstream cost, merchant liability, reserve, and payout accounting reconciled;
-- every enabled route has current capabilities and non-negative unit economics.
+For an eligible settlement, XGuard reserves `$0.002` from the merchant service balance. Downstream settlement success alone does not earn the fee. Independent finality must confirm the Base USDC settlement before accounting transitions the reserved fee to earned revenue.
 
-The edge Worker hard-rejects non-testnet networks in code. The Node gateway also throws whenever `XGUARD_MAINNET_ENABLED=true`; the former self-attested `APPROVED` environment strings cannot enable it. The reusable core requires a chain-finality adapter, but this repository ships no production implementation. Mainnet enablement therefore requires a reviewed code release, not a configuration shortcut.
+## External release/compliance gates still unresolved
 
-See [external blockers](docs/EXTERNAL_BLOCKERS.md) for the smallest authenticated or regulated actions still unavailable to this environment.
+Technical deployment does not resolve these external matters:
+
+1. **Jordan regulatory classification/authorization.** The project owner sent a written classification request to the Jordan Securities Commission on 2026-08-14. That message described a testnet-only architecture. The architecture later changed materially by adding a live mainnet endpoint, merchant registration, prepaid Base USDC service balances, and mainnet settlement routing. No reply from `info@jsc.gov.jo` or `legal@jsc.gov.jo` was present in the connected mailbox when checked on 2026-08-15. The final architecture therefore still needs a current written Jordan-qualified classification before it is represented as legally cleared.
+2. **PayAI scaling authorization.** The public route can use PayAI's advertised free allowance, but provider documentation states that scaling through paid usage uses merchant credits/API credentials. XGuard supports scoped PayAI deployment secrets, but this repository does not claim that a paid provider account or contract has been approved for the owner.
+3. **Independent mainnet security review.** CI, CodeQL, adversarial tests, replay/concurrency controls, and runtime smoke checks are first-party evidence. They are not an independent external security attestation.
+4. **Bank/off-ramp payout.** Merchant Base USDC can reach the configured crypto treasury, but no automated regulated bank payout connector is active. The project must not equate treasury receipts with distributable owner profit.
+5. **npm trusted publishing/ecosystem listing.** Source-level integration works without an XGuard package release, but public npm ownership/trusted publishing and third-party directory acceptance require their own authenticated actions.
+
+See [External blockers](docs/EXTERNAL_BLOCKERS.md), [Treasury](TREASURY.md), and [Payouts](PAYOUTS.md).
+
+## Testnet
+
+The separate Base Sepolia Worker remains non-billable and is useful for integration testing without XGuard service fees. Its configuration and financial state are isolated from the mainnet merchant billing path.
+
+## Fail-closed principle
+
+No environment variable, documentation statement, or downstream response is treated as sufficient proof of a final financial event. XGuard requires explicit network/asset constraints, merchant authentication, one-outbound ownership, replay identity, D1 accounting, and independent finality evidence before earning a mainnet service fee.

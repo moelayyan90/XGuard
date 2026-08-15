@@ -1,60 +1,114 @@
 # External blockers
 
-Only actions that require a regulated decision, identity/account authorization, third-party credential, or independent third-party acceptance are listed. Ordinary engineering work is not shifted to the owner.
+This file separates **technical deployment** from external decisions that XGuard cannot truthfully manufacture: regulatory classification, third-party account approval, independent assurance, registry ownership, and bank/off-ramp authorization.
 
-Former blockers now completed: the Cloudflare account is authorized; the Worker and D1 database are deployed; funded Base Sepolia settlement has succeeded onchain; and the public GitHub repository has passing CI/CodeQL, protected `main`, Dependabot, secret scanning/push protection, and private vulnerability reporting. Those are no longer owner actions. Mainnet remains disabled.
+## Already completed technically
 
----
+The following are no longer engineering blockers:
 
-**EXTERNAL_BLOCKER**  
-**Name:** Jordan legal classification and authorization  
-**Why automation cannot legally/technically complete it:** Jordan's [Virtual Asset Service Providers Licensing Regulation No. 94 of 2025](https://www.jsc.gov.jo/Uploads/Files/The%20Virtual%20Asset%20Service%20Providers%20Licensing%20Regulation%20for%20the%20year%202025-.pdf), issued under [Law No. 14 of 2025](https://www.jsc.gov.jo/page/ar/%D9%82%D8%A7%D9%86%D9%88%D9%86_%D8%AA%D9%86%D8%B8%D9%8A%D9%85_%D8%A7%D9%84%D8%AA%D8%B9%D8%A7%D9%85%D9%84_%D8%A8%D8%A7%D9%84%D8%A3%D8%B5%D9%88%D9%84_%D8%A7%D9%84%D8%A7%D9%81%D8%AA%D8%B1%D8%A7%D8%B6%D9%8A%D8%A9), is now in force. Article 4 includes transferring virtual assets from one address/account to another among regulated activities; Article 5 restricts carrying out virtual-asset activities for others without the applicable authorization and expressly addresses taking Jordan as a center of business; Article 10 separately regulates facilitating use of virtual assets for payment in Jordan. Those provisions mean that XGuard must not treat “non-custodial” by itself as legal clearance. Whether the final routing/forwarding, fee, merchant-funding, and payout model is a regulated activity, an outsourced technical service to a licensed provider, or otherwise outside a licensing category is a legal/regulatory determination; automation cannot supply a binding legal opinion, legal person, or regulator approval.  
-**Current status:** A written classification inquiry was sent to the Jordan Securities Commission at its published `info@jsc.gov.jo` address on 2026-08-14. It describes the testnet-only, non-custodial architecture and asks specifically how Articles 4(4), 5, and 10 apply when XGuard routes a request but a separate third-party facilitator performs the blockchain submission, and whether a licensed-provider outsourcing model changes the classification. Mainnet stays disabled while the written response is pending.  
-**Everything already completed:** Both shipped gateways reject mainnet in code; testnet has zero fees; custody/liability separation and regulated-provider assumptions are documented.  
-**Exact smallest human action required:** Obtain a written Jordan-qualified classification of the final operating model and, only if required by that advice, form/authorize the legal person and obtain the applicable Jordan Securities Commission license or approval before a reviewed mainnet release. The regulator inquiry is already in flight; no duplicate inquiry is needed unless the Commission requests more information.  
-**Whether XGuard can continue operating without it:** Public testnet diagnostics and non-billable settlement can operate; mainnet settlement, revenue collection, and payout cannot.
+- Cloudflare account authorization and GitHub Actions deployment credentials;
+- live Base Sepolia Worker and D1;
+- live Base mainnet Worker and `xguard-mainnet` D1;
+- Base mainnet native-USDC constraint and independent finality adapter;
+- merchant bearer authentication and prepaid service-balance accounting;
+- finalized Base USDC top-up verification;
+- one-outbound settlement ownership, replay/duplicate protection, ambiguity/reconciliation state;
+- mainnet post-deploy readiness checks;
+- public GitHub repository, CI, CodeQL, protected `main`, Dependabot, secret scanning/push protection, and private vulnerability reporting.
 
----
-
-**EXTERNAL_BLOCKER**  
-**Name:** Mainnet facilitator and merchant-funding authorization  
-**Why automation cannot legally/technically complete it:** No authorized provider contract, business account, KYC decision, production credential, current tariff, or merchant funding authorization exists. These cannot be fabricated or accepted for the owner.  
-**Everything already completed:** Normalized routing, capability polling, safe verification failover, settle-once ownership, prepaid accounting, negative-margin exclusion, and the independent-finality boundary are implemented. No environment variable can enable mainnet in the shipped gateways.  
-**Exact smallest human action required:** After legal clearance, authorize an eligible facilitator/provider business account, accept its contract, complete any required KYC, approve the actual tariff, and permit its least-privilege production credential to be stored as an encrypted deployment secret. Each merchant must separately authorize its funding source.  
-**Whether XGuard can continue operating without it:** Testnet and free diagnostics continue; mainnet settlement and billing cannot.
+A technically live mainnet endpoint is **not** evidence that the legal/provider/security blockers below have been cleared.
 
 ---
 
-**EXTERNAL_BLOCKER**  
-**Name:** Regulated off-ramp and verified payout destination  
-**Why automation cannot legally/technically complete it:** A regulated provider must independently approve the eligible account holder, complete KYC/AML and sanctions checks, accept the business destination, and issue API authorization. Country availability alone is not approval.  
-**Everything already completed:** Fail-closed payout policy, reserve, atomic gross reservation including provider fees, idempotent payout states, typed provider evidence, return accounting, and ambiguity stops are implemented; no destination or private credential appears in source.  
-**Exact smallest human action required:** Complete truthful institutional onboarding with the selected provider and verify the business payout destination once; authorize storage of only the resulting scoped credential and destination reference in encrypted secrets.  
-**Whether XGuard can continue operating without it:** Testnet can; owner payout stays disabled, and mainnet must not accumulate funds without an approved treasury/off-ramp plan.
+## EXTERNAL_BLOCKER — Jordan regulatory classification / authorization
+
+### Why this remains unresolved
+
+Jordan's official Securities Commission publishes Law No. 14 of 2025, _Regulating the Dealing at Virtual Assets_, and Regulation No. 94 of 2025 for licensing virtual-asset service providers.
+
+Official law page: `https://www.jsc.gov.jo/page/ar/قانون_تنظيم_التعامل_بالأصول_الافتراضية`
+
+The law's Article 4 includes, among the listed virtual-asset activities, transferring virtual assets from one address/account to another. Article 5 restricts carrying out virtual-asset activities for others without the applicable licensed legal-person structure and separately addresses natural persons and taking Jordan as a center of business. The exact classification of XGuard's technical routing, prepaid service-balance, fee, and third-party facilitator model requires a Jordan-qualified legal/regulatory determination; the repository must not self-declare an exemption.
+
+The Jordan Securities Commission announced that Regulation No. 94 of 2025 was published on 2025-12-16 and enters into force 30 days after publication:
+`https://www.jsc.gov.jo/News/ar/12461`
+
+### Inquiry status
+
+A written classification inquiry was sent on 2026-08-14 to `info@jsc.gov.jo` and forwarded to `legal@jsc.gov.jo`. The connected mailbox was checked on 2026-08-15 and contained **no reply** from either address.
+
+More importantly, the original inquiry described XGuard as operating only on public testnet with no live customer billing. The architecture changed afterward: a Base mainnet endpoint is now technically deployed with merchant registration, prepaid Base USDC service balances, a `$0.002` service fee, and mainnet settlement routing through a third-party facilitator. The original description is therefore not sufficient as a current description of the operating model.
+
+### Smallest external action still required
+
+Obtain a current written Jordan-qualified classification of the **final mainnet architecture**, including:
+
+- whether XGuard's settlement routing through a separate facilitator constitutes an Article 4 activity for/for the benefit of others;
+- whether accepting merchant USDC prepaid service balances changes the classification;
+- whether the `$0.002` fee model is treated as a virtual-asset service, technical outsourcing, or another category;
+- whether a licensed legal person, outsourcing arrangement with a licensed provider, Central Bank permission, or other approval is required;
+- what geographic/customer restrictions apply if Jordan is the owner's center of business but customers are outside Jordan.
+
+If the authority or qualified counsel says a license/entity/approval is required, that approval must be obtained before XGuard is represented as legally cleared.
+
+### Current repository statement
+
+**Technical mainnet: live. Legal clearance: unresolved.** The repository must not describe the live deployment as regulatory approval.
 
 ---
 
-**EXTERNAL_BLOCKER**  
-**Name:** Independent mainnet security review  
-**Why automation cannot legally/technically complete it:** The author cannot provide independent assurance over its own mainnet implementation, production provider adapter, finality adapter, and operational deployment. A qualified outside reviewer and their acceptance are separate parties.  
-**Everything already completed:** Static checks, dependency audit, adversarial replay/idempotency/concurrency tests, Workers-runtime regressions, threat model, security review, and hard mainnet gates are present for the testnet release.  
-**Exact smallest human action required:** After the remaining mainnet engineering and provider integration are complete, appoint and authorize a qualified independent reviewer; do not approve launch until all Critical/High findings are closed and the review covers deployed configuration as well as code. No paid engagement is assumed or initiated under the `$0` owner budget.  
-**Whether XGuard can continue operating without it:** Testnet can; mainnet cannot be called safe or launched.
+## EXTERNAL_BLOCKER — PayAI paid-tier account / production credentials at scale
+
+XGuard's live mainnet route currently uses PayAI compatibility and health checks. PayAI's public facilitator pricing page, checked 2026-08-15, advertises:
+
+- 10,000 settlements/month free;
+- Pay As You Go at `$0.001` per settlement;
+- enterprise terms by agreement.
+
+Official source: `https://facilitator.payai.network/`
+
+XGuard conservatively configures `1,000` micro-USD as the attributable downstream cost so unit economics do not assume the free allowance will remain available forever.
+
+PayAI documentation describes merchant credits/API credentials for scaling beyond the default public usage path. XGuard already supports `PAYAI_API_KEY_ID` and `PAYAI_API_KEY_SECRET` as encrypted deployment secrets, but no repository statement should claim that the owner has an approved paid provider account or contract until PayAI independently grants it.
+
+**Can XGuard continue technically without it?** Yes within whatever public/free provider limits and terms currently apply. Scaling beyond those limits requires the provider's own approval/credits/credentials or a different eligible route.
 
 ---
 
-**EXTERNAL_BLOCKER**  
-**Name:** npm package ownership and trusted publishing  
-**Why automation cannot legally/technically complete it:** The npm CLI is not authenticated and no organization/scope authority or trusted-publisher binding exists. Registry search showed the candidate package names unregistered at the time checked, but availability is not ownership and a scope cannot be assumed to belong to the project merely because package names under it are unused.  
-**Everything already completed:** The public GitHub repository and its security controls are active. Core, SDK, and CLI manifests/builds, repository metadata, package-local licenses, narrow file allowlists, dry-pack checks, examples, and artifact-only release workflow are prepared.  
-**Exact smallest human action required:** Sign in to the intended npm owner account, claim or approve the final package names/scope, and bind npm trusted publishing to `moelayyan90/XGuard` and the reviewed release workflow. Only then may CI receive an explicit publishing job without a long-lived token.  
-**Whether XGuard can continue operating without it:** Local packages and the source release candidate work; public `npx xguard@latest` is unavailable.
+## EXTERNAL_BLOCKER — Independent mainnet security review
+
+First-party CI, CodeQL, dependency audit, adversarial replay/idempotency/concurrency tests, strict transport validation, Cloudflare runtime tests, and live smoke checks are implemented. They are useful evidence but not independent assurance.
+
+A qualified outside reviewer must independently review the deployed mainnet settlement path, billing/finality logic, configuration, secrets boundary, provider adapter, reconciliation, and operational failure modes before the project claims an independent production security review.
+
+**Can XGuard continue technically without it?** Yes. **Can it truthfully claim independent mainnet assurance?** No.
 
 ---
 
-**EXTERNAL_BLOCKER**  
-**Name:** x402/Bazaar/MCP ecosystem listing acceptance  
-**Why automation cannot legally/technically complete it:** Listings require authenticated submission and independent ecosystem acceptance. The live URL is a testnet gateway, not a public paid resource, and the packages are not yet published.  
-**Everything already completed:** Schema-complete Bazaar starter metadata, MCP example, pricing/security/docs, compatibility checker, and accurate listing boundaries are prepared.  
-**Exact smallest human action required:** After GitHub/npm publication and the listing quality gate pass, authorize accurate official submissions; ecosystem maintainers make the acceptance decision.  
-**Whether XGuard can continue operating without it:** Yes; only official-directory discovery is unavailable.
+## EXTERNAL_BLOCKER — Regulated bank/off-ramp and verified owner payout destination
+
+Merchant top-ups can technically arrive at the configured Base USDC treasury address. This is not the same as an automated bank payout and does not make the entire treasury balance owner profit.
+
+A regulated off-ramp provider must independently approve the eligible account holder, destination, KYC/AML/sanctions status, transfer limits, fees, and production API authorization. Country availability alone is not approval.
+
+The codebase contains fail-closed payout/reserve/accounting concepts, but no live connector has authority to transfer funds from the user's exchange account to a bank account.
+
+**Can XGuard operate without it?** The crypto treasury can receive funds; automated bank owner payout remains unavailable.
+
+---
+
+## EXTERNAL_BLOCKER — npm package ownership and trusted publishing
+
+Core, SDK, and CLI manifests/builds are prepared and dry-pack tested. The production gateway can be integrated today with the official x402 `HTTPFacilitatorClient`, so a public XGuard npm package is not required for the live HTTP service.
+
+Publishing `xguard` / `@xguard/*` still requires authenticated registry ownership and trusted-publisher configuration. Package-name availability is not ownership and must not be assumed.
+
+**Can XGuard operate without it?** Yes. Public `npm install @xguard/sdk` / `npx xguard` convenience distribution remains unavailable until registry ownership is established.
+
+---
+
+## EXTERNAL_BLOCKER — x402/Bazaar/MCP ecosystem listing acceptance
+
+Official ecosystem listings require authenticated submission and independent acceptance by their maintainers. XGuard can expose a public endpoint and source code without such acceptance, but cannot claim an official listing until the relevant ecosystem approves it.
+
+**Can XGuard operate without it?** Yes. Discovery/distribution is weaker until accepted.

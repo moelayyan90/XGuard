@@ -728,9 +728,14 @@ async function processFinalityJobs(env: MainnetEnv): Promise<void> {
         continue;
       }
       await env.DB.prepare(
-        "UPDATE settlement_projection SET state='SETTLED',fee_micro_usd=?,recorded_at=? WHERE logical_payment_key=?",
+        "UPDATE settlement_projection SET state='SETTLED',fee_micro_usd=?,downstream_cost_micro_usd=?,recorded_at=? WHERE logical_payment_key=?",
       )
-        .bind(feeMicroUsd(env), now, job.logical_payment_key)
+        .bind(
+          feeMicroUsd(env),
+          downstreamCostMicroUsd(env),
+          now,
+          job.logical_payment_key,
+        )
         .run();
       await earnSettlementFee(env.DB, job.merchant_id, job.logical_payment_key);
       await env.DB.batch([
