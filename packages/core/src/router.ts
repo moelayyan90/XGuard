@@ -23,12 +23,7 @@ const EVM_TRANSACTION = /^0x[0-9a-fA-F]{64}$/;
 const MAX_FACILITATOR_RESPONSE_BYTES = 64 * 1024;
 
 export type FacilitatorState =
-  | "HEALTHY"
-  | "DEGRADED"
-  | "OPEN"
-  | "HALF_OPEN"
-  | "QUARANTINED"
-  | "DISABLED";
+  "HEALTHY" | "DEGRADED" | "OPEN" | "HALF_OPEN" | "QUARANTINED" | "DISABLED";
 
 export interface FacilitatorDefinition {
   id: string;
