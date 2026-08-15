@@ -516,8 +516,7 @@ export class SqliteFinancialStore {
             "SELECT state FROM settlement_attempts WHERE payment_key = ? AND settlement_step_key = ?",
           )
           .get(input.logicalPaymentKey, input.settlementStepKey) as
-          | Row
-          | undefined;
+          Row | undefined;
         if (attempt?.state === "OUTBOUND_PREPARED")
           return { kind: "OWNER", paymentKey: input.logicalPaymentKey };
         return { kind: "IN_PROGRESS", paymentKey: input.logicalPaymentKey };
