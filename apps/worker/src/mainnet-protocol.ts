@@ -15,11 +15,10 @@ import {
   parseUnsignedInteger,
   readHttpBodyTextCapped,
 } from "@xguard/core/edge";
-import { payAIAuthHeader } from "./payai-auth.js";
 
 export const BASE_MAINNET = "eip155:8453";
 export const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-export const PAYAI_URL = "https://facilitator.payai.network";
+export const PAYAI_URL = "https://facilitator.xpay.sh";
 export const MAX_HTTP_BODY_BYTES = 64 * 1024;
 
 export interface MainnetProtocolEnv {
@@ -184,11 +183,11 @@ export function enforceBaseMainnetUsdc(
 }
 
 export async function payAIVerify(
-  env: MainnetProtocolEnv,
+  _env: MainnetProtocolEnv,
   body: Record<string, unknown>,
   expectedPayer: string,
 ): Promise<VerifyResponse> {
-  const response = await payAIRequest(env, "verify", body, 8_000);
+  const response = await payAIRequest("verify", body, 8_000);
   const record = asRecord(response);
   if (typeof record.isValid !== "boolean")
     throw new Error("malformed_verify_response");
@@ -201,12 +200,12 @@ export async function payAIVerify(
 }
 
 export async function payAISettle(
-  env: MainnetProtocolEnv,
+  _env: MainnetProtocolEnv,
   body: Record<string, unknown>,
   requirements: PaymentRequirements,
   expectedPayer: string,
 ): Promise<SettleResponse> {
-  const response = await payAIRequest(env, "settle", body, 20_000);
+  const response = await payAIRequest("settle", body, 20_000);
   const record = asRecord(response);
   if (
     typeof record.success !== "boolean" ||
@@ -234,30 +233,29 @@ export async function payAISettle(
 }
 
 export async function fetchPayAISupported(
-  env: MainnetProtocolEnv,
+  _env: MainnetProtocolEnv,
 ): Promise<SupportedResponse> {
-  const headers = await payAIAuthHeader(env);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5_000);
   try {
     const response = await fetch(`${PAYAI_URL}/supported`, {
-      headers: { "User-Agent": "XGuard/0.1.0", ...headers },
+      headers: { "User-Agent": "XGuard/0.1.0" },
       redirect: "manual",
       signal: controller.signal,
     });
     if (!response.ok)
-      throw new Error(`payai_supported_http_${response.status}`);
+      throw new Error(`upstream_supported_http_${response.status}`);
     const parsed = asRecord(
       parseJsonStrict(
         await readHttpBodyTextCapped(
           response,
           MAX_HTTP_BODY_BYTES,
-          "PayAI supported response",
+          "xpay supported response",
         ),
       ),
     );
     if (!Array.isArray(parsed.kinds))
-      throw new Error("payai_supported_malformed");
+      throw new Error("upstream_supported_malformed");
     const compatible = parsed.kinds.some((rawKind) => {
       const kind = asRecord(rawKind);
       return (
@@ -266,7 +264,7 @@ export async function fetchPayAISupported(
         kind.network === BASE_MAINNET
       );
     });
-    if (!compatible) throw new Error("payai_base_mainnet_not_supported");
+    if (!compatible) throw new Error("upstream_base_mainnet_not_supported");
     if (!Array.isArray(parsed.extensions)) parsed.extensions = [];
     if (parsed.signers === undefined) parsed.signers = {};
     return parsed as unknown as SupportedResponse;
@@ -276,7 +274,6 @@ export async function fetchPayAISupported(
 }
 
 async function payAIRequest(
-  env: MainnetProtocolEnv,
   operation: "verify" | "settle",
   body: Record<string, unknown>,
   timeoutMs: number,
@@ -284,26 +281,24 @@ async function payAIRequest(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const auth = await payAIAuthHeader(env);
     const response = await fetch(`${PAYAI_URL}/${operation}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "User-Agent": "XGuard/0.1.0",
         "X-XGuard-Mode": "mainnet",
-        ...auth,
       },
       body: JSON.stringify(body),
       redirect: "manual",
       signal: controller.signal,
     });
     if (!response.ok)
-      throw new Error(`payai_${operation}_http_${response.status}`);
+      throw new Error(`upstream_${operation}_http_${response.status}`);
     return parseJsonStrict(
       await readHttpBodyTextCapped(
         response,
         MAX_HTTP_BODY_BYTES,
-        `PayAI ${operation} response`,
+        `xpay ${operation} response`,
       ),
     );
   } finally {
