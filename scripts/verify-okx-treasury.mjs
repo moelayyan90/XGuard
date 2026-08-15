@@ -19,9 +19,7 @@ if (!/^0x[0-9a-fA-F]{40}$/.test(treasury)) {
 }
 
 const baseUrl = resolveOkxBaseUrl(process.env.OKX_API_BASE_URL);
-const depositAddresses = await okxGet(
-  "/api/v5/asset/deposit-address?ccy=USDC",
-);
+const depositAddresses = await okxGet("/api/v5/asset/deposit-address?ccy=USDC");
 const baseAddresses = depositAddresses.filter(
   (row) =>
     row &&
@@ -83,8 +81,8 @@ async function okxGet(requestPath) {
     .update(`${timestamp}GET${requestPath}`)
     .digest("base64");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+  const controller = new globalThis.AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), 10_000);
   try {
     const response = await fetch(`${baseUrl}${requestPath}`, {
       method: "GET",
@@ -114,12 +112,14 @@ async function okxGet(requestPath) {
     if (error?.name === "AbortError") fail("okx_request_timeout");
     throw error;
   } finally {
-    clearTimeout(timeout);
+    globalThis.clearTimeout(timeout);
   }
 }
 
 function isBaseChain(value) {
-  const chain = String(value ?? "").trim().toLowerCase();
+  const chain = String(value ?? "")
+    .trim()
+    .toLowerCase();
   return chain === "usdc-base" || chain.endsWith("-base");
 }
 
