@@ -85,7 +85,8 @@ assert(
   "mainnet earned settlement count is invalid",
 );
 assert(
-  Number.isInteger(status.body.earnedMicroUsd) && status.body.earnedMicroUsd >= 0,
+  Number.isInteger(status.body.earnedMicroUsd) &&
+    status.body.earnedMicroUsd >= 0,
   "mainnet earned revenue total is invalid",
 );
 
