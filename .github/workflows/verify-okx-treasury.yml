@@ -20,7 +20,7 @@ jobs:
 
       - name: Verify XGuard treasury is the live OKX USDC-Base deposit address
         env:
-          XGUARD_TREASURY_USDC_ADDRESS: ${{ secrets.XGUARD_TREASURY_USDC_ADDRESS }}
+          XGUARD_TREASURY_USDC_ADDRESS: "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07"
           OKX_API_KEY: ${{ secrets.OKX_API_KEY }}
           OKX_API_SECRET: ${{ secrets.OKX_API_SECRET }}
           OKX_API_PASSPHRASE: ${{ secrets.OKX_API_PASSPHRASE }}
