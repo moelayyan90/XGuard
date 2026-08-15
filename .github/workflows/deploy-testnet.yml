@@ -47,7 +47,9 @@ jobs:
             exit 0
           fi
 
-          CONFIG_PATH="${RUNNER_TEMP}/xguard-wrangler.jsonc"
+          # Keep the resolved config beside the Worker source so Wrangler resolves
+          # relative entrypoint and migrations paths against apps/worker.
+          CONFIG_PATH="${GITHUB_WORKSPACE}/apps/worker/wrangler.testnet.resolved.jsonc"
           node scripts/resolve-cloudflare-config.mjs \
             --template apps/worker/wrangler.jsonc \
             --output "${CONFIG_PATH}" \
