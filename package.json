@@ -37,6 +37,7 @@
     "demo": "tsx apps/gateway/src/demo.ts",
     "ops:reconcile": "node scripts/reconcile.mjs",
     "ops:payout-check": "node scripts/payout-check.mjs",
+    "ops:okx-treasury-check": "node scripts/verify-okx-treasury.mjs",
     "ops:backup": "node scripts/backup-sqlite.mjs",
     "xguard": "tsx packages/cli/src/bin.ts"
   },
