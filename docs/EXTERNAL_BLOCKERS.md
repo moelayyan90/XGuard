@@ -35,21 +35,13 @@ The Jordan Securities Commission announced that Regulation No. 94 of 2025 was pu
 
 ### Inquiry status
 
-A written classification inquiry was sent on 2026-08-14 to `info@jsc.gov.jo` and forwarded to `legal@jsc.gov.jo`. The connected mailbox was checked on 2026-08-15 and contained **no reply** from either address.
+A written classification inquiry was first sent on 2026-08-14 to `info@jsc.gov.jo` and forwarded to `legal@jsc.gov.jo`.
 
-More importantly, the original inquiry described XGuard as operating only on public testnet with no live customer billing. The architecture changed afterward: a Base mainnet endpoint is now technically deployed with merchant registration, prepaid Base USDC service balances, a `$0.002` service fee, and mainnet settlement routing through a third-party facilitator. The original description is therefore not sufficient as a current description of the operating model.
+After the architecture changed, an updated classification request describing the **current final mainnet architecture** was sent on 2026-08-15 to `legal@jsc.gov.jo`, with `info@jsc.gov.jo` copied. It explicitly disclosed the technically deployed Base mainnet endpoint, merchant authentication, native Base USDC prepaid service balances, the `$0.002` service fee, third-party facilitator routing, delayed revenue recognition after independent finality, and the distinction between technical deployment and regulatory authorization.
 
-### Smallest external action still required
+The updated request asks the authority to classify the routing model and prepaid service balance, identify any required licence/legal-person/outsourcing/approval structure, clarify geographic scope when the operator is based in Jordan, and identify the competent authority if another regulator is responsible.
 
-Obtain a current written Jordan-qualified classification of the **final mainnet architecture**, including:
-
-- whether XGuard's settlement routing through a separate facilitator constitutes an Article 4 activity for/for the benefit of others;
-- whether accepting merchant USDC prepaid service balances changes the classification;
-- whether the `$0.002` fee model is treated as a virtual-asset service, technical outsourcing, or another category;
-- whether a licensed legal person, outsourcing arrangement with a licensed provider, Central Bank permission, or other approval is required;
-- what geographic/customer restrictions apply if Jordan is the owner's center of business but customers are outside Jordan.
-
-If the authority or qualified counsel says a license/entity/approval is required, that approval must be obtained before XGuard is represented as legally cleared.
+**No owner action is currently pending on this inquiry. The external dependency is the authority's written response.**
 
 ### Current repository statement
 
@@ -57,7 +49,7 @@ If the authority or qualified counsel says a license/entity/approval is required
 
 ---
 
-## EXTERNAL_BLOCKER — PayAI paid-tier account / production credentials at scale
+## EXTERNAL_BLOCKER — PayAI scaling beyond the public/free production path
 
 XGuard's live mainnet route currently uses PayAI compatibility and health checks. PayAI's public facilitator pricing page, checked 2026-08-15, advertises:
 
@@ -67,11 +59,13 @@ XGuard's live mainnet route currently uses PayAI compatibility and health checks
 
 Official source: `https://facilitator.payai.network/`
 
+PayAI also states that its public facilitator requires no API keys. Therefore, a paid PayAI account is **not a launch requirement** for XGuard within the currently published public/free limits and terms.
+
 XGuard conservatively configures `1,000` micro-USD as the attributable downstream cost so unit economics do not assume the free allowance will remain available forever.
 
-PayAI documentation describes merchant credits/API credentials for scaling beyond the default public usage path. XGuard already supports `PAYAI_API_KEY_ID` and `PAYAI_API_KEY_SECRET` as encrypted deployment secrets, but no repository statement should claim that the owner has an approved paid provider account or contract until PayAI independently grants it.
+XGuard already supports `PAYAI_API_KEY_ID` and `PAYAI_API_KEY_SECRET` as encrypted deployment secrets for provider-authenticated scaling paths. If traffic exceeds the public/free limits, paid/provider-specific approval or another eligible route becomes an external scaling dependency.
 
-**Can XGuard continue technically without it?** Yes within whatever public/free provider limits and terms currently apply. Scaling beyond those limits requires the provider's own approval/credits/credentials or a different eligible route.
+**Can XGuard continue technically without a paid PayAI account?** Yes, within the provider's current public/free limits and terms.
 
 ---
 
@@ -91,7 +85,7 @@ Merchant top-ups can technically arrive at the configured Base USDC treasury add
 
 A regulated off-ramp provider must independently approve the eligible account holder, destination, KYC/AML/sanctions status, transfer limits, fees, and production API authorization. Country availability alone is not approval.
 
-The codebase contains fail-closed payout/reserve/accounting concepts, but no live connector has authority to transfer funds from the user's exchange account to a bank account.
+The codebase contains fail-closed payout/reserve/accounting concepts, but no live connector has authority to transfer funds from an exchange account to a bank account.
 
 **Can XGuard operate without it?** The crypto treasury can receive funds; automated bank owner payout remains unavailable.
 
@@ -103,12 +97,22 @@ Core, SDK, and CLI manifests/builds are prepared and dry-pack tested. The produc
 
 Publishing `xguard` / `@xguard/*` still requires authenticated registry ownership and trusted-publisher configuration. Package-name availability is not ownership and must not be assumed.
 
-**Can XGuard operate without it?** Yes. Public `npm install @xguard/sdk` / `npx xguard` convenience distribution remains unavailable until registry ownership is established.
+The repository also contains a release workflow that builds `.tgz` artifacts for the core, SDK, and CLI when a GitHub Release is published or the workflow is dispatched, so the packages are reproducibly buildable even before npm registry ownership exists.
+
+**Can XGuard operate without npm publication?** Yes. Public `npm install @xguard/sdk` / `npx xguard` convenience distribution remains unavailable until registry ownership is established.
 
 ---
 
-## EXTERNAL_BLOCKER — x402/Bazaar/MCP ecosystem listing acceptance
+## EXTERNAL_BLOCKER — x402/Bazaar/ecosystem listing acceptance
 
-Official ecosystem listings require authenticated submission and independent acceptance by their maintainers. XGuard can expose a public endpoint and source code without such acceptance, but cannot claim an official listing until the relevant ecosystem approves it.
+The x402 Bazaar is facilitator-driven discovery: Bazaar-enabled resources can be cataloged through facilitators that support the extension, and PayAI currently advertises automatic Bazaar discovery for merchants using its facilitator. That mechanism concerns discoverable payable resources; it is not the same as being selected for the x402 documentation's curated list of production facilitators.
 
-**Can XGuard operate without it?** Yes. Discovery/distribution is weaker until accepted.
+XGuard can expose its public endpoint and source code without a curated listing. It must not claim official x402 endorsement or selection unless the x402 maintainers independently accept such a listing.
+
+**Can XGuard operate without a curated ecosystem listing?** Yes. Discovery/distribution is weaker until accepted.
+
+---
+
+## Owner-action status
+
+As of 2026-08-15, **there is no ordinary engineering or deployment task waiting on the owner**. Remaining items in this file are external approvals, independent third-party assurance, optional distribution ownership, or payout-provider authorization. They must not be misrepresented as completed, but they are not unfinished XGuard implementation work.
