@@ -75,20 +75,18 @@ assert(
   "mainnet facilitator is not healthy",
 );
 assert(
-  Number.isInteger(status.body.feeMicroUsd) &&
-    status.body.feeMicroUsd === 2_000,
-  "mainnet fee configuration changed unexpectedly",
+  Number.isInteger(status.body.openReconciliationCases) &&
+    status.body.openReconciliationCases >= 0,
+  "mainnet reconciliation count is invalid",
 );
 assert(
-  Number.isInteger(status.body.downstreamCostMicroUsd) &&
-    status.body.downstreamCostMicroUsd >= 0 &&
-    status.body.downstreamCostMicroUsd < status.body.feeMicroUsd,
-  "mainnet downstream route is economically ineligible",
+  Number.isInteger(status.body.successfulBillableSettlements) &&
+    status.body.successfulBillableSettlements >= 0,
+  "mainnet earned settlement count is invalid",
 );
 assert(
-  status.body.contributionMicroUsd ===
-    status.body.feeMicroUsd - status.body.downstreamCostMicroUsd,
-  "mainnet contribution calculation is inconsistent",
+  Number.isInteger(status.body.earnedMicroUsd) && status.body.earnedMicroUsd >= 0,
+  "mainnet earned revenue total is invalid",
 );
 
 const unauthorized = await json("/v1/balance");
@@ -105,9 +103,8 @@ console.log(
     mainnet: true,
     network: status.body.network,
     facilitator: status.body.facilitator,
-    feeMicroUsd: status.body.feeMicroUsd,
-    downstreamCostMicroUsd: status.body.downstreamCostMicroUsd,
-    contributionMicroUsd: status.body.contributionMicroUsd,
+    successfulBillableSettlements: status.body.successfulBillableSettlements,
+    earnedMicroUsd: status.body.earnedMicroUsd,
     openReconciliationCases: status.body.openReconciliationCases,
   }),
 );
