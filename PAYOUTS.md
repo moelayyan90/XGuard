@@ -28,6 +28,19 @@ owner distributable amount, if any
 
 The physical USDC treasury can therefore contain a mixture of customer prepaid liabilities and earned XGuard funds. The entire wallet/exchange balance must never be treated as withdrawable owner profit.
 
+## OKX treasury verification
+
+XGuard includes `npm run ops:okx-treasury-check` and the manual GitHub Actions workflow **Verify OKX treasury**. The check uses an authenticated, read-only OKX API key to prove all of the following before the treasury is described as OKX-linked:
+
+- the configured `XGUARD_TREASURY_USDC_ADDRESS` is returned by the authenticated OKX account as a USDC deposit address on Base;
+- OKX reports USDC deposits on Base as currently available for that account/entity;
+- the API request is sent only to an allowlisted official OKX API domain;
+- no trading or withdrawal API permission is required by XGuard.
+
+The verification needs these encrypted GitHub Actions secrets: `OKX_API_KEY`, `OKX_API_SECRET`, `OKX_API_PASSPHRASE`, plus the already-required `XGUARD_TREASURY_USDC_ADDRESS`. Global OKX accounts default to `https://openapi.okx.com`; regional accounts can set the repository variable `OKX_API_BASE_URL` to the corresponding allowlisted OKX API domain.
+
+Do not put OKX API credentials in source files, logs, issues, pull requests, or `.env.example`. The API key used for this check should have read access only; XGuard does not need OKX trade or withdrawal authority to receive USDC deposits.
+
 ## Automatic owner payout status
 
 No automated regulated fiat/bank off-ramp connector is active. The codebase contains accounting and payout-policy primitives, but it does not have authority to move money from the owner's exchange account or bank account and does not store bank credentials in the repository.
@@ -55,6 +68,7 @@ The current mainnet treasury receiving path can function without a bank payout c
 ## Current status
 
 - **Base USDC treasury receipt:** technically live.
+- **OKX treasury identity:** verifiable automatically once the read-only OKX API secrets are installed and the verification workflow passes.
 - **Merchant prepaid liability accounting:** implemented.
 - **Earned-fee finality boundary:** implemented.
 - **Automatic bank/off-ramp owner payout:** not active.
