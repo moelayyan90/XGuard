@@ -1,6 +1,6 @@
-# External blockers
+# External dependencies
 
-This file separates **technical deployment** from external decisions that XGuard cannot truthfully manufacture: regulatory classification, third-party account approval, independent assurance, registry ownership, and bank/off-ramp authorization.
+This file separates **technical deployment** from optional or third-party dependencies that XGuard cannot truthfully manufacture: independent assurance, registry ownership, provider scaling, and bank/off-ramp authorization.
 
 ## Already completed technically
 
@@ -10,46 +10,31 @@ The following are no longer engineering blockers:
 - live Base Sepolia Worker and D1;
 - live Base mainnet Worker and `xguard-mainnet` D1;
 - Base mainnet native-USDC constraint and independent finality adapter;
-- merchant bearer authentication and prepaid service-balance accounting;
-- finalized Base USDC top-up verification;
+- merchant bearer authentication and prepaid **XGuard service-credit** accounting;
+- finalized Base USDC service-credit top-up verification;
 - one-outbound settlement ownership, replay/duplicate protection, ambiguity/reconciliation state;
 - mainnet post-deploy readiness checks;
 - public GitHub repository, CI, CodeQL, protected `main`, Dependabot, secret scanning/push protection, and private vulnerability reporting.
 
-A technically live mainnet endpoint is **not** evidence that the legal/provider/security blockers below have been cleared.
+XGuard's service-credit balance is used to pay XGuard's own per-successful-settlement service fee. It is not the payer-to-resource-server settlement amount. The settlement path separately verifies the expected payer, expected pay-to address, and expected settlement amount before XGuard recognizes its own service fee.
 
 ---
 
-## EXTERNAL_BLOCKER — Jordan regulatory classification / authorization
+## Regulatory inquiry — withdrawn; not a launch dependency
 
-### Why this remains unresolved
+A Jordan Securities Commission classification inquiry was sent on 2026-08-14 and updated on 2026-08-15 while the architecture was still being finalized.
 
-Jordan's official Securities Commission publishes Law No. 14 of 2025, _Regulating the Dealing at Virtual Assets_, and Regulation No. 94 of 2025 for licensing virtual-asset service providers.
+On 2026-08-15 the owner withdrew that inquiry in writing and explicitly stated that no response or further action was requested. XGuard therefore does **not** wait for or depend on a reply to that inquiry for technical operation.
 
-Official law page: `https://www.jsc.gov.jo/page/ar/قانون_تنظيم_التعامل_بالأصول_الافتراضية`
+The operational model recorded by the repository is a software service charging a configurable XGuard fee for successful service events. XGuard does not treat the payer-to-resource-server settlement amount as an XGuard customer balance; settlement evidence records an expected payer, expected pay-to address, and expected amount, while XGuard's own merchant service-credit balance is separately used for XGuard fees.
 
-The law's Article 4 includes, among the listed virtual-asset activities, transferring virtual assets from one address/account to another. Article 5 restricts carrying out virtual-asset activities for others without the applicable licensed legal-person structure and separately addresses natural persons and taking Jordan as a center of business. The exact classification of XGuard's technical routing, prepaid service-balance, fee, and third-party facilitator model requires a Jordan-qualified legal/regulatory determination; the repository must not self-declare an exemption.
+This repository statement is an architectural and operational description, not a legal opinion or a claim of regulatory exemption. If the product later changes into custody, exchange, brokerage, or another materially different financial activity, that new model should be assessed on its own facts.
 
-The Jordan Securities Commission announced that Regulation No. 94 of 2025 was published on 2025-12-16 and enters into force 30 days after publication:
-`https://www.jsc.gov.jo/News/ar/12461`
-
-### Inquiry status
-
-A written classification inquiry was first sent on 2026-08-14 to `info@jsc.gov.jo` and forwarded to `legal@jsc.gov.jo`.
-
-After the architecture changed, an updated classification request describing the **current final mainnet architecture** was sent on 2026-08-15 to `legal@jsc.gov.jo`, with `info@jsc.gov.jo` copied. It explicitly disclosed the technically deployed Base mainnet endpoint, merchant authentication, native Base USDC prepaid service balances, the `$0.002` service fee, third-party facilitator routing, delayed revenue recognition after independent finality, and the distinction between technical deployment and regulatory authorization.
-
-The updated request asks the authority to classify the routing model and prepaid service balance, identify any required licence/legal-person/outsourcing/approval structure, clarify geographic scope when the operator is based in Jordan, and identify the competent authority if another regulator is responsible.
-
-**No owner action is currently pending on this inquiry. The external dependency is the authority's written response.**
-
-### Current repository statement
-
-**Technical mainnet: live. Legal clearance: unresolved.** The repository must not describe the live deployment as regulatory approval.
+**Current operational status: no JSC response is awaited and no JSC response is a launch gate.**
 
 ---
 
-## EXTERNAL_BLOCKER — PayAI scaling beyond the public/free production path
+## EXTERNAL_DEPENDENCY — PayAI scaling beyond the public/free production path
 
 XGuard's live mainnet route currently uses PayAI compatibility and health checks. PayAI's public facilitator pricing page, checked 2026-08-15, advertises:
 
@@ -69,29 +54,29 @@ XGuard already supports `PAYAI_API_KEY_ID` and `PAYAI_API_KEY_SECRET` as encrypt
 
 ---
 
-## EXTERNAL_BLOCKER — Independent mainnet security review
+## EXTERNAL_DEPENDENCY — Independent mainnet security review
 
 First-party CI, CodeQL, dependency audit, adversarial replay/idempotency/concurrency tests, strict transport validation, Cloudflare runtime tests, and live smoke checks are implemented. They are useful evidence but not independent assurance.
 
-A qualified outside reviewer must independently review the deployed mainnet settlement path, billing/finality logic, configuration, secrets boundary, provider adapter, reconciliation, and operational failure modes before the project claims an independent production security review.
+A qualified outside reviewer would be required only before the project claims an **independent** production security review.
 
 **Can XGuard continue technically without it?** Yes. **Can it truthfully claim independent mainnet assurance?** No.
 
 ---
 
-## EXTERNAL_BLOCKER — Regulated bank/off-ramp and verified owner payout destination
+## EXTERNAL_DEPENDENCY — Regulated bank/off-ramp and verified owner payout destination
 
-Merchant top-ups can technically arrive at the configured Base USDC treasury address. This is not the same as an automated bank payout and does not make the entire treasury balance owner profit.
+Merchant service-credit top-ups can technically arrive at the configured Base USDC treasury address. These are payments toward XGuard's own service balance; they are separate from the payer-to-resource-server settlement amount. This is not the same as an automated bank payout and does not make the entire treasury balance owner profit.
 
 A regulated off-ramp provider must independently approve the eligible account holder, destination, KYC/AML/sanctions status, transfer limits, fees, and production API authorization. Country availability alone is not approval.
 
 The codebase contains fail-closed payout/reserve/accounting concepts, but no live connector has authority to transfer funds from an exchange account to a bank account.
 
-**Can XGuard operate without it?** The crypto treasury can receive funds; automated bank owner payout remains unavailable.
+**Can XGuard operate without it?** Yes. The crypto treasury can receive XGuard service-credit payments; automated bank owner payout remains unavailable.
 
 ---
 
-## EXTERNAL_BLOCKER — npm package ownership and trusted publishing
+## EXTERNAL_DEPENDENCY — npm package ownership and trusted publishing
 
 Core, SDK, and CLI manifests/builds are prepared and dry-pack tested. The production gateway can be integrated today with the official x402 `HTTPFacilitatorClient`, so a public XGuard npm package is not required for the live HTTP service.
 
@@ -103,7 +88,7 @@ The repository also contains a release workflow that builds `.tgz` artifacts for
 
 ---
 
-## EXTERNAL_BLOCKER — x402/Bazaar/ecosystem listing acceptance
+## EXTERNAL_DEPENDENCY — x402/Bazaar/ecosystem listing acceptance
 
 The x402 Bazaar is facilitator-driven discovery: Bazaar-enabled resources can be cataloged through facilitators that support the extension, and PayAI currently advertises automatic Bazaar discovery for merchants using its facilitator. That mechanism concerns discoverable payable resources; it is not the same as being selected for the x402 documentation's curated list of production facilitators.
 
@@ -115,4 +100,4 @@ XGuard can expose its public endpoint and source code without a curated listing.
 
 ## Owner-action status
 
-As of 2026-08-15, **there is no ordinary engineering or deployment task waiting on the owner**. Remaining items in this file are external approvals, independent third-party assurance, optional distribution ownership, or payout-provider authorization. They must not be misrepresented as completed, but they are not unfinished XGuard implementation work.
+As of 2026-08-15, **there is no ordinary engineering or deployment task waiting on the owner, and no response from the Jordan Securities Commission is awaited as an operating prerequisite**. Remaining items in this file are optional third-party assurance, scaling, distribution, or payout dependencies. They are not unfinished XGuard implementation work.
