@@ -16,6 +16,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npx prettier --write scripts/verify-okx-treasury.mjs && cat scripts/verify-okx-treasury.mjs
       - run: npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
