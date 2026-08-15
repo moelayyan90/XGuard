@@ -1,0 +1,59 @@
+name: Format preview
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Format changed mainnet hardening files
+        run: |
+          npx prettier --write \
+            README.md \
+            QUICKSTART.md \
+            docs/API.md \
+            docs/openapi.yaml \
+            scripts/check-docs.mjs \
+            docs/FACILITATORS.md \
+            apps/worker/wrangler.mainnet.jsonc \
+            scripts/smoke-mainnet.mjs \
+            package.json \
+            .github/workflows/live-monitor.yml \
+            UNIT_ECONOMICS.md \
+            DEPLOYMENT.md \
+            PAYOUTS.md \
+            docs/EXTERNAL_BLOCKERS.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: formatted-mainnet-hardening
+          path: |
+            README.md
+            QUICKSTART.md
+            docs/API.md
+            docs/openapi.yaml
+            scripts/check-docs.mjs
+            docs/FACILITATORS.md
+            apps/worker/wrangler.mainnet.jsonc
+            scripts/smoke-mainnet.mjs
+            package.json
+            .github/workflows/live-monitor.yml
+            UNIT_ECONOMICS.md
+            DEPLOYMENT.md
+            PAYOUTS.md
+            docs/EXTERNAL_BLOCKERS.md
+          if-no-files-found: error
+          retention-days: 1
