@@ -1,24 +1,61 @@
 # Owner payouts
 
-`AUTO_OWNER_PAYOUT=true` expresses the desired policy, not permission to move funds. The default minimum is `$100`, checked daily. The implementation evaluates distributable funds and fails closed; the external transfer connector is deliberately inactive until a regulated provider is eligible and authorized.
+XGuard now has a technically live Base mainnet treasury path, but **treasury receipt is not the same as owner payout or owner profit**.
 
-## Safety gate
+Merchant top-ups are sent as native Base USDC to the configured treasury address. Those deposits create merchant prepaid service balances and are customer liabilities. Only service fees that later satisfy the successful-settlement and independent-finality boundary become gross XGuard earned revenue.
 
-No payout is prepared or submitted unless the destination is verified, KYC is complete, the provider is authorized and operational, available balance is certain, funds are final, reconciliation is consistent, no earlier payout is ambiguous, all operating liabilities are paid, and the operating reserve is fully funded. Destination amount plus provider fee is reserved atomically; the policy, reserve, and safety snapshots are bound to the XGuard idempotency key. Final credit or return requires typed evidence matching the provider, provider reference, destination amount, and fee. Idempotency is required at XGuard and provider layers.
+## Current money flow
 
-## Current regulated off-ramp research
+```text
+merchant Base USDC top-up
+        ↓
+configured crypto treasury address
+        ↓
+merchant prepaid liability in XGuard accounting
+        ↓
+successful billable settlement reserves $0.002
+        ↓
+independent Base finality succeeds
+        ↓
+$0.002 becomes gross XGuard earned revenue
+        ↓
+downstream + infrastructure + other liabilities/costs
+        ↓
+required operating reserve
+        ↓
+owner distributable amount, if any
+```
 
-Research was retrieved 2026-08-14 from official Circle documentation:
+The physical USDC treasury can therefore contain a mixture of customer prepaid liabilities and earned XGuard funds. The entire wallet/exchange balance must never be treated as withdrawable owner profit.
 
-- Circle describes [Circle Mint](https://developers.circle.com/circle-mint) as an institutional product and requires an approved account/API key; a sandbox signup does not establish production eligibility.
-- The current [supported-country list](https://developers.circle.com/circle-mint/references/supported-countries) includes Jordan for bank accounts domiciled there, but the page says the list can change and it does **not** establish that XGuard, its owner, or a particular bank destination is eligible.
-- The [fiat withdrawal guide](https://developers.circle.com/circle-mint/howtos/withdraw-fiat) documents USDC/EURC redemption to a linked bank account, an idempotency key, balance checks that distinguish available from unsettled funds, asynchronous `pending`/`complete`/`failed` status, and the possibility of a bank return after `complete`.
-- [Supported payment rails](https://developers.circle.com/circle-mint/references/supported-payment-rails) document international SWIFT for USD/EUR and state that limits can depend on banking-partner configuration.
-- Circle Mint uses v1 SNS delivery according to the current [webhook overview](https://developers.circle.com/api-reference/webhooks); notifications are at least once, may be out of order, and must be signature-verified and deduplicated before affecting financial state. The [Mint notification reference](https://developers.circle.com/circle-mint/references/webhook-notifications) includes payout status, fees, and errors.
-- [CAMT.053 statements](https://developers.circle.com/circle-mint/references/camt053-statements) may support independent daily statement reconciliation for an approved account.
+## Automatic owner payout status
 
-No official page reviewed guarantees account eligibility, a payout to a particular bank/account, a fixed public fee, or a universal minimum. Those values must come from the approved business account and current contract/API before activation. Circle is therefore only a researched candidate, not the selected or active provider. Other regulated providers can be evaluated under the same controls; none is assumed eligible.
+No automated regulated fiat/bank off-ramp connector is active. The codebase contains accounting and payout-policy primitives, but it does not have authority to move money from the owner's exchange account or bank account and does not store bank credentials in the repository.
+
+`AUTO_OWNER_PAYOUT=true`, where present in portable/reference components, expresses a desired policy only. It is not permission or a live transfer credential.
+
+## Safety gate for future automated payout
+
+A future payout connector must not submit an owner distribution unless all of the following are proven:
+
+- destination ownership and KYC/AML eligibility are verified by the selected regulated provider;
+- merchant customer liabilities remain fully covered;
+- pending/ambiguous settlements and payouts are excluded;
+- downstream and other operating liabilities are paid or reserved;
+- the operating reserve is fully funded;
+- the amount is derived from reconciled earned revenue, not gross treasury balance;
+- the provider transfer is idempotent and its final/returned status can be independently reconciled.
+
+## Current off-ramp research
+
+Circle Mint was previously researched as a possible institutional off-ramp candidate. Country support or documentation is not account approval and does not establish that the owner, XGuard, or a particular bank account is eligible. A production provider must independently approve the account holder and issue scoped credentials before any automated bank payout can be activated.
+
+The current mainnet treasury receiving path can function without a bank payout connector because earned funds can remain in the configured crypto treasury. That does **not** resolve regulatory classification, tax obligations, exchange terms, or owner-distributable accounting.
 
 ## Current status
 
-`OWNER PAYOUT: EXTERNAL_BLOCKER`. No destination details are stored in this repository. The policy engine and atomic payout ledger are tested, but no connector can submit a transfer. XGuard can run testnet, routing, diagnostics, and accounting without an off-ramp; mainnet and automated payout remain disabled.
+- **Base USDC treasury receipt:** technically live.
+- **Merchant prepaid liability accounting:** implemented.
+- **Earned-fee finality boundary:** implemented.
+- **Automatic bank/off-ramp owner payout:** not active.
+- **Owner distributable profit:** must be computed from reconciled earned revenue minus liabilities, expenses, pending amounts, and reserve; it cannot be inferred from the exchange balance.
