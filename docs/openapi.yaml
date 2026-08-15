@@ -1,23 +1,27 @@
 openapi: 3.1.0
 info:
-  title: XGuard Testnet API
-  version: 0.1.0-alpha.0
+  title: XGuard Mainnet API
+  version: 0.2.0-mainnet-rc
   description: >-
-    Testnet-only x402 v2 facilitator-compatible safety and routing gateway.
-    Base Sepolia is non-billable and mainnet is hard-disabled.
+    Live x402 v2 facilitator-compatible gateway for Base mainnet native USDC.
+    XGuard charges $0.002 only after a successful settlement reaches independent
+    finalized on-chain confirmation. Merchant top-ups are prepaid service balances,
+    not earned revenue.
   license:
     name: Apache-2.0
 servers:
-  - url: https://xguard-testnet.maqamapp.workers.dev
-    description: Live Base Sepolia testnet Worker
+  - url: https://xguard-mainnet.maqamapp.workers.dev
+    description: Live Base mainnet Worker
 tags:
   - name: Operations
+  - name: Merchants
+  - name: Billing
   - name: x402
 paths:
   /:
     get:
       tags: [Operations]
-      summary: Discover the release and safety boundary
+      summary: Discover release, network, pricing, and endpoints
       responses:
         "200":
           description: Gateway metadata
@@ -36,24 +40,24 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, mode, version]
+                required: [status, mode, network]
                 properties:
                   status: { const: ok }
-                  mode: { const: testnet-only }
-                  version: { type: string }
+                  mode: { const: mainnet }
+                  network: { const: "eip155:8453" }
   /readyz:
     get:
       tags: [Operations]
-      summary: Check D1 and measured facilitator readiness
+      summary: Check D1 and fresh facilitator readiness
       responses:
         "200":
-          description: At least one fresh compatible route exists
+          description: Mainnet is ready
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadinessResponse"
         "503":
-          description: Database or measured-route readiness failed
+          description: Database or facilitator readiness failed
           content:
             application/json:
               schema:
@@ -61,7 +65,7 @@ paths:
   /supported:
     get:
       tags: [x402]
-      summary: Return measured x402 v2 capabilities
+      summary: Return measured x402 v2 mainnet capability
       responses:
         "200":
           description: Facilitator capability response
@@ -72,18 +76,108 @@ paths:
   /status:
     get:
       tags: [Operations]
-      summary: Return routing and reconciliation status
+      summary: Return gateway, facilitator, and reconciliation status
       responses:
         "200":
-          description: Current measured status
+          description: Current mainnet status
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
+  /v1/register:
+    post:
+      tags: [Merchants]
+      summary: Register a merchant and create a bearer API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+      responses:
+        "201":
+          description: Merchant created; apiKey is returned once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+        "400": { description: Invalid registration request }
+        "429": { description: Rate limit exceeded }
+  /v1/balance:
+    get:
+      tags: [Billing]
+      summary: Return merchant prepaid service balance
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BalanceResponse"
+        "401": { description: Invalid or missing merchant API key }
+  /v1/topups/intents:
+    post:
+      tags: [Billing]
+      summary: Create a one-time exact Base USDC top-up intent
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amountUsd]
+              properties:
+                amountUsd:
+                  type: string
+                  pattern: "^[0-9]+(?:\\.[0-9]{1,6})?$"
+      responses:
+        "201":
+          description: One-time deposit intent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopUpIntentResponse"
+        "400": { description: Invalid amount }
+        "401": { description: Invalid or missing merchant API key }
+  /v1/topups/claim:
+    post:
+      tags: [Billing]
+      summary: Verify and claim a finalized matching Base USDC deposit
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [claimToken, transactionHash]
+              properties:
+                claimToken: { type: string, minLength: 1 }
+                transactionHash:
+                  type: string
+                  pattern: "^0x[0-9a-fA-F]{64}$"
+      responses:
+        "200":
+          description: Deposit claimed and service balance credited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BalanceResponse"
+        "400": { description: Invalid, mismatched, unfinalized, expired, or already-claimed deposit }
+        "401": { description: Invalid or missing merchant API key }
   /verify:
     post:
       tags: [x402]
-      summary: Verify an x402 v2 authorization without submitting value
+      summary: Verify an x402 v2 Base authorization without submitting value
+      security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -92,25 +186,23 @@ paths:
               $ref: "#/components/schemas/FacilitatorRequest"
       responses:
         "200":
-          description: Verification result, including definitive invalid results
+          description: Verification result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/VerifyResponse"
-        "400":
-          description: Malformed or invalid request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VerifyResponse"
+                type: object
+                additionalProperties: true
+        "400": { description: Malformed or unsupported payment request }
+        "401": { description: Invalid or missing merchant API key }
         "413": { description: Request body exceeded the hard limit }
         "415": { description: Content-Type was not application/json }
         "429": { description: Rate or concurrency limit exceeded }
-        "503": { description: Unsupported network or unavailable safe route }
+        "503": { description: No fresh safe facilitator route }
   /settle:
     post:
       tags: [x402]
-      summary: Settle once through the selected Base Sepolia facilitator
+      summary: Reserve the XGuard fee and settle once through the selected Base route
+      security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content:
@@ -119,68 +211,83 @@ paths:
               $ref: "#/components/schemas/FacilitatorRequest"
       responses:
         "200":
-          description: Final settlement result or a cached final result
+          description: Downstream settlement result; XGuard fee may still be pending independent finality
           headers:
             X-XGuard-Replayed:
               schema: { type: boolean }
-              description: Whether this response came from the durable replay cache
             X-XGuard-Payment-Key:
               schema: { type: string }
-              description: Immutable logical authorization identity
+            X-XGuard-Fee-State:
+              schema: { type: string }
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SettleResponse"
-        "400": { description: Malformed or invalid request }
-        "409":
-          {
-            description: Conflicting authorization binding or settlement already in progress,
-          }
+                type: object
+                additionalProperties: true
+        "400": { description: Malformed or unsupported payment request }
+        "401": { description: Invalid or missing merchant API key }
+        "402": { description: Insufficient XGuard prepaid service balance }
+        "409": { description: Conflicting binding or settlement already in progress }
         "413": { description: Request body exceeded the hard limit }
         "415": { description: Content-Type was not application/json }
         "429": { description: Rate or concurrency limit exceeded }
-        "503":
-          description: Unsupported network, unavailable route, or ambiguous post-submit outcome
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SettleResponse"
+        "503": { description: Unavailable route or ambiguous post-submit outcome }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: XGuard merchant API key
   schemas:
     RootResponse:
       type: object
-      required: [name, version, protocol, mode, price, endpoints]
+      required: [name, version, protocol, mode, network, asset, price, billing, endpoints]
       properties:
         name: { const: XGuard }
         description: { type: string }
         version: { type: string }
         protocol: { const: x402-v2 }
-        mode: { const: testnet-only }
+        mode: { const: mainnet }
+        network:
+          type: object
+          required: [caip2, name]
+          properties:
+            caip2: { const: "eip155:8453" }
+            name: { const: Base }
+        asset:
+          type: object
+          required: [symbol, contract]
+          properties:
+            symbol: { const: USDC }
+            contract: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
         price:
           type: object
-          required: [amount, currency, event, testnetCharged]
+          required: [amount, currency, event]
           properties:
             amount: { const: "0.002" }
             currency: { const: USD }
             event: { const: successful_billable_settlement }
-            testnetCharged: { const: false }
+        billing:
+          type: object
+          additionalProperties: true
         endpoints:
           type: object
           additionalProperties: { type: string }
     ReadinessResponse:
       type: object
-      required: [status, mainnet]
+      required: [status, mainnet, facilitator]
       properties:
         status: { enum: [ready, not_ready] }
-        mainnet: { const: false }
-        measuredRoutes: { type: integer, minimum: 0 }
+        mainnet: { const: true }
+        facilitator: { enum: [operational, unavailable] }
+        checkedAt: { type: [string, "null"], format: date-time }
     CapabilityKind:
       type: object
       required: [x402Version, scheme, network]
       properties:
         x402Version: { const: 2 }
         scheme: { const: exact }
-        network: { const: "eip155:84532" }
+        network: { const: "eip155:8453" }
         extra:
           type: object
           additionalProperties: true
@@ -196,42 +303,60 @@ components:
           items: { type: string }
         signers:
           type: object
-          additionalProperties:
-            type: array
-            items: { type: string }
+          additionalProperties: true
     StatusResponse:
       type: object
-      required:
-        [
-          gateway,
-          verification,
-          settlement,
-          mode,
-          facilitators,
-          openReconciliationCases,
-          measuredAt,
-        ]
+      required: [gateway, mode, network, facilitator, openReconciliationCases, feeMicroUsd, downstreamCostMicroUsd, contributionMicroUsd]
       properties:
         gateway: { const: operational }
-        verification: { enum: [operational, degraded] }
-        settlement: { enum: [operational, degraded] }
-        mode: { const: testnet-only }
-        facilitators:
-          type: array
-          items:
-            type: object
-            required: [facilitator_id, state, checked_at]
-            properties:
-              facilitator_id: { type: string }
-              state:
-                {
-                  enum:
-                    [HEALTHY, DEGRADED, OPEN, HALF_OPEN, QUARANTINED, DISABLED],
-                }
-              latency_ms: { type: [integer, "null"], minimum: 0 }
-              checked_at: { type: string, format: date-time }
+        mode: { const: mainnet }
+        network: { const: "eip155:8453" }
+        facilitator: { enum: [HEALTHY, DEGRADED, OPEN, HALF_OPEN, QUARANTINED, DISABLED] }
+        facilitatorLatencyMs: { type: [integer, "null"], minimum: 0 }
+        facilitatorCheckedAt: { type: [string, "null"], format: date-time }
         openReconciliationCases: { type: integer, minimum: 0 }
-        measuredAt: { type: string, format: date-time }
+        feeMicroUsd: { type: integer, minimum: 0 }
+        downstreamCostMicroUsd: { type: integer, minimum: 0 }
+        contributionMicroUsd: { type: integer }
+    Merchant:
+      type: object
+      required: [merchantId, name]
+      properties:
+        merchantId: { type: string }
+        name: { type: string }
+    RegisterResponse:
+      type: object
+      required: [merchant, apiKey, treasury]
+      properties:
+        merchant: { $ref: "#/components/schemas/Merchant" }
+        apiKey: { type: string, pattern: "^xg_live_" }
+        treasury:
+          type: object
+          required: [network, asset, address]
+          properties:
+            network: { const: "eip155:8453" }
+            asset: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
+            address: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
+    BalanceResponse:
+      type: object
+      required: [merchantId, availableMicroUsd, heldMicroUsd]
+      properties:
+        merchantId: { type: string }
+        availableMicroUsd: { type: integer, minimum: 0 }
+        heldMicroUsd: { type: integer, minimum: 0 }
+    TopUpIntentResponse:
+      type: object
+      required: [intentId, claimToken, network, asset, treasuryAddress, requestedMicroUsd, exactDepositMicroUsd, exactDepositUsdc, expiresAt]
+      properties:
+        intentId: { type: string }
+        claimToken: { type: string }
+        network: { const: "eip155:8453" }
+        asset: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
+        treasuryAddress: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
+        requestedMicroUsd: { type: integer, minimum: 1 }
+        exactDepositMicroUsd: { type: integer, minimum: 1 }
+        exactDepositUsdc: { type: string }
+        expiresAt: { type: string, format: date-time }
     FacilitatorRequest:
       type: object
       required: [x402Version, paymentPayload, paymentRequirements]
@@ -240,52 +365,7 @@ components:
         x402Version: { const: 2 }
         paymentPayload:
           type: object
-          required: [x402Version, accepted, payload]
           additionalProperties: true
-          properties:
-            x402Version: { const: 2 }
-            resource:
-              type: object
-              additionalProperties: true
-            accepted:
-              $ref: "#/components/schemas/PaymentRequirements"
-            payload:
-              type: object
-              additionalProperties: true
-            extensions:
-              type: object
-              additionalProperties: true
         paymentRequirements:
-          $ref: "#/components/schemas/PaymentRequirements"
-    PaymentRequirements:
-      type: object
-      required: [scheme, network, asset, amount, payTo, maxTimeoutSeconds]
-      additionalProperties: true
-      properties:
-        scheme: { const: exact }
-        network: { const: "eip155:84532" }
-        asset: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
-        amount: { type: string, pattern: "^[0-9]+$" }
-        payTo: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
-        maxTimeoutSeconds: { type: integer, minimum: 1 }
-        extra:
           type: object
           additionalProperties: true
-    VerifyResponse:
-      type: object
-      required: [isValid]
-      properties:
-        isValid: { type: boolean }
-        invalidReason: { type: string }
-        invalidMessage: { type: string }
-        payer: { type: string }
-    SettleResponse:
-      type: object
-      required: [success, transaction, network]
-      properties:
-        success: { type: boolean }
-        transaction: { type: string }
-        network: { type: string }
-        payer: { type: string }
-        errorReason: { type: string }
-        errorMessage: { type: string }
