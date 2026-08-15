@@ -22,6 +22,33 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm ci --ignore-scripts
+      - name: Persist configured downstream cost on finalized settlements
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("apps/worker/src/mainnet.ts")
+          source = path.read_text()
+          old = '''      await env.DB.prepare(
+                "UPDATE settlement_projection SET state='SETTLED',fee_micro_usd=?,recorded_at=? WHERE logical_payment_key=?",
+              )
+                .bind(feeMicroUsd(env), now, job.logical_payment_key)
+                .run();'''
+          new = '''      await env.DB.prepare(
+                "UPDATE settlement_projection SET state='SETTLED',fee_micro_usd=?,downstream_cost_micro_usd=?,recorded_at=? WHERE logical_payment_key=?",
+              )
+                .bind(
+                  feeMicroUsd(env),
+                  downstreamCostMicroUsd(env),
+                  now,
+                  job.logical_payment_key,
+                )
+                .run();'''
+          if old in source:
+              path.write_text(source.replace(old, new, 1))
+          elif new not in source:
+              raise SystemExit("finalized settlement projection pattern not found")
+          PY
       - name: Format changed mainnet hardening files
         run: |
           npx prettier --write \
@@ -32,17 +59,19 @@ jobs:
             scripts/check-docs.mjs \
             docs/FACILITATORS.md \
             apps/worker/wrangler.mainnet.jsonc \
+            apps/worker/src/mainnet.ts \
             scripts/smoke-mainnet.mjs \
+            tests/mainnet-economics-source.test.ts \
             package.json \
             .github/workflows/live-monitor.yml \
             UNIT_ECONOMICS.md \
             DEPLOYMENT.md \
             PAYOUTS.md \
             docs/EXTERNAL_BLOCKERS.md
-      - name: Commit formatting when needed
+      - name: Commit hardening when needed
         run: |
           if git diff --quiet; then
-            echo "Already formatted."
+            echo "Already hardened and formatted."
             exit 0
           fi
           git config user.name "github-actions[bot]"
@@ -55,12 +84,14 @@ jobs:
             scripts/check-docs.mjs \
             docs/FACILITATORS.md \
             apps/worker/wrangler.mainnet.jsonc \
+            apps/worker/src/mainnet.ts \
             scripts/smoke-mainnet.mjs \
+            tests/mainnet-economics-source.test.ts \
             package.json \
             .github/workflows/live-monitor.yml \
             UNIT_ECONOMICS.md \
             DEPLOYMENT.md \
             PAYOUTS.md \
             docs/EXTERNAL_BLOCKERS.md
-          git commit -m "Format mainnet hardening files"
+          git commit -m "Persist mainnet downstream settlement cost"
           git push origin HEAD:${{ github.head_ref || github.ref_name }}
