@@ -1,5 +1,6 @@
 const baseUrl = new URL(
-  process.env.XGUARD_MAINNET_URL ?? "https://xguard-mainnet.maqamapp.workers.dev",
+  process.env.XGUARD_MAINNET_URL ??
+    "https://xguard-mainnet.maqamapp.workers.dev",
 );
 
 async function json(path, init = {}) {
@@ -19,9 +20,15 @@ function assert(condition, message) {
 const root = await json("/");
 assert(root.response.status === 200, "mainnet root endpoint is unavailable");
 assert(root.body.mode === "mainnet", "root is not mainnet");
-assert(root.body.network?.caip2 === "eip155:8453", "root network is not Base mainnet");
+assert(
+  root.body.network?.caip2 === "eip155:8453",
+  "root network is not Base mainnet",
+);
 assert(root.body.asset?.symbol === "USDC", "root asset is not USDC");
-assert(root.body.price?.amount === "0.002", "mainnet service fee changed unexpectedly");
+assert(
+  root.body.price?.amount === "0.002",
+  "mainnet service fee changed unexpectedly",
+);
 assert(
   root.body.billing?.model === "merchant_prepaid_service_balance",
   "mainnet billing model changed unexpectedly",
@@ -57,12 +64,19 @@ assert(
 
 const status = await json("/status");
 assert(status.response.status === 200, "mainnet status endpoint failed");
-assert(status.body.gateway === "operational", "mainnet gateway is not operational");
+assert(
+  status.body.gateway === "operational",
+  "mainnet gateway is not operational",
+);
 assert(status.body.mode === "mainnet", "mainnet status mode changed");
 assert(status.body.network === "eip155:8453", "mainnet status network changed");
-assert(status.body.facilitator === "HEALTHY", "mainnet facilitator is not healthy");
 assert(
-  Number.isInteger(status.body.feeMicroUsd) && status.body.feeMicroUsd === 2_000,
+  status.body.facilitator === "HEALTHY",
+  "mainnet facilitator is not healthy",
+);
+assert(
+  Number.isInteger(status.body.feeMicroUsd) &&
+    status.body.feeMicroUsd === 2_000,
   "mainnet fee configuration changed unexpectedly",
 );
 assert(

@@ -171,7 +171,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BalanceResponse"
-        "400": { description: Invalid, mismatched, unfinalized, expired, or already-claimed deposit }
+        "400":
+          {
+            description: Invalid,
+            mismatched,
+            unfinalized,
+            expired,
+            or already-claimed deposit,
+          }
         "401": { description: Invalid or missing merchant API key }
   /verify:
     post:
@@ -227,11 +234,13 @@ paths:
         "400": { description: Malformed or unsupported payment request }
         "401": { description: Invalid or missing merchant API key }
         "402": { description: Insufficient XGuard prepaid service balance }
-        "409": { description: Conflicting binding or settlement already in progress }
+        "409":
+          { description: Conflicting binding or settlement already in progress }
         "413": { description: Request body exceeded the hard limit }
         "415": { description: Content-Type was not application/json }
         "429": { description: Rate or concurrency limit exceeded }
-        "503": { description: Unavailable route or ambiguous post-submit outcome }
+        "503":
+          { description: Unavailable route or ambiguous post-submit outcome }
 components:
   securitySchemes:
     bearerAuth:
@@ -241,7 +250,18 @@ components:
   schemas:
     RootResponse:
       type: object
-      required: [name, version, protocol, mode, network, asset, price, billing, endpoints]
+      required:
+        [
+          name,
+          version,
+          protocol,
+          mode,
+          network,
+          asset,
+          price,
+          billing,
+          endpoints,
+        ]
       properties:
         name: { const: XGuard }
         description: { type: string }
@@ -306,12 +326,23 @@ components:
           additionalProperties: true
     StatusResponse:
       type: object
-      required: [gateway, mode, network, facilitator, openReconciliationCases, feeMicroUsd, downstreamCostMicroUsd, contributionMicroUsd]
+      required:
+        [
+          gateway,
+          mode,
+          network,
+          facilitator,
+          openReconciliationCases,
+          feeMicroUsd,
+          downstreamCostMicroUsd,
+          contributionMicroUsd,
+        ]
       properties:
         gateway: { const: operational }
         mode: { const: mainnet }
         network: { const: "eip155:8453" }
-        facilitator: { enum: [HEALTHY, DEGRADED, OPEN, HALF_OPEN, QUARANTINED, DISABLED] }
+        facilitator:
+          { enum: [HEALTHY, DEGRADED, OPEN, HALF_OPEN, QUARANTINED, DISABLED] }
         facilitatorLatencyMs: { type: [integer, "null"], minimum: 0 }
         facilitatorCheckedAt: { type: [string, "null"], format: date-time }
         openReconciliationCases: { type: integer, minimum: 0 }
@@ -346,7 +377,18 @@ components:
         heldMicroUsd: { type: integer, minimum: 0 }
     TopUpIntentResponse:
       type: object
-      required: [intentId, claimToken, network, asset, treasuryAddress, requestedMicroUsd, exactDepositMicroUsd, exactDepositUsdc, expiresAt]
+      required:
+        [
+          intentId,
+          claimToken,
+          network,
+          asset,
+          treasuryAddress,
+          requestedMicroUsd,
+          exactDepositMicroUsd,
+          exactDepositUsdc,
+          expiresAt,
+        ]
       properties:
         intentId: { type: string }
         claimToken: { type: string }

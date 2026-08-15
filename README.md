@@ -46,7 +46,12 @@ const auth = async () => {
   const headers = {
     Authorization: `Bearer ${process.env.XGUARD_API_KEY!}`,
   };
-  return { verify: headers, settle: headers, supported: headers, bazaar: headers };
+  return {
+    verify: headers,
+    settle: headers,
+    supported: headers,
+    bazaar: headers,
+  };
 };
 
 const facilitator = new HTTPFacilitatorClient({

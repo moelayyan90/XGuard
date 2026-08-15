@@ -24,7 +24,7 @@ A technically live mainnet endpoint is **not** evidence that the legal/provider/
 
 ### Why this remains unresolved
 
-Jordan's official Securities Commission publishes Law No. 14 of 2025, *Regulating the Dealing at Virtual Assets*, and Regulation No. 94 of 2025 for licensing virtual-asset service providers.
+Jordan's official Securities Commission publishes Law No. 14 of 2025, _Regulating the Dealing at Virtual Assets_, and Regulation No. 94 of 2025 for licensing virtual-asset service providers.
 
 Official law page: `https://www.jsc.gov.jo/page/ar/قانون_تنظيم_التعامل_بالأصول_الافتراضية`
 

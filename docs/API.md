@@ -8,26 +8,26 @@ The machine-readable mainnet contract is [openapi.yaml](openapi.yaml). Current o
 
 ## Public mainnet endpoints
 
-| Method | Path         | Purpose |
-| ------ | ------------ | ------- |
-| GET | `/` | Release, network, pricing, billing model, and endpoint discovery |
-| GET | `/healthz` | Worker liveness |
-| GET | `/readyz` | D1 and fresh downstream facilitator readiness |
-| GET | `/supported` | Measured x402 v2 mainnet capabilities |
-| GET | `/status` | Gateway/facilitator health and open reconciliation count |
-| POST | `/v1/register` | Create a merchant and return a one-time API key |
+| Method | Path           | Purpose                                                          |
+| ------ | -------------- | ---------------------------------------------------------------- |
+| GET    | `/`            | Release, network, pricing, billing model, and endpoint discovery |
+| GET    | `/healthz`     | Worker liveness                                                  |
+| GET    | `/readyz`      | D1 and fresh downstream facilitator readiness                    |
+| GET    | `/supported`   | Measured x402 v2 mainnet capabilities                            |
+| GET    | `/status`      | Gateway/facilitator health and open reconciliation count         |
+| POST   | `/v1/register` | Create a merchant and return a one-time API key                  |
 
 ## Authenticated merchant endpoints
 
 Use `Authorization: Bearer <XGUARD_API_KEY>`.
 
-| Method | Path | Purpose |
-| ------ | ---- | ------- |
-| GET | `/v1/balance` | Return available and held prepaid service balance |
-| POST | `/v1/topups/intents` | Create a one-time exact native-USDC Base deposit intent |
-| POST | `/v1/topups/claim` | Verify finality of a matching Base deposit and credit the merchant balance |
-| POST | `/verify` | Validate a complete x402 v2 payment request without submitting value |
-| POST | `/settle` | Reserve the XGuard fee and submit one safe settlement route |
+| Method | Path                 | Purpose                                                                    |
+| ------ | -------------------- | -------------------------------------------------------------------------- |
+| GET    | `/v1/balance`        | Return available and held prepaid service balance                          |
+| POST   | `/v1/topups/intents` | Create a one-time exact native-USDC Base deposit intent                    |
+| POST   | `/v1/topups/claim`   | Verify finality of a matching Base deposit and credit the merchant balance |
+| POST   | `/verify`            | Validate a complete x402 v2 payment request without submitting value       |
+| POST   | `/settle`            | Reserve the XGuard fee and submit one safe settlement route                |
 
 `POST` requests use `Content-Type: application/json`. Mainnet `/verify` and `/settle` require the official v2 facilitator envelope containing `x402Version`, `paymentPayload`, and `paymentRequirements`.
 
