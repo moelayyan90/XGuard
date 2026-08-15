@@ -12,17 +12,15 @@
 
 ### Live production
 
-| | |
-|---|---|
-| Mainnet endpoint | `https://xguard-mainnet.maqamapp.workers.dev` |
-| Protocol | x402 v2 |
-| Network | Base mainnet (`eip155:8453`) |
-| Asset | Native USDC |
-| Scheme | `exact` / EIP-3009 authorization |
-| XGuard fee | **$0.002 per successful billable settlement** |
-| Subscription | **None** |
-| Current downstream route | xpay |
-| Configured downstream facilitator fee | **$0** |
+- **Mainnet endpoint:** `https://xguard-mainnet.maqamapp.workers.dev`
+- **Protocol:** x402 v2
+- **Network:** Base mainnet (`eip155:8453`)
+- **Asset:** Native USDC
+- **Scheme:** `exact` / EIP-3009 authorization
+- **XGuard fee:** **$0.002 per successful billable settlement**
+- **Subscription:** **None**
+- **Current downstream route:** xpay
+- **Configured downstream facilitator fee:** **$0**
 
 The live service is continuously checked by CI, CodeQL, guarded Cloudflare deployment, readiness probes, and live Mainnet monitoring.
 
