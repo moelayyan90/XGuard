@@ -18,7 +18,7 @@
   "vars": {
     "BASE_RPC_URL": "https://mainnet.base.org",
     "XGUARD_FEE_MICRO_USD": "2000",
-    "PAYAI_DOWNSTREAM_COST_MICRO_USD": "1000",
+    "PAYAI_DOWNSTREAM_COST_MICRO_USD": "0",
     "PAYMENT_IDENTIFIER_TTL_SECONDS": "86400",
     "HEALTH_MAX_AGE_SECONDS": "300",
   },
@@ -26,12 +26,12 @@
     {
       "name": "REQUEST_RATE_LIMITER",
       "namespace_id": "2001",
-      "simple": { "limit": 60, "period": 60 },
+      "simple": { "limit": 45, "period": 60 },
     },
     {
       "name": "GLOBAL_RATE_LIMITER",
       "namespace_id": "2002",
-      "simple": { "limit": 600, "period": 60 },
+      "simple": { "limit": 45, "period": 60 },
     },
   ],
   "durable_objects": {
