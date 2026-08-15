@@ -72,7 +72,9 @@ jobs:
             npx wrangler d1 create xguard-mainnet
           fi
 
-          CONFIG_PATH="${RUNNER_TEMP}/xguard-mainnet-wrangler.jsonc"
+          # Keep the resolved config beside the worker source so Wrangler resolves
+          # relative entrypoint and migrations paths against apps/worker.
+          CONFIG_PATH="${GITHUB_WORKSPACE}/apps/worker/wrangler.mainnet.resolved.jsonc"
           node scripts/resolve-cloudflare-config.mjs \
             --template apps/worker/wrangler.mainnet.jsonc \
             --output "${CONFIG_PATH}" \
