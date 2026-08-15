@@ -18,7 +18,7 @@
   "vars": {
     "BASE_RPC_URL": "https://mainnet.base.org",
     "XGUARD_FEE_MICRO_USD": "2000",
-    "PAYAI_DOWNSTREAM_COST_MICRO_USD": "0",
+    "PAYAI_DOWNSTREAM_COST_MICRO_USD": "1000",
     "PAYMENT_IDENTIFIER_TTL_SECONDS": "86400",
     "HEALTH_MAX_AGE_SECONDS": "300",
   },
