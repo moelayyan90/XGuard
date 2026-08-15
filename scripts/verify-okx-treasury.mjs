@@ -19,7 +19,9 @@ if (!/^0x[0-9a-fA-F]{40}$/.test(treasury)) {
 }
 
 const baseUrl = resolveOkxBaseUrl(process.env.OKX_API_BASE_URL);
-const depositAddresses = await okxGet("/api/v5/asset/deposit-address?ccy=USDC");
+const depositAddresses = await okxGet(
+  "/api/v5/asset/deposit-address?ccy=USDC",
+);
 const baseAddresses = depositAddresses.filter(
   (row) =>
     row &&
