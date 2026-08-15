@@ -1,4 +1,4 @@
-name: Live testnet monitor
+name: Live XGuard monitor
 
 on:
   push:
@@ -12,11 +12,21 @@ permissions:
   issues: write
 
 concurrency:
-  group: live-testnet-monitor
+  group: live-xguard-monitor
   cancel-in-progress: true
 
 jobs:
   smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: testnet
+            command: npm run smoke:live
+            description: Base Sepolia non-billable gateway
+          - target: mainnet
+            command: npm run smoke:mainnet
+            description: Base mainnet billable gateway
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -28,15 +38,20 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm ci --ignore-scripts
-      - name: Run live smoke checks
+      - name: Run live ${{ matrix.target }} smoke checks
         id: smoke
         continue-on-error: true
-        run: npm run smoke:live
+        run: ${{ matrix.command }}
       - name: Record monitor state
         uses: actions/github-script@v8
+        env:
+          MONITOR_TARGET: ${{ matrix.target }}
+          MONITOR_DESCRIPTION: ${{ matrix.description }}
+          MONITOR_OUTCOME: ${{ steps.smoke.outcome }}
         with:
           script: |
-            const title = "[monitor] XGuard live testnet smoke failed";
+            const target = process.env.MONITOR_TARGET;
+            const title = `[monitor] XGuard live ${target} smoke failed`;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
@@ -47,16 +62,17 @@ jobs:
               per_page: 100,
             });
             const existing = openIssues.find((issue) => issue.title === title);
-            const failed = "${{ steps.smoke.outcome }}" !== "success";
+            const failed = process.env.MONITOR_OUTCOME !== "success";
 
             if (failed) {
               const body = [
-                "The automated public testnet smoke check failed.",
+                `The automated public ${target} smoke check failed.`,
                 "",
+                `Target: ${process.env.MONITOR_DESCRIPTION}`,
                 `Workflow run: ${runUrl}`,
                 `Commit: ${context.sha}`,
                 "",
-                "The smoke check performs no payment. It verifies health, readiness, measured x402 capability, zero open reconciliation cases, malformed-input rejection, and the mainnet hard gate.",
+                "The smoke check makes no payment. Mainnet checks liveness, readiness, Base x402 capability, facilitator health, unit-economics configuration, and fail-closed merchant authentication. Testnet checks its non-billable safety boundary.",
               ].join("\n");
               if (existing) {
                 await github.rest.issues.createComment({
