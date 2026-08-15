@@ -4,31 +4,18 @@ on:
   push:
     branches: [main]
 permissions:
-  contents: write
+  contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-          persist-credentials: true
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Apply Prettier 3.9.6 formatting
-        run: |
-          npx prettier --write packages/core/src/router.ts packages/core/src/store.ts
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add packages/core/src/router.ts packages/core/src/store.ts
-            git commit -m "Format core sources with Prettier 3.9.6"
-            git push origin HEAD:${{ github.head_ref || github.ref_name }}
-          fi
       - run: npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
