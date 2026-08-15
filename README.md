@@ -87,7 +87,7 @@ XGuard charges only after an eligible settlement succeeds and independent Base f
 
 XGuard does **not** bill malformed requests, failed verification, declined or failed settlements, ambiguous outcomes, duplicate retries representing the same payment, health checks, or testnet traffic.
 
-Merchant top-ups are customer prepaid liabilities, not revenue. The `$0.002` becomes gross XGuard service revenue only at the earned-finality boundary. Operating costs, liabilities, reserves, and any other expenses remain separate from owner-distributable profit.
+Merchant top-ups are customer prepayments, not revenue. The `$0.002` becomes gross XGuard service revenue only at the earned-finality boundary. Operating costs, liabilities, reserves, and any other expenses remain separate from owner-distributable profit.
 
 ## Downstream routing
 
