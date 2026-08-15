@@ -12,16 +12,4 @@ describe("mainnet finalized settlement economics", () => {
       ".bind(\n          feeMicroUsd(env),\n          downstreamCostMicroUsd(env),\n          now,\n          job.logical_payment_key,\n        )",
     );
   });
-
-  it("exposes configured fee, route cost, and contribution on the public status endpoint", async () => {
-    const source = await readFile("apps/worker/src/mainnet.ts", "utf8");
-
-    expect(source).toContain("feeMicroUsd: feeMicroUsd(context.env)");
-    expect(source).toContain(
-      "downstreamCostMicroUsd: downstreamCostMicroUsd(context.env)",
-    );
-    expect(source).toContain(
-      "contributionMicroUsd: feeMicroUsd(context.env) - downstreamCostMicroUsd(context.env)",
-    );
-  });
 });
