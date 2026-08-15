@@ -26,28 +26,28 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path("apps/worker/src/mainnet.ts")
           source = path.read_text()
-          old = '''      await env.DB.prepare(
-                "UPDATE settlement_projection SET state='SETTLED',fee_micro_usd=?,recorded_at=? WHERE logical_payment_key=?",
+          old_sql = "UPDATE settlement_projection SET state='SETTLED',fee_micro_usd=?,recorded_at=? WHERE logical_payment_key=?"
+          new_sql = "UPDATE settlement_projection SET state='SETTLED',fee_micro_usd=?,downstream_cost_micro_usd=?,recorded_at=? WHERE logical_payment_key=?"
+
+          if new_sql not in source:
+              if old_sql not in source:
+                  raise SystemExit("finalized settlement SQL not found")
+              source = source.replace(old_sql, new_sql, 1)
+              pattern = re.compile(
+                  r"\.bind\(feeMicroUsd\(env\),\s*now,\s*job\.logical_payment_key\)\s*\.run\(\);",
+                  re.MULTILINE,
               )
-                .bind(feeMicroUsd(env), now, job.logical_payment_key)
-                .run();'''
-          new = '''      await env.DB.prepare(
-                "UPDATE settlement_projection SET state='SETTLED',fee_micro_usd=?,downstream_cost_micro_usd=?,recorded_at=? WHERE logical_payment_key=?",
-              )
-                .bind(
-                  feeMicroUsd(env),
-                  downstreamCostMicroUsd(env),
-                  now,
-                  job.logical_payment_key,
-                )
-                .run();'''
-          if old in source:
-              path.write_text(source.replace(old, new, 1))
-          elif new not in source:
-              raise SystemExit("finalized settlement projection pattern not found")
+              replacement = ".bind(\n        feeMicroUsd(env),\n        downstreamCostMicroUsd(env),\n        now,\n        job.logical_payment_key,\n      )\n      .run();"
+              source, count = pattern.subn(replacement, source, count=1)
+              if count != 1:
+                  raise SystemExit("finalized settlement bind not found")
+              path.write_text(source)
+          elif "downstreamCostMicroUsd(env)" not in source:
+              raise SystemExit("downstream cost SQL exists without its bind")
           PY
       - name: Format changed mainnet hardening files
         run: |
