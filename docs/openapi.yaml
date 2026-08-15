@@ -76,7 +76,7 @@ paths:
   /status:
     get:
       tags: [Operations]
-      summary: Return live gateway, accounting, and route-economics status
+      summary: Return live gateway and accounting status
       responses:
         "200":
           description: Current mainnet status
@@ -305,9 +305,6 @@ components:
         - openReconciliationCases
         - successfulBillableSettlements
         - earnedMicroUsd
-        - feeMicroUsd
-        - downstreamCostMicroUsd
-        - contributionMicroUsd
         - measuredAt
       properties:
         gateway: { const: operational }
@@ -318,9 +315,6 @@ components:
         openReconciliationCases: { type: integer, minimum: 0 }
         successfulBillableSettlements: { type: integer, minimum: 0 }
         earnedMicroUsd: { type: integer, minimum: 0 }
-        feeMicroUsd: { type: integer, minimum: 1 }
-        downstreamCostMicroUsd: { type: integer, minimum: 0 }
-        contributionMicroUsd: { type: integer }
         measuredAt: { type: string, format: date-time }
     Merchant:
       type: object
