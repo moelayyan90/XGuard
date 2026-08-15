@@ -76,7 +76,7 @@ paths:
   /status:
     get:
       tags: [Operations]
-      summary: Return gateway, facilitator, and reconciliation status
+      summary: Return live gateway and accounting status
       responses:
         "200":
           description: Current mainnet status
@@ -97,7 +97,7 @@ paths:
               additionalProperties: false
               required: [name]
               properties:
-                name: { type: string, minLength: 1, maxLength: 120 }
+                name: { type: string, minLength: 2, maxLength: 80 }
       responses:
         "201":
           description: Merchant created; apiKey is returned once
@@ -170,7 +170,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BalanceResponse"
+                type: object
+                required: [credited, balance]
+                properties:
+                  credited: { const: true }
+                  balance: { $ref: "#/components/schemas/BalanceResponse" }
         "400":
           {
             description: Invalid,
@@ -251,56 +255,32 @@ components:
     RootResponse:
       type: object
       required:
-        [
-          name,
-          version,
-          protocol,
-          mode,
-          network,
-          asset,
-          price,
-          billing,
-          endpoints,
-        ]
+        [name, version, protocol, mode, network, asset, price, endpoints]
       properties:
         name: { const: XGuard }
-        description: { type: string }
         version: { type: string }
         protocol: { const: x402-v2 }
         mode: { const: mainnet }
-        network:
-          type: object
-          required: [caip2, name]
-          properties:
-            caip2: { const: "eip155:8453" }
-            name: { const: Base }
-        asset:
-          type: object
-          required: [symbol, contract]
-          properties:
-            symbol: { const: USDC }
-            contract: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
+        network: { const: "eip155:8453" }
+        asset: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
         price:
           type: object
-          required: [amount, currency, event]
+          required: [amount, currency, event, model]
           properties:
             amount: { const: "0.002" }
             currency: { const: USD }
             event: { const: successful_billable_settlement }
-        billing:
-          type: object
-          additionalProperties: true
+            model: { const: merchant_prepaid_service_balance }
         endpoints:
           type: object
           additionalProperties: { type: string }
     ReadinessResponse:
       type: object
-      required: [status, mainnet, facilitator]
+      required: [status, mainnet]
       properties:
         status: { enum: [ready, not_ready] }
         mainnet: { const: true }
-        facilitator: { enum: [operational, unavailable] }
-        checkedAt: { type: [string, "null"], format: date-time }
+        facilitator: { enum: [operational, degraded] }
     CapabilityKind:
       type: object
       required: [x402Version, scheme, network]
@@ -327,40 +307,40 @@ components:
     StatusResponse:
       type: object
       required:
-        [
-          gateway,
-          mode,
-          network,
-          facilitator,
-          openReconciliationCases,
-          feeMicroUsd,
-          downstreamCostMicroUsd,
-          contributionMicroUsd,
-        ]
+        - gateway
+        - mode
+        - network
+        - facilitator
+        - pendingFinality
+        - openReconciliationCases
+        - successfulBillableSettlements
+        - earnedMicroUsd
+        - measuredAt
       properties:
         gateway: { const: operational }
         mode: { const: mainnet }
         network: { const: "eip155:8453" }
-        facilitator:
-          { enum: [HEALTHY, DEGRADED, OPEN, HALF_OPEN, QUARANTINED, DISABLED] }
-        facilitatorLatencyMs: { type: [integer, "null"], minimum: 0 }
-        facilitatorCheckedAt: { type: [string, "null"], format: date-time }
+        facilitator: { type: string }
+        pendingFinality: { type: integer, minimum: 0 }
         openReconciliationCases: { type: integer, minimum: 0 }
-        feeMicroUsd: { type: integer, minimum: 0 }
-        downstreamCostMicroUsd: { type: integer, minimum: 0 }
-        contributionMicroUsd: { type: integer }
+        successfulBillableSettlements: { type: integer, minimum: 0 }
+        earnedMicroUsd: { type: integer, minimum: 0 }
+        measuredAt: { type: string, format: date-time }
     Merchant:
       type: object
-      required: [merchantId, name]
+      required: [merchantId, name, availableMicroUsd, heldMicroUsd]
       properties:
         merchantId: { type: string }
         name: { type: string }
+        availableMicroUsd: { type: integer, minimum: 0 }
+        heldMicroUsd: { type: integer, minimum: 0 }
     RegisterResponse:
       type: object
-      required: [merchant, apiKey, treasury]
+      required: [merchant, apiKey, warning, treasury]
       properties:
         merchant: { $ref: "#/components/schemas/Merchant" }
         apiKey: { type: string, pattern: "^xg_live_" }
+        warning: { type: string }
         treasury:
           type: object
           required: [network, asset, address]
@@ -369,36 +349,31 @@ components:
             asset: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
             address: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
     BalanceResponse:
-      type: object
-      required: [merchantId, availableMicroUsd, heldMicroUsd]
-      properties:
-        merchantId: { type: string }
-        availableMicroUsd: { type: integer, minimum: 0 }
-        heldMicroUsd: { type: integer, minimum: 0 }
+      $ref: "#/components/schemas/Merchant"
     TopUpIntentResponse:
       type: object
       required:
-        [
-          intentId,
-          claimToken,
-          network,
-          asset,
-          treasuryAddress,
-          requestedMicroUsd,
-          exactDepositMicroUsd,
-          exactDepositUsdc,
-          expiresAt,
-        ]
+        - intentId
+        - claimToken
+        - requestedMicroUsd
+        - exactDepositMicroUsd
+        - exactDepositUsdc
+        - expiresAtEpoch
+        - network
+        - asset
+        - treasuryAddress
+        - instruction
       properties:
         intentId: { type: string }
         claimToken: { type: string }
+        requestedMicroUsd: { type: integer, minimum: 10000 }
+        exactDepositMicroUsd: { type: integer, minimum: 10001 }
+        exactDepositUsdc: { type: string }
+        expiresAtEpoch: { type: integer, minimum: 1 }
         network: { const: "eip155:8453" }
         asset: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
         treasuryAddress: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
-        requestedMicroUsd: { type: integer, minimum: 1 }
-        exactDepositMicroUsd: { type: integer, minimum: 1 }
-        exactDepositUsdc: { type: string }
-        expiresAt: { type: string, format: date-time }
+        instruction: { type: string }
     FacilitatorRequest:
       type: object
       required: [x402Version, paymentPayload, paymentRequirements]

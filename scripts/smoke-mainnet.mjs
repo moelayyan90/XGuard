@@ -3,6 +3,9 @@ const baseUrl = new URL(
     "https://xguard-mainnet.maqamapp.workers.dev",
 );
 
+const BASE_MAINNET = "eip155:8453";
+const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
 async function json(path, init = {}) {
   const response = await fetch(new URL(path, baseUrl), {
     ...init,
@@ -20,17 +23,14 @@ function assert(condition, message) {
 const root = await json("/");
 assert(root.response.status === 200, "mainnet root endpoint is unavailable");
 assert(root.body.mode === "mainnet", "root is not mainnet");
-assert(
-  root.body.network?.caip2 === "eip155:8453",
-  "root network is not Base mainnet",
-);
-assert(root.body.asset?.symbol === "USDC", "root asset is not USDC");
+assert(root.body.network === BASE_MAINNET, "root network is not Base mainnet");
+assert(root.body.asset === BASE_USDC, "root asset is not native Base USDC");
 assert(
   root.body.price?.amount === "0.002",
   "mainnet service fee changed unexpectedly",
 );
 assert(
-  root.body.billing?.model === "merchant_prepaid_service_balance",
+  root.body.price?.model === "merchant_prepaid_service_balance",
   "mainnet billing model changed unexpectedly",
 );
 
@@ -38,7 +38,7 @@ const health = await json("/healthz");
 assert(health.response.status === 200, "mainnet health check failed");
 assert(health.body.status === "ok", "mainnet health status is not ok");
 assert(health.body.mode === "mainnet", "mainnet health mode changed");
-assert(health.body.network === "eip155:8453", "mainnet health network changed");
+assert(health.body.network === BASE_MAINNET, "mainnet health network changed");
 
 const readiness = await json("/readyz");
 assert(readiness.response.status === 200, "mainnet readiness check failed");
@@ -57,7 +57,7 @@ assert(
       (kind) =>
         kind?.x402Version === 2 &&
         kind?.scheme === "exact" &&
-        kind?.network === "eip155:8453",
+        kind?.network === BASE_MAINNET,
     ),
   "mainnet Base x402 v2 exact capability is missing",
 );
@@ -69,26 +69,25 @@ assert(
   "mainnet gateway is not operational",
 );
 assert(status.body.mode === "mainnet", "mainnet status mode changed");
-assert(status.body.network === "eip155:8453", "mainnet status network changed");
+assert(status.body.network === BASE_MAINNET, "mainnet status network changed");
 assert(
   status.body.facilitator === "HEALTHY",
   "mainnet facilitator is not healthy",
 );
 assert(
-  Number.isInteger(status.body.feeMicroUsd) &&
-    status.body.feeMicroUsd === 2_000,
-  "mainnet fee configuration changed unexpectedly",
+  Number.isInteger(status.body.openReconciliationCases) &&
+    status.body.openReconciliationCases >= 0,
+  "mainnet reconciliation count is invalid",
 );
 assert(
-  Number.isInteger(status.body.downstreamCostMicroUsd) &&
-    status.body.downstreamCostMicroUsd >= 0 &&
-    status.body.downstreamCostMicroUsd < status.body.feeMicroUsd,
-  "mainnet downstream route is economically ineligible",
+  Number.isInteger(status.body.successfulBillableSettlements) &&
+    status.body.successfulBillableSettlements >= 0,
+  "mainnet earned settlement count is invalid",
 );
 assert(
-  status.body.contributionMicroUsd ===
-    status.body.feeMicroUsd - status.body.downstreamCostMicroUsd,
-  "mainnet contribution calculation is inconsistent",
+  Number.isInteger(status.body.earnedMicroUsd) &&
+    status.body.earnedMicroUsd >= 0,
+  "mainnet earned revenue total is invalid",
 );
 
 const unauthorized = await json("/v1/balance");
@@ -105,9 +104,8 @@ console.log(
     mainnet: true,
     network: status.body.network,
     facilitator: status.body.facilitator,
-    feeMicroUsd: status.body.feeMicroUsd,
-    downstreamCostMicroUsd: status.body.downstreamCostMicroUsd,
-    contributionMicroUsd: status.body.contributionMicroUsd,
+    successfulBillableSettlements: status.body.successfulBillableSettlements,
+    earnedMicroUsd: status.body.earnedMicroUsd,
     openReconciliationCases: status.body.openReconciliationCases,
   }),
 );
