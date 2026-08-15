@@ -32,6 +32,7 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run test:worker && npm run security:secrets && npm run quality:no-todos && npm run quality:docs && npm run build",
     "verify:release": "npm run check && npm run security:deps && npm --workspace @xguard/worker run types -- --check && npm --workspace @xguard/worker run build && npm --workspace @xguard/worker run build:mainnet && npm pack --dry-run --workspace @xguard/core && npm pack --dry-run --workspace @xguard/sdk && npm pack --dry-run --workspace xguard",
     "smoke:live": "node scripts/smoke-live.mjs",
+    "smoke:mainnet": "node scripts/smoke-mainnet.mjs",
     "dev": "tsx apps/gateway/src/server.ts",
     "demo": "tsx apps/gateway/src/demo.ts",
     "ops:reconcile": "node scripts/reconcile.mjs",
