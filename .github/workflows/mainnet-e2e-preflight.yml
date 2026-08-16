@@ -1,4 +1,4 @@
-name: Mainnet E2E preflight
+name: Mainnet E2E funding probe
 
 on:
   push:
@@ -16,10 +16,6 @@ jobs:
       OKX_API_SECRET: ${{ secrets.OKX_API_SECRET }}
       OKX_API_PASSPHRASE: ${{ secrets.OKX_API_PASSPHRASE }}
       OKX_API_BASE_URL: ${{ vars.OKX_API_BASE_URL }}
-      EVM_PRIVATE_KEY: ${{ secrets.EVM_PRIVATE_KEY }}
-      MAINNET_PAYER_PRIVATE_KEY: ${{ secrets.MAINNET_PAYER_PRIVATE_KEY }}
-      PAYER_PRIVATE_KEY: ${{ secrets.PAYER_PRIVATE_KEY }}
-      WALLET_PRIVATE_KEY: ${{ secrets.WALLET_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -28,38 +24,12 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-      - name: Probe XGuard live merchant/billing surface and OKX Base-USDC funding constraints
+      - name: Probe OKX funding and API permissions without moving funds
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
           const { createHmac } = await import('node:crypto');
-          const base = 'https://xguard-mainnet.maqamapp.workers.dev';
-          const status = await fetch(`${base}/status`).then(async r => ({status:r.status, body:await r.json()}));
-          if (status.status !== 200 || status.body.gateway !== 'operational') throw new Error('xguard_not_operational');
-
-          const registerResp = await fetch(`${base}/v1/register`, {
-            method: 'POST',
-            headers: {'content-type':'application/json'},
-            body: JSON.stringify({name:`E2E Preflight ${Date.now()}`}),
-          });
-          if (registerResp.status !== 201) throw new Error(`register_http_${registerResp.status}`);
-          const registration = await registerResp.json();
-          const apiKey = registration.apiKey;
-          if (typeof apiKey !== 'string' || !apiKey.startsWith('xg_live_')) throw new Error('missing_api_key');
-
-          const balanceResp = await fetch(`${base}/v1/balance`, {headers:{authorization:`Bearer ${apiKey}`}});
-          const balance = await balanceResp.json();
-          if (balanceResp.status !== 200 || balance.availableMicroUsd !== 0 || balance.heldMicroUsd !== 0) throw new Error('unexpected_initial_balance');
-
-          const topupResp = await fetch(`${base}/v1/topups/intents`, {
-            method: 'POST',
-            headers:{authorization:`Bearer ${apiKey}`,'content-type':'application/json'},
-            body: JSON.stringify({amountUsd:'0.01'}),
-          });
-          const topup = await topupResp.json();
-          if (topupResp.status !== 201) throw new Error(`topup_intent_http_${topupResp.status}`);
-
           const baseUrlRaw = (process.env.OKX_API_BASE_URL || 'https://openapi.okx.com').trim();
           const baseUrl = new URL(baseUrlRaw);
           const allowedHosts = new Set(['openapi.okx.com','www.okx.com','us.okx.com','eea.okx.com','tr.okx.com']);
@@ -78,25 +48,29 @@ jobs:
             if (!r.ok || p.code !== '0' || !Array.isArray(p.data)) throw new Error(`okx_read_failed_${r.status}_${p.code}`);
             return p.data;
           }
-          const currencies = await okxGet('/api/v5/asset/currencies?ccy=USDC');
-          const row = currencies.find(x => String(x.chain||'').toLowerCase().endsWith('-base'));
-          if (!row) throw new Error('okx_usdc_base_missing');
-          const fundingRows = await okxGet('/api/v5/asset/balances?ccy=USDC');
-          const funding = fundingRows.find(x => String(x.ccy||'').toUpperCase() === 'USDC');
-          const available = Number(funding?.availBal ?? funding?.bal ?? 0);
-          const minWithdrawal = Number(row.minWd ?? 0);
-          const fee = Number(row.fee ?? 0);
-          const enoughToFundMinimum = Number.isFinite(available) && available >= minWithdrawal + fee;
-          const signerSecretPresent = [
-            process.env.EVM_PRIVATE_KEY,
-            process.env.MAINNET_PAYER_PRIVATE_KEY,
-            process.env.PAYER_PRIVATE_KEY,
-            process.env.WALLET_PRIVATE_KEY,
-          ].some(v => typeof v === 'string' && /^0x[0-9a-fA-F]{64}$/.test(v.trim()));
+          const [configRows, currencyRows, fundingRows, tradingRows] = await Promise.all([
+            okxGet('/api/v5/account/config'),
+            okxGet('/api/v5/asset/currencies?ccy=USDC'),
+            okxGet('/api/v5/asset/balances?ccy=USDC,USDT'),
+            okxGet('/api/v5/account/balance?ccy=USDC,USDT'),
+          ]);
+          const cfg = configRows[0] || {};
+          const perms = String(cfg.perm || '').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+          const baseUsdc = currencyRows.find(x => String(x.chain||'').toLowerCase().endsWith('-base'));
+          if (!baseUsdc) throw new Error('okx_usdc_base_missing');
+          const needed = Number(baseUsdc.minWd || 0) + Number(baseUsdc.fee || 0);
+          const funding = new Map(fundingRows.map(x => [String(x.ccy||'').toUpperCase(), Number(x.availBal ?? x.bal ?? 0)]));
+          const details = Array.isArray(tradingRows[0]?.details) ? tradingRows[0].details : [];
+          const trading = new Map(details.map(x => [String(x.ccy||'').toUpperCase(), Number(x.availBal ?? x.cashBal ?? 0)]));
+          const enough = (value) => Number.isFinite(value) && value >= needed;
           console.log(JSON.stringify({
-            event:'mainnet_e2e_preflight',
-            xguard:{operational:true,facilitator:status.body.facilitator,merchantRegistration:true,initialBalanceMicroUsd:balance.availableMicroUsd,topupIntent:true,exactDepositUsdc:topup.exactDepositUsdc,treasuryFingerprint:`${String(topup.treasuryAddress).slice(0,6)}...${String(topup.treasuryAddress).slice(-6)}`},
-            okx:{baseUsdc:true,canWithdraw:row.canWd===true,minWithdrawalUsdc:String(row.minWd??''),withdrawalFeeUsdc:String(row.fee??''),enoughToFundMinimum},
-            existingMainnetSignerSecret:signerSecretPresent,
+            event:'mainnet_e2e_funding_probe',
+            requiredToWithdrawMinimumUsdc:String(needed),
+            apiCanWithdraw:perms.includes('withdraw'),
+            apiCanTrade:perms.includes('trade'),
+            fundingUsdcEnough:enough(funding.get('USDC')||0),
+            tradingUsdcEnough:enough(trading.get('USDC')||0),
+            fundingUsdtEnough:enough(funding.get('USDT')||0),
+            tradingUsdtEnough:enough(trading.get('USDT')||0),
           }));
           NODE
