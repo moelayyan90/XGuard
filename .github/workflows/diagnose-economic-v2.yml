@@ -1,0 +1,50 @@
+name: Diagnose Economic Firewall v2
+
+on:
+  push:
+    branches:
+      - agent/economic-firewall-v2
+    paths:
+      - .github/workflows/diagnose-economic-v2.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Format check
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm run test:coverage
+      - name: Worker tests
+        run: npm run test:worker
+      - name: Secret scan
+        run: npm run security:secrets
+      - name: No TODOs
+        run: npm run quality:no-todos
+      - name: Docs check
+        run: npm run quality:docs
+      - name: Build TypeScript
+        run: npm run build
+      - name: Audit dependencies
+        run: npm run security:deps
+      - name: Wrangler types
+        run: npm --workspace @xguard/worker run types -- --check
+      - name: Build testnet Worker
+        run: npm --workspace @xguard/worker run build
+      - name: Build mainnet Worker
+        run: npm --workspace @xguard/worker run build:mainnet
+      - name: Build Economic Firewall preview
+        run: npm --workspace @xguard/worker run build:economic-preview
