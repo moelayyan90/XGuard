@@ -1,0 +1,67 @@
+name: Publish XGuard MCP Registry
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "server.json"
+      - ".github/workflows/publish-mcp-registry.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: xguard-mcp-registry-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Verify remote MCP is live
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"mcp-registry-publish","version":"1.0.0"}}}' \
+            'https://xguard-mainnet.maqamapp.workers.dev/mcp' \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.jsonrpc!=="2.0"||x.result?.serverInfo?.name!=="xguard-mainnet")process.exit(1)})'
+
+      - name: Install mcp-publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL \
+            "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher --help >/dev/null
+
+      - name: Authenticate with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish XGuard remote MCP
+        run: ./mcp-publisher publish
+
+      - name: Verify registry listing
+        shell: bash
+        run: |
+          set -euo pipefail
+          encoded='io.github.moelayyan90%2Fxguard'
+          for attempt in {1..12}; do
+            body="$(curl -fsS --max-time 15 "https://registry.modelcontextprotocol.io/v0.1/servers?search=${encoded}" || true)"
+            if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s||"{}");const items=Array.isArray(x.servers)?x.servers:[];if(!items.some(v=>v?.server?.name==="io.github.moelayyan90/xguard"||v?.name==="io.github.moelayyan90/xguard"))process.exit(1)})'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'XGuard was not visible in the MCP Registry after publication.' >&2
+          exit 1
