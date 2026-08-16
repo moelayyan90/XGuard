@@ -94,7 +94,8 @@ jobs:
             --data "{\"wellKnownURI\":\"${URI}\"}")"
           response="$(cat /tmp/a2a-registry.json)"
           printf 'A2A Registry HTTP %s\n%s\n' "${status}" "${response}"
-          A2A_REGISTRY_STATUS="${status}" printf '%s' "${response}" | node -e '
+          export A2A_REGISTRY_STATUS="${status}"
+          printf '%s' "${response}" | node -e '
             let s="";
             process.stdin.on("data",d=>s+=d).on("end",()=>{
               let x;
