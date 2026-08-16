@@ -534,9 +534,17 @@ function isValidIconUrl(value: unknown): value is string {
     (url.protocol === "https:" || url.protocol === "http:") &&
     url.username === "" &&
     url.password === "" &&
-    !/[\u0000-\u001F\u007F]/.test(value) &&
+    !hasAsciiControlCharacters(value) &&
     !isForbiddenHost(url.hostname)
   );
+}
+
+function hasAsciiControlCharacters(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0);
+    if (code !== undefined && (code < 0x20 || code === 0x7f)) return true;
+  }
+  return false;
 }
 
 function isForbiddenHost(hostname: string): boolean {
