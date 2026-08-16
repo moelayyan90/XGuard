@@ -3,7 +3,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 function replaceOnce(path, oldValue, newValue) {
   const text = readFileSync(path, "utf8");
   if (!text.includes(oldValue)) {
-    throw new Error(`Expected patch anchor not found in ${path}: ${oldValue.slice(0, 120)}`);
+    throw new Error(
+      `Expected patch anchor not found in ${path}: ${oldValue.slice(0, 120)}`,
+    );
   }
   writeFileSync(path, text.replace(oldValue, newValue));
 }
@@ -11,6 +13,7 @@ function replaceOnce(path, oldValue, newValue) {
 const supervisor = "apps/worker/src/mainnet-supervisor.ts";
 const revenue = "apps/worker/src/mainnet-revenue-hardening.ts";
 const config = "apps/worker/wrangler.mainnet.jsonc";
+const sourceTest = "tests/mainnet-revenue-hardening-source.test.ts";
 
 replaceOnce(
   supervisor,
@@ -64,8 +67,29 @@ replaceOnce(
 
 replaceOnce(
   supervisor,
-  "  const result = await scanAutomaticTopUps(env);\n",
-  "  const result = await scanAutomaticTopUpsWithFailover(env);\n",
+  `       WHERE state='OPEN'
+          OR (state='EXPIRED' AND expires_at_epoch>=?)
+       LIMIT 1`,
+  `       WHERE state IN ('OPEN','EXPIRED')
+         AND expires_at_epoch>=?
+       LIMIT 1`,
+);
+
+replaceOnce(
+  supervisor,
+  `  if (relevantIntent === null) return;
+
+  const result = await scanAutomaticTopUps(env);
+`,
+  `  if (relevantIntent === null) {
+    await env.DB.prepare(
+      "DELETE FROM treasury_scan_state WHERE scanner_id='base-usdc'",
+    ).run();
+    return;
+  }
+
+  const result = await scanAutomaticTopUpsWithFailover(env);
+`,
 );
 
 replaceOnce(
@@ -187,7 +211,62 @@ replaceOnce(
 replaceOnce(
   config,
   '    "BASE_RPC_URL": "https://base.drpc.org",\n',
-  '    "BASE_RPC_URL": "https://base.drpc.org",\n    "BASE_RPC_FALLBACK_URLS": "https://mainnet.base.org,https://base-rpc.publicnode.com",\n',
+  '    "BASE_RPC_URL": "https://base.drpc.org",\n    "BASE_RPC_FALLBACK_URLS": "https://mainnet.base.org,https://public.1rpc.io/base",\n',
+);
+
+replaceOnce(
+  sourceTest,
+  '    expect(source).toContain("scanAutomaticTopUps(env)");\n',
+  '    expect(source).toContain("scanAutomaticTopUpsWithFailover(env)");\n',
+);
+
+replaceOnce(
+  sourceTest,
+  `    const skip = source.indexOf("if (relevantIntent === null) return;", gate);
+    const scan = source.indexOf(
+      "const result = await scanAutomaticTopUps(env);",
+      gate,
+    );
+    expect(gate).toBeGreaterThanOrEqual(0);
+    expect(skip).toBeGreaterThan(gate);
+    expect(scan).toBeGreaterThan(skip);
+    expect(source).toContain("TOPUP_SCAN_RECOVERY_GRACE_SECONDS");
+    expect(source).toContain("state='OPEN'");
+    expect(source).toContain("state='EXPIRED'");
+`,
+  `    const reset = source.indexOf(
+      "DELETE FROM treasury_scan_state WHERE scanner_id='base-usdc'",
+      gate,
+    );
+    const scan = source.indexOf(
+      "const result = await scanAutomaticTopUpsWithFailover(env);",
+      gate,
+    );
+    expect(gate).toBeGreaterThanOrEqual(0);
+    expect(reset).toBeGreaterThan(gate);
+    expect(scan).toBeGreaterThan(reset);
+    expect(source).toContain("TOPUP_SCAN_RECOVERY_GRACE_SECONDS");
+    expect(source).toContain("state IN ('OPEN','EXPIRED')");
+    expect(source).toContain("expires_at_epoch>=?");
+`,
+);
+
+replaceOnce(
+  sourceTest,
+  `  it("does not use the Cloudflare-blocked anonymous PublicNode endpoint", async () => {
+    const config = await readFile("apps/worker/wrangler.mainnet.jsonc", "utf8");
+    expect(config).toContain('"BASE_RPC_URL": "https://base.drpc.org"');
+    expect(config).not.toContain("base-rpc.publicnode.com");
+  });
+`,
+  `  it("uses bounded RPC fallback without the Cloudflare-blocked PublicNode endpoint", async () => {
+    const config = await readFile("apps/worker/wrangler.mainnet.jsonc", "utf8");
+    expect(config).toContain('"BASE_RPC_URL": "https://base.drpc.org"');
+    expect(config).toContain("https://mainnet.base.org");
+    expect(config).toContain("https://public.1rpc.io/base");
+    expect(config).not.toContain("base-rpc.publicnode.com");
+  });
+`,
 );
 
 writeFileSync(
@@ -200,14 +279,17 @@ const hardening = readFileSync("apps/worker/src/mainnet-revenue-hardening.ts", "
 const mainnetConfig = readFileSync("apps/worker/wrangler.mainnet.jsonc", "utf8");
 
 describe("automatic top-up RPC resilience", () => {
-  it("uses bounded polling and multiple RPC candidates", () => {
+  it("uses demand-bounded polling and multiple RPC candidates", () => {
     expect(supervisor).toContain("TOPUP_SCAN_INTERVAL_MINUTES = 5");
+    expect(supervisor).toContain("state IN ('OPEN','EXPIRED')");
+    expect(supervisor).toContain("DELETE FROM treasury_scan_state");
     expect(supervisor).toContain("scanAutomaticTopUpsWithFailover");
     expect(supervisor).toContain("automatic_topup_scan_deferred");
     expect(supervisor).toContain("automatic_topup_rpc_failover_recovered");
     expect(mainnetConfig).toContain("BASE_RPC_FALLBACK_URLS");
     expect(mainnetConfig).toContain("https://mainnet.base.org");
-    expect(mainnetConfig).toContain("https://base-rpc.publicnode.com");
+    expect(mainnetConfig).toContain("https://public.1rpc.io/base");
+    expect(mainnetConfig).not.toContain("base-rpc.publicnode.com");
   });
 
   it("allows the scanner to receive a per-attempt RPC override", () => {
