@@ -1051,7 +1051,7 @@ async function rpc<T>(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      redirect: "error",
+      redirect: "manual",
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`rpc_http_${response.status}`);
