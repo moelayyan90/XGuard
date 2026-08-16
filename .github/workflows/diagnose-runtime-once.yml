@@ -4,15 +4,19 @@ on:
   workflow_run:
     workflows: ["Deploy XGuard mainnet"]
     types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnose-runtime-once.yml"
 
 permissions:
   contents: read
 
 jobs:
   verify-cron:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
         with:
@@ -22,7 +26,7 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm ci --ignore-scripts
-      - name: Observe one production cron cycle
+      - name: Observe a full production top-up scan cadence
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -35,16 +39,27 @@ jobs:
             exit 1
           fi
 
+          # Automatic chain scans are intentionally bounded to a five-minute cadence.
+          # Observe longer than one complete cadence so this check cannot pass merely
+          # because its tail window happened to fall between scan opportunities.
           log_file="$(mktemp)"
-          timeout 80s npx wrangler tail xguard-mainnet \
+          timeout 370s npx wrangler tail xguard-mainnet \
             --format=json \
-            --search automatic_topup_scan_failed \
+            --search automatic_topup_ \
             > "${log_file}" 2>&1 || true
 
           cat "${log_file}"
           if grep -q 'automatic_topup_scan_failed' "${log_file}"; then
-            echo "::error::Automatic top-up scanner failed during the post-deploy production cron check."
+            echo "::error::Automatic top-up scanner emitted a fatal failure during the full-cadence production check."
             exit 1
           fi
 
-          echo "Production cron check completed without automatic top-up scan failures."
+          if grep -q 'automatic_topup_scan_deferred' "${log_file}"; then
+            echo "::warning::All configured RPC providers were temporarily unavailable during one scan; XGuard deferred safely instead of failing the cron."
+          fi
+
+          if grep -q 'automatic_topup_rpc_failover_recovered' "${log_file}"; then
+            echo "::notice::RPC failover recovered an automatic top-up scan during the production check."
+          fi
+
+          echo "Full-cadence production cron check completed without automatic_topup_scan_failed."
