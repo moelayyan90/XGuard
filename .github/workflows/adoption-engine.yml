@@ -5,6 +5,7 @@ on:
     paths:
       - "scripts/adoption-engine.mjs"
       - "scripts/adoption-targets.mjs"
+      - "scripts/conversion-engine.mjs"
       - ".github/workflows/adoption-engine.yml"
       - "package.json"
   push:
@@ -12,13 +13,15 @@ on:
     paths:
       - "scripts/adoption-engine.mjs"
       - "scripts/adoption-targets.mjs"
+      - "scripts/conversion-engine.mjs"
       - ".github/workflows/adoption-engine.yml"
       - "package.json"
   schedule:
     - cron: "17 */6 * * *"
   workflow_dispatch:
 
-# Public metadata discovery only; never executes payments, synthetic settlements, or bulk outreach.
+# Public metadata discovery and conversion planning only; never executes payments,
+# synthetic settlements, third-party configuration changes, or bulk outreach.
 permissions:
   contents: read
   issues: write
@@ -41,10 +44,10 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Self-test adoption engine
+      - name: Self-test adoption and conversion engines
         run: npm run adoption:self-test
 
-      - name: Discover, verify, and rank public x402 merchant targets
+      - name: Discover, verify, rank, and build safe x402 merchant switch kits
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -52,10 +55,11 @@ jobs:
           XGUARD_ADOPTION_PROBE_LIMIT: "100"
           XGUARD_ADOPTION_PROBE_CONCURRENCY: "8"
           XGUARD_ADOPTION_MIN_SCORE: "25"
+          XGUARD_CONVERSION_QUEUE_LIMIT: "50"
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
-            rm -f adoption-report.json adoption-report.md adoption-targets.json adoption-targets.md adoption-scan.log
+            rm -f adoption-report.json adoption-report.md adoption-targets.json adoption-targets.md conversion-queue.json conversion-queue.md adoption-scan.log
             set +e
             npm run adoption:scan 2>&1 | tee adoption-scan.log
             scan_status=${PIPESTATUS[0]}
@@ -63,46 +67,54 @@ jobs:
 
             if [[ "$scan_status" -eq 0 ]] \
               && grep -Fq '"event":"adoption_source_scanned","source":"cdp-bazaar"' adoption-scan.log \
-              && grep -Fq '"event":"adoption_source_scanned","source":"payai-bazaar"' adoption-scan.log; then
-              echo "Primary adoption catalogs completed on attempt ${attempt}."
+              && grep -Fq '"event":"adoption_source_scanned","source":"payai-bazaar"' adoption-scan.log \
+              && grep -Fq '"event":"conversion_queue_ready"' adoption-scan.log; then
+              echo "Primary adoption catalogs and safe conversion queue completed on attempt ${attempt}."
               exit 0
             fi
 
             if [[ "$attempt" -lt 3 ]]; then
               delay=$((attempt * 5))
-              echo "Primary adoption catalog coverage incomplete on attempt ${attempt}; retrying in ${delay}s."
+              echo "Primary adoption/conversion coverage incomplete on attempt ${attempt}; retrying in ${delay}s."
               sleep "$delay"
             fi
           done
 
-          echo "Primary adoption catalog coverage remained incomplete; keeping the previous canonical queue unchanged."
+          echo "Primary adoption/conversion coverage remained incomplete; keeping the previous canonical queue unchanged."
           exit 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xguard-adoption-report
+          name: xguard-adoption-conversion-report
           path: |
             adoption-report.json
             adoption-report.md
             adoption-targets.json
             adoption-targets.md
+            conversion-queue.json
+            conversion-queue.md
           if-no-files-found: error
           retention-days: 14
 
-      - name: Update canonical adoption queue issue
+      - name: Update canonical adoption and conversion queue issue
         if: github.event_name != 'pull_request'
         uses: actions/github-script@v8
         with:
           script: |
             const fs = require("fs");
             const title = "[adoption] XGuard public x402 candidate pipeline";
-            const markdown = fs.readFileSync("adoption-targets.md", "utf8");
+            const targets = fs.readFileSync("adoption-targets.md", "utf8");
+            const conversion = fs.readFileSync("conversion-queue.md", "utf8");
             const body = [
-              "This issue is maintained automatically by the XGuard adoption engine.",
+              "This issue is maintained automatically by the XGuard adoption and conversion engine.",
               "",
-              "It ranks distinct public x402 merchant/service targets rather than individual endpoints. The workflow never pays endpoints, fabricates settlements, or sends bulk outreach.",
+              "It ranks distinct public x402 merchant/service targets and produces side-effect-free switch kits. The workflow never pays endpoints, changes third-party infrastructure, fabricates settlements, or sends bulk outreach.",
               "",
-              markdown,
+              conversion,
+              "",
+              "---",
+              "",
+              targets,
               "",
               `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             ].join("\n").slice(0, 65000);
