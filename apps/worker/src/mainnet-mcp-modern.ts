@@ -13,10 +13,7 @@ const LEGACY_MCP_PROTOCOLS = new Set([
   "2025-06-18",
   "2025-03-26",
 ]);
-const SUPPORTED_PROTOCOLS = [
-  MODERN_MCP_PROTOCOL,
-  ...LEGACY_MCP_PROTOCOLS,
-];
+const SUPPORTED_PROTOCOLS = [MODERN_MCP_PROTOCOL, ...LEGACY_MCP_PROTOCOLS];
 const CACHE_TTL_MS = 300_000;
 const MAX_MCP_BODY_BYTES = 128 * 1024;
 const SERVER_INFO = { name: "xguard-mainnet", version: XGUARD_MCP_VERSION };
@@ -275,11 +272,9 @@ function serverMeta(): Record<string, unknown> {
 }
 
 function mcpResult(id: unknown, result: unknown): Response {
-  return corsJson(
-    { jsonrpc: "2.0", id, result },
-    200,
-    { "MCP-Protocol-Version": MODERN_MCP_PROTOCOL },
-  );
+  return corsJson({ jsonrpc: "2.0", id, result }, 200, {
+    "MCP-Protocol-Version": MODERN_MCP_PROTOCOL,
+  });
 }
 
 function mcpToolResult(id: unknown, value: unknown): Response {
@@ -331,14 +326,10 @@ function mcpHttpError(
   status: number,
   headers?: Record<string, string>,
 ): Response {
-  return corsJson(
-    { jsonrpc: "2.0", id, error: { code, message } },
-    status,
-    {
-      "MCP-Protocol-Version": MODERN_MCP_PROTOCOL,
-      ...(headers ?? {}),
-    },
-  );
+  return corsJson({ jsonrpc: "2.0", id, error: { code, message } }, status, {
+    "MCP-Protocol-Version": MODERN_MCP_PROTOCOL,
+    ...(headers ?? {}),
+  });
 }
 
 function decodeHeaderValue(value: string): string | null {
@@ -346,7 +337,9 @@ function decodeHeaderValue(value: string): string | null {
   try {
     const encoded = value.slice("=?base64?".length, -2);
     const binary = atob(encoded);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const bytes = Uint8Array.from(binary, (character) =>
+      character.charCodeAt(0),
+    );
     return new TextDecoder().decode(bytes);
   } catch {
     return null;
