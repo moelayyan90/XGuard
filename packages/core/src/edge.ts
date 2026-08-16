@@ -1,4 +1,5 @@
 export * from "./canonical.js";
+export * from "./economic-intent.js";
 export * from "./errors.js";
 export * from "./money.js";
 export * from "./safety.js";
