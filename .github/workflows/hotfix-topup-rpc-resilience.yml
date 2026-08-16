@@ -2,202 +2,29 @@ name: Hotfix top-up RPC resilience
 
 on:
   push:
-    branches:
-      - hotfix/topup-rpc-resilience
+    branches: ["hotfix/topup-rpc-resilience"]
 
 permissions:
   contents: write
 
 jobs:
-  patch-and-verify:
+  patch_and_verify:
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
-    if: github.actor != 'github-actions[bot]'
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
           ref: hotfix/topup-rpc-resilience
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - name: Setup Node
+        uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
 
-      - name: Apply resilient RPC failover hotfix
-        shell: bash
-        run: |
-          set -euo pipefail
-          python <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              p = Path(path)
-              text = p.read_text()
-              if old not in text:
-                  raise SystemExit(f"expected patch anchor not found in {path}: {old[:80]!r}")
-              p.write_text(text.replace(old, new, 1))
-
-          supervisor = "apps/worker/src/mainnet-supervisor.ts"
-          revenue = "apps/worker/src/mainnet-revenue-hardening.ts"
-          config = "apps/worker/wrangler.mainnet.jsonc"
-
-          replace_once(
-              supervisor,
-              'const TOPUP_SCAN_RECOVERY_GRACE_SECONDS = 6 * 60 * 60;\n',
-              'const TOPUP_SCAN_RECOVERY_GRACE_SECONDS = 6 * 60 * 60;\nconst TOPUP_SCAN_INTERVAL_MINUTES = 5;\n',
-          )
-          replace_once(
-              supervisor,
-              '  BASE_RPC_URL: string;\n  XGUARD_TREASURY_USDC_ADDRESS: string;\n',
-              '  BASE_RPC_URL: string;\n  BASE_RPC_FALLBACK_URLS?: string;\n  XGUARD_TREASURY_USDC_ADDRESS: string;\n',
-          )
-          old_sched = '''    ctx.waitUntil(\n      runAutomaticTopUpMaintenance(env).catch((error) =>\n        console.error(\n          JSON.stringify({\n            event: "automatic_topup_scan_failed",\n            code: errorCode(error),\n          }),\n        ),\n      ),\n    );\n'''
-          new_sched = '''    if (shouldRunAutomaticTopUpScan(controller.scheduledTime))\n      ctx.waitUntil(\n        runAutomaticTopUpMaintenance(env).catch((error) => {\n          const code = errorCode(error);\n          if (code.startsWith("rpc_transient_all_providers_unavailable")) {\n            console.warn(\n              JSON.stringify({\n                event: "automatic_topup_scan_deferred",\n                code,\n                retryWindowMinutes: TOPUP_SCAN_INTERVAL_MINUTES,\n              }),\n            );\n            return;\n          }\n          console.error(\n            JSON.stringify({\n              event: "automatic_topup_scan_failed",\n              code,\n            }),\n          );\n        }),\n      );\n'''
-          replace_once(supervisor, old_sched, new_sched)
-          replace_once(
-              supervisor,
-              '  const result = await scanAutomaticTopUps(env);\n',
-              '  const result = await scanAutomaticTopUpsWithFailover(env);\n',
-          )
-          anchor = '''async function supervisedFacilitatorRequest(\n'''
-          helpers = r'''function shouldRunAutomaticTopUpScan(scheduledTimeMs: number): boolean {
-  const scheduledMinute = Math.floor(scheduledTimeMs / 60_000);
-  return scheduledMinute % TOPUP_SCAN_INTERVAL_MINUTES === 0;
-}
-
-async function scanAutomaticTopUpsWithFailover(
-  env: MainnetSupervisorEnv,
-): Promise<{ scannedThroughBlock: number; credited: number }> {
-  const candidates = topUpRpcCandidates(env);
-  let lastCode = "rpc_unavailable";
-
-  for (let index = 0; index < candidates.length; index += 1) {
-    const candidate = candidates[index]!;
-    try {
-      const result = await scanAutomaticTopUps(env, candidate);
-      if (index > 0)
-        console.warn(
-          JSON.stringify({
-            event: "automatic_topup_rpc_failover_recovered",
-            providerIndex: index,
-            providerHost: rpcHost(candidate),
-          }),
-        );
-      return result;
-    } catch (error) {
-      const code = errorCode(error);
-      if (!isRetryableTopUpRpcFailure(error, code)) throw error;
-      lastCode = code;
-      console.warn(
-        JSON.stringify({
-          event: "automatic_topup_rpc_provider_unavailable",
-          code,
-          providerIndex: index,
-          providerHost: rpcHost(candidate),
-        }),
-      );
-    }
-  }
-
-  throw new Error(`rpc_transient_all_providers_unavailable:${lastCode}`);
-}
-
-function topUpRpcCandidates(env: MainnetSupervisorEnv): string[] {
-  const raw = [
-    env.BASE_RPC_URL,
-    ...(env.BASE_RPC_FALLBACK_URLS ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean),
-  ];
-  const unique: string[] = [];
-  for (const candidate of raw) {
-    let url: URL;
-    try {
-      url = new URL(candidate);
-    } catch {
-      if (candidate === env.BASE_RPC_URL) throw new Error("invalid_base_rpc_url");
-      continue;
-    }
-    if (url.protocol !== "https:" || url.username || url.password) {
-      if (candidate === env.BASE_RPC_URL) throw new Error("invalid_base_rpc_url");
-      continue;
-    }
-    const normalized = url.toString();
-    if (!unique.includes(normalized)) unique.push(normalized);
-  }
-  if (unique.length === 0) throw new Error("base_rpc_unavailable");
-  return unique;
-}
-
-function isRetryableTopUpRpcFailure(error: unknown, code: string): boolean {
-  if (error instanceof Error && error.name === "AbortError") return true;
-  return (
-    /^rpc_http_(408|425|429|500|502|503|504)$/.test(code) ||
-    code === "rpc_error" ||
-    code.toLowerCase().includes("abort") ||
-    code.toLowerCase().includes("timeout")
-  );
-}
-
-function rpcHost(value: string): string {
-  try {
-    return new URL(value).host;
-  } catch {
-    return "invalid";
-  }
-}
-
-'''
-          replace_once(supervisor, anchor, helpers + anchor)
-
-          replace_once(
-              revenue,
-              '''export async function scanAutomaticTopUps(env: HardeningEnv): Promise<{\n  scannedThroughBlock: number;\n  credited: number;\n}> {\n  assertEvmAddress(env.XGUARD_TREASURY_USDC_ADDRESS, "treasury");\n  const rpcUrl = new URL(env.BASE_RPC_URL);\n''',
-              '''export async function scanAutomaticTopUps(\n  env: HardeningEnv,\n  baseRpcUrl = env.BASE_RPC_URL,\n): Promise<{\n  scannedThroughBlock: number;\n  credited: number;\n}> {\n  assertEvmAddress(env.XGUARD_TREASURY_USDC_ADDRESS, "treasury");\n  const rpcUrl = new URL(baseRpcUrl);\n''',
-          )
-
-          replace_once(
-              config,
-              '    "BASE_RPC_URL": "https://base.drpc.org",\n',
-              '    "BASE_RPC_URL": "https://base.drpc.org",\n    "BASE_RPC_FALLBACK_URLS": "https://mainnet.base.org,https://base-rpc.publicnode.com",\n',
-          )
-
-          test = Path("tests/mainnet-topup-rpc-resilience-source.test.ts")
-          test.write_text(r'''import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-
-const supervisor = readFileSync(
-  "apps/worker/src/mainnet-supervisor.ts",
-  "utf8",
-);
-const hardening = readFileSync(
-  "apps/worker/src/mainnet-revenue-hardening.ts",
-  "utf8",
-);
-const mainnetConfig = readFileSync(
-  "apps/worker/wrangler.mainnet.jsonc",
-  "utf8",
-);
-
-describe("automatic top-up RPC resilience", () => {
-  it("uses bounded polling and multiple RPC candidates", () => {
-    expect(supervisor).toContain("TOPUP_SCAN_INTERVAL_MINUTES = 5");
-    expect(supervisor).toContain("scanAutomaticTopUpsWithFailover");
-    expect(supervisor).toContain("automatic_topup_scan_deferred");
-    expect(supervisor).toContain("automatic_topup_rpc_failover_recovered");
-    expect(mainnetConfig).toContain("BASE_RPC_FALLBACK_URLS");
-    expect(mainnetConfig).toContain("https://mainnet.base.org");
-    expect(mainnetConfig).toContain("https://base-rpc.publicnode.com");
-  });
-
-  it("allows the scanner to receive a per-attempt RPC override", () => {
-    expect(hardening).toContain("baseRpcUrl = env.BASE_RPC_URL");
-    expect(hardening).toContain("const rpcUrl = new URL(baseRpcUrl)");
-  });
-});
-''')
-          PY
+      - name: Apply hotfix
+        run: node scripts/apply-topup-rpc-resilience-hotfix.mjs
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -208,13 +35,14 @@ describe("automatic top-up RPC resilience", () => {
       - name: Verify release
         run: npm run verify:release
 
-      - name: Commit verified hotfix and remove temporary workflow
+      - name: Commit verified hotfix
         shell: bash
         run: |
           set -euo pipefail
           rm -f .github/workflows/hotfix-topup-rpc-resilience.yml
+          rm -f scripts/apply-topup-rpc-resilience-hotfix.mjs
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/worker/src/mainnet-supervisor.ts apps/worker/src/mainnet-revenue-hardening.ts apps/worker/wrangler.mainnet.jsonc tests/mainnet-topup-rpc-resilience-source.test.ts .github/workflows/hotfix-topup-rpc-resilience.yml
+          git add -A
           git commit -m "Harden automatic top-up RPC scanning against rate limits"
           git push origin HEAD:hotfix/topup-rpc-resilience
