@@ -8,7 +8,7 @@ on:
       - ".github/workflows/format-mcp-preview.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   format:
@@ -16,16 +16,24 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: fix/mcp-2026-agent-discovery
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Render formatted source
+      - name: Apply exact repository formatting
         shell: bash
         run: |
           set -euo pipefail
-          echo 'FORMATTED_BASE64_BEGIN'
-          npx prettier apps/worker/src/mainnet-mcp-modern.ts | base64 -w0
-          echo
-          echo 'FORMATTED_BASE64_END'
+          npx prettier --write apps/worker/src/mainnet-mcp-modern.ts
+          if git diff --quiet -- apps/worker/src/mainnet-mcp-modern.ts; then
+            echo "already formatted"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/mainnet-mcp-modern.ts
+          git commit -m "Format modern MCP implementation"
+          git push origin HEAD:fix/mcp-2026-agent-discovery
