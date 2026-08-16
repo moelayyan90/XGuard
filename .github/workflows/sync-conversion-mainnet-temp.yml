@@ -1,0 +1,57 @@
+name: Sync conversion entrypoint with main
+
+on:
+  push:
+    branches:
+      - agent/conversion-engine
+    paths:
+      - ".github/workflows/sync-conversion-mainnet-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Rebuild mainnet-modern from latest main plus migration hook
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:apps/worker/src/mainnet-modern.ts > apps/worker/src/mainnet-modern.ts
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("apps/worker/src/mainnet-modern.ts")
+          text = path.read_text()
+          import_anchor = 'import { mcpubDiscoveryResponse } from "./mcpub-discovery.js";\n'
+          import_line = 'import { xguardMigrationResponse } from "./migration-kit.js";\n'
+          if import_line not in text:
+              if import_anchor not in text:
+                  raise SystemExit("migration import anchor not found")
+              text = text.replace(import_anchor, import_anchor + import_line, 1)
+          route_anchor = '''    const a2a = await a2aAgentResponse(standardRequest);\n    if (a2a !== null) return secureResponse(a2a);\n'''
+          route = '''\n    const migration = xguardMigrationResponse(standardRequest);\n    if (migration !== null) return secureResponse(migration);\n'''
+          if route.strip() not in text:
+              if route_anchor not in text:
+                  raise SystemExit("migration route anchor not found")
+              text = text.replace(route_anchor, route_anchor + route, 1)
+          path.write_text(text)
+          PY
+          npx prettier apps/worker/src/mainnet-modern.ts --write
+      - name: Commit synchronized entrypoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- apps/worker/src/mainnet-modern.ts; then
+            echo "Entrypoint already synchronized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/mainnet-modern.ts
+          git commit -m "refactor: preserve latest mainnet entrypoint for migration kit"
+          git push origin HEAD:agent/conversion-engine
