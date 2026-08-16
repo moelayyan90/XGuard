@@ -1,4 +1,5 @@
 name: Deploy Economic Firewall preview branch
+# Re-run E2E after settlement RPC serialization fix.
 
 on:
   push:
