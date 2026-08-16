@@ -1,0 +1,47 @@
+name: Publish XGuard to MCP directories
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "server.json"
+      - ".github/workflows/publish-mcp-directories.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  mcprepository:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit XGuard repository for indexing
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body -sS --max-time 20 \
+            -X POST 'https://mcprepository.com/api/index' \
+            -H 'Content-Type: application/json' \
+            --data '{"url":"https://github.com/moelayyan90/XGuard"}')"
+          printf '%s\n' "${response}"
+          printf '%s' "${response}" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const x=JSON.parse(s);
+              if (x.valid === false) {
+                console.error(x.reason || x.message || "MCP Repository rejected XGuard");
+                process.exit(1);
+              }
+              if (x.duplicate === true) {
+                console.log("XGuard is already indexed by MCP Repository.");
+                return;
+              }
+              if (x.status === "queued" || x.url || x.message) {
+                console.log("XGuard MCP Repository index request accepted.");
+                return;
+              }
+              console.error("Unexpected MCP Repository response shape");
+              process.exit(1);
+            });
+          '
