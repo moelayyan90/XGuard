@@ -1,0 +1,42 @@
+name: Validate conversion engine branch
+
+on:
+  push:
+    branches:
+      - agent/conversion-engine
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Full release verification
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: npm run verify:release
+      - name: Live adoption and conversion scan
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          XGUARD_ADOPTION_MAX_PAGES: "100"
+          XGUARD_ADOPTION_PROBE_LIMIT: "100"
+          XGUARD_ADOPTION_PROBE_CONCURRENCY: "8"
+          XGUARD_ADOPTION_MIN_SCORE: "25"
+          XGUARD_CONVERSION_QUEUE_LIMIT: "50"
+        run: |
+          set -euo pipefail
+          npm run adoption:scan 2>&1 | tee conversion-validation.log
+          grep -Fq '"event":"adoption_source_scanned","source":"cdp-bazaar"' conversion-validation.log
+          grep -Fq '"event":"adoption_source_scanned","source":"payai-bazaar"' conversion-validation.log
+          grep -Fq '"event":"conversion_queue_ready"' conversion-validation.log
+          test -s conversion-queue.json
+          test -s conversion-queue.md
