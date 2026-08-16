@@ -15,7 +15,7 @@ import {
   type XGuardProof,
 } from "@xguard/core/edge";
 
-export interface EconomicIntentCoordinatorEnv {}
+export type EconomicIntentCoordinatorEnv = object;
 
 interface IntentRow extends Record<string, SqlStorageValue> {
   intent_id: string;
