@@ -90,6 +90,8 @@ jobs:
         run: |
           set -euo pipefail
           BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
+          VERIFY_TOKEN="${GITHUB_SHA:-$(date +%s)}"
+          DISCOVERY_QUERY="?deploy=${VERIFY_TOKEN}"
 
           curl -fsS --max-time 15 "${BASE_URL}/healthz" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'
@@ -106,19 +108,19 @@ jobs:
           fi
           rm -f "${root_headers}"
 
-          curl -fsS --max-time 15 "${BASE_URL}/.well-known/agent-card.json" \
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/agent-card.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.2.0-mainnet-rc"||!String(x.providerManifest||"").endsWith("/.well-known/x402/facilitator.json")||!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolVersion==="2")||!Array.isArray(x.skills)||!x.skills.some(k=>k&&k.id==="x402-payment-settlement"))process.exit(1)})'
 
-          curl -fsS --max-time 15 "${BASE_URL}/.well-known/agent-market.json" \
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/agent-market.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.protocol!=="x402-v2"||x.network!=="eip155:8453"||!x.discovery||!String(x.discovery.agentCard||"").endsWith("/.well-known/agent-card.json")||!String(x.discovery.provider||"").endsWith("/.well-known/x402/facilitator.json"))process.exit(1)})'
 
-          curl -fsS --max-time 15 "${BASE_URL}/.well-known/x402/facilitator.json" \
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/x402/facilitator.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="x402-facilitator"||x.status!=="production"||!x.facilitator||x.facilitator.baseUrl!=="https://xguard-mainnet.maqamapp.workers.dev"||x.facilitator.network!=="eip155:8453"||x.facilitator.scheme!=="exact"||!x.pricing||x.pricing.feeUsd!=="0.002"||!x.onboarding||x.onboarding.packageInstallationRequired!==false||!x.settlementExecution||x.settlementExecution.mode!=="routed"||x.settlementExecution.currentDownstream!=="xpay")process.exit(1)})'
 
-          curl -fsS --max-time 15 "${BASE_URL}/openapi.json" \
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/openapi.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.openapi!=="3.1.0"||!x.paths||!x.paths["/verify"]||!x.paths["/settle"]||!x.paths["/.well-known/x402/facilitator.json"])process.exit(1)})'
 
-          llms_body="$(curl -fsS --max-time 15 "${BASE_URL}/llms.txt")"
+          llms_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/llms.txt${DISCOVERY_QUERY}")"
           if ! printf '%s' "${llms_body}" | grep -Fq '# XGuard' \
             || ! printf '%s' "${llms_body}" | grep -Fq '/.well-known/agent-card.json' \
             || ! printf '%s' "${llms_body}" | grep -Fq '/.well-known/x402/facilitator.json'; then
@@ -126,14 +128,14 @@ jobs:
             exit 1
           fi
 
-          llms_full_body="$(curl -fsS --max-time 15 "${BASE_URL}/llms-full.txt")"
+          llms_full_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/llms-full.txt${DISCOVERY_QUERY}")"
           if ! printf '%s' "${llms_full_body}" | grep -Fq 'Settlement safety semantics' \
             || ! printf '%s' "${llms_full_body}" | grep -Fq 'Provider selection'; then
             echo "::error::llms-full.txt discovery metadata is missing or malformed."
             exit 1
           fi
 
-          robots_body="$(curl -fsS --max-time 15 "${BASE_URL}/robots.txt")"
+          robots_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/robots.txt${DISCOVERY_QUERY}")"
           if ! printf '%s' "${robots_body}" | grep -Fq 'Allow: /' \
             || ! printf '%s' "${robots_body}" | grep -Fq '/openapi.json' \
             || ! printf '%s' "${robots_body}" | grep -Fq '/.well-known/x402/facilitator.json'; then
