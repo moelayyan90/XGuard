@@ -162,13 +162,18 @@ async function runAutomaticTopUpMaintenance(
   const relevantIntent = await env.DB.prepare(
     `SELECT intent_id
        FROM top_up_intents
-       WHERE state='OPEN'
-          OR (state='EXPIRED' AND expires_at_epoch>=?)
+       WHERE state IN ('OPEN','EXPIRED')
+         AND expires_at_epoch>=?
        LIMIT 1`,
   )
     .bind(recoveryCutoffEpoch)
     .first<{ intent_id: string }>();
-  if (relevantIntent === null) return;
+  if (relevantIntent === null) {
+    await env.DB.prepare(
+      "DELETE FROM treasury_scan_state WHERE scanner_id='base-usdc'",
+    ).run();
+    return;
+  }
 
   const result = await scanAutomaticTopUps(env);
   if (result.credited > 0)
