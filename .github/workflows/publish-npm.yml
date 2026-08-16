@@ -1,0 +1,89 @@
+name: Publish XGuard npm packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/*/package.json"
+      - ".github/workflows/publish-npm.yml"
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      core_exists: ${{ steps.names.outputs.core_exists }}
+      sdk_exists: ${{ steps.names.outputs.sdk_exists }}
+      cli_exists: ${{ steps.names.outputs.cli_exists }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Verify package metadata and registry names
+        id: names
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'for(const p of ["packages/core/package.json","packages/sdk/package.json","packages/cli/package.json"]){const x=require("./"+p);if(!x.repository?.url?.includes("github.com/moelayyan90/XGuard"))throw new Error(p+" repository.url mismatch");if(x.publishConfig?.access!=="public")throw new Error(p+" must publish public")}'
+          check_name() {
+            local label="$1" name="$2"
+            if npm view "$name" version --json >/tmp/npm-view 2>/dev/null; then
+              echo "${label}_exists=true" >> "$GITHUB_OUTPUT"
+              echo "$name already exists: $(cat /tmp/npm-view)"
+            else
+              echo "${label}_exists=false" >> "$GITHUB_OUTPUT"
+              echo "$name is not currently readable from the public registry"
+            fi
+          }
+          check_name core @xguard/core
+          check_name sdk @xguard/sdk
+          check_name cli xguard
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npm run verify:release
+        env:
+          WRANGLER_SEND_METRICS: "false"
+      - name: Publish core
+        run: npm publish --workspace @xguard/core
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish SDK
+        run: npm publish --workspace @xguard/sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish CLI
+        run: npm publish --workspace xguard
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Verify public packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm view @xguard/core version
+          npm view @xguard/sdk version
+          npm view xguard version
