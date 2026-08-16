@@ -51,7 +51,10 @@ function envelope(overrides: Record<string, unknown> = {}) {
         description: "adapter test",
         mimeType: "application/json",
       },
-      accepted: requirements,
+      accepted: {
+        ...requirements,
+        extra: { ...requirements.extra },
+      },
       payload: {
         signature: `0x${"ab".repeat(65)}`,
         authorization: {
@@ -64,7 +67,10 @@ function envelope(overrides: Record<string, unknown> = {}) {
         },
       },
     },
-    paymentRequirements: requirements,
+    paymentRequirements: {
+      ...requirements,
+      extra: { ...requirements.extra },
+    },
     ...overrides,
   };
 }
