@@ -7,6 +7,7 @@ import {
   modernMcpOptions,
   modernMcpRequest,
   shouldUseModernMcp,
+  xguardMcpTools,
 } from "./mainnet-mcp-modern.js";
 import {
   enhanceAgentDiscoveryResponse,
@@ -37,24 +38,29 @@ type MainnetScheduled = (
 
 const delegateFetch = mainnet.fetch as unknown as MainnetFetch;
 const delegateScheduled = mainnet.scheduled as unknown as MainnetScheduled;
+const HSTS_VALUE = "max-age=31536000; includeSubDomains";
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
     const url = new URL(standardRequest.url);
 
+    const httpsRedirect = redirectPlaintextRequest(standardRequest, url);
+    if (httpsRedirect !== null) return secureResponse(httpsRedirect);
+
     const branding = mainnetBrandingResponse(standardRequest);
-    if (branding !== null) return branding;
+    if (branding !== null) return secureResponse(branding);
 
     const compatibilityDiscovery =
       await compatibilityDiscoveryResponse(standardRequest);
-    if (compatibilityDiscovery !== null) return compatibilityDiscovery;
+    if (compatibilityDiscovery !== null)
+      return secureResponse(compatibilityDiscovery);
 
     const mcpubDiscovery = mcpubDiscoveryResponse(standardRequest);
-    if (mcpubDiscovery !== null) return mcpubDiscovery;
+    if (mcpubDiscovery !== null) return secureResponse(mcpubDiscovery);
 
     if (url.pathname === "/mcp" && standardRequest.method === "OPTIONS")
-      return modernMcpOptions(standardRequest);
+      return secureResponse(modernMcpOptions(standardRequest));
 
     if (
       url.pathname === "/mcp" &&
@@ -62,16 +68,18 @@ export default {
       shouldUseModernMcp(standardRequest)
     ) {
       const blocked = await publicMcpGuard(standardRequest, env);
-      if (blocked !== null) return blocked;
-      return modernMcpRequest(standardRequest, env, async () => {
-        const statusResponse = await delegateFetch(
-          new Request(`${url.origin}/status`),
-          env,
-          ctx,
-        );
-        if (!statusResponse.ok) throw new Error("status_unavailable");
-        return statusResponse.json();
-      });
+      if (blocked !== null) return secureResponse(blocked);
+      return secureResponse(
+        await modernMcpRequest(standardRequest, env, async () => {
+          const statusResponse = await delegateFetch(
+            new Request(`${url.origin}/status`),
+            env,
+            ctx,
+          );
+          if (!statusResponse.ok) throw new Error("status_unavailable");
+          return statusResponse.json();
+        }),
+      );
     }
 
     if (
@@ -79,9 +87,13 @@ export default {
       (url.pathname === "/.well-known/mcp/server.json" ||
         url.pathname === "/.well-known/xguard")
     )
-      return publicJson(modernMcpManifest(url.origin));
+      return secureResponse(publicJson(modernMcpManifest(url.origin)));
 
-    const response = await delegateFetch(standardRequest, env, ctx);
+    let response = await delegateFetch(standardRequest, env, ctx);
+
+    if (url.pathname === "/mcp" && standardRequest.method === "POST")
+      response = await normalizeLegacyMcpToolList(response);
+
     if (
       standardRequest.method === "GET" &&
       (url.pathname === "/.well-known/agent-card.json" ||
@@ -91,8 +103,9 @@ export default {
         url.pathname === "/llms.txt" ||
         url.pathname === "/llms-full.txt")
     )
-      return enhanceAgentDiscoveryResponse(standardRequest, response);
-    return response;
+      response = enhanceAgentDiscoveryResponse(standardRequest, response);
+
+    return secureResponse(response);
   },
 
   async scheduled(controller, env, ctx): Promise<void> {
@@ -121,6 +134,70 @@ async function publicMcpGuard(
   }
 }
 
+function redirectPlaintextRequest(request: Request, url: URL): Response | null {
+  if (!isPlaintextRequest(request, url)) return null;
+  const location = new URL(url.toString());
+  location.protocol = "https:";
+  return new Response(null, {
+    status: 308,
+    headers: {
+      Location: location.toString(),
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function isPlaintextRequest(request: Request, url: URL): boolean {
+  if (url.protocol === "http:") return true;
+
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (forwardedProto === "http") return true;
+
+  const visitor = request.headers.get("cf-visitor");
+  if (visitor !== null) {
+    try {
+      const parsed = JSON.parse(visitor) as unknown;
+      if (isRecord(parsed) && parsed.scheme === "http") return true;
+    } catch {
+      // Ignore malformed proxy metadata and fall back to the request URL.
+    }
+  }
+
+  return false;
+}
+
+async function normalizeLegacyMcpToolList(
+  response: Response,
+): Promise<Response> {
+  if (!response.ok) return response;
+  if (!(response.headers.get("content-type") ?? "").includes("application/json"))
+    return response;
+
+  try {
+    const body = (await response.clone().json()) as unknown;
+    if (!isRecord(body) || !isRecord(body.result)) return response;
+    const result = body.result;
+    if (!Array.isArray(result.tools)) return response;
+
+    const advertisedNames = new Set(
+      result.tools
+        .filter(isRecord)
+        .map((tool) => tool.name)
+        .filter((name): name is string => typeof name === "string"),
+    );
+    result.tools = xguardMcpTools().filter((tool) =>
+      advertisedNames.has(tool.name),
+    );
+    return jsonFromResponse(response, body);
+  } catch {
+    return response;
+  }
+}
+
 function publicJson(
   value: unknown,
   status = 200,
@@ -136,4 +213,32 @@ function publicJson(
       ...extraHeaders,
     },
   });
+}
+
+function jsonFromResponse(response: Response, value: unknown): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  headers.delete("Content-Length");
+  return new Response(JSON.stringify(value), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function secureResponse(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Strict-Transport-Security", HSTS_VALUE);
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
+  headers.set("Referrer-Policy", "no-referrer");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
