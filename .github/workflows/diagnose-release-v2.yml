@@ -20,54 +20,23 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Format
-        continue-on-error: true
-        run: npm run format:check
-      - name: Lint
-        continue-on-error: true
-        run: npm run lint
-      - name: Typecheck
-        continue-on-error: true
-        run: npm run typecheck
-      - name: Coverage tests
-        continue-on-error: true
-        run: npm run test:coverage
-      - name: Worker tests
-        continue-on-error: true
-        run: npm run test:worker
-      - name: Secret scan
-        continue-on-error: true
-        run: npm run security:secrets
-      - name: No TODOs
-        continue-on-error: true
-        run: npm run quality:no-todos
-      - name: Docs
-        continue-on-error: true
-        run: npm run quality:docs
-      - name: TypeScript build
-        continue-on-error: true
-        run: npm run build
-      - name: Dependency audit
-        continue-on-error: true
-        run: npm run security:deps
-      - name: Wrangler types
-        continue-on-error: true
-        run: npm --workspace @xguard/worker run types -- --check
-      - name: Testnet dry run
-        continue-on-error: true
-        run: npm --workspace @xguard/worker run build
-      - name: Mainnet dry run
-        continue-on-error: true
-        run: npm --workspace @xguard/worker run build:mainnet
-      - name: Economic preview dry run
-        continue-on-error: true
-        run: npm --workspace @xguard/worker run build:economic-preview
-      - name: Pack core
-        continue-on-error: true
-        run: npm pack --dry-run --workspace @xguard/core
-      - name: Pack SDK
-        continue-on-error: true
-        run: npm pack --dry-run --workspace @xguard/sdk
-      - name: Pack CLI
-        continue-on-error: true
-        run: npm pack --dry-run --workspace xguard
+      - name: Capture exact verify release output
+        id: verify
+        shell: bash
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          set +e
+          npm run verify:release > verify-release-output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload verify release output
+        uses: actions/upload-artifact@v4
+        with:
+          name: economic-v2-verify-release-output
+          path: verify-release-output.txt
+          if-no-files-found: error
+      - name: Fail if verify release failed
+        if: steps.verify.outputs.exit_code != '0'
+        run: exit 1
