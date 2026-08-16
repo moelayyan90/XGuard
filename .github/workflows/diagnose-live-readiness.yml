@@ -12,23 +12,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Probe live MCP discover
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Capture full production runtime failures
         shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
         run: |
           set -u
-          BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
-          headers="$(mktemp)"
-          body="$(mktemp)"
-          code="$(curl -sS --max-time 15 \
-            -X POST \
-            -D "$headers" \
-            -o "$body" \
-            -w '%{http_code}' \
-            -H 'Accept: application/json, text/event-stream' \
-            -H 'Content-Type: application/json' \
-            -H 'MCP-Protocol-Version: 2026-07-28' \
-            -H 'Mcp-Method: server/discover' \
-            --data '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"xguard-diagnostic","version":"1.0.0"}}}}' \
-            "${BASE_URL}/mcp" || true)"
-          echo "===== MCP server/discover HTTP ${code} ====="
-          cat "$headers"; echo; cat "$body"; echo
+          : > /tmp/failed.log
+          : > /tmp/errors.log
+          (timeout 80s npx --yes wrangler@4.123.0 tail xguard-mainnet --format=json --search failed > /tmp/failed.log 2>&1 || true) &
+          p1=$!
+          (timeout 80s npx --yes wrangler@4.123.0 tail xguard-mainnet --format=json --status error > /tmp/errors.log 2>&1 || true) &
+          p2=$!
+          wait "$p1" || true
+          wait "$p2" || true
+          echo '===== EVENTS MATCHING failed ====='
+          cat /tmp/failed.log
+          echo '===== INVOCATIONS WITH ERROR OUTCOME ====='
+          cat /tmp/errors.log
