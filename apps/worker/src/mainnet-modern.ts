@@ -39,6 +39,7 @@ type MainnetScheduled = (
 const delegateFetch = mainnet.fetch as unknown as MainnetFetch;
 const delegateScheduled = mainnet.scheduled as unknown as MainnetScheduled;
 const HSTS_VALUE = "max-age=31536000; includeSubDomains";
+const MCP_TELEMETRY_MAX_BODY_BYTES = 8 * 1024;
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
@@ -47,6 +48,9 @@ export default {
 
     const httpsRedirect = redirectPlaintextRequest(standardRequest, url);
     if (httpsRedirect !== null) return secureResponse(httpsRedirect);
+
+    if (url.pathname === "/mcp" && standardRequest.method === "POST")
+      ctx.waitUntil(observeMcpRpcRequest(standardRequest));
 
     const branding = mainnetBrandingResponse(standardRequest);
     if (branding !== null) return secureResponse(branding);
@@ -112,6 +116,126 @@ export default {
     await delegateScheduled(controller, env, ctx);
   },
 } satisfies ExportedHandler<MainnetModernEnv>;
+
+async function observeMcpRpcRequest(request: Request): Promise<void> {
+  const protocolVersionHeader = request.headers.get("mcp-protocol-version");
+  const methodHeader = request.headers.get("mcp-method");
+  const userAgent = request.headers.get("user-agent") ?? "unknown";
+  const declaredLength = request.headers.get("content-length");
+  const era = shouldUseModernMcp(request) ? "modern" : "legacy";
+
+  if (declaredLength === null) {
+    logMcpTelemetry({
+      era,
+      rpcMethod: methodHeader ?? "unknown",
+      toolName: null,
+      protocolVersion: protocolVersionHeader ?? "unspecified",
+      protocolVersionSource:
+        protocolVersionHeader === null ? "absent" : "header",
+      methodHeaderPresent: methodHeader !== null,
+      methodHeaderMatches: null,
+      userAgent,
+      parseState: "length_unknown",
+    });
+    return;
+  }
+
+  const declaredBytes = Number(declaredLength);
+  if (
+    !Number.isFinite(declaredBytes) ||
+    declaredBytes < 0 ||
+    declaredBytes > MCP_TELEMETRY_MAX_BODY_BYTES
+  ) {
+    logMcpTelemetry({
+      era,
+      rpcMethod: methodHeader ?? "unknown",
+      toolName: null,
+      protocolVersion: protocolVersionHeader ?? "unspecified",
+      protocolVersionSource:
+        protocolVersionHeader === null ? "absent" : "header",
+      methodHeaderPresent: methodHeader !== null,
+      methodHeaderMatches: null,
+      userAgent,
+      parseState: "body_not_sampled",
+    });
+    return;
+  }
+
+  try {
+    const text = await request.clone().text();
+    if (
+      new TextEncoder().encode(text).byteLength > MCP_TELEMETRY_MAX_BODY_BYTES
+    )
+      throw new Error("sample_limit_exceeded");
+
+    const parsed = JSON.parse(text) as unknown;
+    if (!isRecord(parsed)) throw new Error("invalid_json_rpc");
+    const rpcMethod =
+      typeof parsed.method === "string" ? parsed.method : "unknown";
+    const params = isRecord(parsed.params) ? parsed.params : {};
+    const initializeProtocolVersion =
+      rpcMethod === "initialize" && typeof params.protocolVersion === "string"
+        ? params.protocolVersion
+        : null;
+    const toolName =
+      rpcMethod === "tools/call" && typeof params.name === "string"
+        ? params.name
+        : null;
+
+    logMcpTelemetry({
+      era,
+      rpcMethod,
+      toolName,
+      protocolVersion:
+        protocolVersionHeader ?? initializeProtocolVersion ?? "unspecified",
+      protocolVersionSource:
+        protocolVersionHeader !== null
+          ? "header"
+          : initializeProtocolVersion !== null
+            ? "initialize_params"
+            : "absent",
+      methodHeaderPresent: methodHeader !== null,
+      methodHeaderMatches:
+        methodHeader === null || rpcMethod === "unknown"
+          ? null
+          : methodHeader === rpcMethod,
+      userAgent,
+      parseState: "parsed",
+    });
+  } catch {
+    logMcpTelemetry({
+      era,
+      rpcMethod: methodHeader ?? "unknown",
+      toolName: null,
+      protocolVersion: protocolVersionHeader ?? "unspecified",
+      protocolVersionSource:
+        protocolVersionHeader === null ? "absent" : "header",
+      methodHeaderPresent: methodHeader !== null,
+      methodHeaderMatches: null,
+      userAgent,
+      parseState: "unparsed",
+    });
+  }
+}
+
+function logMcpTelemetry(value: {
+  era: "modern" | "legacy";
+  rpcMethod: string;
+  toolName: string | null;
+  protocolVersion: string;
+  protocolVersionSource: "header" | "initialize_params" | "absent";
+  methodHeaderPresent: boolean;
+  methodHeaderMatches: boolean | null;
+  userAgent: string;
+  parseState: "parsed" | "unparsed" | "body_not_sampled" | "length_unknown";
+}) {
+  console.log(
+    JSON.stringify({
+      event: "mcp_rpc_request",
+      ...value,
+    }),
+  );
+}
 
 async function publicMcpGuard(
   request: Request,
