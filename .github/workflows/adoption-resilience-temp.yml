@@ -1,0 +1,170 @@
+name: Patch adoption resilience temporary
+
+on:
+  push:
+    branches: [agent/adoption-resilience]
+    paths:
+      - ".github/workflows/adoption-resilience-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Add bounded retry and backoff
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("scripts/adoption-engine.mjs")
+          text = path.read_text()
+          pattern = re.compile(r"async function fetchJson\(url, options = \{\}\) \{.*?\n\}\n\nasync function collectBazaarSource", re.S)
+          replacement = r'''const RETRIABLE_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+export function shouldRetryHttp(status, headers = new Headers()) {
+  if (RETRIABLE_HTTP_STATUSES.has(status)) return true;
+  return (
+    status === 403 &&
+    (headers.has("retry-after") || headers.get("x-ratelimit-remaining") === "0")
+  );
+}
+
+function boundedRetryAfterMs(headers, maxDelayMs) {
+  const raw = headers.get("retry-after");
+  if (raw) {
+    const seconds = Number(raw);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(maxDelayMs, Math.round(seconds * 1_000));
+    }
+    const timestamp = Date.parse(raw);
+    if (Number.isFinite(timestamp)) {
+      return Math.min(maxDelayMs, Math.max(0, timestamp - Date.now()));
+    }
+  }
+
+  if (headers.get("x-ratelimit-remaining") === "0") {
+    const resetEpoch = Number(headers.get("x-ratelimit-reset"));
+    if (Number.isFinite(resetEpoch)) {
+      return Math.min(maxDelayMs, Math.max(0, resetEpoch * 1_000 - Date.now()));
+    }
+  }
+  return null;
+}
+
+export function adoptionRetryDelayMs(attempt, headers = new Headers()) {
+  const baseDelayMs = envInt("XGUARD_ADOPTION_RETRY_BASE_MS", 500, 100, 5_000);
+  const maxDelayMs = envInt("XGUARD_ADOPTION_RETRY_MAX_MS", 8_000, 500, 30_000);
+  const serverDelay = boundedRetryAfterMs(headers, maxDelayMs);
+  if (serverDelay !== null) return serverDelay;
+  return Math.min(maxDelayMs, baseDelayMs * 2 ** Math.max(0, attempt - 1));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchJson(url, options = {}) {
+  const maxAttempts = envInt("XGUARD_ADOPTION_FETCH_ATTEMPTS", 4, 1, 6);
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          Accept: "application/json",
+          "User-Agent": USER_AGENT,
+          ...(options.headers ?? {}),
+        },
+        redirect: "manual",
+        signal: AbortSignal.timeout(
+          envInt("XGUARD_ADOPTION_TIMEOUT_MS", 8_000, 1_000, 30_000),
+        ),
+      });
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxAttempts) throw error;
+      const delayMs = adoptionRetryDelayMs(attempt);
+      console.warn(
+        JSON.stringify({
+          event: "adoption_fetch_retry",
+          url: String(url),
+          attempt,
+          maxAttempts,
+          delayMs,
+          reason: "network_error",
+        }),
+      );
+      await sleep(delayMs);
+      continue;
+    }
+
+    const text = await response.text();
+    if (response.ok) {
+      try {
+        const body = text.length ? JSON.parse(text) : {};
+        return { response, body };
+      } catch {
+        throw new Error(`non_json_response:${response.status}:${url}`);
+      }
+    }
+
+    const error = new Error(`http_${response.status}:${url}`);
+    lastError = error;
+    if (!shouldRetryHttp(response.status, response.headers) || attempt >= maxAttempts) {
+      throw error;
+    }
+
+    const delayMs = adoptionRetryDelayMs(attempt, response.headers);
+    console.warn(
+      JSON.stringify({
+        event: "adoption_fetch_retry",
+        url: String(url),
+        attempt,
+        maxAttempts,
+        delayMs,
+        status: response.status,
+        reason: "retriable_http_status",
+      }),
+    );
+    await sleep(delayMs);
+  }
+
+  throw lastError ?? new Error(`fetch_exhausted:${url}`);
+}
+
+async function collectBazaarSource'''
+          new_text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"expected one fetchJson block, replaced {count}")
+
+          marker = 'export function selfTest() {'
+          old = '''export function selfTest() {\n  const source = { id: "fixture", incumbentHint: "cdp" };'''
+          new = '''export function selfTest() {\n  if (!shouldRetryHttp(429) || !shouldRetryHttp(503) || shouldRetryHttp(404)) {\n    throw new Error("self_test_retry_status_failed");\n  }\n  if (adoptionRetryDelayMs(2) < adoptionRetryDelayMs(1)) {\n    throw new Error("self_test_retry_backoff_failed");\n  }\n  const source = { id: "fixture", incumbentHint: "cdp" };'''
+          if old not in new_text:
+              raise SystemExit("selfTest insertion point not found")
+          new_text = new_text.replace(old, new, 1)
+          path.write_text(new_text)
+          PY
+      - run: npx prettier scripts/adoption-engine.mjs --write
+      - run: npm run adoption:self-test
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/adoption-engine.mjs
+          git commit -m "fix: retry transient adoption discovery failures"
+          git push origin HEAD:agent/adoption-resilience
