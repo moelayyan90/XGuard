@@ -12,19 +12,57 @@ jobs:
   sync:
     if: ${{ !contains(github.event.head_commit.message, '[synced-main]') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
           ref: agent/complete-agent-discovery-stack
           fetch-depth: 0
-      - name: Merge latest main
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Merge latest main and resolve the known Worker entrypoint conflict
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "xguard-agent"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git merge --no-edit origin/main
-          git commit --amend -m "chore: sync latest main [synced-main]"
+
+          set +e
+          git merge --no-commit --no-edit origin/main
+          merge_status=$?
+          set -e
+
+          if [[ ${merge_status} -ne 0 ]]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            if [[ ${#conflicts[@]} -ne 1 || "${conflicts[0]}" != "apps/worker/wrangler.mainnet.jsonc" ]]; then
+              printf 'Unexpected merge conflicts:\n%s\n' "${conflicts[*]:-none}"
+              exit 1
+            fi
+            git checkout --ours apps/worker/wrangler.mainnet.jsonc
+            git add apps/worker/wrangler.mainnet.jsonc
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps/worker/src/mainnet-edge.ts')
+          s = p.read_text()
+          old = '} from "./mainnet.js";'
+          new = '} from "./mainnet-entry.js";'
+          if old not in s and new not in s:
+              raise SystemExit('mainnet edge delegate import not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git add apps/worker/src/mainnet-edge.ts
+
+          npm ci --ignore-scripts
+          npx prettier --write apps/worker/src/mainnet-edge.ts apps/worker/wrangler.mainnet.jsonc
+          npm run typecheck
+          npx vitest run tests/mainnet-bazaar.test.ts
+          npm --workspace @xguard/worker run build:mainnet
+
+          git add -A
+          git commit -m "chore: sync latest main and preserve agent edge [synced-main]"
           git push origin HEAD:agent/complete-agent-discovery-stack
