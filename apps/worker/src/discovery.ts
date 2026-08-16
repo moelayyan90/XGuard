@@ -79,13 +79,7 @@ function buildAgentCard(origin: string): Record<string, unknown> {
         name: "Settle x402 payment",
         description:
           "Submits an x402 v2 settlement through XGuard with duplicate protection, durable coordination, finality tracking, and fee accounting. Requires a merchant Bearer API key and service balance.",
-        tags: [
-          "x402",
-          "settlement",
-          "payments",
-          "idempotency",
-          "finality",
-        ],
+        tags: ["x402", "settlement", "payments", "idempotency", "finality"],
         examples: [`POST ${origin}/settle`],
         inputModes: ["application/json"],
         outputModes: ["application/json"],
@@ -149,11 +143,7 @@ function buildOpenApi(origin: string): Record<string, unknown> {
         "Guarded x402 v2 verification and settlement API for Base mainnet USDC.",
     },
     servers: [{ url: origin }],
-    tags: [
-      { name: "Discovery" },
-      { name: "Merchant" },
-      { name: "Payments" },
-    ],
+    tags: [{ name: "Discovery" }, { name: "Merchant" }, { name: "Payments" }],
     paths: {
       "/": {
         get: {
@@ -193,7 +183,9 @@ function buildOpenApi(origin: string): Record<string, unknown> {
           tags: ["Discovery"],
           summary: "Read operational status",
           responses: {
-            "200": { description: "Operational status and settlement counters" },
+            "200": {
+              description: "Operational status and settlement counters",
+            },
           },
         },
       },
@@ -316,7 +308,8 @@ function buildOpenApi(origin: string): Record<string, unknown> {
               description: "Duplicate, conflicting, or in-progress settlement",
             },
             "503": {
-              description: "Settlement outcome is ambiguous or route unavailable",
+              description:
+                "Settlement outcome is ambiguous or route unavailable",
             },
           },
         },
@@ -409,7 +402,8 @@ function jsonResponse(
     });
   }
 
-  const body = request.method === "HEAD" ? null : JSON.stringify(value, null, 2);
+  const body =
+    request.method === "HEAD" ? null : JSON.stringify(value, null, 2);
   return new Response(body, {
     status: 200,
     headers: publicHeaders({
