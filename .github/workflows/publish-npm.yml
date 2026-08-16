@@ -21,6 +21,7 @@ jobs:
       core_exists: ${{ steps.names.outputs.core_exists }}
       sdk_exists: ${{ steps.names.outputs.sdk_exists }}
       cli_exists: ${{ steps.names.outputs.cli_exists }}
+      npm_token_present: ${{ steps.auth.outputs.present }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -49,9 +50,22 @@ jobs:
           check_name core @xguard/core
           check_name sdk @xguard/sdk
           check_name cli xguard
+      - name: Detect npm bootstrap credential
+        id: auth
+        shell: bash
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ -n "${NPM_TOKEN:-}" ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "NPM_TOKEN is configured; first publication can proceed."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "NPM_TOKEN is not configured; first publication remains identity-gated."
+          fi
 
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+    if: needs.preflight.outputs.npm_token_present == 'true'
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -69,15 +83,15 @@ jobs:
         env:
           WRANGLER_SEND_METRICS: "false"
       - name: Publish core
-        run: npm publish --workspace @xguard/core
+        run: npm publish --workspace @xguard/core --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish SDK
-        run: npm publish --workspace @xguard/sdk
+        run: npm publish --workspace @xguard/sdk --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish CLI
-        run: npm publish --workspace xguard
+        run: npm publish --workspace xguard --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Verify public packages
