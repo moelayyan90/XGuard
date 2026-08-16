@@ -81,6 +81,12 @@ jobs:
           const currencies = await okxGet('/api/v5/asset/currencies?ccy=USDC');
           const row = currencies.find(x => String(x.chain||'').toLowerCase().endsWith('-base'));
           if (!row) throw new Error('okx_usdc_base_missing');
+          const fundingRows = await okxGet('/api/v5/asset/balances?ccy=USDC');
+          const funding = fundingRows.find(x => String(x.ccy||'').toUpperCase() === 'USDC');
+          const available = Number(funding?.availBal ?? funding?.bal ?? 0);
+          const minWithdrawal = Number(row.minWd ?? 0);
+          const fee = Number(row.fee ?? 0);
+          const enoughToFundMinimum = Number.isFinite(available) && available >= minWithdrawal + fee;
           const signerSecretPresent = [
             process.env.EVM_PRIVATE_KEY,
             process.env.MAINNET_PAYER_PRIVATE_KEY,
@@ -90,7 +96,7 @@ jobs:
           console.log(JSON.stringify({
             event:'mainnet_e2e_preflight',
             xguard:{operational:true,facilitator:status.body.facilitator,merchantRegistration:true,initialBalanceMicroUsd:balance.availableMicroUsd,topupIntent:true,exactDepositUsdc:topup.exactDepositUsdc,treasuryFingerprint:`${String(topup.treasuryAddress).slice(0,6)}...${String(topup.treasuryAddress).slice(-6)}`},
-            okx:{baseUsdc:true,canWithdraw:row.canWd===true,minWithdrawalUsdc:String(row.minWd??''),withdrawalFeeUsdc:String(row.fee??''),withdrawableBalanceUsdc:String(row.bal??'')},
+            okx:{baseUsdc:true,canWithdraw:row.canWd===true,minWithdrawalUsdc:String(row.minWd??''),withdrawalFeeUsdc:String(row.fee??''),enoughToFundMinimum},
             existingMainnetSignerSecret:signerSecretPresent,
           }));
           NODE
