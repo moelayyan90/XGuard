@@ -8,12 +8,15 @@ import {
 export const MODERN_MCP_PROTOCOL = "2026-07-28";
 export const XGUARD_MCP_VERSION = "0.4.0";
 
-const SUPPORTED_PROTOCOLS = [
-  MODERN_MCP_PROTOCOL,
+const LEGACY_MCP_PROTOCOLS = new Set([
   "2025-11-25",
   "2025-06-18",
   "2025-03-26",
-] as const;
+]);
+const SUPPORTED_PROTOCOLS = [
+  MODERN_MCP_PROTOCOL,
+  ...LEGACY_MCP_PROTOCOLS,
+];
 const CACHE_TTL_MS = 300_000;
 const MAX_MCP_BODY_BYTES = 128 * 1024;
 const SERVER_INFO = { name: "xguard-mainnet", version: XGUARD_MCP_VERSION };
@@ -39,13 +42,23 @@ export async function modernMcpRequest(
     !accept.includes("application/json") ||
     !accept.includes("text/event-stream")
   )
-    return mcpHttpError(null, -32600, "Accept must include application/json and text/event-stream", 406);
+    return mcpHttpError(
+      null,
+      -32600,
+      "Accept must include application/json and text/event-stream",
+      406,
+    );
 
   if (
     request.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase() !==
     "application/json"
   )
-    return mcpHttpError(null, -32600, "Content-Type must be application/json", 415);
+    return mcpHttpError(
+      null,
+      -32600,
+      "Content-Type must be application/json",
+      415,
+    );
 
   let rpc: Record<string, unknown>;
   try {
@@ -66,6 +79,10 @@ export async function modernMcpRequest(
   const method = rpc.method;
   const params = isRecord(rpc.params) ? rpc.params : {};
   const isNotification = rpc.id === undefined;
+  const requestedVersion = request.headers.get("mcp-protocol-version");
+
+  if (requestedVersion !== MODERN_MCP_PROTOCOL)
+    return mcpUnsupportedProtocol(id, requestedVersion);
 
   const validation = validateModernEnvelope(request, method, params);
   if (validation !== null) return mcpHeaderMismatch(id, validation);
@@ -75,7 +92,7 @@ export async function modernMcpRequest(
   if (method === "server/discover") {
     return mcpResult(id, {
       resultType: "complete",
-      supportedVersions: [...SUPPORTED_PROTOCOLS],
+      supportedVersions: SUPPORTED_PROTOCOLS,
       capabilities: { tools: { listChanged: false } },
       instructions:
         "Use xguard_discover to find x402-paid HTTP APIs and MCP tools cataloged by XGuard; use xguard_resource_details for an exact resource and xguard_status for live gateway state.",
@@ -156,7 +173,7 @@ export function modernMcpOptions(request: Request): Response {
 
 export function shouldUseModernMcp(request: Request): boolean {
   const version = request.headers.get("mcp-protocol-version");
-  return version !== null && !SUPPORTED_PROTOCOLS.slice(1).includes(version as never);
+  return version !== null && !LEGACY_MCP_PROTOCOLS.has(version);
 }
 
 function validateModernEnvelope(
@@ -166,8 +183,6 @@ function validateModernEnvelope(
 ): string | null {
   const headerVersion = request.headers.get("mcp-protocol-version");
   if (headerVersion === null) return "MCP-Protocol-Version header is required";
-  if (headerVersion !== MODERN_MCP_PROTOCOL)
-    return `unsupported protocol version: ${headerVersion}`;
 
   const meta = isRecord(params._meta) ? params._meta : null;
   if (meta === null) return "params._meta is required";
@@ -211,10 +226,21 @@ function mcpTools() {
       inputSchema: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Natural-language search query." },
+          query: {
+            type: "string",
+            description: "Natural-language search query.",
+          },
           type: { type: "string", enum: ["http", "mcp"] },
-          payTo: { type: "string", description: "Optional payment recipient address." },
-          limit: { type: "integer", minimum: 1, maximum: 100, default: 10 },
+          payTo: {
+            type: "string",
+            description: "Optional payment recipient address.",
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 100,
+            default: 10,
+          },
         },
         additionalProperties: false,
       },
@@ -277,6 +303,25 @@ function mcpToolError(id: unknown, message: string): Response {
 
 function mcpHeaderMismatch(id: unknown, message: string): Response {
   return mcpHttpError(id, -32020, `Header mismatch: ${message}`, 400);
+}
+
+function mcpUnsupportedProtocol(
+  id: unknown,
+  requestedVersion: string | null,
+): Response {
+  return corsJson(
+    {
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32022,
+        message: `Unsupported MCP protocol version: ${requestedVersion ?? "missing"}`,
+        data: { supportedVersions: SUPPORTED_PROTOCOLS },
+      },
+    },
+    400,
+    { "MCP-Protocol-Version": MODERN_MCP_PROTOCOL },
+  );
 }
 
 function mcpHttpError(
@@ -358,10 +403,7 @@ function corsResponse(response: Response): Response {
     "Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name, MCP-Session-Id",
   );
   headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  headers.set(
-    "Access-Control-Expose-Headers",
-    "MCP-Protocol-Version",
-  );
+  headers.set("Access-Control-Expose-Headers", "MCP-Protocol-Version");
   headers.set("X-Content-Type-Options", "nosniff");
   return new Response(response.body, {
     status: response.status,
@@ -370,7 +412,10 @@ function corsResponse(response: Response): Response {
   });
 }
 
-async function readBodyCapped(request: Request, maxBytes: number): Promise<string> {
+async function readBodyCapped(
+  request: Request,
+  maxBytes: number,
+): Promise<string> {
   const declared = request.headers.get("content-length");
   if (declared !== null && Number(declared) > maxBytes)
     throw new Error("request_body_too_large");
