@@ -67,7 +67,11 @@ export class XPayGlobalRateGate extends DurableObject {
   }
 }
 
-function validateArguments(nowMs: number, limit: number, windowMs: number): void {
+function validateArguments(
+  nowMs: number,
+  limit: number,
+  windowMs: number,
+): void {
   if (!Number.isSafeInteger(nowMs) || nowMs < 0)
     throw new Error("invalid_rate_clock");
   if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 100_000)

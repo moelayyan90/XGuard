@@ -13,10 +13,7 @@ import {
   type AmbiguousRecoveryInput,
   type MainnetRecoveryEnv,
 } from "./mainnet-recovery.js";
-import {
-  XPayGlobalRateGate,
-  type XPayRateDecision,
-} from "./xpay-rate-gate.js";
+import { XPayGlobalRateGate, type XPayRateDecision } from "./xpay-rate-gate.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -122,13 +119,11 @@ async function supervisedFacilitatorRequest(
     }
   }
 
-  let quota:
-    | {
-        stub: DurableObjectStub<XPayGlobalRateGate>;
-        takenAtMs: number;
-        decision: XPayRateDecision;
-      }
-    | null = null;
+  let quota: {
+    stub: DurableObjectStub<XPayGlobalRateGate>;
+    takenAtMs: number;
+    decision: XPayRateDecision;
+  } | null = null;
 
   if (inspected !== null) {
     const takenAtMs = Date.now();
@@ -255,7 +250,9 @@ async function truthfulStatus(
     const recoveries = await recoveryStats(db);
     const facilitatorHealthy = body.facilitator === "HEALTHY";
     body.gateway =
-      facilitatorHealthy && recoveries.failed === 0 ? "operational" : "degraded";
+      facilitatorHealthy && recoveries.failed === 0
+        ? "operational"
+        : "degraded";
     body.facilitatorProvider = "xpay";
     body.ambiguousRecovery = recoveries;
     return jsonFrom(response, body);

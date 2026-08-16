@@ -164,7 +164,11 @@ async function recoverOne(
 ): Promise<void> {
   const fromBlock =
     job.from_block ??
-    (await blockAtOrBeforeCreation(env.BASE_RPC_URL, job.created_at, finalized));
+    (await blockAtOrBeforeCreation(
+      env.BASE_RPC_URL,
+      job.created_at,
+      finalized,
+    ));
   if (job.from_block === null) {
     await env.DB.prepare(
       "UPDATE settlement_recovery_jobs SET from_block=?,updated_at=? WHERE logical_payment_key=? AND state='PENDING'",
@@ -226,7 +230,11 @@ async function recoverOne(
       await failRecovery(env, job, "multiple_verified_settlement_transactions");
       return;
     }
-    await failRecovery(env, job, "authorization_used_without_expected_transfer");
+    await failRecovery(
+      env,
+      job,
+      "authorization_used_without_expected_transfer",
+    );
     return;
   }
 
@@ -236,11 +244,20 @@ async function recoverOne(
   }
 
   if (finalized.timestamp >= job.valid_before_epoch) {
-    await closeWithoutCharge(env, job, "EXPIRED", "authorization_expired_unused");
+    await closeWithoutCharge(
+      env,
+      job,
+      "EXPIRED",
+      "authorization_expired_unused",
+    );
     return;
   }
 
-  await markAttempt(env.DB, job.logical_payment_key, "authorization_still_pending");
+  await markAttempt(
+    env.DB,
+    job.logical_payment_key,
+    "authorization_still_pending",
+  );
 }
 
 async function confirmRecovery(
@@ -345,7 +362,8 @@ async function failRecovery(
     transaction: "",
     network: BASE_MAINNET,
     errorReason: "xguard_recovery_conflict",
-    errorMessage: "On-chain recovery evidence conflicts with the expected payment",
+    errorMessage:
+      "On-chain recovery evidence conflicts with the expected payment",
   } as SettleResponse;
   const now = new Date().toISOString();
   await releaseSettlementFee(
@@ -358,13 +376,7 @@ async function failRecovery(
       `UPDATE settlement_recovery_jobs
        SET state='FAILED',result_json=?,attempts=attempts+1,last_error_code=?,updated_at=?,resolved_at=?
        WHERE logical_payment_key=? AND state='PENDING'`,
-    ).bind(
-      JSON.stringify(result),
-      reason,
-      now,
-      now,
-      job.logical_payment_key,
-    ),
+    ).bind(JSON.stringify(result), reason, now, now, job.logical_payment_key),
     env.DB.prepare(
       "UPDATE settlement_projection SET state='FAILED',fee_micro_usd=0,recorded_at=? WHERE logical_payment_key=?",
     ).bind(now, job.logical_payment_key),
@@ -390,7 +402,8 @@ async function blockAtOrBeforeCreation(
   finalized: { number: number; timestamp: number },
 ): Promise<number> {
   const createdMs = Date.parse(createdAt);
-  if (!Number.isFinite(createdMs)) throw new Error("invalid_recovery_created_at");
+  if (!Number.isFinite(createdMs))
+    throw new Error("invalid_recovery_created_at");
   const targetTimestamp = Math.max(
     0,
     Math.floor(createdMs / 1_000) - RECOVERY_CREATION_SAFETY_SECONDS,
@@ -419,7 +432,8 @@ async function numberedBlock(
   ]);
   if (block === null) throw new Error("historical_block_unavailable");
   const number = parseRpcInteger(block.number, "historical_block");
-  if (number !== blockNumber) throw new Error("historical_block_number_conflict");
+  if (number !== blockNumber)
+    throw new Error("historical_block_number_conflict");
   return {
     number,
     timestamp: parseRpcInteger(block.timestamp, "historical_timestamp"),
@@ -499,7 +513,8 @@ async function rpc<T>(
       throw new Error("recovery_rpc_response_too_large");
     const parsed = JSON.parse(text) as RpcEnvelope<T>;
     if (parsed.error !== undefined) throw new Error("recovery_rpc_error");
-    if (!("result" in parsed)) throw new Error("malformed_recovery_rpc_response");
+    if (!("result" in parsed))
+      throw new Error("malformed_recovery_rpc_response");
     return parsed.result ?? null;
   } finally {
     clearTimeout(timer);
@@ -533,7 +548,10 @@ function validateRecoveryInput(input: AmbiguousRecoveryInput): void {
     throw new Error("invalid_recovery_amount");
   if (!/^0x[0-9a-fA-F]{64}$/.test(input.authorizationNonce))
     throw new Error("invalid_recovery_nonce");
-  if (!Number.isSafeInteger(input.validBeforeEpoch) || input.validBeforeEpoch <= 0)
+  if (
+    !Number.isSafeInteger(input.validBeforeEpoch) ||
+    input.validBeforeEpoch <= 0
+  )
     throw new Error("invalid_recovery_expiry");
 }
 

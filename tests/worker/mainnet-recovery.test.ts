@@ -52,48 +52,58 @@ describe("ambiguous mainnet settlement recovery", () => {
       .bind(merchant.logicalPaymentKey)
       .run();
 
-    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      const request = JSON.parse(String(init?.body ?? "{}")) as {
-        method?: string;
-        params?: unknown[];
-      };
-      if (request.method === "eth_getLogs") {
-        const filter = (request.params?.[0] ?? {}) as { topics?: string[] };
-        if (filter.topics?.[0] === AUTHORIZATION_USED_TOPIC) {
-          return rpcResponse([
-            {
-              transactionHash: TRANSACTION,
-              blockNumber: "0x1000",
-              logIndex: "0x1",
-              removed: false,
-            },
-          ]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const request = JSON.parse(String(init?.body ?? "{}")) as {
+          method?: string;
+          params?: unknown[];
+        };
+        if (request.method === "eth_getLogs") {
+          const filter = (request.params?.[0] ?? {}) as { topics?: string[] };
+          if (filter.topics?.[0] === AUTHORIZATION_USED_TOPIC) {
+            return rpcResponse([
+              {
+                transactionHash: TRANSACTION,
+                blockNumber: "0x1000",
+                logIndex: "0x1",
+                removed: false,
+              },
+            ]);
+          }
+          return rpcResponse([]);
         }
-        return rpcResponse([]);
-      }
-      if (request.method === "eth_getTransactionReceipt") {
-        return rpcResponse({
-          status: "0x1",
-          blockNumber: "0x1000",
-          logs: [
-            {
-              address: BASE_USDC,
-              topics: [TRANSFER_TOPIC, addressTopic(PAYER), addressTopic(PAY_TO)],
-              data: `0x${AMOUNT.toString(16)}`,
-              logIndex: "0x2",
-              removed: false,
-            },
-          ],
-        });
-      }
-      if (request.method === "eth_getBlockByNumber")
-        return rpcResponse({ number: "0x1000", timestamp: "0x3e8" });
-      throw new Error(`unexpected RPC method ${request.method ?? "missing"}`);
-    }));
+        if (request.method === "eth_getTransactionReceipt") {
+          return rpcResponse({
+            status: "0x1",
+            blockNumber: "0x1000",
+            logs: [
+              {
+                address: BASE_USDC,
+                topics: [
+                  TRANSFER_TOPIC,
+                  addressTopic(PAYER),
+                  addressTopic(PAY_TO),
+                ],
+                data: `0x${AMOUNT.toString(16)}`,
+                logIndex: "0x2",
+                removed: false,
+              },
+            ],
+          });
+        }
+        if (request.method === "eth_getBlockByNumber")
+          return rpcResponse({ number: "0x1000", timestamp: "0x3e8" });
+        throw new Error(`unexpected RPC method ${request.method ?? "missing"}`);
+      }),
+    );
 
     await recoverAmbiguousSettlements(recoveryEnv());
 
-    const recovered = await recoveredSettlement(env.DB, merchant.logicalPaymentKey);
+    const recovered = await recoveredSettlement(
+      env.DB,
+      merchant.logicalPaymentKey,
+    );
     expect(recovered?.state).toBe("CONFIRMED");
     expect(recovered?.result).toMatchObject({
       success: true,
@@ -122,17 +132,25 @@ describe("ambiguous mainnet settlement recovery", () => {
       .bind(merchant.logicalPaymentKey)
       .run();
 
-    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      const request = JSON.parse(String(init?.body ?? "{}")) as { method?: string };
-      if (request.method === "eth_getLogs") return rpcResponse([]);
-      if (request.method === "eth_getBlockByNumber")
-        return rpcResponse({ number: "0x1000", timestamp: "0xc8" });
-      throw new Error(`unexpected RPC method ${request.method ?? "missing"}`);
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const request = JSON.parse(String(init?.body ?? "{}")) as {
+          method?: string;
+        };
+        if (request.method === "eth_getLogs") return rpcResponse([]);
+        if (request.method === "eth_getBlockByNumber")
+          return rpcResponse({ number: "0x1000", timestamp: "0xc8" });
+        throw new Error(`unexpected RPC method ${request.method ?? "missing"}`);
+      }),
+    );
 
     await recoverAmbiguousSettlements(recoveryEnv());
 
-    const recovered = await recoveredSettlement(env.DB, merchant.logicalPaymentKey);
+    const recovered = await recoveredSettlement(
+      env.DB,
+      merchant.logicalPaymentKey,
+    );
     expect(recovered?.state).toBe("EXPIRED");
     expect(recovered?.result).toMatchObject({
       success: false,
@@ -145,8 +163,14 @@ describe("ambiguous mainnet settlement recovery", () => {
   });
 });
 
-async function ambiguousMerchant(logicalPaymentKey: string, validBeforeEpoch = 2_000) {
-  const created = await registerMerchant(env.DB, `Recovery ${crypto.randomUUID()}`);
+async function ambiguousMerchant(
+  logicalPaymentKey: string,
+  validBeforeEpoch = 2_000,
+) {
+  const created = await registerMerchant(
+    env.DB,
+    `Recovery ${crypto.randomUUID()}`,
+  );
   const intent = await createTopUpIntent(
     env.DB,
     created.merchant.merchantId,
