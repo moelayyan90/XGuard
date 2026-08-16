@@ -1,8 +1,11 @@
 name: Live XGuard monitor
 
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows:
+      - Deploy XGuard mainnet
+      - Deploy live testnet
+    types: [completed]
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
