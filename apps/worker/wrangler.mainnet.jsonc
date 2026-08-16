@@ -16,7 +16,7 @@
     },
   },
   "vars": {
-    "BASE_RPC_URL": "https://base-rpc.publicnode.com",
+    "BASE_RPC_URL": "https://base.drpc.org",
     "XGUARD_FEE_MICRO_USD": "2000",
     "XPAY_DOWNSTREAM_COST_MICRO_USD": "0",
     "PAYAI_DOWNSTREAM_COST_MICRO_USD": "0",
