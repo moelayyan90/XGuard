@@ -1,0 +1,29 @@
+name: Probe public directory schemas
+
+on:
+  push:
+    branches: [chore/probe-directory-schemas]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe validation errors without creating listings
+        shell: bash
+        run: |
+          set -euo pipefail
+          for endpoint in \
+            'https://www.vaultplane.com/api/servers/submit' \
+            'https://www.serverhub.digital/api/submit'
+          do
+            echo "=== ${endpoint} ==="
+            curl -sS --max-time 20 -D - \
+              -X POST "${endpoint}" \
+              -H 'Content-Type: application/json' \
+              --data '{}' || true
+            echo
+          done
