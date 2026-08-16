@@ -1,4 +1,5 @@
 name: Wire mainnet Economic Firewall shadow
+# Retry after strict validBefore type validation.
 
 on:
   push:
