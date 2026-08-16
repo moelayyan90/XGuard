@@ -116,6 +116,85 @@ assert(
   "provider settlement attribution changed",
 );
 
+const agentCard = await json(
+  `/.well-known/agent-card.json?smoke=${Date.now()}`,
+  { headers: { "Cache-Control": "no-cache" } },
+);
+assert(agentCard.response.status === 200, "A2A Agent Card endpoint failed");
+assert(agentCard.body.name === "XGuard", "A2A agent identity changed");
+assert(
+  Array.isArray(agentCard.body.supportedInterfaces) &&
+    agentCard.body.supportedInterfaces.some(
+      (item) =>
+        item?.url === `${baseUrl.origin}/a2a` &&
+        item?.protocolBinding === "JSONRPC" &&
+        item?.protocolVersion === "1.0",
+    ),
+  "A2A JSONRPC 1.0 interface is missing",
+);
+assert(
+  Array.isArray(agentCard.body.skills) &&
+    agentCard.body.skills.some((skill) => skill?.id === "a2a-x402-gateway"),
+  "A2A x402 gateway skill is missing",
+);
+
+const a2a = await json("/a2a", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "A2A-Version": "1.0",
+  },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: "xguard-mainnet-smoke-a2a-v1",
+    method: "SendMessage",
+    params: {
+      message: {
+        messageId: "xguard-mainnet-smoke-message",
+        role: "ROLE_USER",
+        parts: [{ text: "What x402 capabilities do you support?" }],
+      },
+    },
+  }),
+});
+assert(a2a.response.status === 200, "A2A JSON-RPC endpoint failed");
+assert(a2a.body.jsonrpc === "2.0", "A2A response is not JSON-RPC 2.0");
+assert(
+  a2a.body.result?.message?.role === "ROLE_AGENT",
+  "A2A v1 response is not an agent Message",
+);
+assert(
+  typeof a2a.body.result?.message?.parts?.[0]?.text === "string" &&
+    a2a.body.result.message.parts[0].text.includes("capabilities"),
+  "A2A v1 response does not expose XGuard capabilities",
+);
+
+const a2aLegacy = await json("/a2a", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "A2A-Version": "0.3",
+  },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: "xguard-mainnet-smoke-a2a-03",
+    method: "message/send",
+    params: {
+      message: {
+        messageId: "xguard-mainnet-smoke-legacy-message",
+        role: "user",
+        parts: [{ kind: "text", text: "Show discovery endpoints" }],
+      },
+    },
+  }),
+});
+assert(a2aLegacy.response.status === 200, "A2A 0.3 compatibility failed");
+assert(
+  a2aLegacy.body.result?.kind === "message" &&
+    a2aLegacy.body.result?.role === "agent",
+  "A2A 0.3 response shape changed",
+);
+
 const discovery = await json("/discovery/resources?limit=1");
 assert(discovery.response.status === 200, "Bazaar discovery endpoint failed");
 assert(
@@ -223,6 +302,7 @@ console.log(
     network: status.body.network,
     facilitator: status.body.facilitator,
     providerManifest: true,
+    a2a: true,
     bazaar: true,
     mcp: true,
     discoveryResources: status.body.discovery.resources,
