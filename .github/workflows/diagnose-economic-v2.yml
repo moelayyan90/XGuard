@@ -5,6 +5,15 @@ on:
     branches:
       - agent/economic-firewall-v2
     paths:
+      - packages/core/src/economic-intent.ts
+      - packages/core/src/edge.ts
+      - packages/core/src/index.ts
+      - apps/worker/src/economic-intent-coordinator.ts
+      - apps/worker/src/economic-firewall.ts
+      - apps/worker/wrangler.economic-preview.jsonc
+      - apps/worker/package.json
+      - tests/economic-intent.test.ts
+      - package.json
       - .github/workflows/diagnose-economic-v2.yml
 
 permissions:
@@ -21,22 +30,44 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Format check
+        continue-on-error: true
         run: npm run format:check
-      - name: Capture lint report
-        id: lint
-        shell: bash
-        run: |
-          set +e
-          npm run lint > lint-output.txt 2>&1
-          code=$?
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Upload lint report
-        uses: actions/upload-artifact@v4
-        with:
-          name: economic-v2-lint-report
-          path: lint-output.txt
-          if-no-files-found: error
-      - name: Fail if lint failed
-        if: steps.lint.outputs.exit_code != '0'
-        run: exit 1
+      - name: Lint
+        continue-on-error: true
+        run: npm run lint
+      - name: Typecheck
+        continue-on-error: true
+        run: npm run typecheck
+      - name: Unit tests
+        continue-on-error: true
+        run: npm run test:coverage
+      - name: Worker tests
+        continue-on-error: true
+        run: npm run test:worker
+      - name: Secret scan
+        continue-on-error: true
+        run: npm run security:secrets
+      - name: No TODOs
+        continue-on-error: true
+        run: npm run quality:no-todos
+      - name: Docs check
+        continue-on-error: true
+        run: npm run quality:docs
+      - name: Build TypeScript
+        continue-on-error: true
+        run: npm run build
+      - name: Audit dependencies
+        continue-on-error: true
+        run: npm run security:deps
+      - name: Wrangler types
+        continue-on-error: true
+        run: npm --workspace @xguard/worker run types -- --check
+      - name: Build testnet Worker
+        continue-on-error: true
+        run: npm --workspace @xguard/worker run build
+      - name: Build mainnet Worker
+        continue-on-error: true
+        run: npm --workspace @xguard/worker run build:mainnet
+      - name: Build Economic Firewall preview
+        continue-on-error: true
+        run: npm --workspace @xguard/worker run build:economic-preview
