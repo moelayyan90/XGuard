@@ -85,7 +85,7 @@ export function parseEconomicX402Envelope(
   assertIntentMatchesX402(intent, paymentPayload, paymentRequirements);
 
   const authorization = asRecord(
-    asRecord(paymentPayload.payload).authorization,
+    asRecord(paymentPayload.payload, "paymentPayload.payload").authorization,
     "paymentPayload.payload.authorization",
   );
   const payer = evmAddress(authorization.from, "authorization.from");
@@ -243,6 +243,12 @@ function assertIntentMatchesX402(
       "PAYMENT_CONFLICT",
       "x402 amount exceeds the Economic Intent ceiling",
       409,
+    );
+  if (payload.resource === undefined)
+    throw new XGuardError(
+      "BAD_REQUEST",
+      "paymentPayload.resource is required for Economic Intent binding",
+      400,
     );
   const resourceUrl = new URL(payload.resource.url);
   resourceUrl.hash = "";
