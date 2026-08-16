@@ -6,6 +6,7 @@
   "scripts": {
     "build": "wrangler deploy --dry-run --outdir ../../dist/worker",
     "build:mainnet": "wrangler deploy --dry-run --config wrangler.mainnet.jsonc --outdir ../../dist/worker-mainnet",
+    "build:economic-preview": "wrangler deploy --dry-run --config wrangler.economic-preview.jsonc --outdir ../../dist/worker-economic-preview",
     "dev": "wrangler dev",
     "types": "wrangler types --config wrangler.test.jsonc --env-interface CloudflareBindings"
   },
