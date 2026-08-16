@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import {
@@ -6,7 +6,6 @@ import {
   bindEconomicIntent,
   parseJsonStrict,
   readHttpBodyTextCapped,
-  sha256Hex,
 } from "@xguard/core/edge";
 import {
   EconomicIntentCoordinator,
@@ -482,10 +481,15 @@ async function requirePreviewMerchant(
   if (authorization === undefined || !authorization.startsWith("Bearer "))
     return context.json({ error: "bearer_token_required" }, 401);
   const supplied = authorization.slice("Bearer ".length);
-  if (sha256Hex(supplied) !== sha256Hex(configured))
+  const suppliedBytes = new TextEncoder().encode(supplied);
+  const configuredBytes = new TextEncoder().encode(configured);
+  if (
+    suppliedBytes.byteLength !== configuredBytes.byteLength ||
+    !timingSafeEqual(suppliedBytes, configuredBytes)
+  )
     return context.json({ error: "invalid_bearer_token" }, 401);
 
-  const merchantId = `preview_${sha256Hex(configured).slice(0, 24)}`;
+  const merchantId = "preview_isolated";
   context.set("merchantId", merchantId);
   const key = `economic:${merchantId}`;
   try {
