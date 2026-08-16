@@ -18,6 +18,7 @@ import {
 import { compatibilityDiscoveryResponse } from "./discovery-compat.js";
 import { mainnetBrandingResponse } from "./mainnet-branding.js";
 import { mcpubDiscoveryResponse } from "./mcpub-discovery.js";
+import { xguardMigrationResponse } from "./migration-kit.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -67,6 +68,9 @@ export default {
 
     const a2a = await a2aAgentResponse(standardRequest);
     if (a2a !== null) return secureResponse(a2a);
+
+    const migration = xguardMigrationResponse(standardRequest);
+    if (migration !== null) return secureResponse(migration);
 
     if (url.pathname === "/mcp" && standardRequest.method === "OPTIONS")
       return secureResponse(modernMcpOptions(standardRequest));
