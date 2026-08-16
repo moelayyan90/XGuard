@@ -72,7 +72,7 @@ jobs:
                 `Workflow run: ${runUrl}`,
                 `Commit: ${context.sha}`,
                 "",
-                "The smoke check makes no payment. Mainnet checks liveness, readiness, the public Base/native-USDC/x402 contract, facilitator health, billing metadata, accounting counters, and fail-closed merchant authentication. Testnet checks its non-billable safety boundary.",
+                "The smoke check makes no payment. Mainnet checks liveness, readiness, the public Base/native-USDC/x402 contract, facilitator health, billing metadata, accounting counters, and reconciliation state. Merchant authentication remains fail-closed and is covered by CI billing tests without generating expected 401 traffic in production logs. Testnet checks its non-billable safety boundary.",
               ].join("\n");
               if (existing) {
                 await github.rest.issues.createComment({
