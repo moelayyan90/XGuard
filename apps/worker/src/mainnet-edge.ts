@@ -1,8 +1,9 @@
 import mainnet, {
   MainnetPaymentCoordinator,
   MainnetRequestGate,
-} from "./mainnet.js";
+} from "./mainnet-entry.js";
 import { parseMainnetFacilitatorRequest } from "./mainnet-protocol.js";
+import { discoveryResponse } from "./discovery.js";
 import {
   bazaarStats,
   catalogBazaarPayment,
@@ -40,6 +41,9 @@ const DEFAULT_MCP_PROTOCOL = "2025-11-25";
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
+
+    const publicDiscovery = discoveryResponse(request);
+    if (publicDiscovery !== null) return publicDiscovery;
 
     if (request.method === "OPTIONS" && url.pathname === "/mcp") {
       const originError = validateMcpOrigin(request);
