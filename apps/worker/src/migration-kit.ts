@@ -18,7 +18,8 @@ export function xguardMigrationResponse(request: Request): Response | null {
     .trim()
     .slice(0, 160);
   const merchantName =
-    requestedName || (resource === null ? "merchant" : new URL(resource).hostname);
+    requestedName ||
+    (resource === null ? "merchant" : new URL(resource).hostname);
 
   return new Response(
     JSON.stringify({
