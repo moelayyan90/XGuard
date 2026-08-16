@@ -36,6 +36,18 @@ describe("mainnet revenue hardening source invariants", () => {
     expect(source).toContain("releaseExpiredVerifyHolds(env)");
   });
 
+  it("uses a Cloudflare-supported redirect mode for automatic top-up RPC calls", async () => {
+    const source = await readFile(
+      "apps/worker/src/mainnet-revenue-hardening.ts",
+      "utf8",
+    );
+    expect(source).toContain('redirect: "manual"');
+    expect(source).not.toContain('redirect: "error"');
+    expect(source).toContain(
+      "if (!response.ok) throw new Error(`rpc_http_${response.status}`);",
+    );
+  });
+
   it("exposes key rotation, scopes, and protected admin economics", async () => {
     const source = await readFile(
       "apps/worker/src/mainnet-revenue-hardening.ts",
