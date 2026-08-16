@@ -14,6 +14,7 @@ import {
 } from "./agent-discovery-modern.js";
 import { compatibilityDiscoveryResponse } from "./discovery-compat.js";
 import { mainnetBrandingResponse } from "./mainnet-branding.js";
+import { a2aOptions, a2aRequest } from "./mainnet-a2a.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -49,6 +50,23 @@ export default {
       await compatibilityDiscoveryResponse(standardRequest);
     if (compatibilityDiscovery !== null) return compatibilityDiscovery;
 
+    if (url.pathname === "/a2a" && standardRequest.method === "OPTIONS")
+      return a2aOptions();
+
+    if (url.pathname === "/a2a" && standardRequest.method === "POST") {
+      const blocked = await publicAgentGuard(standardRequest, env, "/a2a");
+      if (blocked !== null) return blocked;
+      return a2aRequest(standardRequest, async (kind) => {
+        const response = await delegateFetch(
+          new Request(`${url.origin}/${kind}`),
+          env,
+          ctx,
+        );
+        if (!response.ok) throw new Error(`${kind}_unavailable`);
+        return response.json();
+      });
+    }
+
     if (url.pathname === "/mcp" && standardRequest.method === "OPTIONS")
       return modernMcpOptions(standardRequest);
 
@@ -57,7 +75,7 @@ export default {
       standardRequest.method === "POST" &&
       shouldUseModernMcp(standardRequest)
     ) {
-      const blocked = await publicMcpGuard(standardRequest, env);
+      const blocked = await publicAgentGuard(standardRequest, env, "/mcp");
       if (blocked !== null) return blocked;
       return modernMcpRequest(standardRequest, env, async () => {
         const statusResponse = await delegateFetch(
@@ -96,9 +114,10 @@ export default {
   },
 } satisfies ExportedHandler<MainnetModernEnv>;
 
-async function publicMcpGuard(
+async function publicAgentGuard(
   request: Request,
   env: MainnetModernEnv,
+  path: "/a2a" | "/mcp",
 ): Promise<Response | null> {
   const client =
     request.headers.get("cf-connecting-ip") ??
@@ -106,7 +125,7 @@ async function publicMcpGuard(
     "unknown";
   try {
     const decision = await env.REQUEST_RATE_LIMITER.limit({
-      key: `public:/mcp:${client}`,
+      key: `public:${path}:${client}`,
     });
     if (decision.success) return null;
     return publicJson({ error: "rate_limit_exceeded" }, 429, {
