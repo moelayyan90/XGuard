@@ -13,14 +13,19 @@ Existing x402 resource servers do not need an XGuard-specific runtime. They can 
 ### Live production
 
 - **Mainnet endpoint:** `https://xguard-mainnet.maqamapp.workers.dev`
+- **Provider manifest:** `https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json`
 - **Protocol:** x402 v2
 - **Network:** Base mainnet (`eip155:8453`)
 - **Asset:** Native USDC
 - **Scheme:** `exact` / EIP-3009 authorization
 - **XGuard fee:** **$0.002 per successful billable settlement**
 - **Subscription:** **None**
+- **Install:** no XGuard-specific package required
 - **Discovery:** native x402 Bazaar catalog
 - **Remote MCP:** Streamable HTTP at `/mcp`
+- **Execution model:** routed facilitator-compatible gateway; current downstream transaction submitter is xpay
+
+The live `/supported` response is authoritative for x402 capabilities and signer attribution. XGuard does not claim that it owns the downstream xpay signer.
 
 The live service is continuously checked by CI, CodeQL, guarded Cloudflare deployment, readiness probes, mainnet monitoring, and dedicated agent-stack smoke checks.
 
@@ -41,14 +46,27 @@ XGuard adds:
 - native Bazaar metadata validation, cataloging, listing, and search;
 - remote MCP tools that let agents discover cataloged paid HTTP APIs and MCP tools.
 
+## Provider discovery
+
+Developer tools, agents, and ecosystem catalogs can read one stable XGuard-specific provider document:
+
+```text
+GET /.well-known/x402/facilitator.json
+```
+
+It publishes the live facilitator base URL, standard `/supported`, `/verify`, and `/settle` endpoints, network, asset, scheme, integration type, pricing, onboarding endpoints, safety properties, discovery endpoints, operational endpoints, source repository, and the routed downstream attribution boundary.
+
+This manifest is **XGuard-specific discovery metadata**. It supplements the standard x402 `/supported` endpoint; it is not represented as an x402 protocol-standard registry format.
+
 ## Start using XGuard
 
-### 1. Check the live gateway
+### 1. Check the live gateway and provider identity
 
 ```bash
 curl https://xguard-mainnet.maqamapp.workers.dev/healthz
 curl https://xguard-mainnet.maqamapp.workers.dev/readyz
 curl https://xguard-mainnet.maqamapp.workers.dev/supported
+curl https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json
 ```
 
 A healthy production `/supported` response includes x402 v2 `exact` on `eip155:8453` and the native `bazaar` extension.
@@ -138,7 +156,7 @@ npm run smoke:live
 npm run smoke:mainnet
 ```
 
-The smoke checks validate liveness, readiness, capabilities, fail-closed behavior, network boundaries, Bazaar discovery, and MCP discovery. They do not fabricate a real customer payment.
+The smoke checks validate liveness, readiness, provider identity, capabilities, fail-closed behavior, network boundaries, Bazaar discovery, and MCP discovery. They do not fabricate a real customer payment.
 
 ## Documentation
 

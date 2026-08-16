@@ -77,6 +77,45 @@ assert(
   "native Bazaar capability is missing",
 );
 
+const provider = await json("/.well-known/x402/facilitator.json");
+assert(provider.response.status === 200, "provider manifest endpoint failed");
+assert(provider.body.kind === "x402-facilitator", "provider kind changed");
+assert(provider.body.status === "production", "provider status changed");
+assert(
+  provider.body.facilitator?.baseUrl === baseUrl.origin,
+  "provider base URL changed",
+);
+assert(
+  provider.body.facilitator?.supported === `${baseUrl.origin}/supported` &&
+    provider.body.facilitator?.verify === `${baseUrl.origin}/verify` &&
+    provider.body.facilitator?.settle === `${baseUrl.origin}/settle`,
+  "provider facilitator endpoints are invalid",
+);
+assert(
+  provider.body.facilitator?.network === BASE_MAINNET &&
+    provider.body.facilitator?.scheme === "exact",
+  "provider x402 network or scheme changed",
+);
+assert(
+  provider.body.facilitator?.asset?.address?.toLowerCase() ===
+    BASE_USDC.toLowerCase(),
+  "provider asset changed",
+);
+assert(
+  provider.body.pricing?.feeUsd === "0.002" &&
+    provider.body.pricing?.subscription === "none",
+  "provider pricing metadata changed",
+);
+assert(
+  provider.body.onboarding?.packageInstallationRequired === false,
+  "provider unexpectedly requires package installation",
+);
+assert(
+  provider.body.settlementExecution?.mode === "routed" &&
+    provider.body.settlementExecution?.currentDownstream === "xpay",
+  "provider settlement attribution changed",
+);
+
 const discovery = await json("/discovery/resources?limit=1");
 assert(discovery.response.status === 200, "Bazaar discovery endpoint failed");
 assert(
@@ -183,6 +222,7 @@ console.log(
     mainnet: true,
     network: status.body.network,
     facilitator: status.body.facilitator,
+    providerManifest: true,
     bazaar: true,
     mcp: true,
     discoveryResources: status.body.discovery.resources,
