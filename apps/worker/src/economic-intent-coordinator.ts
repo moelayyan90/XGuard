@@ -230,10 +230,7 @@ export class EconomicIntentCoordinator extends DurableObject<EconomicIntentCoord
   public recordFulfillment(
     input: EconomicIntentFulfillmentInput,
   ): EconomicIntentSnapshot {
-    const row = this.requireExecutionOwner(
-      input.merchantId,
-      input.executionId,
-    );
+    const row = this.requireExecutionOwner(input.merchantId, input.executionId);
     const fulfillment = bindEconomicFulfillment({
       intent: this.binding(row),
       fulfillment: input.fulfillment,
@@ -262,15 +259,11 @@ export class EconomicIntentCoordinator extends DurableObject<EconomicIntentCoord
   public recordSettlement(
     input: EconomicIntentSettlementInput,
   ): EconomicIntentSnapshot {
-    const row = this.requireExecutionOwner(
-      input.merchantId,
-      input.executionId,
-    );
-    if (
-      row.authorization_json === null ||
-      row.fulfillment_json === null
-    )
-      throw conflict("Authorization and fulfillment are required before settlement");
+    const row = this.requireExecutionOwner(input.merchantId, input.executionId);
+    if (row.authorization_json === null || row.fulfillment_json === null)
+      throw conflict(
+        "Authorization and fulfillment are required before settlement",
+      );
     const intent = this.binding(row);
     const settlement = bindEconomicSettlement({
       intent,
@@ -317,13 +310,20 @@ export class EconomicIntentCoordinator extends DurableObject<EconomicIntentCoord
     return this.snapshot(this.requireRow());
   }
 
-  public quarantine(merchantId: string, reason: string): EconomicIntentSnapshot {
+  public quarantine(
+    merchantId: string,
+    reason: string,
+  ): EconomicIntentSnapshot {
     const row = this.requireRow();
     this.assertMerchant(row, merchantId);
     if (row.state === "FINAL" || row.state === "QUARANTINED")
       return this.snapshot(row);
     if (reason.trim().length === 0)
-      throw new XGuardError("BAD_REQUEST", "quarantine reason is required", 400);
+      throw new XGuardError(
+        "BAD_REQUEST",
+        "quarantine reason is required",
+        400,
+      );
     assertEconomicIntentTransition(row.state, "QUARANTINED");
     this.sql.exec(
       "UPDATE economic_intent SET state='QUARANTINED',quarantine_reason=?,updated_at=? WHERE singleton=1",
@@ -345,7 +345,8 @@ export class EconomicIntentCoordinator extends DurableObject<EconomicIntentCoord
 
   private requireRow(): IntentRow {
     const row = this.row();
-    if (row === null) throw new XGuardError("BAD_REQUEST", "Intent not found", 404);
+    if (row === null)
+      throw new XGuardError("BAD_REQUEST", "Intent not found", 404);
     return row;
   }
 
