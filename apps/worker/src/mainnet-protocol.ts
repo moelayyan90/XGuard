@@ -152,7 +152,8 @@ export function enforceBaseMainnetUsdc(
     );
   const extra = requirements.extra ?? {};
   if (
-    extra.assetTransferMethod !== "eip3009" ||
+    (extra.assetTransferMethod !== undefined &&
+      extra.assetTransferMethod !== "eip3009") ||
     (extra.paymentFlow !== undefined && extra.paymentFlow !== "authorization")
   )
     throw new XGuardError(
