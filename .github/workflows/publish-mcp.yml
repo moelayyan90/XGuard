@@ -1,0 +1,56 @@
+name: Publish XGuard MCP Registry metadata
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server.json"
+      - ".github/workflows/publish-mcp.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate remote MCP endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl -fsS --max-time 15 https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json)"
+          printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="io.github.moelayyan90/xguard"||!Array.isArray(x.remotes)||!x.remotes.some(r=>r&&r.type==="streamable-http"&&String(r.url||"").endsWith("/mcp")))process.exit(1)})'
+
+      - name: Install official MCP publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --help >/dev/null
+
+      - name: Authenticate with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server metadata
+        run: ./mcp-publisher publish
+
+      - name: Verify registry publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            body="$(curl -fsS --max-time 15 'https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.moelayyan90%2Fxguard' || true)"
+            if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s||"{}");const a=Array.isArray(x.servers)?x.servers:[];if(!a.some(v=>String(v?.server?.name||v?.name||"")==="io.github.moelayyan90/xguard"))process.exit(1)})'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Registry publication could not be verified"
+          exit 1
