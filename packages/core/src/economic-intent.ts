@@ -140,8 +140,7 @@ export function bindEconomicAuthorization(input: {
 }): EconomicAuthorizationBinding {
   assertMicroUsd(input.authorizedAmountMicroUsd, "authorizedAmountMicroUsd");
   if (
-    input.authorizedAmountMicroUsd >
-    input.intent.terms.money.maxAmountMicroUsd
+    input.authorizedAmountMicroUsd > input.intent.terms.money.maxAmountMicroUsd
   ) {
     throw new XGuardError(
       "BAD_REQUEST",

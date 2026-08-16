@@ -106,39 +106,36 @@ describe("economic intent binding", () => {
 });
 
 describe("economic intent exactly-once proof", () => {
-  it(
-    "binds authorization, fulfillment and settlement to the same intent",
-    () => {
-      const bound = intent();
-      const authorization = bindEconomicAuthorization({
-        intent: bound,
-        authorization: { signature: "0xabc", payer: "0x1" },
-        authorizedAmountMicroUsd: 40_000,
-      });
-      const fulfillment = bindEconomicFulfillment({
-        intent: bound,
-        fulfillment: { resultHash: "0xfeed", status: 200 },
-      });
-      const settlement = bindEconomicSettlement({
-        intent: bound,
-        protocol: "x402",
-        settlement: { tx: "0x123", facilitator: "payai" },
-        chargedAmountMicroUsd: 34_000,
-      });
+  it("binds authorization, fulfillment and settlement to the same intent", () => {
+    const bound = intent();
+    const authorization = bindEconomicAuthorization({
+      intent: bound,
+      authorization: { signature: "0xabc", payer: "0x1" },
+      authorizedAmountMicroUsd: 40_000,
+    });
+    const fulfillment = bindEconomicFulfillment({
+      intent: bound,
+      fulfillment: { resultHash: "0xfeed", status: 200 },
+    });
+    const settlement = bindEconomicSettlement({
+      intent: bound,
+      protocol: "x402",
+      settlement: { tx: "0x123", facilitator: "payai" },
+      chargedAmountMicroUsd: 34_000,
+    });
 
-      const proof = buildXGuardProof({
-        intent: bound,
-        authorization,
-        fulfillment,
-        settlement,
-      });
+    const proof = buildXGuardProof({
+      intent: bound,
+      authorization,
+      fulfillment,
+      settlement,
+    });
 
-      expect(proof.intentId).toBe(bound.intentId);
-      expect(proof.result).toBe("EXACTLY_ONCE");
-      expect(proof.chargedAmountMicroUsd).toBe(34_000);
-      expect(proof.proofHash).toMatch(/^[0-9a-f]{64}$/);
-    },
-  );
+    expect(proof.intentId).toBe(bound.intentId);
+    expect(proof.result).toBe("EXACTLY_ONCE");
+    expect(proof.chargedAmountMicroUsd).toBe(34_000);
+    expect(proof.proofHash).toMatch(/^[0-9a-f]{64}$/);
+  });
 
   it("rejects artifacts copied from another intent", () => {
     const first = intent();
@@ -213,11 +210,11 @@ describe("economic intent state machine", () => {
     for (const [from, to] of path) {
       expect(() => assertEconomicIntentTransition(from, to)).not.toThrow();
     }
-    expect(() =>
-      assertEconomicIntentTransition("BOUND", "SETTLED"),
-    ).toThrow(/Invalid economic intent transition/);
-    expect(() =>
-      assertEconomicIntentTransition("FINAL", "EXECUTING"),
-    ).toThrow(/Invalid economic intent transition/);
+    expect(() => assertEconomicIntentTransition("BOUND", "SETTLED")).toThrow(
+      /Invalid economic intent transition/,
+    );
+    expect(() => assertEconomicIntentTransition("FINAL", "EXECUTING")).toThrow(
+      /Invalid economic intent transition/,
+    );
   });
 });
