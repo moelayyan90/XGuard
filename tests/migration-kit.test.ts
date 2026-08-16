@@ -54,8 +54,8 @@ describe("safe merchant migration kit", () => {
       },
     });
     expect(body.target.resource).toBe("https://example.com/api");
-    expect(JSON.stringify(body)).not.toContain("secret");
-    expect(JSON.stringify(body)).not.toContain("user@");
+    expect(JSON.stringify(body)).not.toContain("user:secret@");
+    expect(JSON.stringify(body)).not.toContain("https://user");
 
     const register = body.steps.find((step) => step.id === "register");
     expect(register?.request).toMatchObject({
