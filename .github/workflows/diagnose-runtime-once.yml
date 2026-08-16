@@ -55,11 +55,12 @@ jobs:
           fi
 
           if grep -q 'automatic_topup_scan_deferred' "${log_file}"; then
-            echo "::warning::All configured RPC providers were temporarily unavailable during one scan; XGuard deferred safely instead of failing the cron."
+            echo "::error::All configured RPC providers were unavailable during the full-cadence production check; reconciliation was deferred."
+            exit 1
           fi
 
           if grep -q 'automatic_topup_rpc_failover_recovered' "${log_file}"; then
             echo "::notice::RPC failover recovered an automatic top-up scan during the production check."
           fi
 
-          echo "Full-cadence production cron check completed without automatic_topup_scan_failed."
+          echo "Full-cadence production cron check completed without failed or deferred automatic top-up reconciliation."
