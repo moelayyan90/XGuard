@@ -14,25 +14,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Probe live production endpoints
+      - name: Validate readiness-aware production gate
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
           BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
 
-          probe() {
-            name="$1"
-            url="$2"
-            body="$(mktemp)"
-            code="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -o "${body}" -w '%{http_code}' "${url}" || true)"
-            echo "### ${name} HTTP ${code}"
-            head -c 4000 "${body}" || true
-            echo
-            rm -f "${body}"
-          }
+          health=0
+          for attempt in {1..18}; do
+            response="$(curl -sS --max-time 15 -w $'\n%{http_code}' "${BASE_URL}/healthz" || true)"
+            code="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'; then
+              health=1
+              break
+            fi
+            sleep 5
+          done
+          [[ "${health}" -eq 1 ]]
 
-          probe health "${BASE_URL}/healthz"
-          probe ready "${BASE_URL}/readyz"
-          probe status "${BASE_URL}/status"
-          probe agent-card "${BASE_URL}/.well-known/agent-card.json?diag=${GITHUB_SHA}"
-          probe migration "${BASE_URL}/.well-known/xguard/migrate?from=cdp,payai&name=diag&resource=https%3A%2F%2Fexample.com%2Fapi"
+          migration_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/xguard/migrate?from=cdp,payai&name=deploy-smoke&resource=https%3A%2F%2Fexample.com%2Fapi")"
+          printf '%s' "${migration_body}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const src=x.target&&x.target.sourceFacilitators;if(x.schemaVersion!=="2"||x.protocol!=="x402-v2"||x.network!=="eip155:8453"||x.sideEffects!==false||x.paymentExecution!==false||!Array.isArray(src)||!src.includes("cdp")||!src.includes("payai")||!x.automationBoundary||x.automationBoundary.generatedInstructionsOnly!==true||x.automationBoundary.createsSyntheticPayments!==false||x.automationBoundary.callsVerifyOrSettleWithoutRealProtocolTraffic!==false)process.exit(1)})'
+
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/openapi.json?diag=${GITHUB_SHA}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.paths||!x.paths["/.well-known/xguard/migrate"])process.exit(1)})'
+
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/agent-card.json?diag=${GITHUB_SHA}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.skills)||!x.skills.some(k=>k&&k.id==="x402-safe-migration")||!x.xguardDiscovery||!String(x.xguardDiscovery.migration||"").endsWith("/.well-known/xguard/migrate"))process.exit(1)})'
