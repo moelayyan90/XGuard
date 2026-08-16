@@ -2,6 +2,7 @@ import mainnetHandler, {
   MainnetPaymentCoordinator,
   MainnetRequestGate,
 } from "./mainnet.js";
+import { discoveryResponse } from "./discovery.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
 
@@ -22,6 +23,9 @@ const mainnetScheduled = mainnetHandler.scheduled as unknown as PublicScheduled;
 
 const handler: ExportedHandler<PublicMainnetEnv> = {
   async fetch(request, env, executionCtx): Promise<Response> {
+    const discovery = discoveryResponse(request);
+    if (discovery !== null) return discovery;
+
     const url = new URL(request.url);
 
     if (url.pathname === "/" && request.method === "POST") {
