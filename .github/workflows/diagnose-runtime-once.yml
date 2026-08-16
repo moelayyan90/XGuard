@@ -1,0 +1,49 @@
+# Temporary read-only production diagnostics; remove after capture.
+name: Diagnose XGuard runtime once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnose-runtime-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Capture production runtime failures
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          set -u
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "Cloudflare credentials unavailable"
+            exit 1
+          fi
+          : > /tmp/xguard-failed.log
+          : > /tmp/xguard-outcome-errors.log
+          (timeout 80s npx wrangler tail xguard-mainnet --format=json --search failed > /tmp/xguard-failed.log 2>&1 || true) &
+          p1=$!
+          (timeout 80s npx wrangler tail xguard-mainnet --format=json --status error > /tmp/xguard-outcome-errors.log 2>&1 || true) &
+          p2=$!
+          wait "$p1" || true
+          wait "$p2" || true
+          echo "===== CONSOLE EVENTS MATCHING 'failed' ====="
+          cat /tmp/xguard-failed.log
+          echo "===== INVOCATIONS WITH ERROR OUTCOME ====="
+          cat /tmp/xguard-outcome-errors.log
