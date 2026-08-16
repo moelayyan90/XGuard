@@ -1,4 +1,5 @@
 name: Economic Firewall preview verification
+# Security-sensitive preview auth changes must pass the live isolated E2E.
 
 on:
   push:
