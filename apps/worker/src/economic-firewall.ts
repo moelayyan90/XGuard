@@ -231,9 +231,9 @@ app.post("/v1/intents/:intentId/execute", async (context) => {
     const response = await fetch(snapshot.terms.resource.url, {
       method: snapshot.terms.resource.method,
       headers: outbound.headers,
-      body: outbound.body,
       redirect: "manual",
       signal: AbortSignal.timeout(RESOURCE_TIMEOUT_MS),
+      ...(outbound.body === undefined ? {} : { body: outbound.body }),
     });
     const responseBody = await readBytesCapped(
       response,
