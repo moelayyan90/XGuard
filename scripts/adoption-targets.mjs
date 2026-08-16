@@ -45,7 +45,8 @@ export function aggregateTargets(candidates) {
     const current = groups.get(key) ?? {
       key,
       target: targetName(candidate),
-      kind: candidate.candidateType === "resource" ? "service-host" : "repository",
+      kind:
+        candidate.candidateType === "resource" ? "service-host" : "repository",
       resourceCount: 0,
       live402Count: 0,
       mcpResourceCount: 0,
@@ -189,10 +190,20 @@ export function selfTest() {
   if (targets[0].resourceCount !== 2 || targets[0].live402Count !== 2) {
     throw new Error("self_test_target_counts_failed");
   }
-  if (!actionablePain({ candidateType: "pain-signal", painSignal: "Bazaar not indexed after settlement" })) {
+  if (
+    !actionablePain({
+      candidateType: "pain-signal",
+      painSignal: "Bazaar not indexed after settlement",
+    })
+  ) {
     throw new Error("self_test_pain_filter_failed");
   }
-  if (actionablePain({ candidateType: "pain-signal", painSignal: "Submit MCP server" })) {
+  if (
+    actionablePain({
+      candidateType: "pain-signal",
+      painSignal: "Submit MCP server",
+    })
+  ) {
     throw new Error("self_test_pain_noise_failed");
   }
   return true;
@@ -243,7 +254,10 @@ if (
 ) {
   main().catch((error) => {
     console.error(
-      JSON.stringify({ event: "adoption_targets_failed", error: String(error) }),
+      JSON.stringify({
+        event: "adoption_targets_failed",
+        error: String(error),
+      }),
     );
     process.exitCode = 1;
   });
