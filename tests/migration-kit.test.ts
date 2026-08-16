@@ -3,6 +3,32 @@ import { xguardMigrationResponse } from "../apps/worker/src/migration-kit.js";
 
 const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
 
+interface MigrationStep {
+  id?: string;
+  request?: unknown;
+  createIntent?: unknown;
+  claimAfterFinality?: { requiredBodyFields?: string[] };
+  sideEffects?: boolean;
+  requests?: string[];
+  requiresOperatorAction?: boolean;
+  note?: string;
+}
+
+interface MigrationKitBody {
+  schemaVersion: string;
+  protocol: string;
+  network: string;
+  sideEffects: boolean;
+  paymentExecution: boolean;
+  target: {
+    merchant: string;
+    resource?: string | null;
+    sourceFacilitators: string[];
+  };
+  steps: MigrationStep[];
+  automationBoundary: Record<string, boolean>;
+}
+
 describe("safe merchant migration kit", () => {
   it("returns side-effect-free instructions with the documented registration and top-up contracts", async () => {
     const response = xguardMigrationResponse(
@@ -14,7 +40,7 @@ describe("safe merchant migration kit", () => {
     expect(response!.status).toBe(200);
     expect(response!.headers.get("access-control-allow-origin")).toBe("*");
     expect(response!.headers.get("x-content-type-options")).toBe("nosniff");
-    const body = (await response!.json()) as any;
+    const body = (await response!.json()) as MigrationKitBody;
 
     expect(body).toMatchObject({
       schemaVersion: "2",
@@ -31,23 +57,23 @@ describe("safe merchant migration kit", () => {
     expect(JSON.stringify(body)).not.toContain("secret");
     expect(JSON.stringify(body)).not.toContain("user@");
 
-    const register = body.steps.find((step: any) => step.id === "register");
-    expect(register.request).toMatchObject({
+    const register = body.steps.find((step) => step.id === "register");
+    expect(register?.request).toMatchObject({
       method: "POST",
       url: `${ORIGIN}/v1/register`,
       body: { name: "my-service" },
     });
 
     const funding = body.steps.find(
-      (step: any) => step.id === "fund-service-balance",
+      (step) => step.id === "fund-service-balance",
     );
-    expect(funding.createIntent).toMatchObject({
+    expect(funding?.createIntent).toMatchObject({
       method: "POST",
       url: `${ORIGIN}/v1/topups/intents`,
       requiredBodyField: "amountUsd",
       exampleBody: { amountUsd: "1.00" },
     });
-    expect(funding.claimAfterFinality.requiredBodyFields).toEqual([
+    expect(funding?.claimAfterFinality?.requiredBodyFields).toEqual([
       "claimToken",
       "transactionHash",
     ]);
@@ -57,22 +83,22 @@ describe("safe merchant migration kit", () => {
     const response = xguardMigrationResponse(
       new Request(`${ORIGIN}/.well-known/xguard/migrate?from=cdp`),
     );
-    const body = (await response!.json()) as any;
+    const body = (await response!.json()) as MigrationKitBody;
     const checks = body.steps.find(
-      (step: any) => step.id === "safe-precutover-checks",
+      (step) => step.id === "safe-precutover-checks",
     );
-    expect(checks.sideEffects).toBe(false);
+    expect(checks?.sideEffects).toBe(false);
     expect(
-      checks.requests.every((item: string) => item.startsWith("GET ")),
+      checks?.requests?.every((item) => item.startsWith("GET ")),
     ).toBe(true);
-    expect(checks.requests.join("\n")).not.toContain("/verify");
-    expect(checks.requests.join("\n")).not.toContain("/settle");
+    expect(checks?.requests?.join("\n")).not.toContain("/verify");
+    expect(checks?.requests?.join("\n")).not.toContain("/settle");
 
     const cutover = body.steps.find(
-      (step: any) => step.id === "real-payment-cutover",
+      (step) => step.id === "real-payment-cutover",
     );
-    expect(cutover.requiresOperatorAction).toBe(true);
-    expect(cutover.note).toContain("Do not synthesize /verify or /settle");
+    expect(cutover?.requiresOperatorAction).toBe(true);
+    expect(cutover?.note).toContain("Do not synthesize /verify or /settle");
     expect(body.automationBoundary).toEqual({
       generatedInstructionsOnly: true,
       registersMerchantAutomatically: false,
@@ -87,7 +113,7 @@ describe("safe merchant migration kit", () => {
     const response = xguardMigrationResponse(
       new Request(`${ORIGIN}/.well-known/xguard/migrate?from=unknown,cdp,evil`),
     );
-    const body = (await response!.json()) as any;
+    const body = (await response!.json()) as MigrationKitBody;
     expect(body.target.sourceFacilitators).toEqual(["cdp"]);
 
     expect(xguardMigrationResponse(new Request(`${ORIGIN}/status`))).toBeNull();
