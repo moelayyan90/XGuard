@@ -68,7 +68,9 @@ export default {
     const hardeningEndpoint = await handleHardeningEndpoint(
       standardRequest,
       env,
-    ).catch(() => jsonResponse({ error: "hardening_endpoint_unavailable" }, 503));
+    ).catch(() =>
+      jsonResponse({ error: "hardening_endpoint_unavailable" }, 503),
+    );
     if (hardeningEndpoint !== null) return hardeningEndpoint;
 
     if (
@@ -90,10 +92,7 @@ export default {
       );
     }
 
-    if (
-      url.pathname.startsWith("/v1/") &&
-      url.pathname !== "/v1/register"
-    ) {
+    if (url.pathname.startsWith("/v1/") && url.pathname !== "/v1/register") {
       const access = await authorizeMerchantScope(
         standardRequest,
         env,

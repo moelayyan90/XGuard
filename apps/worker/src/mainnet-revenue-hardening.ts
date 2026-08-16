@@ -38,8 +38,7 @@ export interface ScopedMerchant {
 }
 
 export type ScopeAuthorization =
-  | { ok: true; merchant: ScopedMerchant }
-  | { ok: false; response: Response };
+  { ok: true; merchant: ScopedMerchant } | { ok: false; response: Response };
 
 export interface UnitEconomicsState {
   feeMicroUsd: number;
@@ -107,7 +106,10 @@ export async function authorizeMerchantScope(
     return {
       ok: false,
       response: jsonResponse(
-        { error: "unauthorized", message: "Bearer merchant API key is required" },
+        {
+          error: "unauthorized",
+          message: "Bearer merchant API key is required",
+        },
         401,
       ),
     };
@@ -125,10 +127,9 @@ export async function authorizeMerchantScope(
       ),
     };
 
-  const row = await env.DB
-    .prepare(
-      "SELECT api_key_scopes FROM merchants WHERE merchant_id=? AND active=1",
-    )
+  const row = await env.DB.prepare(
+    "SELECT api_key_scopes FROM merchants WHERE merchant_id=? AND active=1",
+  )
     .bind(merchant.merchantId)
     .first<{ api_key_scopes: string }>()
     .catch(() => null);
@@ -217,7 +218,9 @@ export async function handleHardeningEndpoint(
     const admin = await authorizeAdmin(request, env);
     if (admin !== null) return admin;
     if (request.method !== "GET")
-      return jsonResponse({ error: "method_not_allowed" }, 405, { Allow: "GET" });
+      return jsonResponse({ error: "method_not_allowed" }, 405, {
+        Allow: "GET",
+      });
     return adminFinancials(env);
   }
 
@@ -248,20 +251,15 @@ export async function handleHardeningEndpoint(
       10_000,
       "minGrossMarginBps",
     );
-    await env.DB
-      .prepare(
-        `INSERT INTO runtime_economics(singleton_id,downstream_cost_micro_usd,min_gross_margin_bps,updated_at)
+    await env.DB.prepare(
+      `INSERT INTO runtime_economics(singleton_id,downstream_cost_micro_usd,min_gross_margin_bps,updated_at)
          VALUES(1,?,?,?)
          ON CONFLICT(singleton_id) DO UPDATE SET
            downstream_cost_micro_usd=excluded.downstream_cost_micro_usd,
            min_gross_margin_bps=excluded.min_gross_margin_bps,
            updated_at=excluded.updated_at`,
-      )
-      .bind(
-        downstreamCostMicroUsd,
-        minGrossMarginBps,
-        new Date().toISOString(),
-      )
+    )
+      .bind(downstreamCostMicroUsd, minGrossMarginBps, new Date().toISOString())
       .run();
     return jsonResponse(await currentUnitEconomics(env));
   }
@@ -321,16 +319,13 @@ export async function currentUnitEconomics(
     "XGUARD_MIN_GROSS_MARGIN_BPS",
   );
 
-  const runtime = await env.DB
-    .prepare(
-      "SELECT downstream_cost_micro_usd,min_gross_margin_bps FROM runtime_economics WHERE singleton_id=1",
-    )
-    .first<RuntimeEconomicsRow>();
+  const runtime = await env.DB.prepare(
+    "SELECT downstream_cost_micro_usd,min_gross_margin_bps FROM runtime_economics WHERE singleton_id=1",
+  ).first<RuntimeEconomicsRow>();
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1_000).toISOString();
-  const observed = await env.DB
-    .prepare(
-      "SELECT COALESCE(MAX(downstream_cost_micro_usd),0) AS max_cost FROM settlement_projection WHERE testnet=0 AND recorded_at>=?",
-    )
+  const observed = await env.DB.prepare(
+    "SELECT COALESCE(MAX(downstream_cost_micro_usd),0) AS max_cost FROM settlement_projection WHERE testnet=0 AND recorded_at>=?",
+  )
     .bind(cutoff)
     .first<{ max_cost: number }>();
   const observedCost = safeNonNegativeInteger(observed?.max_cost ?? 0);
@@ -356,7 +351,9 @@ export async function currentUnitEconomics(
           ((feeMicroUsd - downstreamCostMicroUsd) * 10_000) / feeMicroUsd,
         );
   const source: UnitEconomicsState["source"] =
-    observedCost >= configuredCost && observedCost >= runtimeCost && observedCost > 0
+    observedCost >= configuredCost &&
+    observedCost >= runtimeCost &&
+    observedCost > 0
       ? "observed"
       : runtimeCost >= configuredCost && runtimeCost > 0
         ? "runtime"
@@ -385,7 +382,11 @@ export async function preparePrepaidFee(
     "XGUARD_FEE_MICRO_USD",
   );
   if (operation === "/settle")
-    await markSettleClaim(env.DB, recovery.logicalPaymentKey, recovery.merchantId);
+    await markSettleClaim(
+      env.DB,
+      recovery.logicalPaymentKey,
+      recovery.merchantId,
+    );
 
   let reservation: FeeReservation;
   try {
@@ -426,15 +427,14 @@ export async function preparePrepaidFee(
       Math.min(recovery.validBeforeEpoch, nowEpoch + VERIFY_HOLD_MAX_SECONDS),
     );
     const now = new Date().toISOString();
-    await env.DB
-      .prepare(
-        `INSERT INTO verify_fee_holds(logical_payment_key,merchant_id,state,expires_at_epoch,created_at,updated_at)
+    await env.DB.prepare(
+      `INSERT INTO verify_fee_holds(logical_payment_key,merchant_id,state,expires_at_epoch,created_at,updated_at)
          VALUES(?,?,'VERIFY_HELD',?,?,?)
          ON CONFLICT(logical_payment_key) DO UPDATE SET
            expires_at_epoch=CASE WHEN verify_fee_holds.expires_at_epoch>excluded.expires_at_epoch THEN verify_fee_holds.expires_at_epoch ELSE excluded.expires_at_epoch END,
            updated_at=excluded.updated_at
          WHERE verify_fee_holds.state='VERIFY_HELD'`,
-      )
+    )
       .bind(
         recovery.logicalPaymentKey,
         recovery.merchantId,
@@ -452,18 +452,16 @@ export async function releaseExpiredVerifyHolds(
   env: Pick<HardeningEnv, "DB">,
   nowEpoch = Math.floor(Date.now() / 1_000),
 ): Promise<number> {
-  const rows = await env.DB
-    .prepare(
-      "SELECT logical_payment_key,merchant_id FROM verify_fee_holds WHERE state='VERIFY_HELD' AND expires_at_epoch<? ORDER BY expires_at_epoch LIMIT 100",
-    )
+  const rows = await env.DB.prepare(
+    "SELECT logical_payment_key,merchant_id FROM verify_fee_holds WHERE state='VERIFY_HELD' AND expires_at_epoch<? ORDER BY expires_at_epoch LIMIT 100",
+  )
     .bind(nowEpoch)
     .all<{ logical_payment_key: string; merchant_id: string }>();
   let released = 0;
   for (const row of rows.results) {
-    const deletion = await env.DB
-      .prepare(
-        "DELETE FROM verify_fee_holds WHERE logical_payment_key=? AND merchant_id=? AND state='VERIFY_HELD' AND expires_at_epoch<?",
-      )
+    const deletion = await env.DB.prepare(
+      "DELETE FROM verify_fee_holds WHERE logical_payment_key=? AND merchant_id=? AND state='VERIFY_HELD' AND expires_at_epoch<?",
+    )
       .bind(row.logical_payment_key, row.merchant_id, nowEpoch)
       .run();
     if ((deletion.meta.changes ?? 0) !== 1) continue;
@@ -474,11 +472,12 @@ export async function releaseExpiredVerifyHolds(
     ).catch(() => undefined);
     released += 1;
   }
-  const cutoff = new Date(Date.now() - SETTLE_MARKER_SECONDS * 1_000).toISOString();
-  await env.DB
-    .prepare(
-      "DELETE FROM verify_fee_holds WHERE state='SETTLE_CLAIMED' AND updated_at<?",
-    )
+  const cutoff = new Date(
+    Date.now() - SETTLE_MARKER_SECONDS * 1_000,
+  ).toISOString();
+  await env.DB.prepare(
+    "DELETE FROM verify_fee_holds WHERE state='SETTLE_CLAIMED' AND updated_at<?",
+  )
     .bind(cutoff)
     .run();
   return released;
@@ -490,7 +489,8 @@ export async function rotateMerchantApiKey(
   scopes: MerchantScope[],
 ): Promise<{ apiKey: string; scopes: MerchantScope[] }> {
   const normalized = normalizeScopes(scopes);
-  if (!normalized.includes("billing")) throw new Error("billing_scope_required");
+  if (!normalized.includes("billing"))
+    throw new Error("billing_scope_required");
   const apiKey = `xg_live_${randomToken(32)}`;
   const apiKeyHash = await sha256Hex(apiKey);
   const result = await db
@@ -512,7 +512,9 @@ export async function revokeMerchantApiKey(
   db: D1Database,
   merchantId: string,
 ): Promise<void> {
-  const revokedHash = await sha256Hex(`revoked:${crypto.randomUUID()}:${randomToken(32)}`);
+  const revokedHash = await sha256Hex(
+    `revoked:${crypto.randomUUID()}:${randomToken(32)}`,
+  );
   const result = await db
     .prepare(
       "UPDATE merchants SET api_key_hash=?,api_key_scopes='',api_key_rotated_at=? WHERE merchant_id=? AND active=1",
@@ -537,16 +539,15 @@ export async function scanAutomaticTopUps(env: HardeningEnv): Promise<{
   );
   if (finalized === null) throw new Error("finalized_block_unavailable");
   const finalizedNumber = parseRpcInteger(finalized.number, "finalized_block");
-  const cursor = await env.DB
-    .prepare(
-      "SELECT last_scanned_block FROM treasury_scan_state WHERE scanner_id='base-usdc'",
-    )
-    .first<{ last_scanned_block: number }>();
+  const cursor = await env.DB.prepare(
+    "SELECT last_scanned_block FROM treasury_scan_state WHERE scanner_id='base-usdc'",
+  ).first<{ last_scanned_block: number }>();
   let fromBlock =
     cursor === null
       ? Math.max(0, finalizedNumber - TOPUP_SCAN_BACK_BLOCKS)
       : cursor.last_scanned_block + 1;
-  let scannedThroughBlock = cursor?.last_scanned_block ?? Math.max(0, fromBlock - 1);
+  let scannedThroughBlock =
+    cursor?.last_scanned_block ?? Math.max(0, fromBlock - 1);
   let credited = 0;
   const blockTimestampCache = new Map<number, number>();
 
@@ -613,14 +614,13 @@ export async function scanAutomaticTopUps(env: HardeningEnv): Promise<{
     }
 
     scannedThroughBlock = toBlock;
-    await env.DB
-      .prepare(
-        `INSERT INTO treasury_scan_state(scanner_id,last_scanned_block,updated_at)
+    await env.DB.prepare(
+      `INSERT INTO treasury_scan_state(scanner_id,last_scanned_block,updated_at)
          VALUES('base-usdc',?,?)
          ON CONFLICT(scanner_id) DO UPDATE SET
            last_scanned_block=excluded.last_scanned_block,
            updated_at=excluded.updated_at`,
-      )
+    )
       .bind(toBlock, new Date().toISOString())
       .run();
     fromBlock = toBlock + 1;
@@ -637,7 +637,10 @@ export async function creditAutomaticTopUpDeposit(
     throw new Error("invalid_transaction_hash");
   assertEvmAddress(deposit.sender, "sender");
   assertEvmAddress(deposit.recipient, "recipient");
-  if (!Number.isSafeInteger(deposit.amountMicroUsd) || deposit.amountMicroUsd <= 0)
+  if (
+    !Number.isSafeInteger(deposit.amountMicroUsd) ||
+    deposit.amountMicroUsd <= 0
+  )
     throw new Error("invalid_top_up_amount");
 
   const externalReference = `${BASE_MAINNET}:${deposit.transactionHash.toLowerCase()}:${deposit.logIndex}`;
@@ -721,28 +724,18 @@ export async function creditAutomaticTopUpDeposit(
       .prepare(
         "INSERT INTO ledger_entries(entry_id,event_id,account,side,amount_micro_usd,created_at) SELECT ?,?,'CUSTOMER_BALANCES','DEBIT',?,? WHERE EXISTS(SELECT 1 FROM top_ups WHERE top_up_id=?)",
       )
-      .bind(
-        `${eventId}:debit`,
-        eventId,
-        deposit.amountMicroUsd,
-        now,
-        topUpId,
-      ),
+      .bind(`${eventId}:debit`, eventId, deposit.amountMicroUsd, now, topUpId),
     db
       .prepare(
         "INSERT INTO ledger_entries(entry_id,event_id,account,side,amount_micro_usd,created_at) SELECT ?,?,'UNEARNED_LIABILITY','CREDIT',?,? WHERE EXISTS(SELECT 1 FROM top_ups WHERE top_up_id=?)",
       )
-      .bind(
-        `${eventId}:credit`,
-        eventId,
-        deposit.amountMicroUsd,
-        now,
-        topUpId,
-      ),
+      .bind(`${eventId}:credit`, eventId, deposit.amountMicroUsd, now, topUpId),
   ]);
 
   const credited = await db
-    .prepare("SELECT top_up_id FROM top_ups WHERE top_up_id=? AND merchant_id=?")
+    .prepare(
+      "SELECT top_up_id FROM top_ups WHERE top_up_id=? AND merchant_id=?",
+    )
     .bind(topUpId, intent.merchant_id)
     .first<{ top_up_id: string }>();
   return credited !== null;
@@ -845,26 +838,18 @@ async function markSettleClaim(
 
 async function adminFinancials(env: HardeningEnv): Promise<Response> {
   const [usage, balances, topUps, holds, economics] = await Promise.all([
-    env.DB
-      .prepare(
-        "SELECT COUNT(*) AS count,COALESCE(SUM(fee_micro_usd),0) AS total FROM usage_events",
-      )
-      .first<{ count: number; total: number }>(),
-    env.DB
-      .prepare(
-        "SELECT COALESCE(SUM(available_balance_micro_usd),0) AS available,COALESCE(SUM(held_balance_micro_usd),0) AS held FROM merchants WHERE active=1",
-      )
-      .first<{ available: number; held: number }>(),
-    env.DB
-      .prepare(
-        "SELECT COUNT(*) AS count,COALESCE(SUM(amount_micro_usd),0) AS total FROM top_ups",
-      )
-      .first<{ count: number; total: number }>(),
-    env.DB
-      .prepare(
-        "SELECT COUNT(*) AS count FROM verify_fee_holds WHERE state='VERIFY_HELD'",
-      )
-      .first<{ count: number }>(),
+    env.DB.prepare(
+      "SELECT COUNT(*) AS count,COALESCE(SUM(fee_micro_usd),0) AS total FROM usage_events",
+    ).first<{ count: number; total: number }>(),
+    env.DB.prepare(
+      "SELECT COALESCE(SUM(available_balance_micro_usd),0) AS available,COALESCE(SUM(held_balance_micro_usd),0) AS held FROM merchants WHERE active=1",
+    ).first<{ available: number; held: number }>(),
+    env.DB.prepare(
+      "SELECT COUNT(*) AS count,COALESCE(SUM(amount_micro_usd),0) AS total FROM top_ups",
+    ).first<{ count: number; total: number }>(),
+    env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM verify_fee_holds WHERE state='VERIFY_HELD'",
+    ).first<{ count: number }>(),
     currentUnitEconomics(env),
   ]);
   return jsonResponse({
@@ -920,7 +905,8 @@ function parseRequestedScopes(value: unknown): MerchantScope[] {
   for (const item of value) {
     if (typeof item !== "string" || !ALLOWED_SCOPES.has(item as MerchantScope))
       throw new Error("invalid_api_key_scopes");
-    if (!scopes.includes(item as MerchantScope)) scopes.push(item as MerchantScope);
+    if (!scopes.includes(item as MerchantScope))
+      scopes.push(item as MerchantScope);
   }
   return normalizeScopes(scopes);
 }
@@ -945,7 +931,11 @@ function integerField(
   maximum: number,
   field: string,
 ): number {
-  if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum)
+  if (
+    !Number.isSafeInteger(value) ||
+    (value as number) < minimum ||
+    (value as number) > maximum
+  )
     throw new Error(`invalid_${field}`);
   return value as number;
 }
@@ -1035,7 +1025,8 @@ function topicAddress(topic: string): string {
 }
 
 function rpcHex(value: number): string {
-  if (!Number.isSafeInteger(value) || value < 0) throw new Error("invalid_rpc_integer");
+  if (!Number.isSafeInteger(value) || value < 0)
+    throw new Error("invalid_rpc_integer");
   return `0x${value.toString(16)}`;
 }
 
@@ -1043,7 +1034,8 @@ function parseRpcInteger(value: unknown, field: string): number {
   if (typeof value !== "string" || !/^0x[0-9a-fA-F]+$/.test(value))
     throw new Error(`invalid_${field}`);
   const parsed = BigInt(value);
-  if (parsed > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error(`${field}_too_large`);
+  if (parsed > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new Error(`${field}_too_large`);
   return Number(parsed);
 }
 

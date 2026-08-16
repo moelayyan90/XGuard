@@ -33,7 +33,7 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM fee_reservations"),
     env.DB.prepare("DELETE FROM top_ups"),
     env.DB.prepare("DELETE FROM top_up_intents"),
-    env.DB.prepare("DELETE FROM merchants")
+    env.DB.prepare("DELETE FROM merchants"),
   ]);
 });
 
@@ -45,18 +45,25 @@ describe("mainnet revenue hardening", () => {
       created.merchant.merchantId,
       ["billing", "verify"],
     );
-    await expect(authenticateMerchant(env.DB, created.apiKey)).resolves.toBeNull();
-    await expect(authenticateMerchant(env.DB, rotated.apiKey)).resolves.toMatchObject({
+    await expect(
+      authenticateMerchant(env.DB, created.apiKey),
+    ).resolves.toBeNull();
+    await expect(
+      authenticateMerchant(env.DB, rotated.apiKey),
+    ).resolves.toMatchObject({
       merchantId: created.merchant.merchantId,
     });
-    const scopes = await env.DB
-      .prepare("SELECT api_key_scopes FROM merchants WHERE merchant_id=?")
+    const scopes = await env.DB.prepare(
+      "SELECT api_key_scopes FROM merchants WHERE merchant_id=?",
+    )
       .bind(created.merchant.merchantId)
       .first<{ api_key_scopes: string }>();
     expect(scopes?.api_key_scopes).toBe("billing,verify");
 
     await revokeMerchantApiKey(env.DB, created.merchant.merchantId);
-    await expect(authenticateMerchant(env.DB, rotated.apiKey)).resolves.toBeNull();
+    await expect(
+      authenticateMerchant(env.DB, rotated.apiKey),
+    ).resolves.toBeNull();
   });
 
   it("reserves the fee at verify and reuses the same hold at settle", async () => {
@@ -68,13 +75,18 @@ describe("mainnet revenue hardening", () => {
       preparePrepaidFee(hardeningEnv, recovery, "/verify"),
     ).resolves.toBeNull();
     const afterVerify = await merchantBalance(env.DB, funded.merchantId);
-    expect(afterVerify.availableMicroUsd).toBe(funded.balance.availableMicroUsd - 2_000);
+    expect(afterVerify.availableMicroUsd).toBe(
+      funded.balance.availableMicroUsd - 2_000,
+    );
     expect(afterVerify.heldMicroUsd).toBe(2_000);
 
     await expect(
       preparePrepaidFee(hardeningEnv, recovery, "/verify"),
     ).resolves.toBeNull();
-    const afterDuplicateVerify = await merchantBalance(env.DB, funded.merchantId);
+    const afterDuplicateVerify = await merchantBalance(
+      env.DB,
+      funded.merchantId,
+    );
     expect(afterDuplicateVerify).toMatchObject(afterVerify);
 
     await expect(
@@ -82,8 +94,9 @@ describe("mainnet revenue hardening", () => {
     ).resolves.toBeNull();
     const afterSettle = await merchantBalance(env.DB, funded.merchantId);
     expect(afterSettle).toMatchObject(afterVerify);
-    const hold = await env.DB
-      .prepare("SELECT state FROM verify_fee_holds WHERE logical_payment_key=?")
+    const hold = await env.DB.prepare(
+      "SELECT state FROM verify_fee_holds WHERE logical_payment_key=?",
+    )
       .bind(recovery.logicalPaymentKey)
       .first<{ state: string }>();
     expect(hold?.state).toBe("SETTLE_CLAIMED");
@@ -97,12 +110,15 @@ describe("mainnet revenue hardening", () => {
       recovery,
       "/verify",
     );
-    await env.DB
-      .prepare("UPDATE verify_fee_holds SET expires_at_epoch=? WHERE logical_payment_key=?")
+    await env.DB.prepare(
+      "UPDATE verify_fee_holds SET expires_at_epoch=? WHERE logical_payment_key=?",
+    )
       .bind(NOW - 1, recovery.logicalPaymentKey)
       .run();
 
-    await expect(releaseExpiredVerifyHolds({ DB: env.DB }, NOW)).resolves.toBe(1);
+    await expect(releaseExpiredVerifyHolds({ DB: env.DB }, NOW)).resolves.toBe(
+      1,
+    );
     const balance = await merchantBalance(env.DB, funded.merchantId);
     expect(balance.availableMicroUsd).toBe(funded.balance.availableMicroUsd);
     expect(balance.heldMicroUsd).toBe(0);
@@ -125,11 +141,17 @@ describe("mainnet revenue hardening", () => {
       blockTimestampSeconds: NOW + 10,
       logIndex: 2,
     };
-    await expect(creditAutomaticTopUpDeposit(env.DB, deposit)).resolves.toBe(true);
-    await expect(creditAutomaticTopUpDeposit(env.DB, deposit)).resolves.toBe(false);
+    await expect(creditAutomaticTopUpDeposit(env.DB, deposit)).resolves.toBe(
+      true,
+    );
+    await expect(creditAutomaticTopUpDeposit(env.DB, deposit)).resolves.toBe(
+      false,
+    );
     const balance = await merchantBalance(env.DB, created.merchant.merchantId);
     expect(balance.availableMicroUsd).toBe(intent.amountMicroUsd);
-    const topUps = await env.DB.prepare("SELECT COUNT(*) AS count FROM top_ups").first<{ count: number }>();
+    const topUps = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM top_ups",
+    ).first<{ count: number }>();
     expect(topUps?.count).toBe(1);
   });
 
@@ -143,10 +165,9 @@ describe("mainnet revenue hardening", () => {
     expect(base.circuitOpen).toBe(false);
     expect(base.grossMarginBps).toBe(10_000);
 
-    await env.DB
-      .prepare(
-        "INSERT INTO runtime_economics(singleton_id,downstream_cost_micro_usd,min_gross_margin_bps,updated_at) VALUES(1,1600,2500,?)",
-      )
+    await env.DB.prepare(
+      "INSERT INTO runtime_economics(singleton_id,downstream_cost_micro_usd,min_gross_margin_bps,updated_at) VALUES(1,1600,2500,?)",
+    )
       .bind(new Date().toISOString())
       .run();
     const unsafe = await currentUnitEconomics({
