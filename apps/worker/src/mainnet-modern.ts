@@ -13,6 +13,7 @@ import {
   modernMcpManifest,
 } from "./agent-discovery-modern.js";
 import { compatibilityDiscoveryResponse } from "./discovery-compat.js";
+import { mainnetBrandingResponse } from "./mainnet-branding.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -40,6 +41,9 @@ export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
     const url = new URL(standardRequest.url);
+
+    const branding = mainnetBrandingResponse(standardRequest);
+    if (branding !== null) return branding;
 
     const compatibilityDiscovery =
       await compatibilityDiscoveryResponse(standardRequest);
