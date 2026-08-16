@@ -1,4 +1,4 @@
-name: Sync XGuard agent branch with main
+name: Integrate latest main discovery code
 
 on:
   push:
@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  sync:
-    if: ${{ !contains(github.event.head_commit.message, '[synced-main]') }}
+  integrate:
+    if: ${{ !contains(github.event.head_commit.message, '[integrated-main-code]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Merge latest main and resolve the known Worker entrypoint conflict
+      - name: Integrate non-workflow discovery changes from main
         shell: bash
         run: |
           set -euo pipefail
@@ -30,39 +30,44 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
 
-          set +e
-          git merge --no-commit --no-edit origin/main
-          merge_status=$?
-          set -e
-
-          if [[ ${merge_status} -ne 0 ]]; then
-            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
-            if [[ ${#conflicts[@]} -ne 1 || "${conflicts[0]}" != "apps/worker/wrangler.mainnet.jsonc" ]]; then
-              printf 'Unexpected merge conflicts:\n%s\n' "${conflicts[*]:-none}"
-              exit 1
-            fi
-            git checkout --ours apps/worker/wrangler.mainnet.jsonc
-            git add apps/worker/wrangler.mainnet.jsonc
-          fi
+          git show origin/main:apps/worker/src/discovery.ts > apps/worker/src/discovery.ts
+          git show origin/main:apps/worker/src/mainnet-entry.ts > apps/worker/src/mainnet-entry.ts
+          git show origin/main:tests/discovery.test.ts > tests/discovery.test.ts
 
           python - <<'PY'
           from pathlib import Path
           p = Path('apps/worker/src/mainnet-edge.ts')
           s = p.read_text()
-          old = '} from "./mainnet.js";'
-          new = '} from "./mainnet-entry.js";'
-          if old not in s and new not in s:
-              raise SystemExit('mainnet edge delegate import not found')
-          p.write_text(s.replace(old, new, 1))
+          s = s.replace('} from "./mainnet.js";', '} from "./mainnet-entry.js";', 1)
+          discovery_import = 'import { discoveryResponse } from "./discovery.js";\n'
+          if discovery_import not in s:
+              marker = 'import { parseMainnetFacilitatorRequest } from "./mainnet-protocol.js";\n'
+              if marker not in s:
+                  raise SystemExit('mainnet protocol import marker not found')
+              s = s.replace(marker, marker + discovery_import, 1)
+          hook = '    const url = new URL(request.url);\n'
+          insertion = '''    const url = new URL(request.url);\n\n    const publicDiscovery = discoveryResponse(request);\n    if (publicDiscovery !== null) return publicDiscovery;\n'''
+          if 'const publicDiscovery = discoveryResponse(request);' not in s:
+              if hook not in s:
+                  raise SystemExit('fetch URL hook not found')
+              s = s.replace(hook, insertion, 1)
+          p.write_text(s)
           PY
-          git add apps/worker/src/mainnet-edge.ts
 
           npm ci --ignore-scripts
-          npx prettier --write apps/worker/src/mainnet-edge.ts apps/worker/wrangler.mainnet.jsonc
+          npx prettier --write \
+            apps/worker/src/discovery.ts \
+            apps/worker/src/mainnet-entry.ts \
+            apps/worker/src/mainnet-edge.ts \
+            tests/discovery.test.ts
           npm run typecheck
-          npx vitest run tests/mainnet-bazaar.test.ts
+          npx vitest run tests/discovery.test.ts tests/mainnet-bazaar.test.ts
           npm --workspace @xguard/worker run build:mainnet
 
-          git add -A
-          git commit -m "chore: sync latest main and preserve agent edge [synced-main]"
+          git add \
+            apps/worker/src/discovery.ts \
+            apps/worker/src/mainnet-entry.ts \
+            apps/worker/src/mainnet-edge.ts \
+            tests/discovery.test.ts
+          git commit -m "feat: integrate main discovery surfaces with Bazaar MCP edge [integrated-main-code]"
           git push origin HEAD:agent/complete-agent-discovery-stack
