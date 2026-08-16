@@ -95,6 +95,18 @@ jobs:
           VERIFY_TOKEN="${GITHUB_SHA:-$(date +%s)}"
           DISCOVERY_QUERY="?deploy=${VERIFY_TOKEN}"
 
+          # A newly deployed Worker can briefly return 429/5xx while Cloudflare
+          # propagates the version. Retry transient transport/HTTP failures only;
+          # every semantic assertion below remains strict.
+          curl() {
+            command curl \
+              --retry 6 \
+              --retry-all-errors \
+              --retry-delay 2 \
+              --retry-max-time 45 \
+              "$@"
+          }
+
           propagated=0
           for attempt in {1..18}; do
             response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/.well-known/agent-card.json${DISCOVERY_QUERY}&attempt=${attempt}" || true)"
