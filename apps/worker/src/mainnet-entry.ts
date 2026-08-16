@@ -5,12 +5,23 @@ import mainnetHandler, {
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
 
-type MainnetFetchArgs = Parameters<typeof mainnetHandler.fetch>;
+type PublicMainnetEnv = Record<string, unknown>;
+type PublicFetch = (
+  request: Request,
+  env: PublicMainnetEnv,
+  ctx: ExecutionContext,
+) => Response | Promise<Response>;
+type PublicScheduled = (
+  controller: ScheduledController,
+  env: PublicMainnetEnv,
+  ctx: ExecutionContext,
+) => void | Promise<void>;
 
-export default {
-  ...mainnetHandler,
-  async fetch(...args: MainnetFetchArgs): Promise<Response> {
-    const [request, env, executionCtx] = args;
+const mainnetFetch = mainnetHandler.fetch as unknown as PublicFetch;
+const mainnetScheduled = mainnetHandler.scheduled as unknown as PublicScheduled;
+
+const handler: ExportedHandler<PublicMainnetEnv> = {
+  async fetch(request, env, executionCtx): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/" && request.method === "POST") {
@@ -18,11 +29,7 @@ export default {
         method: "GET",
         body: null,
       });
-      const response = await mainnetHandler.fetch(
-        discoveryRequest,
-        env,
-        executionCtx,
-      );
+      const response = await mainnetFetch(discoveryRequest, env, executionCtx);
       const headers = new Headers(response.headers);
       headers.set("X-XGuard-Discovery", "root-post");
       headers.set("Cache-Control", "no-store");
@@ -33,6 +40,11 @@ export default {
       });
     }
 
-    return mainnetHandler.fetch(request, env, executionCtx);
+    return mainnetFetch(request, env, executionCtx);
+  },
+  async scheduled(controller, env, executionCtx): Promise<void> {
+    await mainnetScheduled(controller, env, executionCtx);
   },
 };
+
+export default handler;
