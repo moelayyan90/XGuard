@@ -2,33 +2,60 @@
 
 ## Model
 
-Current x402 does not provide a generic, transparent field that lets an independent routing facilitator divert an additional service fee without changing the merchant's advertised payment terms. Builder Code is attribution rather than fee collection. XGuard therefore implements a separately disclosed prepaid merchant service balance. See [the protocol research](docs/PROTOCOL_RESEARCH.md#fee-collection-conclusion).
+XGuard does not silently divert money from the merchant's advertised x402 payment. The XGuard service fee is separately disclosed and charged against a prepaid merchant service balance.
+
+Production mainnet pricing is configured as **$0.002 per successful billable settlement**. Merchant top-ups are prepaid service liabilities; they are not revenue when deposited.
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Available: verified top-up
-  Available --> Reserved: settlement ownership
-  Reserved --> Earned: final success
+  [*] --> Available: finalized merchant top-up
+  Available --> Reserved: settlement ownership acquired
+  Reserved --> Earned: independent finalized transfer confirmed
   Reserved --> Available: definitive failure
   Reserved --> Held: ambiguous outcome
-  Held --> Earned: reconciled settled
-  Held --> Available: reconciled failed
+  Held --> Earned: reconciliation proves settlement
+  Held --> Available: reconciliation proves no settlement
 ```
 
-Billable money is stored as `bigint` integer micro-USD in the Node financial source of truth. The Worker uses JavaScript safe integers only for a hard-coded testnet projection whose effective fee and downstream cost are always zero; it is not a mainnet or billable ledger.
+## Mainnet implementation
 
-## Invariants
+The live Cloudflare Worker maintains merchant billing state in D1 and coordinates settlement ownership with Durable Objects.
 
-- A unique logical payment can create at most one `SUCCESSFUL_BILLABLE_SETTLEMENT` usage event.
-- Testnet always has an effective fee of zero.
-- A duplicate that returns a cached settlement creates neither a new hold nor a new fee.
-- A definitively failed testnet settlement or independently proven unused mainnet authorization releases its hold and creates no revenue. A post-submission mainnet rejection alone is not definitive.
-- An ambiguous settlement is not billed until final evidence resolves it.
-- Usage history is immutable. Refunds, credits, or corrections are new compensating entries.
-- Top-ups are idempotent by external reference and may be credited only after provider funds are final.
+Mainnet exposes authenticated merchant endpoints:
 
-## Balance experience
+- `POST /v1/register`
+- `GET /v1/balance`
+- `POST /v1/topups/intents`
+- `POST /v1/topups/claim`
 
-The gateway returns a payment-required error before submission when the merchant's service balance cannot cover the configured fee. A production connector can expose balance, low-balance threshold, and top-up status through authenticated APIs. Auto-top-up may be enabled only after the merchant explicitly authorizes a funding source and limit; no funding instrument is inferred or charged without authorization.
+A top-up intent returns an exact native Base USDC amount and the configured XGuard treasury address. The merchant sends that exact amount, then claims the deposit using the transaction hash and one-time claim token. XGuard independently verifies the finalized Base USDC transfer before crediting the service balance.
 
-The initial release contains the ledger and policy but no live top-up provider. This keeps bootstrap at zero owner cost and prevents simulated credits from being treated as real funds.
+No simulated credit is accepted as a production top-up.
+
+## Billing invariants
+
+- One logical payment can create at most one successful billable usage event.
+- A duplicate cached settlement creates neither a second hold nor a second fee.
+- Failed verification creates no fee.
+- A definitive failed settlement releases the reserved fee.
+- A post-submission ambiguous outcome is not earned revenue until reconciliation/finality proves settlement.
+- Successful downstream submission alone is not enough to earn the fee; independent finalized Base USDC evidence is required.
+- Merchant top-up deposits are not counted as XGuard revenue.
+- Usage history is immutable; corrections are represented by compensating entries rather than destructive edits.
+- Testnet traffic remains non-billable.
+
+## Insufficient service balance
+
+Before an outbound billable settlement is started, XGuard reserves the configured service fee. If the authenticated merchant's available service balance cannot cover the fee, `/settle` fails closed with `xguard_service_balance_required` and does not intentionally submit the payment downstream.
+
+The response includes the required fee, available balance, and the top-up-intent endpoint.
+
+## Ambiguity and reconciliation
+
+Once outbound submission has started, XGuard does not blindly retry through another route. Network timeouts or uncertain downstream outcomes enter an ambiguous state. The reserved service fee remains held until independent evidence resolves whether the payment settled.
+
+This prevents both duplicate blockchain submission and recognition of revenue that has not been proven earned.
+
+## Auto-top-up
+
+XGuard does not infer or charge a merchant funding instrument automatically. Any future auto-top-up mechanism must require explicit merchant authorization, funding limits, and a separately auditable provider integration.
