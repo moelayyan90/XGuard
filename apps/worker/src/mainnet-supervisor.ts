@@ -70,9 +70,9 @@ export default {
       return truthfulStatus(response, env.DB);
     if (
       mcpStatusProbe !== null &&
-      (await isMcpStatusCall(
-        mcpStatusProbe as unknown as Request,
-      ).catch(() => false))
+      (await isMcpStatusCall(mcpStatusProbe as unknown as Request).catch(
+        () => false,
+      ))
     )
       return truthfulMcpStatus(response, env, ctx, url.origin);
     return response;
