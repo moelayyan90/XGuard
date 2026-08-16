@@ -3,7 +3,7 @@ import mainnet, {
   MainnetPaymentCoordinator,
   MainnetRequestGate,
 } from "./mainnet-edge.js";
-import { authenticateMerchant } from "./mainnet-billing.js";
+import { authenticateMerchant, merchantBalance } from "./mainnet-billing.js";
 import { parseMainnetFacilitatorRequest } from "./mainnet-protocol.js";
 import {
   recordAmbiguousRecovery,
@@ -23,6 +23,7 @@ const RATE_WINDOW_MS = 60_000;
 
 type MainnetSupervisorEnv = MainnetRecoveryEnv & {
   XPAY_RATE_GATE: DurableObjectNamespace<XPayGlobalRateGate>;
+  XGUARD_FEE_MICRO_USD: string;
   [key: string]: unknown;
 };
 
@@ -103,6 +104,32 @@ async function supervisedFacilitatorRequest(
     request.clone() as unknown as Request,
     env,
   ).catch(() => null);
+
+  if (operation === "/verify" && inspected !== null) {
+    const requiredFeeMicroUsd = serviceFeeMicroUsd(env);
+    if (requiredFeeMicroUsd === null)
+      return jsonResponse({ error: "billing_configuration_unavailable" }, 503);
+
+    const balance = await merchantBalance(
+      env.DB,
+      inspected.recovery.merchantId,
+    ).catch(() => null);
+    if (balance === null)
+      return jsonResponse({ error: "merchant_balance_unavailable" }, 503);
+
+    if (balance.availableMicroUsd < requiredFeeMicroUsd)
+      return jsonResponse(
+        {
+          error: "xguard_service_balance_required",
+          message:
+            "Merchant must prepay XGuard service balance before verification",
+          requiredFeeMicroUsd,
+          availableMicroUsd: balance.availableMicroUsd,
+          topUpEndpoint: "/v1/topups/intents",
+        },
+        402,
+      );
+  }
 
   if (operation === "/settle" && inspected !== null) {
     const recovered = await recoveredSettlement(
@@ -352,6 +379,15 @@ async function isAmbiguousSettlement(response: Response): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function serviceFeeMicroUsd(env: MainnetSupervisorEnv): number | null {
+  const value = env.XGUARD_FEE_MICRO_USD;
+  if (!/^[0-9]+$/.test(value)) return null;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > 1_000_000)
+    return null;
+  return parsed;
 }
 
 function settlementFailure(
