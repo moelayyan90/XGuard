@@ -261,7 +261,7 @@ app.post("/v1/intents/:intentId/execute", async (context) => {
       response.status !== 204 &&
       response.status !== 205 &&
       response.status !== 304;
-    return new Response(mayHaveBody ? responseBody : null, {
+    return new Response(mayHaveBody ? toArrayBuffer(responseBody) : null, {
       status: response.status,
       headers,
     });
@@ -363,7 +363,7 @@ async function requirePreviewMerchant(
 function prepareOutboundRequest(
   snapshot: EconomicIntentSnapshot,
   request: Record<string, unknown>,
-): { headers: Headers; body: Uint8Array | undefined } {
+): { headers: Headers; body: ArrayBuffer | undefined } {
   const method = snapshot.terms.resource.method;
   const rawHeaders =
     request.headers === undefined ? {} : record(request.headers, "headers");
@@ -437,7 +437,10 @@ function prepareOutboundRequest(
         409,
       );
   }
-  return { headers, body: bytes };
+  return {
+    headers,
+    body: bytes === undefined ? undefined : toArrayBuffer(bytes),
+  };
 }
 
 function assertSafeResourceUrl(raw: string): void {
@@ -610,6 +613,12 @@ function intentIdParam(value: string): string {
   if (!/^xi_[0-9a-f]{40}$/.test(value))
     throw new XGuardError("BAD_REQUEST", "Invalid intentId", 400);
   return value;
+}
+
+function toArrayBuffer(value: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(value);
+  return copy.buffer;
 }
 
 function sha256BytesHex(value: Uint8Array): string {
