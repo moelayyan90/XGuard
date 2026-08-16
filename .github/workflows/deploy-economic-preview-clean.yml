@@ -1,0 +1,101 @@
+name: Deploy clean Economic Firewall preview
+
+on:
+  push:
+    branches:
+      - agent/economic-firewall-clean
+    paths:
+      - apps/worker/src/economic-firewall.ts
+      - apps/worker/src/economic-intent-coordinator.ts
+      - apps/worker/src/x402-economic-adapter.ts
+      - apps/worker/wrangler.economic-preview.jsonc
+      - packages/core/src/economic-intent.ts
+      - packages/core/src/edge.ts
+      - packages/core/src/index.ts
+      - apps/worker/package.json
+      - package.json
+      - .github/workflows/deploy-economic-preview-clean.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xguard-economic-preview-clean-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/economic-firewall-clean
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Verify full release candidate
+        run: npm run verify:release
+        env:
+          WRANGLER_SEND_METRICS: "false"
+      - name: Deploy isolated preview and run E2E
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          set -euo pipefail
+          mkdir -p economic-preview-clean
+          CONFIG="apps/worker/wrangler.economic-preview.jsonc"
+          npx wrangler deploy --config "$CONFIG"
+
+          PREVIEW_TOKEN="$(node -e 'const {createHmac}=require("node:crypto"); process.stdout.write(createHmac("sha256", process.env.CLOUDFLARE_API_TOKEN).update("xguard-economic-preview-v1").digest("hex"));')"
+          printf '%s' "$PREVIEW_TOKEN" | npx wrangler secret put PREVIEW_API_TOKEN --config "$CONFIG"
+
+          BASE_URL="https://xguard-economic-preview.maqamapp.workers.dev"
+          for attempt in {1..12}; do
+            HEALTH_STATUS="$(curl -sS -o economic-preview-clean/health.json -w '%{http_code}' "$BASE_URL/healthz" || true)"
+            [[ "$HEALTH_STATUS" == "200" ]] && break
+            sleep 5
+          done
+          [[ "$HEALTH_STATUS" == "200" ]]
+          node -e 'const x=JSON.parse(require("fs").readFileSync("economic-preview-clean/health.json","utf8")); if(x.status!=="ok") process.exit(1)'
+
+          curl -fsS "$BASE_URL/" > economic-preview-clean/root.json
+          node -e 'const x=JSON.parse(require("fs").readFileSync("economic-preview-clean/root.json","utf8")); if(!x.endpoints?.x402Authorize||!x.endpoints?.x402Settle) process.exit(1)'
+
+          EXPIRES_AT="$(node -e 'console.log(new Date(Date.now()+10*60*1000).toISOString())')"
+          NONCE="$(node -e 'console.log(require("node:crypto").randomUUID())')"
+          CREATE_BODY="$(node -e 'process.stdout.write(JSON.stringify({actorId:"clean-ci-agent",protocol:"preview",resource:{method:"GET",url:"https://example.com/",bodyHash:null},money:{maxAmountMicroUsd:0,currency:"USD",network:null,asset:null},expiresAt:process.argv[1],nonce:process.argv[2],metadataHash:null}))' "$EXPIRES_AT" "$NONCE")"
+          CREATE_STATUS="$(curl -sS -o economic-preview-clean/create.json -w '%{http_code}' -X POST "$BASE_URL/v1/intents" -H "Authorization: Bearer $PREVIEW_TOKEN" -H 'Content-Type: application/json' --data "$CREATE_BODY")"
+          [[ "$CREATE_STATUS" == "201" || "$CREATE_STATUS" == "200" ]]
+          INTENT_ID="$(node -e 'const x=JSON.parse(require("fs").readFileSync("economic-preview-clean/create.json","utf8")); if(!/^xi_[0-9a-f]{40}$/.test(x.intentId)) process.exit(1); process.stdout.write(x.intentId)')"
+
+          X402_BAD_STATUS="$(curl -sS -o economic-preview-clean/x402-bad.json -w '%{http_code}' -X POST "$BASE_URL/v1/intents/$INTENT_ID/x402/authorize" -H "Authorization: Bearer $PREVIEW_TOKEN" -H 'Content-Type: application/json' --data '{}' || true)"
+          [[ "$X402_BAD_STATUS" == "400" ]]
+
+          AUTHORIZE_STATUS="$(curl -sS -o economic-preview-clean/authorize.json -w '%{http_code}' -X POST "$BASE_URL/v1/intents/$INTENT_ID/authorize" -H "Authorization: Bearer $PREVIEW_TOKEN" -H 'Content-Type: application/json' --data '{"authorization":{"kind":"clean-zero-value-preview"},"authorizedAmountMicroUsd":0}')"
+          [[ "$AUTHORIZE_STATUS" == "200" ]]
+
+          EXEC_STATUS="$(curl -sS -o economic-preview-clean/execute.body -w '%{http_code}' -X POST "$BASE_URL/v1/intents/$INTENT_ID/execute" -H "Authorization: Bearer $PREVIEW_TOKEN" -H 'Content-Type: application/json' --data '{"headers":{"accept":"text/html"}}')"
+          [[ "$EXEC_STATUS" == "200" ]]
+
+          SNAPSHOT_STATUS="$(curl -sS -o economic-preview-clean/snapshot.json -w '%{http_code}' "$BASE_URL/v1/intents/$INTENT_ID" -H "Authorization: Bearer $PREVIEW_TOKEN")"
+          [[ "$SNAPSHOT_STATUS" == "200" ]]
+          node -e 'const x=JSON.parse(require("fs").readFileSync("economic-preview-clean/snapshot.json","utf8")); if(x.state!=="FULFILLED"||!x.fulfillmentHash) process.exit(1)'
+
+          SETTLE_STATUS="$(curl -sS -o economic-preview-clean/settle.json -w '%{http_code}' -X POST "$BASE_URL/v1/intents/$INTENT_ID/settle" -H "Authorization: Bearer $PREVIEW_TOKEN" -H 'Content-Type: application/json' --data '{"protocol":"preview","settlement":{"kind":"clean-zero-value-preview"},"chargedAmountMicroUsd":0}')"
+          [[ "$SETTLE_STATUS" == "200" ]]
+          node -e 'const x=JSON.parse(require("fs").readFileSync("economic-preview-clean/settle.json","utf8")); if(x.state!=="FINAL"||x.proof?.result!=="EXACTLY_ONCE"||x.proof?.chargedAmountMicroUsd!==0) process.exit(1); require("fs").writeFileSync("economic-preview-clean/result.json", JSON.stringify({intentId:x.intentId,state:x.state,result:x.proof.result,proofHash:x.proof.proofHash}))'
+      - name: Upload clean preview evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: economic-preview-clean-evidence
+          path: economic-preview-clean
+          if-no-files-found: warn
