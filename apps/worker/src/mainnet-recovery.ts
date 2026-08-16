@@ -1,9 +1,6 @@
 import type { SettleResponse } from "@x402/core/types";
 import { earnSettlementFee, releaseSettlementFee } from "./mainnet-billing.js";
-import {
-  BASE_MAINNET,
-  BASE_USDC,
-} from "./mainnet-protocol.js";
+import { BASE_MAINNET, BASE_USDC } from "./mainnet-protocol.js";
 import { verifyFinalizedBaseUsdcSettlement } from "./base-settlement.js";
 
 const AUTHORIZATION_USED_TOPIC =
@@ -61,8 +58,6 @@ interface RpcBlock {
 interface RpcLog {
   transactionHash?: unknown;
   blockNumber?: unknown;
-  logIndex?: unknown;
-  topics?: unknown;
   removed?: unknown;
 }
 
@@ -175,7 +170,10 @@ async function recoverOne(
   }
 
   const topicAuthorizer = addressTopic(job.expected_payer);
-  const topics = [topicAuthorizer, job.authorization_nonce.toLowerCase()];
+  const topics: [string, string] = [
+    topicAuthorizer,
+    job.authorization_nonce.toLowerCase(),
+  ];
   const used = await scanLogs(
     env.BASE_RPC_URL,
     AUTHORIZATION_USED_TOPIC,
@@ -197,7 +195,9 @@ async function recoverOne(
   }
 
   if (used.length > 0) {
-    const transactionHashes = [...new Set(used.map((entry) => entry.transactionHash))];
+    const transactionHashes = [
+      ...new Set(used.map((entry) => entry.transactionHash)),
+    ];
     const verified: string[] = [];
     for (const transactionHash of transactionHashes) {
       try {
@@ -211,8 +211,7 @@ async function recoverOne(
         });
         verified.push(transactionHash);
       } catch {
-        // A used authorization that does not prove the exact expected transfer is
-        // never accepted as a successful XGuard settlement.
+        // Never accept AuthorizationUsed alone as proof of the expected transfer.
       }
     }
     if (verified.length === 1) {
@@ -245,6 +244,7 @@ async function confirmRecovery(
   job: RecoveryRow,
   transactionHash: string,
 ): Promise<void> {
+  await requireProjection(env.DB, job.logical_payment_key);
   const result = {
     success: true,
     transaction: transactionHash,
@@ -294,6 +294,7 @@ async function closeWithoutCharge(
   state: "CANCELED" | "EXPIRED",
   reason: string,
 ): Promise<void> {
+  await requireProjection(env.DB, job.logical_payment_key);
   const result = {
     success: false,
     transaction: "",
@@ -334,6 +335,7 @@ async function failRecovery(
   job: RecoveryRow,
   reason: string,
 ): Promise<void> {
+  await requireProjection(env.DB, job.logical_payment_key);
   const result = {
     success: false,
     transaction: "",
@@ -363,6 +365,19 @@ async function failRecovery(
       "UPDATE settlement_projection SET state='FAILED',fee_micro_usd=0,recorded_at=? WHERE logical_payment_key=?",
     ).bind(now, job.logical_payment_key),
   ]);
+}
+
+async function requireProjection(
+  db: D1Database,
+  logicalPaymentKey: string,
+): Promise<void> {
+  const projection = await db
+    .prepare(
+      "SELECT logical_payment_key FROM settlement_projection WHERE logical_payment_key=?",
+    )
+    .bind(logicalPaymentKey)
+    .first<{ logical_payment_key: string }>();
+  if (projection === null) throw new Error("recovery_projection_pending");
 }
 
 async function scanLogs(
@@ -450,9 +465,10 @@ async function markAttempt(
   logicalPaymentKey: string,
   code: string,
 ): Promise<void> {
-  await db.prepare(
-    "UPDATE settlement_recovery_jobs SET attempts=attempts+1,last_error_code=?,updated_at=? WHERE logical_payment_key=? AND state='PENDING'",
-  )
+  await db
+    .prepare(
+      "UPDATE settlement_recovery_jobs SET attempts=attempts+1,last_error_code=?,updated_at=? WHERE logical_payment_key=? AND state='PENDING'",
+    )
     .bind(code.slice(0, 96), new Date().toISOString(), logicalPaymentKey)
     .run();
 }
