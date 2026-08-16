@@ -1,0 +1,56 @@
+name: Format Economic Firewall v2
+
+on:
+  push:
+    branches:
+      - agent/economic-firewall-v2
+    paths:
+      - packages/core/src/economic-intent.ts
+      - packages/core/src/edge.ts
+      - packages/core/src/index.ts
+      - apps/worker/src/economic-intent-coordinator.ts
+      - apps/worker/src/economic-firewall.ts
+      - apps/worker/wrangler.economic-preview.jsonc
+      - apps/worker/package.json
+      - tests/economic-intent.test.ts
+      - package.json
+      - .github/workflows/format-economic-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/economic-firewall-v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Apply Prettier
+        run: >-
+          npx prettier --write
+          packages/core/src/economic-intent.ts
+          packages/core/src/edge.ts
+          packages/core/src/index.ts
+          apps/worker/src/economic-intent-coordinator.ts
+          apps/worker/src/economic-firewall.ts
+          apps/worker/wrangler.economic-preview.jsonc
+          apps/worker/package.json
+          tests/economic-intent.test.ts
+          package.json
+      - name: Commit formatting if needed
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/core/src/economic-intent.ts packages/core/src/edge.ts packages/core/src/index.ts apps/worker/src/economic-intent-coordinator.ts apps/worker/src/economic-firewall.ts apps/worker/wrangler.economic-preview.jsonc apps/worker/package.json tests/economic-intent.test.ts package.json
+          git commit -m "style: format Economic Firewall v2"
+          git push origin HEAD:agent/economic-firewall-v2
