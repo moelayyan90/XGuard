@@ -95,6 +95,15 @@ jobs:
           VERIFY_TOKEN="${GITHUB_SHA:-$(date +%s)}"
           DISCOVERY_QUERY="?deploy=${VERIFY_TOKEN}"
 
+          curl() {
+            command curl \
+              --retry 6 \
+              --retry-delay 2 \
+              --retry-max-time 45 \
+              --retry-connrefused \
+              "$@"
+          }
+
           propagated=0
           for attempt in {1..18}; do
             response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/.well-known/agent-card.json${DISCOVERY_QUERY}&attempt=${attempt}" || true)"
