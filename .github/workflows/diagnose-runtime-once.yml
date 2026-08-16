@@ -12,7 +12,7 @@ jobs:
   verify-cron:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
         with:
@@ -22,7 +22,7 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm ci --ignore-scripts
-      - name: Observe one production cron cycle
+      - name: Observe one production top-up cron cycle
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -36,15 +36,57 @@ jobs:
           fi
 
           log_file="$(mktemp)"
-          timeout 80s npx wrangler tail xguard-mainnet \
+          timeout 340s npx wrangler tail xguard-mainnet \
             --format=json \
-            --search automatic_topup_scan_failed \
             > "${log_file}" 2>&1 || true
 
-          cat "${log_file}"
           if grep -q 'automatic_topup_scan_failed' "${log_file}"; then
+            grep 'automatic_topup_scan_failed' "${log_file}" || true
             echo "::error::Automatic top-up scanner failed during the post-deploy production cron check."
             exit 1
           fi
 
-          echo "Production cron check completed without automatic top-up scan failures."
+          if grep -q 'automatic_topup_scan_deferred' "${log_file}"; then
+            grep 'automatic_topup_scan_deferred' "${log_file}" || true
+            echo "::error::All configured Base RPC providers were unavailable; automatic top-up reconciliation was deferred."
+            exit 1
+          fi
+
+          node - "${log_file}" <<'NODE'
+          const fs = require("node:fs");
+          const lines = fs.readFileSync(process.argv[2], "utf8").split(/\r?\n/);
+          let observedScanMinute = false;
+          let observedHealthyScanMinute = false;
+
+          for (const line of lines) {
+            const start = line.indexOf("{");
+            if (start < 0) continue;
+            let record;
+            try {
+              record = JSON.parse(line.slice(start));
+            } catch {
+              continue;
+            }
+            const workers = record.$workers ?? record;
+            const event = workers.event ?? record.event;
+            const eventType = workers.eventType ?? record.eventType;
+            if (eventType !== "scheduled" || event?.cron !== "*/1 * * * *") continue;
+            const rawTime = Number(event.scheduledTime);
+            if (!Number.isFinite(rawTime)) continue;
+            const seconds = rawTime > 1e12 ? Math.floor(rawTime / 1000) : Math.floor(rawTime);
+            if (Math.floor(seconds / 60) % 5 !== 0) continue;
+            observedScanMinute = true;
+            if ((workers.outcome ?? record.outcome) === "ok") observedHealthyScanMinute = true;
+          }
+
+          if (!observedScanMinute) {
+            console.error("No scheduled top-up scan minute was observed in the production tail window.");
+            process.exit(1);
+          }
+          if (!observedHealthyScanMinute) {
+            console.error("A scheduled top-up scan minute was observed but did not complete with outcome=ok.");
+            process.exit(1);
+          }
+          NODE
+
+          echo "Observed a real production top-up scan minute with no failed or deferred reconciliation."
