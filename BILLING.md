@@ -36,6 +36,9 @@ No simulated credit is accepted as a production top-up.
 
 - One logical payment can create at most one successful billable usage event.
 - A duplicate cached settlement creates neither a second hold nor a second fee.
+- Mainnet verification is available only to merchants whose available prepaid service balance can cover the configured XGuard fee.
+- The verification funding gate runs before XGuard routes the request to the downstream facilitator.
+- Verification itself does not earn the service fee; revenue remains tied to a successful billable settlement.
 - Failed verification creates no fee.
 - A definitive failed settlement releases the reserved fee.
 - A post-submission ambiguous outcome is not earned revenue until reconciliation/finality proves settlement.
@@ -45,6 +48,8 @@ No simulated credit is accepted as a production top-up.
 - Testnet traffic remains non-billable.
 
 ## Insufficient service balance
+
+Before a mainnet verification request is routed to the downstream facilitator, XGuard checks that the authenticated merchant has enough available prepaid service balance to cover the configured service fee. If not, `/verify` fails closed with HTTP `402` and `xguard_service_balance_required`; no downstream verification service is invoked.
 
 Before an outbound billable settlement is started, XGuard reserves the configured service fee. If the authenticated merchant's available service balance cannot cover the fee, `/settle` fails closed with `xguard_service_balance_required` and does not intentionally submit the payment downstream.
 
