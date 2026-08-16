@@ -1,5 +1,5 @@
 name: Deploy Economic Firewall preview branch
-# Re-run E2E after settlement RPC serialization fix.
+# Final clean E2E retry after Durable Object settlement fix.
 
 on:
   push:
