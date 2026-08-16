@@ -1,0 +1,28 @@
+name: Sync dormant Economic Firewall audit final
+
+on:
+  push:
+    branches:
+      - agent/economic-firewall-audit-mode
+    paths:
+      - .github/workflows/sync-economic-audit-final.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/economic-firewall-audit-mode
+          fetch-depth: 0
+      - name: Merge current main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+          git push origin HEAD:agent/economic-firewall-audit-mode
