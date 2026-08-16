@@ -204,5 +204,21 @@ jobs:
           curl -fsS --max-time 15 "${BASE_URL}/supported" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||!x.kinds.some(k=>k&&k.x402Version===2&&k.network==="eip155:8453"&&k.scheme==="exact"))process.exit(1)})'
 
-          curl -fsS --max-time 15 "${BASE_URL}/status" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet"||x.facilitator!=="HEALTHY"||x.facilitatorProvider!=="xpay"||!x.ambiguousRecovery||!Number.isInteger(x.ambiguousRecovery.pending)||!Number.isInteger(x.ambiguousRecovery.failed))process.exit(1)})'
+          status_ready=0
+          for attempt in {1..18}; do
+            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/status?deploy=${VERIFY_TOKEN}&attempt=${attempt}" || true)"
+            code="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet"||x.facilitator!=="HEALTHY"||x.facilitatorProvider!=="xpay"||!x.ambiguousRecovery||!Number.isInteger(x.ambiguousRecovery.pending)||!Number.isInteger(x.ambiguousRecovery.failed))process.exit(1)})'; then
+              status_ready=1
+              break
+            fi
+            sleep 5
+          done
+          if [[ "${status_ready}" -ne 1 ]]; then
+            echo "::error::XGuard public status contract did not stabilize within 90 seconds."
+            exit 1
+          fi
+
+          npm run smoke:mainnet
