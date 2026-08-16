@@ -3,11 +3,7 @@ import mainnet, {
   MainnetRequestGate,
   XPayGlobalRateGate,
 } from "./mainnet-supervisor.js";
-import {
-  A2A_PATH,
-  a2aOptions,
-  a2aRequest,
-} from "./mainnet-a2a.js";
+import { A2A_PATH, a2aOptions, a2aRequest } from "./mainnet-a2a.js";
 import {
   modernMcpOptions,
   modernMcpRequest,
