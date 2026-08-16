@@ -29,6 +29,7 @@
     "security:deps": "npm audit --audit-level=high",
     "quality:no-todos": "node scripts/check-no-todos.mjs",
     "quality:docs": "node scripts/check-docs.mjs",
+    "conversion:build": "node scripts/conversion-engine.mjs",
     "conversion:self-test": "node scripts/conversion-engine.mjs --self-test",
     "adoption:self-test": "node scripts/adoption-engine.mjs --self-test && node scripts/adoption-targets.mjs --self-test && node scripts/conversion-engine.mjs --self-test",
     "adoption:scan": "node scripts/adoption-engine.mjs && node scripts/adoption-targets.mjs && node scripts/conversion-engine.mjs",
