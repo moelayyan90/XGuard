@@ -8,8 +8,10 @@ on:
       - "server.json"
       - "apps/worker/src/a2a-agent.ts"
       - "apps/worker/src/a2a-discovery.ts"
+      - "apps/worker/src/agent-discovery-modern.ts"
+      - "apps/worker/src/mainnet-mcp-modern.ts"
       - "apps/worker/src/mainnet-modern.ts"
-      - ".github/workflows/publish-mcp-directories.yml"
+      - "apps/worker/src/mcpub-discovery.ts"
 
 permissions:
   contents: read
@@ -41,7 +43,7 @@ jobs:
                 return;
               }
               if (x.status === "queued" || x.url || x.message) {
-                console.log("XGuard MCP Repository index request accepted.");
+                console.log("XGuard MCP Repository refresh accepted.");
                 return;
               }
               console.error("Unexpected MCP Repository response shape");
@@ -50,10 +52,11 @@ jobs:
           '
 
   a2aregistry:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Register XGuard Agent Card when A2A-compatible
+      - name: Refresh XGuard in A2A Registry on explicit request
         shell: bash
         run: |
           set -euo pipefail
@@ -63,12 +66,12 @@ jobs:
             let s="";
             process.stdin.on("data",d=>s+=d).on("end",()=>{
               const x=JSON.parse(s);
-              const ok=String(x.protocolVersion||"").startsWith("0.3") && String(x.url||"").endsWith("/a2a");
+              const ok=String(x.protocolVersion||"").startsWith("0.3") && String(x.url||"").endsWith("/a2a") && x.preferredTransport==="JSONRPC";
               process.exit(ok?0:1);
             });
           '; then
-            echo "XGuard Agent Card is not A2A v0.3-compatible yet; skipping registry submission without error."
-            exit 0
+            echo "XGuard Agent Card is not A2A-compatible; refusing registry refresh."
+            exit 1
           fi
           response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
             -X POST 'https://a2aregistry.org/api/agents/register' \
@@ -78,9 +81,9 @@ jobs:
           body="${response%$'\n'*}"
           printf '%s\n' "${body}"
           lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
-          if [[ "${code}" =~ ^2[0-9][0-9]$ ]] || [[ "${code}" == "409" ]] || [[ "${lower}" == *"already"* ]] || [[ "${lower}" == *"exist"* ]]; then
-            echo "XGuard A2A Registry submission accepted or already registered."
+          if [[ "${code}" =~ ^2[0-9][0-9]$ ]] || [[ "${code}" == "409" ]] || [[ "${lower}" == *"already"* ]] || [[ "${lower}" == *"exist"* ]] || [[ "${lower}" == *"duplicate"* ]]; then
+            echo "XGuard A2A Registry refresh accepted or already registered."
             exit 0
           fi
-          echo "A2A Registry rejected XGuard (HTTP ${code})." >&2
+          echo "A2A Registry rejected XGuard refresh (HTTP ${code})." >&2
           exit 1
