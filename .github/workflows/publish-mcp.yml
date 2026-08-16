@@ -21,6 +21,29 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate MCP Registry metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const server = JSON.parse(fs.readFileSync('server.json', 'utf8'));
+          if (server.name !== 'io.github.moelayyan90/xguard') {
+            throw new Error('server.json name does not match the published XGuard registry identity');
+          }
+          if (typeof server.description !== 'string' || server.description.length === 0 || server.description.length > 100) {
+            throw new Error(`server.json description must contain 1-100 characters; got ${String(server.description ?? '').length}`);
+          }
+          if (typeof server.version !== 'string' || server.version.length === 0) {
+            throw new Error('server.json version is missing');
+          }
+          if (!Array.isArray(server.remotes) || !server.remotes.some((remote) =>
+            remote && remote.type === 'streamable-http' &&
+            remote.url === 'https://xguard-mainnet.maqamapp.workers.dev/mcp')) {
+            throw new Error('server.json must advertise the production XGuard Streamable HTTP MCP endpoint');
+          }
+          NODE
+
       - name: Validate remote MCP endpoint
         shell: bash
         run: |
