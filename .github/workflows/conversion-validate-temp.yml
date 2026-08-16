@@ -34,9 +34,29 @@ jobs:
           XGUARD_CONVERSION_QUEUE_LIMIT: "50"
         run: |
           set -euo pipefail
-          npm run adoption:scan 2>&1 | tee conversion-validation.log
-          grep -Fq '"event":"adoption_source_scanned","source":"cdp-bazaar"' conversion-validation.log
-          grep -Fq '"event":"adoption_source_scanned","source":"payai-bazaar"' conversion-validation.log
-          grep -Fq '"event":"conversion_queue_ready"' conversion-validation.log
-          test -s conversion-queue.json
-          test -s conversion-queue.md
+          for attempt in 1 2 3; do
+            rm -f adoption-report.json adoption-report.md adoption-targets.json adoption-targets.md conversion-queue.json conversion-queue.md conversion-validation.log
+            set +e
+            npm run adoption:scan 2>&1 | tee conversion-validation.log
+            scan_status=${PIPESTATUS[0]}
+            set -e
+
+            if [[ "$scan_status" -eq 0 ]] \
+              && grep -Fq '"event":"adoption_source_scanned","source":"cdp-bazaar"' conversion-validation.log \
+              && grep -Fq '"event":"adoption_source_scanned","source":"payai-bazaar"' conversion-validation.log \
+              && grep -Fq '"event":"conversion_queue_ready"' conversion-validation.log \
+              && test -s conversion-queue.json \
+              && test -s conversion-queue.md; then
+              echo "Complete live conversion coverage on attempt ${attempt}."
+              exit 0
+            fi
+
+            if [[ "$attempt" -lt 3 ]]; then
+              delay=$((attempt * 5))
+              echo "Live conversion coverage incomplete on attempt ${attempt}; retrying in ${delay}s."
+              sleep "$delay"
+            fi
+          done
+
+          echo "Live conversion coverage remained incomplete after bounded retries."
+          exit 1
