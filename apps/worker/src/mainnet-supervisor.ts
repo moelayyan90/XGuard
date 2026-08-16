@@ -15,6 +15,10 @@ import {
   scanAutomaticTopUps,
 } from "./mainnet-revenue-hardening.js";
 import {
+  isTransientBlockscoutFailure,
+  scanAutomaticTopUpsFromBlockscout,
+} from "./topup-blockscout.js";
+import {
   recordAmbiguousRecovery,
   recoverAmbiguousSettlements,
   recoveredSettlement,
@@ -189,7 +193,29 @@ async function runAutomaticTopUpMaintenance(
     return;
   }
 
-  const result = await scanAutomaticTopUpsWithFailover(env);
+  let result: { scannedThroughBlock: number; credited: number };
+  try {
+    result = await scanAutomaticTopUpsFromBlockscout(env);
+    console.log(
+      JSON.stringify({
+        event: "automatic_topup_indexer_scan_succeeded",
+        source: "base-blockscout",
+        credited: result.credited,
+        scannedThroughBlock: result.scannedThroughBlock,
+      }),
+    );
+  } catch (error) {
+    const code = errorCode(error);
+    if (!isTransientBlockscoutFailure(error, code)) throw error;
+    console.warn(
+      JSON.stringify({
+        event: "automatic_topup_indexer_unavailable",
+        source: "base-blockscout",
+        code,
+      }),
+    );
+    result = await scanAutomaticTopUpsWithFailover(env);
+  }
   if (result.credited > 0)
     console.log(
       JSON.stringify({
