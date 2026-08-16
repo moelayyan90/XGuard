@@ -157,7 +157,7 @@ app.get("/readyz", async (context) => {
 
 app.get("/supported", async (context) => {
   const health = await currentPayAIHealth(context.env);
-  if (health === null || health.state !== "HEALTHY")
+  if (health === null || health.state === "OPEN")
     return context.json({ kinds: [], extensions: [], signers: {} });
   try {
     const upstream = JSON.parse(health.capabilities_json) as SupportedResponse;
@@ -809,19 +809,34 @@ async function currentPayAIHealth(env: MainnetEnv): Promise<{
 }
 
 async function requireHealthyPayAI(env: MainnetEnv): Promise<void> {
+  if (downstreamCostMicroUsd(env) >= feeMicroUsd(env))
+    throw new XGuardError(
+      "FACILITATOR_UNAVAILABLE",
+      "Current facilitator cost would make XGuard unit economics non-positive",
+      503,
+    );
+
   const health = await currentPayAIHealth(env);
-  if (health === null || health.state !== "HEALTHY")
+  if (health !== null && health.state === "HEALTHY") return;
+
+  try {
+    await refreshPayAIHealth(env);
+  } catch {
     throw new XGuardError(
       "FACILITATOR_UNAVAILABLE",
       "No current healthy Base mainnet facilitator route is available",
       503,
       true,
     );
-  if (downstreamCostMicroUsd(env) >= feeMicroUsd(env))
+  }
+
+  const recovered = await currentPayAIHealth(env);
+  if (recovered === null || recovered.state !== "HEALTHY")
     throw new XGuardError(
       "FACILITATOR_UNAVAILABLE",
-      "Current facilitator cost would make XGuard unit economics non-positive",
+      "No current healthy Base mainnet facilitator route is available",
       503,
+      true,
     );
 }
 
