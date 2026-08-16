@@ -1,4 +1,5 @@
 name: Wire Economic Firewall shadow telemetry
+# Retry after excluding SQL migration from Prettier.
 
 on:
   push:
@@ -64,7 +65,7 @@ jobs:
           PY
       - name: Verify telemetry and full release candidate
         run: |
-          npx prettier --write apps/worker/src/mainnet.ts apps/worker/src/mainnet-economic-shadow-telemetry.ts tests/worker/mainnet-economic-shadow-telemetry.test.ts apps/worker/migrations/0007_economic_firewall_shadow.sql
+          npx prettier --write apps/worker/src/mainnet.ts apps/worker/src/mainnet-economic-shadow-telemetry.ts tests/worker/mainnet-economic-shadow-telemetry.test.ts
           npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
