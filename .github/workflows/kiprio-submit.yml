@@ -1,0 +1,25 @@
+name: Inspect Kiprio MCP submit
+
+on:
+  push:
+    branches: [chore/kiprio-submit]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect public form wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 'https://kiprio.com/mcp-registry/' -o /tmp/kiprio.html
+          echo '=== forms ==='
+          grep -oE '<form[^>]*>' /tmp/kiprio.html | tail -20 || true
+          echo '=== submit-area fields ==='
+          grep -n -B10 -A30 'Submit your MCP server' /tmp/kiprio.html | tail -80 || true
+          echo '=== endpoint references ==='
+          grep -oE '.{0,200}(submit|mcp-registry).{0,500}' /tmp/kiprio.html | tail -40 || true
