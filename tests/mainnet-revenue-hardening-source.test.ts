@@ -70,12 +70,17 @@ describe("mainnet revenue hardening source invariants", () => {
     );
   });
 
-  it("uses Ankr as primary with bounded fallback and excludes PublicNode", async () => {
+  it("uses documented BlockPI Base RPC before the bounded Base fallback", async () => {
     const config = await readFile("apps/worker/wrangler.mainnet.jsonc", "utf8");
-    expect(config).toContain('"BASE_RPC_URL": "https://rpc.ankr.com/base"');
-    expect(config).toContain("https://base.drpc.org");
-    expect(config).toContain("https://public.1rpc.io/base");
-    expect(config).toContain("https://mainnet.base.org");
+    expect(config).toContain(
+      '"BASE_RPC_URL": "https://base.public.blockpi.network/v1/rpc/public"',
+    );
+    expect(config).toContain(
+      '"BASE_RPC_FALLBACK_URLS": "https://mainnet.base.org"',
+    );
+    expect(config).not.toContain("rpc.ankr.com/base");
+    expect(config).not.toContain("base.drpc.org");
+    expect(config).not.toContain("public.1rpc.io/base");
     expect(config).not.toContain("base-rpc.publicnode.com");
   });
 
