@@ -3,6 +3,8 @@ import mainnet, {
   MainnetRequestGate,
   XPayGlobalRateGate,
 } from "./mainnet-supervisor.js";
+import { a2aAgentResponse } from "./a2a-agent.js";
+import { enhanceA2AAgentCard } from "./a2a-discovery.js";
 import {
   modernMcpOptions,
   modernMcpRequest,
@@ -63,6 +65,9 @@ export default {
     const mcpubDiscovery = mcpubDiscoveryResponse(standardRequest);
     if (mcpubDiscovery !== null) return secureResponse(mcpubDiscovery);
 
+    const a2a = await a2aAgentResponse(standardRequest);
+    if (a2a !== null) return secureResponse(a2a);
+
     if (url.pathname === "/mcp" && standardRequest.method === "OPTIONS")
       return secureResponse(modernMcpOptions(standardRequest));
 
@@ -106,8 +111,14 @@ export default {
         url.pathname === "/openapi.json" ||
         url.pathname === "/llms.txt" ||
         url.pathname === "/llms-full.txt")
-    )
+    ) {
       response = await enhanceAgentDiscoveryResponse(standardRequest, response);
+      if (
+        url.pathname === "/.well-known/agent-card.json" ||
+        url.pathname === "/.well-known/agent.json"
+      )
+        response = await enhanceA2AAgentCard(standardRequest, response);
+    }
 
     return secureResponse(response);
   },
