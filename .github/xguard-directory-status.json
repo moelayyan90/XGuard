@@ -1,38 +1,51 @@
 {
-  "updatedAt": "2026-08-16T21:40:00Z",
+  "updatedAt": "2026-08-16T21:43:00Z",
   "entries": {
     "officialMcpRegistry": {
       "status": "listed",
       "name": "io.github.moelayyan90/xguard",
-      "version": "0.4.0"
+      "version": "0.4.0",
+      "evidence": "mcp-publisher completed successfully and registry verification passed"
     },
     "mcpRepository": {
       "status": "listed",
-      "evidence": "duplicate=true on re-submission"
+      "evidence": "initial index request was accepted; subsequent submission reported duplicate=true"
     },
     "mcpDirectory": {
       "status": "submitted_for_review",
       "submittedAt": "2026-08-16",
-      "evidence": "Server submitted for review"
+      "evidence": "MCP.Directory accepted the server submission for review"
     },
     "mcpub": {
       "status": "listed",
       "submittedAt": "2026-08-16",
-      "evidence": "registered; endpoint live and appears in search immediately"
+      "evidence": "mcpub submission accepted and live endpoint was indexed"
     },
     "agentNdx": {
-      "status": "pending_unverified",
-      "submittedAt": "2026-08-16",
-      "evidence": "submission POST returned HTTP 302 into the public review flow; do not re-submit until status is checked"
+      "status": "manual_review_required",
+      "evidence": "XGuard is absent from the public AgentNDX index; attempted machine submissions returned redirects/HTTP 405, so no successful submission is claimed and the interactive curated-review flow is not bypassed"
     },
     "mcpSo": {
-      "status": "manual_route_blocked",
-      "evidence": "direct API is Cloudflare-challenged; current public submission route is a GitHub issue and the connected GitHub integration cannot write to that external repository"
+      "status": "manual_review_requested",
+      "submittedAt": "2026-08-16",
+      "evidence": "the machine submission endpoint returned a Cloudflare Managed Challenge; no bypass was attempted and a listing request was sent to support@mcp.so from the project owner's email"
     },
     "a2aRegistry": {
-      "status": "ready_for_registration",
-      "deployedAt": "2026-08-16",
-      "evidence": "A2A v0.3 JSON-RPC endpoint and Agent Card are deployed on mainnet; directory publisher will validate the live card before submitting"
+      "status": "listed",
+      "id": "83a5e180-8120-47d2-956a-8c84cab4eeeb",
+      "protocolVersion": "0.3.0",
+      "registeredAt": "2026-08-16T21:41:27Z",
+      "evidence": "A2A Registry returned HTTP 201, verified message/send through its A2A SDK, and recorded task_conformance passed=true"
+    },
+    "x402scan": {
+      "status": "pending_maintainer_review",
+      "issue": "https://github.com/Merit-Systems/x402scan/issues/1077",
+      "evidence": "routed-gateway patch model is documented in the issue; XGuard deliberately preserves xpay signer attribution and requested review from an active facilitators-registry contributor"
+    },
+    "x402Foundation": {
+      "status": "pending_maintainer_review",
+      "target": "docs/dev-tools/facilitators.md",
+      "evidence": "production-provider listing request sent to info@x402.org; GitHub App writes to the foundation repository are not authorized"
     },
     "x402Scout": {
       "status": "not_applicable",
