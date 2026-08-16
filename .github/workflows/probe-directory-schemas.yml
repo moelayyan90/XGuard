@@ -1,4 +1,4 @@
-name: Inspect ServerHub category enum
+name: Submit XGuard to ServerHub
 
 on:
   push:
@@ -8,24 +8,26 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  submit:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Extract submit-page category values
+      - name: Submit XGuard
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/serverhub
-          curl -fsS --max-time 20 'https://www.serverhub.digital/submit' -o /tmp/serverhub/page.html
-          grep -oE 'src="[^"]+\.js[^" ]*"' /tmp/serverhub/page.html | cut -d'"' -f2 | sort -u > /tmp/serverhub/scripts.txt || true
-          while IFS= read -r src; do
-            [[ -z "${src}" ]] && continue
-            if [[ "${src}" == http* ]]; then url="${src}"; else url="https://www.serverhub.digital${src}"; fi
-            file="/tmp/serverhub/$(basename "${src}" | cut -d'?' -f1)"
-            curl -fsS --max-time 20 "${url}" -o "${file}" || true
-          done < /tmp/serverhub/scripts.txt
-          echo '=== around Security ==='
-          grep -RaoE '.{0,900}Security.{0,900}' /tmp/serverhub/*.js 2>/dev/null | head -20 || true
-          echo '=== likely option values ==='
-          grep -RaoE '.{0,300}(Data|DevTools|Communication|Productivity|Finance|Marketing|AI/ML|Database|Cloud|Security|Analytics|Other).{0,600}' /tmp/serverhub/*.js 2>/dev/null | grep -E 'value|label|option|category' | head -60 || true
+          response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+            -X POST 'https://www.serverhub.digital/api/submit' \
+            -H 'Content-Type: application/json' \
+            --data '{"github_url":"https://github.com/moelayyan90/XGuard","name":"XGuard","description":"x402 economic firewall and facilitator safety gateway for Base mainnet USDC, with remote MCP, A2A discovery, replay protection, finality verification, and guarded settlement routing.","category":"security","author_name":"moelayyan90","author_email":"mo.elayyan2023@gmail.com"}')"
+          code="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          echo "HTTP ${code}"
+          printf '%s\n' "${body}"
+          lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "${code}" =~ ^2[0-9][0-9]$ ]] || [[ "${code}" == "409" ]] || [[ "${lower}" == *"already"* ]] || [[ "${lower}" == *"exist"* ]]; then
+            echo "ServerHub submission accepted or already present."
+            exit 0
+          fi
+          echo "ServerHub rejected XGuard (HTTP ${code})." >&2
+          exit 1
