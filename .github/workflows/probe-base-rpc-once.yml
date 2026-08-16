@@ -111,4 +111,19 @@ jobs:
           JSON
 
           npx --yes wrangler@4.123.0 deploy --config "$work/wrangler.jsonc"
-          curl -fsS --max-time 120 "https://xguard-rpc-probe.maqamapp.workers.dev/"
+
+          probe_url="https://xguard-rpc-probe.maqamapp.workers.dev/"
+          body=""
+          for attempt in {1..18}; do
+            response="$(curl -sS --max-time 120 -w $'\n%{http_code}' "${probe_url}?attempt=${attempt}" || true)"
+            code="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            if [[ "${code}" == "200" ]]; then
+              printf '%s\n' "${body}"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "RPC probe did not propagate"
+          printf '%s\n' "${body}"
+          exit 1
