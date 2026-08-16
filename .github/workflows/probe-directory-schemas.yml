@@ -19,7 +19,7 @@ jobs:
           response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
             -X POST 'https://www.serverhub.digital/api/submit' \
             -H 'Content-Type: application/json' \
-            --data '{"github_url":"https://github.com/moelayyan90/XGuard","name":"XGuard","description":"x402 economic firewall and facilitator safety gateway for Base mainnet USDC, with remote MCP, A2A discovery, replay protection, finality verification, and guarded settlement routing.","category":"Developer Tools","author_name":"moelayyan90","author_email":"mo.elayyan2023@gmail.com"}')"
+            --data '{"github_url":"https://github.com/moelayyan90/XGuard","name":"XGuard","description":"x402 economic firewall and facilitator safety gateway for Base mainnet USDC, with remote MCP, A2A discovery, replay protection, finality verification, and guarded settlement routing.","category":"Security","author_name":"moelayyan90","author_email":"mo.elayyan2023@gmail.com"}')"
           code="${response##*$'\n'}"
           body="${response%$'\n'*}"
           echo "HTTP ${code}"
