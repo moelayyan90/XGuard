@@ -53,7 +53,7 @@
     },
     {
       "tag": "v2",
-      "new_classes": ["XPayGlobalRateGate"],
+      "new_sqlite_classes": ["XPayGlobalRateGate"],
     },
   ],
   "d1_databases": [
