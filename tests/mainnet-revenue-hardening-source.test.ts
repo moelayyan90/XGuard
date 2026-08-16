@@ -42,17 +42,20 @@ describe("mainnet revenue hardening source invariants", () => {
       "utf8",
     );
     const gate = source.indexOf("const relevantIntent = await env.DB.prepare(");
-    const skip = source.indexOf("if (relevantIntent === null) return;", gate);
+    const reset = source.indexOf(
+      "DELETE FROM treasury_scan_state WHERE scanner_id='base-usdc'",
+      gate,
+    );
     const scan = source.indexOf(
       "const result = await scanAutomaticTopUps(env);",
       gate,
     );
     expect(gate).toBeGreaterThanOrEqual(0);
-    expect(skip).toBeGreaterThan(gate);
-    expect(scan).toBeGreaterThan(skip);
+    expect(reset).toBeGreaterThan(gate);
+    expect(scan).toBeGreaterThan(reset);
     expect(source).toContain("TOPUP_SCAN_RECOVERY_GRACE_SECONDS");
-    expect(source).toContain("state='OPEN'");
-    expect(source).toContain("state='EXPIRED'");
+    expect(source).toContain("state IN ('OPEN','EXPIRED')");
+    expect(source).toContain("expires_at_epoch>=?");
   });
 
   it("uses a Cloudflare-supported redirect mode for automatic top-up RPC calls", async () => {
@@ -67,10 +70,14 @@ describe("mainnet revenue hardening source invariants", () => {
     );
   });
 
-  it("does not use the Cloudflare-blocked anonymous PublicNode endpoint", async () => {
+  it("does not use RPC endpoints rejected by the deployed Worker", async () => {
     const config = await readFile("apps/worker/wrangler.mainnet.jsonc", "utf8");
-    expect(config).toContain('"BASE_RPC_URL": "https://base.drpc.org"');
+    expect(config).toContain(
+      '"BASE_RPC_URL": "https://public.1rpc.io/base"',
+    );
+    expect(config).not.toContain("mainnet.base.org");
     expect(config).not.toContain("base-rpc.publicnode.com");
+    expect(config).not.toContain("base.drpc.org");
   });
 
   it("exposes key rotation, scopes, and protected admin economics", async () => {
