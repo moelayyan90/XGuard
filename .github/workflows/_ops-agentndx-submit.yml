@@ -1,0 +1,51 @@
+name: Submit XGuard to AgentNDX review
+
+on:
+  push:
+    branches:
+      - ops/agentndx-submit
+    paths:
+      - ".github/workflows/_ops-agentndx-submit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit curated review form
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(mktemp)"
+          meta="$(mktemp)"
+          curl -sS -L --max-time 30 \
+            -o "${body}" \
+            -w $'%{http_code}\n%{url_effective}\n' \
+            -X POST 'https://agentndx.ai/submit/' \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode 'name=XGuard' \
+            --data-urlencode 'github_url=https://github.com/moelayyan90/XGuard' \
+            --data-urlencode 'homepage_url=https://xguard-mainnet.maqamapp.workers.dev' \
+            --data-urlencode 'protocols=MCP' \
+            --data-urlencode 'protocols=A2A' \
+            --data-urlencode 'protocols=x402' \
+            --data-urlencode 'description=Production x402 v2 facilitator-compatible safety and routing gateway for Base mainnet USDC with remote MCP discovery and A2A JSON-RPC discovery.' \
+            --data-urlencode 'contact_email=mo.elayyan2023@gmail.com' >"${meta}"
+          code="$(sed -n '1p' "${meta}")"
+          final_url="$(sed -n '2p' "${meta}")"
+          echo "HTTP ${code}"
+          echo "Final URL: ${final_url}"
+          grep -Eio 'submission received|review within [0-9]+ hours|submit for review|error[^<]*' "${body}" | head -20 || true
+          if [[ "${code}" != "200" ]]; then
+            echo "::error::AgentNDX form submission ended with HTTP ${code}."
+            exit 1
+          fi
+          if grep -Eqi 'submission received|review within [0-9]+ hours' "${body}" || [[ "${final_url}" == *submitted* ]] || [[ "${final_url}" == *success* ]]; then
+            echo "AgentNDX review submission accepted."
+            exit 0
+          fi
+          echo "::error::AgentNDX returned the form but no acceptance signal."
+          exit 1
