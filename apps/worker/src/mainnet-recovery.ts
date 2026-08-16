@@ -7,7 +7,8 @@ const AUTHORIZATION_USED_TOPIC =
   "0x98de503528ee59b575ef0c0a2576a82497bfc029a5685b209e9ec333479b10a5";
 const AUTHORIZATION_CANCELED_TOPIC =
   "0x1cdd46ff242716cdaa72d159d339a485b3438398348d68f09d7c8c0a59353d81";
-const RECOVERY_LOOKBACK_BLOCKS = 65_536;
+const RECOVERY_CREATION_SAFETY_SECONDS = 120;
+const RECOVERY_BLOCK_SAFETY_MARGIN = 32;
 const LOG_BLOCK_CHUNK = 2_000;
 const RECOVERY_BATCH_SIZE = 12;
 const RPC_RESPONSE_LIMIT = 256 * 1024;
@@ -43,6 +44,7 @@ interface RecoveryRow {
   transaction_hash: string | null;
   result_json: string | null;
   attempts: number;
+  created_at: string;
 }
 
 interface RpcEnvelope<T> {
@@ -134,11 +136,10 @@ export async function recoveryStats(db: D1Database): Promise<{
 export async function recoverAmbiguousSettlements(
   env: MainnetRecoveryEnv,
 ): Promise<void> {
-  const finalized = await finalizedBlock(env.BASE_RPC_URL);
   const jobs = await env.DB.prepare(
     `SELECT logical_payment_key,merchant_id,expected_payer,expected_pay_to,
       expected_amount_micro_usd,authorization_nonce,valid_before_epoch,
-      from_block,state,transaction_hash,result_json,attempts
+      from_block,state,transaction_hash,result_json,attempts,created_at
      FROM settlement_recovery_jobs
      WHERE state='PENDING'
      ORDER BY updated_at
@@ -146,7 +147,9 @@ export async function recoverAmbiguousSettlements(
   )
     .bind(RECOVERY_BATCH_SIZE)
     .all<RecoveryRow>();
+  if (jobs.results.length === 0) return;
 
+  const finalized = await finalizedBlock(env.BASE_RPC_URL);
   for (const job of jobs.results) {
     await recoverOne(env, job, finalized).catch(async (error) => {
       await markAttempt(env.DB, job.logical_payment_key, errorCode(error));
@@ -160,7 +163,8 @@ async function recoverOne(
   finalized: { number: number; timestamp: number },
 ): Promise<void> {
   const fromBlock =
-    job.from_block ?? Math.max(0, finalized.number - RECOVERY_LOOKBACK_BLOCKS);
+    job.from_block ??
+    (await blockAtOrBeforeCreation(env.BASE_RPC_URL, job.created_at, finalized));
   if (job.from_block === null) {
     await env.DB.prepare(
       "UPDATE settlement_recovery_jobs SET from_block=?,updated_at=? WHERE logical_payment_key=? AND state='PENDING'",
@@ -378,6 +382,48 @@ async function requireProjection(
     .bind(logicalPaymentKey)
     .first<{ logical_payment_key: string }>();
   if (projection === null) throw new Error("recovery_projection_pending");
+}
+
+async function blockAtOrBeforeCreation(
+  rpcUrl: string,
+  createdAt: string,
+  finalized: { number: number; timestamp: number },
+): Promise<number> {
+  const createdMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdMs)) throw new Error("invalid_recovery_created_at");
+  const targetTimestamp = Math.max(
+    0,
+    Math.floor(createdMs / 1_000) - RECOVERY_CREATION_SAFETY_SECONDS,
+  );
+  if (targetTimestamp >= finalized.timestamp)
+    return Math.max(0, finalized.number - RECOVERY_BLOCK_SAFETY_MARGIN);
+
+  let low = 0;
+  let high = finalized.number;
+  while (low < high) {
+    const middle = Math.floor((low + high + 1) / 2);
+    const block = await numberedBlock(rpcUrl, middle);
+    if (block.timestamp <= targetTimestamp) low = middle;
+    else high = middle - 1;
+  }
+  return Math.max(0, low - RECOVERY_BLOCK_SAFETY_MARGIN);
+}
+
+async function numberedBlock(
+  rpcUrl: string,
+  blockNumber: number,
+): Promise<{ number: number; timestamp: number }> {
+  const block = await rpc<RpcBlock>(rpcUrl, "eth_getBlockByNumber", [
+    hex(blockNumber),
+    false,
+  ]);
+  if (block === null) throw new Error("historical_block_unavailable");
+  const number = parseRpcInteger(block.number, "historical_block");
+  if (number !== blockNumber) throw new Error("historical_block_number_conflict");
+  return {
+    number,
+    timestamp: parseRpcInteger(block.timestamp, "historical_timestamp"),
+  };
 }
 
 async function scanLogs(
