@@ -17,6 +17,7 @@
   },
   "vars": {
     "BASE_RPC_URL": "https://base.drpc.org",
+    "BASE_RPC_FALLBACK_URLS": "https://mainnet.base.org,https://public.1rpc.io/base",
     "XGUARD_FEE_MICRO_USD": "2000",
     "XPAY_DOWNSTREAM_COST_MICRO_USD": "0",
     "PAYAI_DOWNSTREAM_COST_MICRO_USD": "0",

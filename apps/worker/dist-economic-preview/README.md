@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "xguard-economic-preview" generated at 2026-08-16T22:24:38.327Z.
