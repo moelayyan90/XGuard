@@ -1,0 +1,78 @@
+name: Register current XGuard A2A surface
+
+on:
+  push:
+    branches:
+      - ops/a2a-register-current
+    paths:
+      - ".github/workflows/_ops-register-current-a2a.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for live A2A 0.3 surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://xguard-mainnet.maqamapp.workers.dev'
+          ready=0
+          for attempt in $(seq 1 50); do
+            card="$(curl -sS --max-time 20 -H 'Cache-Control: no-cache' "${BASE}/.well-known/agent-card.json?ops=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            if CARD="${card}" node <<'NODE'
+          const raw=process.env.CARD||"";
+          try {
+            const x=JSON.parse(raw);
+            const ok=x.name==="XGuard" && x.preferredTransport==="JSONRPC" && x.url?.endsWith("/a2a") && Array.isArray(x.supportedInterfaces) && x.supportedInterfaces.some(i=>i?.protocolBinding==="JSONRPC" && i?.protocolVersion==="0.3" && String(i?.url||"").endsWith("/a2a"));
+            process.exit(ok?0:1);
+          } catch { process.exit(1); }
+          NODE
+            then
+              ready=1
+              break
+            fi
+            sleep 10
+          done
+          if [[ "${ready}" -ne 1 ]]; then
+            echo "::error::Timed out waiting for live XGuard A2A Agent Card."
+            exit 1
+          fi
+
+          response="$(curl -fsS --max-time 20 \
+            -X POST "${BASE}/a2a" \
+            -H 'Content-Type: application/json' \
+            -H 'A2A-Version: 0.3' \
+            --data '{"jsonrpc":"2.0","id":"registry-ops","method":"message/send","params":{"message":{"kind":"message","messageId":"registry-ops-message","role":"user","parts":[{"kind":"text","text":"What capabilities are supported?"}]}}}')"
+          printf '%s\n' "${response}"
+          RESPONSE="${response}" node <<'NODE'
+          const x=JSON.parse(process.env.RESPONSE||"{}");
+          if (x.jsonrpc!=="2.0" || x.id!=="registry-ops" || x.result?.kind!=="message" || x.result?.role!=="agent") process.exit(1);
+          NODE
+
+      - name: Submit live Agent Card to A2A Registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          URI='https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json'
+          body="$(mktemp)"
+          status="$(curl -sS --max-time 30 -o "${body}" -w '%{http_code}' \
+            -X POST 'https://a2aregistry.org/api/agents/register' \
+            -H 'Content-Type: application/json' \
+            --data "{\"wellKnownURI\":\"${URI}\"}" || true)"
+          echo "HTTP ${status}"
+          cat "${body}"
+          echo
+          response="$(cat "${body}")"
+          rm -f "${body}"
+          RESPONSE="${response}" STATUS="${status}" node <<'NODE'
+          const status=Number(process.env.STATUS||0);
+          const raw=process.env.RESPONSE||"";
+          let x={}; try{x=JSON.parse(raw||"{}")}catch{}
+          const text=`${raw} ${JSON.stringify(x)}`.toLowerCase();
+          if ((status>=200&&status<300) || ((status===409||status===200)&&(/already|exist|duplicate/.test(text)))) process.exit(0);
+          process.exit(1);
+          NODE
