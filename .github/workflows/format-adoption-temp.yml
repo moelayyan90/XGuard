@@ -1,0 +1,27 @@
+name: Format adoption engine temporary
+
+on:
+  push:
+    branches: [agent/adoption-engine]
+    paths:
+      - ".github/workflows/format-adoption-temp.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npx prettier scripts/adoption-engine.mjs --write
+      - uses: actions/upload-artifact@v4
+        with:
+          name: formatted-adoption-engine
+          path: scripts/adoption-engine.mjs
+          if-no-files-found: error
