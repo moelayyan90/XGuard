@@ -30,11 +30,13 @@ const XPAY_VERIFY_LIMIT_PER_MINUTE = 90;
 const XPAY_SETTLE_LIMIT_PER_MINUTE = 45;
 const RATE_WINDOW_MS = 60_000;
 const TOPUP_SCAN_RECOVERY_GRACE_SECONDS = 6 * 60 * 60;
+const TOPUP_SCAN_INTERVAL_MINUTES = 5;
 
 type MainnetSupervisorEnv = MainnetRecoveryEnv & {
   XPAY_RATE_GATE: DurableObjectNamespace<XPayGlobalRateGate>;
   XGUARD_FEE_MICRO_USD: string;
   BASE_RPC_URL: string;
+  BASE_RPC_FALLBACK_URLS?: string;
   XGUARD_TREASURY_USDC_ADDRESS: string;
   XPAY_DOWNSTREAM_COST_MICRO_USD?: string;
   PAYAI_DOWNSTREAM_COST_MICRO_USD?: string;
@@ -141,16 +143,28 @@ export default {
         ),
       ),
     );
-    ctx.waitUntil(
-      runAutomaticTopUpMaintenance(env).catch((error) =>
-        console.error(
-          JSON.stringify({
-            event: "automatic_topup_scan_failed",
-            code: errorCode(error),
-          }),
-        ),
-      ),
-    );
+    if (shouldRunAutomaticTopUpScan(controller.scheduledTime))
+      ctx.waitUntil(
+        runAutomaticTopUpMaintenance(env).catch((error) => {
+          const code = errorCode(error);
+          if (code.startsWith("rpc_transient_all_providers_unavailable")) {
+            console.warn(
+              JSON.stringify({
+                event: "automatic_topup_scan_deferred",
+                code,
+                retryWindowMinutes: TOPUP_SCAN_INTERVAL_MINUTES,
+              }),
+            );
+            return;
+          }
+          console.error(
+            JSON.stringify({
+              event: "automatic_topup_scan_failed",
+              code,
+            }),
+          );
+        }),
+      );
   },
 } satisfies ExportedHandler<MainnetSupervisorEnv>;
 
@@ -175,7 +189,7 @@ async function runAutomaticTopUpMaintenance(
     return;
   }
 
-  const result = await scanAutomaticTopUps(env);
+  const result = await scanAutomaticTopUpsWithFailover(env);
   if (result.credited > 0)
     console.log(
       JSON.stringify({
@@ -184,6 +198,96 @@ async function runAutomaticTopUpMaintenance(
         scannedThroughBlock: result.scannedThroughBlock,
       }),
     );
+}
+
+function shouldRunAutomaticTopUpScan(scheduledTimeMs: number): boolean {
+  const scheduledMinute = Math.floor(scheduledTimeMs / 60_000);
+  return scheduledMinute % TOPUP_SCAN_INTERVAL_MINUTES === 0;
+}
+
+async function scanAutomaticTopUpsWithFailover(
+  env: MainnetSupervisorEnv,
+): Promise<{ scannedThroughBlock: number; credited: number }> {
+  const candidates = topUpRpcCandidates(env);
+  let lastCode = "rpc_unavailable";
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index]!;
+    try {
+      const result = await scanAutomaticTopUps(env, candidate);
+      if (index > 0)
+        console.warn(
+          JSON.stringify({
+            event: "automatic_topup_rpc_failover_recovered",
+            providerIndex: index,
+            providerHost: rpcHost(candidate),
+          }),
+        );
+      return result;
+    } catch (error) {
+      const code = errorCode(error);
+      if (!isRetryableTopUpRpcFailure(error, code)) throw error;
+      lastCode = code;
+      console.warn(
+        JSON.stringify({
+          event: "automatic_topup_rpc_provider_unavailable",
+          code,
+          providerIndex: index,
+          providerHost: rpcHost(candidate),
+        }),
+      );
+    }
+  }
+
+  throw new Error(`rpc_transient_all_providers_unavailable:${lastCode}`);
+}
+
+function topUpRpcCandidates(env: MainnetSupervisorEnv): string[] {
+  const raw = [
+    env.BASE_RPC_URL,
+    ...(env.BASE_RPC_FALLBACK_URLS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  ];
+  const unique: string[] = [];
+  for (const candidate of raw) {
+    let url: URL;
+    try {
+      url = new URL(candidate);
+    } catch {
+      if (candidate === env.BASE_RPC_URL)
+        throw new Error("invalid_base_rpc_url");
+      continue;
+    }
+    if (url.protocol !== "https:" || url.username || url.password) {
+      if (candidate === env.BASE_RPC_URL)
+        throw new Error("invalid_base_rpc_url");
+      continue;
+    }
+    const normalized = url.toString();
+    if (!unique.includes(normalized)) unique.push(normalized);
+  }
+  if (unique.length === 0) throw new Error("base_rpc_unavailable");
+  return unique;
+}
+
+function isRetryableTopUpRpcFailure(error: unknown, code: string): boolean {
+  if (error instanceof Error && error.name === "AbortError") return true;
+  return (
+    /^rpc_http_(408|425|429|500|502|503|504)$/.test(code) ||
+    code === "rpc_error" ||
+    code.toLowerCase().includes("abort") ||
+    code.toLowerCase().includes("timeout")
+  );
+}
+
+function rpcHost(value: string): string {
+  try {
+    return new URL(value).host;
+  } catch {
+    return "invalid";
+  }
 }
 
 async function supervisedFacilitatorRequest(
