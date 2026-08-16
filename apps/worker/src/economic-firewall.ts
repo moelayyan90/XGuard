@@ -18,7 +18,14 @@ export { EconomicIntentCoordinator };
 const MAX_JSON_BYTES = 64 * 1024;
 const MAX_RESOURCE_RESPONSE_BYTES = 512 * 1024;
 const RESOURCE_TIMEOUT_MS = 15_000;
-const ALLOWED_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+const ALLOWED_METHODS = new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+]);
 const FORBIDDEN_OUTBOUND_HEADERS = new Set([
   "connection",
   "content-length",
@@ -39,7 +46,10 @@ interface EconomicFirewallEnv {
 }
 
 type Variables = { requestId: string; merchantId: string };
-type AppContext = Context<{ Bindings: EconomicFirewallEnv; Variables: Variables }>;
+type AppContext = Context<{
+  Bindings: EconomicFirewallEnv;
+  Variables: Variables;
+}>;
 
 const app = new Hono<{ Bindings: EconomicFirewallEnv; Variables: Variables }>();
 
@@ -72,7 +82,8 @@ app.get("/", (context) =>
     name: "XGuard Economic Firewall",
     version: "0.1.0-preview",
     mode: "isolated-preview",
-    guarantee: "One Intent -> One Authorization -> One Fulfillment -> One Settlement",
+    guarantee:
+      "One Intent -> One Authorization -> One Fulfillment -> One Settlement",
     endpoints: {
       createIntent: "POST /v1/intents",
       getIntent: "GET /v1/intents/:intentId",
@@ -93,9 +104,16 @@ app.post("/v1/intents", async (context) => {
     const body = await jsonBody(context.req.raw);
     const resource = record(body.resource, "resource");
     const money = record(body.money, "money");
-    const method = requiredString(resource.method, "resource.method").toUpperCase();
+    const method = requiredString(
+      resource.method,
+      "resource.method",
+    ).toUpperCase();
     if (!ALLOWED_METHODS.has(method))
-      throw new XGuardError("BAD_REQUEST", "resource.method is not allowed", 400);
+      throw new XGuardError(
+        "BAD_REQUEST",
+        "resource.method is not allowed",
+        400,
+      );
     const url = requiredString(resource.url, "resource.url");
     assertSafeResourceUrl(url);
 
@@ -146,9 +164,10 @@ app.get("/v1/intents/:intentId", async (context) => {
   try {
     const merchantId = context.get("merchantId");
     const intentId = intentIdParam(context.req.param("intentId"));
-    const snapshot = await context.env.ECONOMIC_INTENT_COORDINATOR.getByName(
-      intentId,
-    ).getSnapshot(merchantId);
+    const snapshot =
+      await context.env.ECONOMIC_INTENT_COORDINATOR.getByName(
+        intentId,
+      ).getSnapshot(merchantId);
     if (snapshot === null)
       throw new XGuardError("BAD_REQUEST", "Intent not found", 404);
     return context.json(snapshot);
@@ -305,7 +324,9 @@ app.post("/v1/intents/:intentId/settle", async (context) => {
 app.notFound((context) => context.json({ error: "not_found" }, 404));
 app.onError((error, context) => errorJson(context, error));
 
-export default { fetch: app.fetch } satisfies ExportedHandler<EconomicFirewallEnv>;
+export default {
+  fetch: app.fetch,
+} satisfies ExportedHandler<EconomicFirewallEnv>;
 
 async function requirePreviewMerchant(
   context: AppContext,
@@ -344,13 +365,21 @@ function prepareOutboundRequest(
   request: Record<string, unknown>,
 ): { headers: Headers; body: Uint8Array | undefined } {
   const method = snapshot.terms.resource.method;
-  const rawHeaders = request.headers === undefined ? {} : record(request.headers, "headers");
+  const rawHeaders =
+    request.headers === undefined ? {} : record(request.headers, "headers");
   const headers = new Headers();
   for (const [key, value] of Object.entries(rawHeaders)) {
     if (typeof value !== "string")
-      throw new XGuardError("BAD_REQUEST", `headers.${key} must be a string`, 400);
+      throw new XGuardError(
+        "BAD_REQUEST",
+        `headers.${key} must be a string`,
+        400,
+      );
     const normalized = key.trim().toLowerCase();
-    if (normalized.startsWith("cf-") || FORBIDDEN_OUTBOUND_HEADERS.has(normalized))
+    if (
+      normalized.startsWith("cf-") ||
+      FORBIDDEN_OUTBOUND_HEADERS.has(normalized)
+    )
       throw new XGuardError(
         "BAD_REQUEST",
         `Outbound header ${key} is not allowed`,
@@ -361,7 +390,11 @@ function prepareOutboundRequest(
 
   if (method === "GET" || method === "HEAD") {
     if (request.body !== undefined && request.body !== null)
-      throw new XGuardError("BAD_REQUEST", `${method} intent cannot include a body`, 400);
+      throw new XGuardError(
+        "BAD_REQUEST",
+        `${method} intent cannot include a body`,
+        400,
+      );
     if (snapshot.terms.resource.bodyHash !== null)
       throw new XGuardError(
         "PAYMENT_CONFLICT",
@@ -415,11 +448,23 @@ function assertSafeResourceUrl(raw: string): void {
     throw new XGuardError("BAD_REQUEST", "resource.url must be absolute", 400);
   }
   if (url.protocol !== "https:")
-    throw new XGuardError("BAD_REQUEST", "Only HTTPS resource URLs are allowed", 400);
+    throw new XGuardError(
+      "BAD_REQUEST",
+      "Only HTTPS resource URLs are allowed",
+      400,
+    );
   if (url.username !== "" || url.password !== "")
-    throw new XGuardError("BAD_REQUEST", "Resource URL credentials are forbidden", 400);
+    throw new XGuardError(
+      "BAD_REQUEST",
+      "Resource URL credentials are forbidden",
+      400,
+    );
   if (url.port !== "" && url.port !== "443")
-    throw new XGuardError("BAD_REQUEST", "Resource URL must use HTTPS port 443", 400);
+    throw new XGuardError(
+      "BAD_REQUEST",
+      "Resource URL must use HTTPS port 443",
+      400,
+    );
   const hostname = url.hostname.toLowerCase();
   if (
     hostname === "localhost" ||
@@ -480,7 +525,13 @@ async function readBytesCapped(
 
 function responseHeaders(source: Headers): Headers {
   const result = new Headers();
-  for (const key of ["content-type", "content-language", "etag", "last-modified", "location"]) {
+  for (const key of [
+    "content-type",
+    "content-language",
+    "etag",
+    "last-modified",
+    "location",
+  ]) {
     const value = source.get(key);
     if (value !== null) result.set(key, value);
   }
@@ -488,12 +539,23 @@ function responseHeaders(source: Headers): Headers {
 }
 
 async function jsonBody(request: Request): Promise<Record<string, unknown>> {
-  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase();
+  const contentType = request.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.toLowerCase();
   if (contentType !== "application/json")
-    throw new XGuardError("BAD_REQUEST", "Content-Type must be application/json", 415);
+    throw new XGuardError(
+      "BAD_REQUEST",
+      "Content-Type must be application/json",
+      415,
+    );
   return record(
     parseJsonStrict(
-      await readHttpBodyTextCapped(request, MAX_JSON_BYTES, "Economic Firewall body"),
+      await readHttpBodyTextCapped(
+        request,
+        MAX_JSON_BYTES,
+        "Economic Firewall body",
+      ),
     ),
     "body",
   );
@@ -514,7 +576,11 @@ function requiredString(value: unknown, field: string): string {
 function optionalString(value: unknown, field: string): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string")
-    throw new XGuardError("BAD_REQUEST", `${field} must be a string or null`, 400);
+    throw new XGuardError(
+      "BAD_REQUEST",
+      `${field} must be a string or null`,
+      400,
+    );
   const normalized = value.trim();
   return normalized.length === 0 ? null : normalized;
 }
@@ -566,7 +632,9 @@ function errorJson(context: AppContext, error: unknown): Response {
   return context.json({ error: "internal_error" }, 500);
 }
 
-function statusCode(value: number): 400 | 401 | 402 | 403 | 404 | 409 | 413 | 415 | 429 | 500 | 502 | 503 {
+function statusCode(
+  value: number,
+): 400 | 401 | 402 | 403 | 404 | 409 | 413 | 415 | 429 | 500 | 502 | 503 {
   if (
     value === 400 ||
     value === 401 ||
@@ -587,6 +655,7 @@ function statusCode(value: number): 400 | 401 | 402 | 403 | 404 | 409 | 413 | 41
 
 function errorCode(error: unknown): string {
   if (error instanceof XGuardError) return error.code.toLowerCase();
-  if (error instanceof Error && error.name !== "") return error.name.toLowerCase();
+  if (error instanceof Error && error.name !== "")
+    return error.name.toLowerCase();
   return "unknown";
 }
