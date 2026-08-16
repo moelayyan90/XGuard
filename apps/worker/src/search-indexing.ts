@@ -10,13 +10,29 @@ export function searchIndexResponse(request: Request): Response | null {
   if (url.pathname === "/") {
     const accept = request.headers.get("accept") ?? "";
     if (accept.includes("text/html")) {
-      return typedResponse(request, buildLandingPage(origin), "text/html; charset=utf-8");
+      return typedResponse(
+        request,
+        buildLandingPage(origin),
+        "text/html; charset=utf-8",
+      );
     }
     return jsonResponse(request, buildRootMetadata(origin));
   }
 
   if (url.pathname === "/sitemap.xml") {
-    return typedResponse(request, buildSitemap(origin), "application/xml; charset=utf-8");
+    return typedResponse(
+      request,
+      buildSitemap(origin),
+      "application/xml; charset=utf-8",
+    );
+  }
+
+  if (url.pathname === "/robots.txt") {
+    return typedResponse(
+      request,
+      buildRobots(origin),
+      "text/plain; charset=utf-8",
+    );
   }
 
   return null;
@@ -137,14 +153,41 @@ function buildSitemap(origin: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 }
 
-function jsonResponse(request: Request, value: unknown): Response {
-  return new Response(request.method === "HEAD" ? null : JSON.stringify(value, null, 2), {
-    status: 200,
-    headers: publicHeaders("application/json; charset=utf-8"),
-  });
+function buildRobots(origin: string): string {
+  return `User-agent: *
+Allow: /
+
+Sitemap: ${origin}/sitemap.xml
+
+# Machine-readable AI/service discovery
+# ${origin}/.well-known/x402/facilitator.json
+# ${origin}/.well-known/agent-card.json
+# ${origin}/.well-known/agent-market.json
+# ${origin}/.well-known/mcp/server.json
+# ${origin}/mcp
+# ${origin}/discovery/resources
+# ${origin}/discovery/search?query=x402
+# ${origin}/llms.txt
+# ${origin}/llms-full.txt
+# ${origin}/openapi.json
+`;
 }
 
-function typedResponse(request: Request, value: string, contentType: string): Response {
+function jsonResponse(request: Request, value: unknown): Response {
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify(value, null, 2),
+    {
+      status: 200,
+      headers: publicHeaders("application/json; charset=utf-8"),
+    },
+  );
+}
+
+function typedResponse(
+  request: Request,
+  value: string,
+  contentType: string,
+): Response {
   return new Response(request.method === "HEAD" ? null : value, {
     status: 200,
     headers: publicHeaders(contentType),
