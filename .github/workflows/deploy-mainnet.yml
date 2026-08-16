@@ -91,6 +91,23 @@ jobs:
           set -euo pipefail
           BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
 
+          propagated=0
+          for attempt in {1..18}; do
+            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/.well-known/x402/facilitator.json?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            code="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="x402-facilitator"||x.status!=="production"||!x.facilitator||x.facilitator.baseUrl!=="https://xguard-mainnet.maqamapp.workers.dev"||x.facilitator.network!=="eip155:8453"||x.facilitator.scheme!=="exact"||!x.pricing||x.pricing.feeUsd!=="0.002"||!x.onboarding||x.onboarding.packageInstallationRequired!==false||!x.settlementExecution||x.settlementExecution.mode!=="routed"||x.settlementExecution.currentDownstream!=="xpay")process.exit(1)})'; then
+              propagated=1
+              break
+            fi
+            sleep 5
+          done
+          if [[ "${propagated}" -ne 1 ]]; then
+            echo "::error::The newly deployed XGuard discovery surface did not propagate within 90 seconds."
+            exit 1
+          fi
+
           curl -fsS --max-time 15 "${BASE_URL}/healthz" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'
 
