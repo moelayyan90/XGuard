@@ -46,34 +46,157 @@ jobs:
             });
           '
 
+  mcpdirectory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit XGuard to MCP.Directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+            -X POST 'https://mcp.directory/api/submit-server' \
+            -H 'Content-Type: application/json' \
+            --data '{"githubUrl":"https://github.com/moelayyan90/XGuard","description":"x402 economic firewall and facilitator safety gateway with remote MCP on Base mainnet USDC."}')"
+          code="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          printf '%s\n' "${body}"
+          if [[ "${code}" =~ ^2[0-9][0-9]$ ]]; then
+            echo "XGuard MCP.Directory submission accepted."
+            exit 0
+          fi
+          lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "${code}" == "409" ]] || [[ "${lower}" == *"already"* ]] || [[ "${lower}" == *"exist"* ]]; then
+            echo "XGuard is already submitted/listed by MCP.Directory."
+            exit 0
+          fi
+          echo "MCP.Directory rejected XGuard (HTTP ${code})." >&2
+          exit 1
+
+  mcpso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit live XGuard MCP endpoint to mcp.so
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+            -X POST 'https://mcp.so/api/submit-project' \
+            -H 'Content-Type: application/json' \
+            --data '{"url":"https://xguard-mainnet.maqamapp.workers.dev/mcp","avatar_url":"https://xguard-mainnet.maqamapp.workers.dev/logo.png"}')"
+          code="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          printf '%s\n' "${body}"
+          lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "${code}" == "200" ]] || [[ "${code}" == "201" ]] || [[ "${code}" == "202" ]] || [[ "${code}" == "409" ]] || [[ "${lower}" == *"already"* ]] || [[ "${lower}" == *"exist"* ]]; then
+            echo "XGuard mcp.so submission accepted or already present."
+            exit 0
+          fi
+          echo "mcp.so rejected XGuard (HTTP ${code})." >&2
+          exit 1
+
+  agentndx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit XGuard to AgentNDX
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+            -X POST 'https://agentndx.ai/api/submit' \
+            --data-urlencode 'name=XGuard' \
+            --data-urlencode 'github_url=https://github.com/moelayyan90/XGuard' \
+            --data-urlencode 'homepage_url=https://xguard-mainnet.maqamapp.workers.dev' \
+            --data-urlencode 'protocols=MCP' \
+            --data-urlencode 'protocols=x402' \
+            --data-urlencode 'description=x402 economic firewall and facilitator safety gateway for Base mainnet USDC, with remote MCP discovery and guarded settlement.')"
+          code="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          printf '%s\n' "${body}"
+          if [[ "${code}" =~ ^2[0-9][0-9]$ ]]; then
+            echo "XGuard AgentNDX submission accepted."
+            exit 0
+          fi
+          lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "${code}" == "409" ]] || [[ "${lower}" == *"already"* ]] || [[ "${lower}" == *"exist"* ]]; then
+            echo "XGuard is already submitted/listed by AgentNDX."
+            exit 0
+          fi
+          echo "AgentNDX rejected XGuard (HTTP ${code})." >&2
+          exit 1
+
+  mcpub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit live XGuard endpoint to mcpub
+        shell: bash
+        run: |
+          set -euo pipefail
+          ORIGIN='https://xguard-mainnet.maqamapp.workers.dev'
+          curl -fsS --max-time 20 "${ORIGIN}/.well-known/mcp.json" >/dev/null
+          response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+            -X POST 'https://mcpub.dev/mcp' \
+            -H 'Content-Type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"submit","arguments":{"url":"https://xguard-mainnet.maqamapp.workers.dev","description":"XGuard — x402 economic firewall and facilitator safety gateway for Base mainnet USDC, with remote MCP discovery and guarded settlement."}}}')"
+          code="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          printf '%s\n' "${body}"
+          if [[ ! "${code}" =~ ^2[0-9][0-9]$ ]]; then
+            echo "mcpub rejected XGuard (HTTP ${code})." >&2
+            exit 1
+          fi
+          printf '%s' "${body}" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const x=JSON.parse(s);
+              if (x.error) {
+                const text=JSON.stringify(x.error).toLowerCase();
+                if (text.includes("already") || text.includes("exist")) {
+                  console.log("XGuard is already listed by mcpub.");
+                  return;
+                }
+                console.error(JSON.stringify(x.error));
+                process.exit(1);
+              }
+              console.log("XGuard mcpub submission accepted.");
+            });
+          '
+
   a2aregistry:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Register XGuard Agent Card
+      - name: Register XGuard Agent Card when A2A-compatible
         shell: bash
         run: |
           set -euo pipefail
           URI='https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json'
-          response="$(curl --fail-with-body -sS --max-time 30 \
-            -X POST 'https://a2aregistry.org/api/agents/register' \
-            -H 'Content-Type: application/json' \
-            --data "{\"wellKnownURI\":\"${URI}\"}")"
-          printf '%s\n' "${response}"
-          printf '%s' "${response}" | node -e '
+          card="$(curl -fsS --max-time 20 "${URI}")"
+          if ! printf '%s' "${card}" | node -e '
             let s="";
             process.stdin.on("data",d=>s+=d).on("end",()=>{
               const x=JSON.parse(s);
-              const text=JSON.stringify(x).toLowerCase();
-              if (x.error && !text.includes("already") && !text.includes("exist")) {
-                console.error(x.error || x.message || "A2A Registry rejected XGuard");
-                process.exit(1);
-              }
-              if (x.id || x.agent || x.success === true || x.registered === true || text.includes("already") || text.includes("exist")) {
-                console.log("XGuard A2A Registry submission accepted or already registered.");
-                return;
-              }
-              console.error("Unexpected A2A Registry response shape");
-              process.exit(1);
+              const ok=String(x.protocolVersion||"").startsWith("0.3") && String(x.url||"").endsWith("/a2a");
+              process.exit(ok?0:1);
             });
-          '
+          '; then
+            echo "XGuard Agent Card is not A2A v0.3-compatible yet; skipping registry submission without error."
+            exit 0
+          fi
+          response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+            -X POST 'https://a2aregistry.org/api/agents/register' \
+            -H 'Content-Type: application/json' \
+            --data "{\"wellKnownURI\":\"${URI}\"}")"
+          code="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          printf '%s\n' "${body}"
+          lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "${code}" =~ ^2[0-9][0-9]$ ]] || [[ "${code}" == "409" ]] || [[ "${lower}" == *"already"* ]] || [[ "${lower}" == *"exist"* ]]; then
+            echo "XGuard A2A Registry submission accepted or already registered."
+            exit 0
+          fi
+          echo "A2A Registry rejected XGuard (HTTP ${code})." >&2
+          exit 1
