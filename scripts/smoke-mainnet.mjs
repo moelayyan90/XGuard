@@ -77,6 +77,91 @@ assert(
   "native Bazaar capability is missing",
 );
 
+const agentCard = await json("/.well-known/agent-card.json");
+assert(agentCard.response.status === 200, "A2A agent card endpoint failed");
+assert(agentCard.body.name === "XGuard", "A2A agent identity changed");
+assert(agentCard.body.url === `${baseUrl.origin}/a2a`, "A2A URL changed");
+assert(
+  agentCard.body.preferredTransport === "JSONRPC",
+  "A2A preferred transport changed",
+);
+assert(
+  Array.isArray(agentCard.body.supportedInterfaces) &&
+    agentCard.body.supportedInterfaces.some(
+      (entry) =>
+        entry?.url === `${baseUrl.origin}/a2a` &&
+        entry?.protocolBinding === "JSONRPC" &&
+        entry?.protocolVersion === "1.0",
+    ) &&
+    agentCard.body.supportedInterfaces.some(
+      (entry) =>
+        entry?.url === `${baseUrl.origin}/a2a` &&
+        entry?.protocolBinding === "JSONRPC" &&
+        entry?.protocolVersion === "0.3",
+    ),
+  "A2A JSON-RPC compatibility interfaces are missing",
+);
+
+const a2aLegacy = await json("/a2a", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: "smoke-a2a-03",
+    method: "message/send",
+    params: {
+      message: {
+        role: "user",
+        messageId: "smoke-user-03",
+        parts: [{ kind: "text", text: "How do I integrate XGuard?" }],
+      },
+    },
+  }),
+});
+assert(a2aLegacy.response.status === 200, "A2A 0.3 endpoint failed");
+assert(a2aLegacy.body.jsonrpc === "2.0", "A2A 0.3 response is not JSON-RPC");
+assert(
+  a2aLegacy.body.result?.kind === "message",
+  "A2A 0.3 did not return a message",
+);
+assert(
+  a2aLegacy.body.result?.role === "agent",
+  "A2A 0.3 response role changed",
+);
+assert(
+  a2aLegacy.body.result?.metadata?.discoveryOnly === true &&
+    a2aLegacy.body.result?.metadata?.paymentExecution === false,
+  "A2A 0.3 safety metadata changed",
+);
+
+const a2aCurrent = await json("/a2a", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: "smoke-a2a-10",
+    method: "SendMessage",
+    params: {
+      message: {
+        role: "ROLE_USER",
+        messageId: "smoke-user-10",
+        parts: [{ text: "What can XGuard do?" }],
+      },
+    },
+  }),
+});
+assert(a2aCurrent.response.status === 200, "A2A 1.0 endpoint failed");
+assert(a2aCurrent.body.jsonrpc === "2.0", "A2A 1.0 response is not JSON-RPC");
+assert(
+  a2aCurrent.body.result?.message?.role === "ROLE_AGENT",
+  "A2A 1.0 did not return an agent message",
+);
+assert(
+  a2aCurrent.body.result?.message?.metadata?.discoveryOnly === true &&
+    a2aCurrent.body.result?.message?.metadata?.paymentExecution === false,
+  "A2A 1.0 safety metadata changed",
+);
+
 const provider = await json("/.well-known/x402/facilitator.json");
 assert(provider.response.status === 200, "provider manifest endpoint failed");
 assert(provider.body.kind === "x402-facilitator", "provider kind changed");
@@ -219,6 +304,7 @@ console.log(
     network: status.body.network,
     facilitator: status.body.facilitator,
     providerManifest: true,
+    a2a: true,
     bazaar: true,
     mcp: true,
     financialMetrics: status.body.financialMetrics,

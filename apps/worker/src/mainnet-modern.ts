@@ -3,6 +3,7 @@ import mainnet, {
   MainnetRequestGate,
   XPayGlobalRateGate,
 } from "./mainnet-supervisor.js";
+import { A2A_PATH, a2aOptions, a2aRequest } from "./mainnet-a2a.js";
 import {
   modernMcpOptions,
   modernMcpRequest,
@@ -63,6 +64,15 @@ export default {
     const mcpubDiscovery = mcpubDiscoveryResponse(standardRequest);
     if (mcpubDiscovery !== null) return secureResponse(mcpubDiscovery);
 
+    if (url.pathname === A2A_PATH && standardRequest.method === "OPTIONS")
+      return secureResponse(a2aOptions());
+
+    if (url.pathname === A2A_PATH && standardRequest.method === "POST") {
+      const blocked = await publicEndpointGuard(standardRequest, env, "a2a");
+      if (blocked !== null) return secureResponse(blocked);
+      return secureResponse(await a2aRequest(standardRequest));
+    }
+
     if (url.pathname === "/mcp" && standardRequest.method === "OPTIONS")
       return secureResponse(modernMcpOptions(standardRequest));
 
@@ -71,7 +81,7 @@ export default {
       standardRequest.method === "POST" &&
       shouldUseModernMcp(standardRequest)
     ) {
-      const blocked = await publicMcpGuard(standardRequest, env);
+      const blocked = await publicEndpointGuard(standardRequest, env, "mcp");
       if (blocked !== null) return secureResponse(blocked);
       return secureResponse(
         await modernMcpRequest(standardRequest, env, async () => {
@@ -237,9 +247,10 @@ function logMcpTelemetry(value: {
   );
 }
 
-async function publicMcpGuard(
+async function publicEndpointGuard(
   request: Request,
   env: MainnetModernEnv,
+  surface: "mcp" | "a2a",
 ): Promise<Response | null> {
   const client =
     request.headers.get("cf-connecting-ip") ??
@@ -247,7 +258,7 @@ async function publicMcpGuard(
     "unknown";
   try {
     const decision = await env.REQUEST_RATE_LIMITER.limit({
-      key: `public:/mcp:${client}`,
+      key: `public:/${surface}:${client}`,
     });
     if (decision.success) return null;
     return publicJson({ error: "rate_limit_exceeded" }, 429, {
