@@ -37,7 +37,7 @@ type MainnetScheduled = (
 
 const delegateFetch = mainnet.fetch as unknown as MainnetFetch;
 const delegateScheduled = mainnet.scheduled as unknown as MainnetScheduled;
-const MCP_TELEMETRY_MAX_BODY_BYTES = 128 * 1024;
+const MCP_TELEMETRY_MAX_BODY_BYTES = 8 * 1024;
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
@@ -45,7 +45,7 @@ export default {
     const url = new URL(standardRequest.url);
 
     if (url.pathname === "/mcp" && standardRequest.method === "POST")
-      await observeMcpRpcRequest(standardRequest);
+      ctx.waitUntil(observeMcpRpcRequest(standardRequest));
 
     const branding = mainnetBrandingResponse(standardRequest);
     if (branding !== null) return branding;
@@ -109,14 +109,11 @@ async function observeMcpRpcRequest(request: Request): Promise<void> {
   const methodHeader = request.headers.get("mcp-method");
   const userAgent = request.headers.get("user-agent") ?? "unknown";
   const declaredLength = request.headers.get("content-length");
+  const era = shouldUseModernMcp(request) ? "modern" : "legacy";
 
-  if (
-    declaredLength !== null &&
-    Number.isFinite(Number(declaredLength)) &&
-    Number(declaredLength) > MCP_TELEMETRY_MAX_BODY_BYTES
-  ) {
+  if (declaredLength === null) {
     logMcpTelemetry({
-      era: shouldUseModernMcp(request) ? "modern" : "legacy",
+      era,
       rpcMethod: methodHeader ?? "unknown",
       toolName: null,
       protocolVersion: protocolVersionHeader ?? "unspecified",
@@ -125,28 +122,36 @@ async function observeMcpRpcRequest(request: Request): Promise<void> {
       methodHeaderPresent: methodHeader !== null,
       methodHeaderMatches: null,
       userAgent,
-      parseState: "body_too_large",
+      parseState: "length_unknown",
+    });
+    return;
+  }
+
+  const declaredBytes = Number(declaredLength);
+  if (
+    !Number.isFinite(declaredBytes) ||
+    declaredBytes < 0 ||
+    declaredBytes > MCP_TELEMETRY_MAX_BODY_BYTES
+  ) {
+    logMcpTelemetry({
+      era,
+      rpcMethod: methodHeader ?? "unknown",
+      toolName: null,
+      protocolVersion: protocolVersionHeader ?? "unspecified",
+      protocolVersionSource:
+        protocolVersionHeader === null ? "absent" : "header",
+      methodHeaderPresent: methodHeader !== null,
+      methodHeaderMatches: null,
+      userAgent,
+      parseState: "body_not_sampled",
     });
     return;
   }
 
   try {
     const text = await request.clone().text();
-    if (new TextEncoder().encode(text).byteLength > MCP_TELEMETRY_MAX_BODY_BYTES) {
-      logMcpTelemetry({
-        era: shouldUseModernMcp(request) ? "modern" : "legacy",
-        rpcMethod: methodHeader ?? "unknown",
-        toolName: null,
-        protocolVersion: protocolVersionHeader ?? "unspecified",
-        protocolVersionSource:
-          protocolVersionHeader === null ? "absent" : "header",
-        methodHeaderPresent: methodHeader !== null,
-        methodHeaderMatches: null,
-        userAgent,
-        parseState: "body_too_large",
-      });
-      return;
-    }
+    if (new TextEncoder().encode(text).byteLength > MCP_TELEMETRY_MAX_BODY_BYTES)
+      throw new Error("sample_limit_exceeded");
 
     const parsed = JSON.parse(text) as unknown;
     if (!isRecord(parsed)) throw new Error("invalid_json_rpc");
@@ -163,7 +168,7 @@ async function observeMcpRpcRequest(request: Request): Promise<void> {
         : null;
 
     logMcpTelemetry({
-      era: shouldUseModernMcp(request) ? "modern" : "legacy",
+      era,
       rpcMethod,
       toolName,
       protocolVersion:
@@ -184,7 +189,7 @@ async function observeMcpRpcRequest(request: Request): Promise<void> {
     });
   } catch {
     logMcpTelemetry({
-      era: shouldUseModernMcp(request) ? "modern" : "legacy",
+      era,
       rpcMethod: methodHeader ?? "unknown",
       toolName: null,
       protocolVersion: protocolVersionHeader ?? "unspecified",
@@ -207,7 +212,7 @@ function logMcpTelemetry(value: {
   methodHeaderPresent: boolean;
   methodHeaderMatches: boolean | null;
   userAgent: string;
-  parseState: "parsed" | "unparsed" | "body_too_large";
+  parseState: "parsed" | "unparsed" | "body_not_sampled" | "length_unknown";
 }) {
   console.log(
     JSON.stringify({
