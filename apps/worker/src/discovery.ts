@@ -1,5 +1,6 @@
 const XGUARD_VERSION = "0.2.0-mainnet-rc";
 const AGENT_CARD_ETAG = '"xguard-agent-card-0.2.0-mainnet-rc"';
+const PROVIDER_MANIFEST_ETAG = '"xguard-provider-manifest-v1"';
 const DISCOVERY_CACHE_CONTROL =
   "public, max-age=3600, stale-while-revalidate=86400";
 
@@ -18,6 +19,13 @@ export function discoveryResponse(request: Request): Response | null {
       });
     case "/.well-known/agent-market.json":
       return jsonResponse(request, buildAgentMarket(origin));
+    case "/.well-known/x402/facilitator.json":
+    case "/.well-known/x402.json":
+    case "/provider.json":
+      return jsonResponse(request, buildProviderManifest(origin), {
+        "Content-Type": "application/json; charset=utf-8",
+        ETag: PROVIDER_MANIFEST_ETAG,
+      });
     case "/openapi.json":
       return jsonResponse(request, buildOpenApi(origin));
     case "/llms.txt":
@@ -46,6 +54,7 @@ function buildAgentCard(origin: string): Record<string, unknown> {
     ],
     version: XGUARD_VERSION,
     documentationUrl: `${origin}/llms-full.txt`,
+    providerManifest: `${origin}/.well-known/x402/facilitator.json`,
     capabilities: {
       streaming: false,
       pushNotifications: false,
@@ -98,6 +107,7 @@ function buildAgentMarket(origin: string): Record<string, unknown> {
     network: "eip155:8453",
     asset: "USDC",
     discovery: {
+      provider: `${origin}/.well-known/x402/facilitator.json`,
       agentCard: `${origin}/.well-known/agent-card.json`,
       openapi: `${origin}/openapi.json`,
       llms: `${origin}/llms.txt`,
@@ -126,6 +136,103 @@ function buildAgentMarket(origin: string): Record<string, unknown> {
   };
 }
 
+function buildProviderManifest(origin: string): Record<string, unknown> {
+  return {
+    manifest: "xguard-provider-manifest-v1",
+    kind: "x402-facilitator",
+    id: "io.github.moelayyan90/xguard",
+    name: "XGuard",
+    version: XGUARD_VERSION,
+    status: "production",
+    description:
+      "Hosted x402 v2 facilitator-compatible safety and routing gateway for Base mainnet USDC with replay protection, duplicate-settlement protection, durable settlement ownership, independent finality verification, accounting, reconciliation, Bazaar discovery, and MCP discovery.",
+    protocol: {
+      name: "x402",
+      version: 2,
+      specification:
+        "https://github.com/x402-foundation/x402/blob/main/specs/x402-specification-v2.md",
+    },
+    facilitator: {
+      baseUrl: origin,
+      supported: `${origin}/supported`,
+      verify: `${origin}/verify`,
+      settle: `${origin}/settle`,
+      network: "eip155:8453",
+      scheme: "exact",
+      asset: {
+        symbol: "USDC",
+        address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        transferMethod: "eip3009",
+      },
+      clientConfig: {
+        type: "HTTPFacilitatorClient",
+        url: origin,
+        authentication: "bearer",
+      },
+    },
+    onboarding: {
+      registration: `${origin}/v1/register`,
+      balance: `${origin}/v1/balance`,
+      topUpIntent: `${origin}/v1/topups/intents`,
+      topUpClaim: `${origin}/v1/topups/claim`,
+      packageInstallationRequired: false,
+      apiKeyRequiredForVerifyAndSettle: true,
+    },
+    pricing: {
+      subscription: "none",
+      event: "successful_billable_settlement",
+      feeUsd: "0.002",
+      billing: "merchant_prepaid_service_balance",
+      freeOperations: [
+        "supported",
+        "health",
+        "status",
+        "discovery",
+        "mcp_discovery",
+        "failed_verification",
+        "failed_settlement",
+        "duplicate_retry",
+      ],
+    },
+    safety: {
+      replayProtection: true,
+      duplicateSettlementProtection: true,
+      durableSettlementOwnership: true,
+      failClosedAmbiguousSettlement: true,
+      independentBaseUsdcFinalityVerification: true,
+      reconciliation: true,
+    },
+    settlementExecution: {
+      mode: "routed",
+      currentDownstream: "xpay",
+      signerAttribution: "Use the live /supported response as authoritative.",
+      note: "XGuard is the merchant-facing facilitator-compatible gateway and safety layer. The current downstream transaction submitter is xpay; XGuard independently verifies finality before recording earned service revenue.",
+    },
+    discovery: {
+      agentCard: `${origin}/.well-known/agent-card.json`,
+      agentMarket: `${origin}/.well-known/agent-market.json`,
+      openapi: `${origin}/openapi.json`,
+      llms: `${origin}/llms.txt`,
+      llmsFull: `${origin}/llms-full.txt`,
+      bazaarResources: `${origin}/discovery/resources`,
+      bazaarSearch: `${origin}/discovery/search`,
+      mcp: `${origin}/mcp`,
+      mcpManifest: `${origin}/.well-known/mcp/server.json`,
+    },
+    operations: {
+      health: `${origin}/healthz`,
+      readiness: `${origin}/readyz`,
+      status: `${origin}/status`,
+    },
+    source: {
+      repository: "https://github.com/moelayyan90/XGuard",
+      license: "Apache-2.0",
+    },
+    independence:
+      "XGuard is independent and is not an official product of the x402 Foundation, Coinbase, Cloudflare, Base, Circle, xpay, PayAI, or OKX.",
+  };
+}
+
 function buildOpenApi(origin: string): Record<string, unknown> {
   const paymentBody = {
     type: "object",
@@ -150,6 +257,22 @@ function buildOpenApi(origin: string): Record<string, unknown> {
           tags: ["Discovery"],
           summary: "Describe XGuard",
           responses: { "200": { description: "XGuard service metadata" } },
+        },
+      },
+      "/.well-known/x402/facilitator.json": {
+        get: {
+          tags: ["Discovery"],
+          summary: "Read the XGuard facilitator provider manifest",
+          description:
+            "XGuard-specific machine-readable provider metadata. This supplements, but does not replace, the standard x402 /supported response.",
+          responses: { "200": { description: "Provider manifest" } },
+        },
+      },
+      "/provider.json": {
+        get: {
+          tags: ["Discovery"],
+          summary: "Read the XGuard facilitator provider manifest alias",
+          responses: { "200": { description: "Provider manifest" } },
         },
       },
       "/healthz": {
@@ -335,9 +458,10 @@ function buildLlms(origin: string): string {
 XGuard charges $0.002 only for a successful billable settlement. Verification, malformed requests, failed settlements, duplicates, replays, and discovery requests are not billable.
 
 ## Discovery
+- [Provider manifest](${origin}/.well-known/x402/facilitator.json): machine-readable facilitator identity, integration, pricing, onboarding, and safety metadata
 - [Agent Card](${origin}/.well-known/agent-card.json): machine-readable agent/service capability metadata
 - [OpenAPI](${origin}/openapi.json): complete HTTP API description
-- [Supported x402 kinds](${origin}/supported): live x402 capabilities
+- [Supported x402 kinds](${origin}/supported): live x402 capabilities and authoritative signer attribution
 - [Status](${origin}/status): operational status
 - [Readiness](${origin}/readyz): live mainnet route readiness
 
@@ -361,8 +485,14 @@ function buildLlmsFull(origin: string): string {
 - POST ${origin}/v1/topups/intents — create an exact Base USDC top-up intent
 - POST ${origin}/v1/topups/claim — claim a finalized top-up transaction
 
+## Provider selection
+Use ${origin}/.well-known/x402/facilitator.json when a catalog, agent, or integration tool needs XGuard provider metadata. Use ${origin}/supported as the authoritative live x402 capability and signer response. The provider manifest is XGuard-specific metadata and does not claim to be part of the x402 protocol specification.
+
 ## Settlement safety semantics
 XGuard derives stable payment identities, rejects conflicting active authorizations, coordinates settlement durably, prevents automatic retries when downstream outcome is ambiguous, tracks Base USDC finality, and earns its service fee only after successful finality confirmation.
+
+## Settlement execution
+XGuard is the merchant-facing facilitator-compatible gateway. The current downstream transaction submitter is xpay. XGuard independently verifies finalized Base USDC settlement evidence before recognizing its service fee.
 
 ## HTTP behavior
 - 200: successful discovery/verification/settlement response
@@ -374,7 +504,7 @@ XGuard derives stable payment identities, rejects conflicting active authorizati
 - 503: protected dependency unavailable or settlement result is ambiguous
 
 ## Machine-readable contract
-Use ${origin}/openapi.json as the authoritative HTTP interface description and ${origin}/supported for live x402 network/scheme support.
+Use ${origin}/openapi.json as the authoritative HTTP interface description and ${origin}/supported for live x402 network/scheme/signer support.
 `;
 }
 
@@ -383,6 +513,7 @@ function buildRobots(origin: string): string {
 Allow: /
 
 # Machine-readable AI/service discovery
+# ${origin}/.well-known/x402/facilitator.json
 # ${origin}/llms.txt
 # ${origin}/.well-known/agent-card.json
 # ${origin}/openapi.json
