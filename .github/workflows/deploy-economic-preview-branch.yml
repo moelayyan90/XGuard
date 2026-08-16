@@ -1,5 +1,5 @@
 name: Deploy Economic Firewall preview branch
-# Final clean E2E retry after Durable Object settlement fix.
+# Deploy the isolated Economic Firewall preview, including the x402 testnet adapter.
 
 on:
   push:
@@ -8,10 +8,12 @@ on:
     paths:
       - apps/worker/src/economic-firewall.ts
       - apps/worker/src/economic-intent-coordinator.ts
+      - apps/worker/src/x402-economic-adapter.ts
       - apps/worker/wrangler.economic-preview.jsonc
       - packages/core/src/economic-intent.ts
       - packages/core/src/edge.ts
       - packages/core/src/index.ts
+      - tests/x402-economic-adapter.test.ts
       - apps/worker/package.json
       - package.json
       - .github/workflows/deploy-economic-preview-branch.yml
