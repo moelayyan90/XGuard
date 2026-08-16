@@ -30,7 +30,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Format hotfix
-        run: npx prettier --write apps/worker/src/mainnet-supervisor.ts apps/worker/src/mainnet-revenue-hardening.ts apps/worker/wrangler.mainnet.jsonc tests/mainnet-topup-rpc-resilience-source.test.ts
+        run: npx prettier --write scripts/apply-topup-rpc-resilience-hotfix.mjs apps/worker/src/mainnet-supervisor.ts apps/worker/src/mainnet-revenue-hardening.ts apps/worker/wrangler.mainnet.jsonc tests/mainnet-topup-rpc-resilience-source.test.ts
 
       - name: Verify release
         run: npm run verify:release
