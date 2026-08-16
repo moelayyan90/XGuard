@@ -1,0 +1,40 @@
+name: Agent format artifact
+
+on:
+  push:
+    branches:
+      - agent/complete-agent-discovery-stack
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Format changed source files
+        run: |
+          npx prettier --write \
+            apps/worker/src/mainnet-bazaar.ts \
+            apps/worker/src/mainnet-edge.ts \
+            scripts/smoke-mainnet.mjs \
+            tests/mainnet-bazaar.test.ts
+      - name: Pack formatted files
+        run: |
+          tar -czf formatted-xguard.tgz \
+            apps/worker/src/mainnet-bazaar.ts \
+            apps/worker/src/mainnet-edge.ts \
+            scripts/smoke-mainnet.mjs \
+            tests/mainnet-bazaar.test.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: formatted-xguard
+          path: formatted-xguard.tgz
+          if-no-files-found: error
