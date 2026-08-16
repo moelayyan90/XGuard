@@ -45,3 +45,35 @@ jobs:
               process.exit(1);
             });
           '
+
+  a2aregistry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Register XGuard Agent Card
+        shell: bash
+        run: |
+          set -euo pipefail
+          URI='https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json'
+          response="$(curl --fail-with-body -sS --max-time 30 \
+            -X POST 'https://a2aregistry.org/api/agents/register' \
+            -H 'Content-Type: application/json' \
+            --data "{\"wellKnownURI\":\"${URI}\"}")"
+          printf '%s\n' "${response}"
+          printf '%s' "${response}" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const x=JSON.parse(s);
+              const text=JSON.stringify(x).toLowerCase();
+              if (x.error && !text.includes("already") && !text.includes("exist")) {
+                console.error(x.error || x.message || "A2A Registry rejected XGuard");
+                process.exit(1);
+              }
+              if (x.id || x.agent || x.success === true || x.registered === true || text.includes("already") || text.includes("exist")) {
+                console.log("XGuard A2A Registry submission accepted or already registered.");
+                return;
+              }
+              console.error("Unexpected A2A Registry response shape");
+              process.exit(1);
+            });
+          '
