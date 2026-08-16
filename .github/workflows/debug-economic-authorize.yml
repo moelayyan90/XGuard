@@ -24,6 +24,7 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm ci --ignore-scripts
+      - run: npm run build
       - name: Add preview-only exception detail to working tree
         shell: bash
         run: |
