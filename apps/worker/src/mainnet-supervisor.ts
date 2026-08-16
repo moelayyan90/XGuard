@@ -3,8 +3,17 @@ import mainnet, {
   MainnetPaymentCoordinator,
   MainnetRequestGate,
 } from "./mainnet-edge.js";
-import { authenticateMerchant, merchantBalance } from "./mainnet-billing.js";
+import { authenticateMerchant } from "./mainnet-billing.js";
 import { parseMainnetFacilitatorRequest } from "./mainnet-protocol.js";
+import {
+  authorizeMerchantScope,
+  currentUnitEconomics,
+  guardUnitEconomics,
+  handleHardeningEndpoint,
+  preparePrepaidFee,
+  releaseExpiredVerifyHolds,
+  scanAutomaticTopUps,
+} from "./mainnet-revenue-hardening.js";
 import {
   recordAmbiguousRecovery,
   recoverAmbiguousSettlements,
@@ -24,6 +33,12 @@ const RATE_WINDOW_MS = 60_000;
 type MainnetSupervisorEnv = MainnetRecoveryEnv & {
   XPAY_RATE_GATE: DurableObjectNamespace<XPayGlobalRateGate>;
   XGUARD_FEE_MICRO_USD: string;
+  BASE_RPC_URL: string;
+  XGUARD_TREASURY_USDC_ADDRESS: string;
+  XPAY_DOWNSTREAM_COST_MICRO_USD?: string;
+  PAYAI_DOWNSTREAM_COST_MICRO_USD?: string;
+  XGUARD_MIN_GROSS_MARGIN_BPS?: string;
+  XGUARD_ADMIN_TOKEN_SHA256?: string;
   [key: string]: unknown;
 };
 
@@ -50,10 +65,25 @@ export default {
     const standardRequest = request as unknown as Request;
     const url = new URL(standardRequest.url);
 
+    const hardeningEndpoint = await handleHardeningEndpoint(
+      standardRequest,
+      env,
+    ).catch(() =>
+      jsonResponse({ error: "hardening_endpoint_unavailable" }, 503),
+    );
+    if (hardeningEndpoint !== null) return hardeningEndpoint;
+
     if (
       standardRequest.method === "POST" &&
       (url.pathname === "/verify" || url.pathname === "/settle")
     ) {
+      const requiredScope = url.pathname === "/verify" ? "verify" : "settle";
+      const access = await authorizeMerchantScope(
+        standardRequest,
+        env,
+        requiredScope,
+      );
+      if (!access.ok) return access.response;
       return supervisedFacilitatorRequest(
         standardRequest,
         env,
@@ -62,13 +92,22 @@ export default {
       );
     }
 
+    if (url.pathname.startsWith("/v1/") && url.pathname !== "/v1/register") {
+      const access = await authorizeMerchantScope(
+        standardRequest,
+        env,
+        "billing",
+      );
+      if (!access.ok) return access.response;
+    }
+
     const mcpStatusProbe =
       standardRequest.method === "POST" && url.pathname === "/mcp"
         ? standardRequest.clone()
         : null;
     const response = await delegateFetch(standardRequest, env, ctx);
     if (standardRequest.method === "GET" && url.pathname === "/status")
-      return truthfulStatus(response, env.DB);
+      return truthfulStatus(response, env);
     if (
       mcpStatusProbe !== null &&
       (await isMcpStatusCall(mcpStatusProbe as unknown as Request).catch(
@@ -91,6 +130,37 @@ export default {
         ),
       ),
     );
+    ctx.waitUntil(
+      releaseExpiredVerifyHolds(env).catch((error) =>
+        console.error(
+          JSON.stringify({
+            event: "verify_fee_hold_cleanup_failed",
+            code: errorCode(error),
+          }),
+        ),
+      ),
+    );
+    ctx.waitUntil(
+      scanAutomaticTopUps(env)
+        .then((result) => {
+          if (result.credited > 0)
+            console.log(
+              JSON.stringify({
+                event: "automatic_topups_credited",
+                count: result.credited,
+                scannedThroughBlock: result.scannedThroughBlock,
+              }),
+            );
+        })
+        .catch((error) =>
+          console.error(
+            JSON.stringify({
+              event: "automatic_topup_scan_failed",
+              code: errorCode(error),
+            }),
+          ),
+        ),
+    );
   },
 } satisfies ExportedHandler<MainnetSupervisorEnv>;
 
@@ -104,32 +174,6 @@ async function supervisedFacilitatorRequest(
     request.clone() as unknown as Request,
     env,
   ).catch(() => null);
-
-  if (operation === "/verify" && inspected !== null) {
-    const requiredFeeMicroUsd = serviceFeeMicroUsd(env);
-    if (requiredFeeMicroUsd === null)
-      return jsonResponse({ error: "billing_configuration_unavailable" }, 503);
-
-    const balance = await merchantBalance(
-      env.DB,
-      inspected.recovery.merchantId,
-    ).catch(() => null);
-    if (balance === null)
-      return jsonResponse({ error: "merchant_balance_unavailable" }, 503);
-
-    if (balance.availableMicroUsd < requiredFeeMicroUsd)
-      return jsonResponse(
-        {
-          error: "xguard_service_balance_required",
-          message:
-            "Merchant must prepay XGuard service balance before verification",
-          requiredFeeMicroUsd,
-          availableMicroUsd: balance.availableMicroUsd,
-          topUpEndpoint: "/v1/topups/intents",
-        },
-        402,
-      );
-  }
 
   if (operation === "/settle" && inspected !== null) {
     const recovered = await recoveredSettlement(
@@ -153,6 +197,18 @@ async function supervisedFacilitatorRequest(
           "X-XGuard-Recovery": recovered.state,
         });
     }
+  }
+
+  if (inspected !== null) {
+    const economicsBlock = await guardUnitEconomics(env);
+    if (economicsBlock !== null) return economicsBlock;
+
+    const fundingBlock = await preparePrepaidFee(
+      env,
+      inspected.recovery,
+      operation,
+    );
+    if (fundingBlock !== null) return fundingBlock;
   }
 
   let quota: {
@@ -278,12 +334,12 @@ async function inspectProtectedRequest(
 
 async function truthfulStatus(
   response: Response,
-  db: D1Database,
+  env: MainnetSupervisorEnv,
 ): Promise<Response> {
   if (!response.ok) return response;
   try {
     const body = (await response.clone().json()) as Record<string, unknown>;
-    const recoveries = await recoveryStats(db);
+    const recoveries = await recoveryStats(env.DB);
     const facilitatorHealthy = body.facilitator === "HEALTHY";
     body.gateway =
       facilitatorHealthy && recoveries.failed === 0
@@ -291,6 +347,17 @@ async function truthfulStatus(
         : "degraded";
     body.facilitatorProvider = "xpay";
     body.ambiguousRecovery = recoveries;
+    delete body.successfulBillableSettlements;
+    delete body.earnedMicroUsd;
+    body.financialMetrics = "private";
+    try {
+      const economics = await currentUnitEconomics(env);
+      body.unitEconomics = {
+        state: economics.circuitOpen ? "protected_open" : "protected",
+      };
+    } catch {
+      body.unitEconomics = { state: "unavailable" };
+    }
     return jsonFrom(response, body);
   } catch {
     return response;
@@ -310,7 +377,7 @@ async function truthfulMcpStatus(
       env,
       ctx,
     );
-    const truthful = await truthfulStatus(statusResponse, env.DB);
+    const truthful = await truthfulStatus(statusResponse, env);
     if (!truthful.ok) return response;
     const status = (await truthful.json()) as Record<string, unknown>;
     const body = (await response.clone().json()) as Record<string, unknown>;
@@ -322,6 +389,8 @@ async function truthfulMcpStatus(
       facilitator: status.facilitator,
       facilitatorProvider: status.facilitatorProvider,
       ambiguousRecovery: status.ambiguousRecovery,
+      unitEconomics: status.unitEconomics,
+      financialMetrics: "private",
     };
     result.structuredContent = structured;
     if (Array.isArray(result.content) && result.content.length > 0) {
@@ -357,7 +426,7 @@ async function isMcpStatusCall(request: Request): Promise<boolean> {
 
 async function shouldRefundQuota(response: Response): Promise<boolean> {
   if (response.headers.get("X-XGuard-Replayed") === "true") return true;
-  if ([400, 401, 402, 409, 429].includes(response.status)) return true;
+  if ([400, 401, 402, 403, 409, 429].includes(response.status)) return true;
   if (response.status !== 503) return false;
   try {
     const body = (await response.clone().json()) as Record<string, unknown>;
@@ -365,7 +434,8 @@ async function shouldRefundQuota(response: Response): Promise<boolean> {
     return (
       reason === "xguard_facilitator_unavailable" ||
       reason === "facilitator_unavailable" ||
-      reason === "upstream_quota_protection_unavailable"
+      reason === "upstream_quota_protection_unavailable" ||
+      reason === "unit_economics_circuit_open"
     );
   } catch {
     return false;
@@ -379,15 +449,6 @@ async function isAmbiguousSettlement(response: Response): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function serviceFeeMicroUsd(env: MainnetSupervisorEnv): number | null {
-  const value = env.XGUARD_FEE_MICRO_USD;
-  if (!/^[0-9]+$/.test(value)) return null;
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > 1_000_000)
-    return null;
-  return parsed;
 }
 
 function settlementFailure(
@@ -411,7 +472,7 @@ function settlementFailure(
 
 function jsonResponse(
   value: unknown,
-  status: number,
+  status = 200,
   extraHeaders: Record<string, string> = {},
 ): Response {
   return new Response(JSON.stringify(value), {
