@@ -5,7 +5,7 @@ import { discoveryResponse } from "../apps/worker/src/discovery.js";
 const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
 
 describe("mainnet discovery compatibility", () => {
-  it("serves /.well-known/x402 as the canonical provider manifest", async () => {
+  it("serves the x402 provider alias", async () => {
     const alias = await compatibilityDiscoveryResponse(
       new Request(`${ORIGIN}/.well-known/x402`),
     );
@@ -18,7 +18,7 @@ describe("mainnet discovery compatibility", () => {
     expect(await alias?.json()).toEqual(await canonical?.json());
   });
 
-  it("serves machine-readable monetization metadata from canonical XGuard pricing", async () => {
+  it("serves monetization metadata", async () => {
     const response = await compatibilityDiscoveryResponse(
       new Request(`${ORIGIN}/.well-known/monetization`),
     );
@@ -58,7 +58,7 @@ describe("mainnet discovery compatibility", () => {
     });
   });
 
-  it("supports HEAD and conditional monetization discovery", async () => {
+  it("supports HEAD and conditional requests", async () => {
     const head = await compatibilityDiscoveryResponse(
       new Request(`${ORIGIN}/.well-known/monetization`, { method: "HEAD" }),
     );
@@ -75,7 +75,7 @@ describe("mainnet discovery compatibility", () => {
     expect(cached?.status).toBe(304);
   });
 
-  it("does not intercept unrelated or mutating requests", async () => {
+  it("does not intercept unrelated requests", async () => {
     expect(
       await compatibilityDiscoveryResponse(new Request(`${ORIGIN}/status`)),
     ).toBeNull();
