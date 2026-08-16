@@ -1,4 +1,4 @@
-name: Wire x402 Economic Firewall adapter
+name: Diagnose x402 Economic Firewall adapter
 
 on:
   push:
@@ -8,10 +8,10 @@ on:
       - .github/workflows/wire-x402-economic-adapter.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  wire:
+  diagnose:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -26,17 +26,22 @@ jobs:
         run: python scripts/wire-x402-economic-adapter.py
       - name: Format
         run: npx prettier --write apps/worker/src/economic-firewall.ts apps/worker/wrangler.economic-preview.jsonc apps/worker/src/x402-economic-adapter.ts tests/x402-economic-adapter.test.ts
-      - name: Verify x402 adapter wiring
-        run: |
-          npm run lint
-          npm run typecheck
-          npm run test
-          npm --workspace @xguard/worker run build:economic-preview
-      - name: Commit x402 adapter wiring
+      - name: Capture verification
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/worker/src/economic-firewall.ts apps/worker/wrangler.economic-preview.jsonc apps/worker/src/x402-economic-adapter.ts tests/x402-economic-adapter.test.ts
-          git commit -m "feat: wire x402 testnet adapter into Economic Firewall"
-          git push origin HEAD:agent/economic-firewall-v2
+          mkdir -p x402-adapter-diagnostics
+          set +e
+          npm run lint > x402-adapter-diagnostics/lint.txt 2>&1
+          echo $? > x402-adapter-diagnostics/lint-code.txt
+          npm run typecheck > x402-adapter-diagnostics/typecheck.txt 2>&1
+          echo $? > x402-adapter-diagnostics/typecheck-code.txt
+          npm run test > x402-adapter-diagnostics/test.txt 2>&1
+          echo $? > x402-adapter-diagnostics/test-code.txt
+          npm --workspace @xguard/worker run build:economic-preview > x402-adapter-diagnostics/build-preview.txt 2>&1
+          echo $? > x402-adapter-diagnostics/build-preview-code.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x402-economic-adapter-diagnostics-v2
+          path: x402-adapter-diagnostics
+          if-no-files-found: error
