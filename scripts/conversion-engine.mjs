@@ -86,7 +86,9 @@ function conversionReasons(target) {
   if (live402 > 0)
     reasons.push(`${live402} paid endpoint(s) returned live HTTP 402`);
   if (resources > 1)
-    reasons.push(`${resources} resources may share a facilitator configuration`);
+    reasons.push(
+      `${resources} resources may share a facilitator configuration`,
+    );
   if (mcp > 0) reasons.push(`${mcp} MCP-facing resource(s)`);
   if (incumbents.length > 0)
     reasons.push(`observed facilitator path: ${incumbents.join(" + ")}`);

@@ -131,7 +131,11 @@ export async function enhanceAgentDiscoveryResponse(
           parameters: [
             { name: "from", in: "query", schema: { type: "string" } },
             { name: "name", in: "query", schema: { type: "string" } },
-            { name: "resource", in: "query", schema: { type: "string", format: "uri" } },
+            {
+              name: "resource",
+              in: "query",
+              schema: { type: "string", format: "uri" },
+            },
           ],
           responses: { "200": { description: "Safe migration kit" } },
         },

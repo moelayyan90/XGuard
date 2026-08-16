@@ -58,9 +58,9 @@ describe("safe merchant migration kit", () => {
       (step: any) => step.id === "safe-precutover-checks",
     );
     expect(checks.sideEffects).toBe(false);
-    expect(checks.requests.every((item: string) => item.startsWith("GET "))).toBe(
-      true,
-    );
+    expect(
+      checks.requests.every((item: string) => item.startsWith("GET ")),
+    ).toBe(true);
     expect(checks.requests.join("\n")).not.toContain("/verify");
     expect(checks.requests.join("\n")).not.toContain("/settle");
 

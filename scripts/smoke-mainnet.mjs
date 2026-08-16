@@ -121,7 +121,10 @@ const migration = await json(
 );
 assert(migration.response.status === 200, "safe migration endpoint failed");
 assert(migration.body.schemaVersion === "2", "migration schema changed");
-assert(migration.body.sideEffects === false, "migration endpoint gained side effects");
+assert(
+  migration.body.sideEffects === false,
+  "migration endpoint gained side effects",
+);
 assert(
   migration.body.paymentExecution === false,
   "migration endpoint unexpectedly executes payments",
@@ -140,8 +143,8 @@ assert(
 );
 assert(
   migration.body.automationBoundary?.createsSyntheticPayments === false &&
-    migration.body.automationBoundary?.callsVerifyOrSettleWithoutRealProtocolTraffic ===
-      false,
+    migration.body.automationBoundary
+      ?.callsVerifyOrSettleWithoutRealProtocolTraffic === false,
   "migration automation safety boundary changed",
 );
 

@@ -19,7 +19,8 @@ export function xguardMigrationResponse(request: Request): Response | null {
     .trim()
     .slice(0, 160);
   const merchantName =
-    requestedName || (resource === null ? "merchant" : new URL(resource).hostname);
+    requestedName ||
+    (resource === null ? "merchant" : new URL(resource).hostname);
 
   return new Response(
     JSON.stringify({
@@ -63,7 +64,8 @@ export function xguardMigrationResponse(request: Request): Response | null {
             headers: { "Content-Type": "application/json" },
             body: { name: merchantName },
           },
-          output: "Store the returned apiKey as a secret; XGuard stores only its hash.",
+          output:
+            "Store the returned apiKey as a secret; XGuard stores only its hash.",
         },
         {
           id: "fund-service-balance",
