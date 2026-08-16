@@ -1,0 +1,38 @@
+name: Query live top-up cursor once
+
+on:
+  push:
+    branches: ["diag/topup-cursor-now"]
+    paths:
+      - ".github/workflows/query-topup-cursor-now.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Read production top-up scan state
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '===== CURSOR ====='
+          npx wrangler d1 execute xguard-mainnet --remote --json --command \
+            "SELECT scanner_id,last_scanned_block,updated_at FROM treasury_scan_state WHERE scanner_id='base-usdc';"
+          echo '===== RELEVANT INTENTS ====='
+          npx wrangler d1 execute xguard-mainnet --remote --json --command \
+            "SELECT COUNT(*) AS relevant FROM top_up_intents WHERE state IN ('OPEN','EXPIRED') AND expires_at_epoch >= CAST(strftime('%s','now') AS INTEGER) - 21600;"
