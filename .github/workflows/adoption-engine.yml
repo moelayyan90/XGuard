@@ -18,7 +18,7 @@ on:
     - cron: "17 */6 * * *"
   workflow_dispatch:
 
-# Public metadata discovery only; no payments, synthetic settlements, or bulk outreach.
+# Public metadata discovery only; never executes payments, synthetic settlements, or bulk outreach.
 permissions:
   contents: read
   issues: write
