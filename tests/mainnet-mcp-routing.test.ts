@@ -30,4 +30,10 @@ describe("MCP mainnet routing", () => {
       shouldUseModernMcp(request({ "MCP-Protocol-Version": "2025-06-18" })),
     ).toBe(false);
   });
+
+  it("routes the 2026 MCP protocol to the modern implementation", () => {
+    expect(
+      shouldUseModernMcp(request({ "MCP-Protocol-Version": "2026-07-28" })),
+    ).toBe(true);
+  });
 });
