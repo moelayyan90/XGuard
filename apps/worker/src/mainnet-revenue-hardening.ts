@@ -524,12 +524,15 @@ export async function revokeMerchantApiKey(
   if ((result.meta.changes ?? 0) !== 1) throw new Error("merchant_not_found");
 }
 
-export async function scanAutomaticTopUps(env: HardeningEnv): Promise<{
+export async function scanAutomaticTopUps(
+  env: HardeningEnv,
+  baseRpcUrl = env.BASE_RPC_URL,
+): Promise<{
   scannedThroughBlock: number;
   credited: number;
 }> {
   assertEvmAddress(env.XGUARD_TREASURY_USDC_ADDRESS, "treasury");
-  const rpcUrl = new URL(env.BASE_RPC_URL);
+  const rpcUrl = new URL(baseRpcUrl);
   if (rpcUrl.protocol !== "https:" || rpcUrl.username || rpcUrl.password)
     throw new Error("invalid_base_rpc_url");
   const finalized = await rpc<RpcBlock>(

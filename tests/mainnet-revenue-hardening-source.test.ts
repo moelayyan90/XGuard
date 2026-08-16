@@ -32,7 +32,7 @@ describe("mainnet revenue hardening source invariants", () => {
     expect(source).toContain("delete body.successfulBillableSettlements");
     expect(source).toContain("delete body.earnedMicroUsd");
     expect(source).toContain('body.financialMetrics = "private"');
-    expect(source).toContain("scanAutomaticTopUps(env)");
+    expect(source).toContain("scanAutomaticTopUpsWithFailover(env)");
     expect(source).toContain("releaseExpiredVerifyHolds(env)");
   });
 
@@ -47,7 +47,7 @@ describe("mainnet revenue hardening source invariants", () => {
       gate,
     );
     const scan = source.indexOf(
-      "const result = await scanAutomaticTopUps(env);",
+      "const result = await scanAutomaticTopUpsWithFailover(env);",
       gate,
     );
     expect(gate).toBeGreaterThanOrEqual(0);
@@ -70,13 +70,13 @@ describe("mainnet revenue hardening source invariants", () => {
     );
   });
 
-  it("uses Ankr Base RPC instead of endpoints rejected by the deployed Worker", async () => {
+  it("uses Ankr as primary with bounded fallback and excludes PublicNode", async () => {
     const config = await readFile("apps/worker/wrangler.mainnet.jsonc", "utf8");
     expect(config).toContain('"BASE_RPC_URL": "https://rpc.ankr.com/base"');
-    expect(config).not.toContain("mainnet.base.org");
+    expect(config).toContain("https://base.drpc.org");
+    expect(config).toContain("https://public.1rpc.io/base");
+    expect(config).toContain("https://mainnet.base.org");
     expect(config).not.toContain("base-rpc.publicnode.com");
-    expect(config).not.toContain("base.drpc.org");
-    expect(config).not.toContain("public.1rpc.io/base");
   });
 
   it("exposes key rotation, scopes, and protected admin economics", async () => {
