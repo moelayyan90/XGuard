@@ -36,6 +36,25 @@ describe("mainnet revenue hardening source invariants", () => {
     expect(source).toContain("releaseExpiredVerifyHolds(env)");
   });
 
+  it("does not call Base RPC unless a current or recently expired top-up intent exists", async () => {
+    const source = await readFile(
+      "apps/worker/src/mainnet-supervisor.ts",
+      "utf8",
+    );
+    const gate = source.indexOf("const relevantIntent = await env.DB.prepare(");
+    const skip = source.indexOf("if (relevantIntent === null) return;", gate);
+    const scan = source.indexOf(
+      "const result = await scanAutomaticTopUps(env);",
+      gate,
+    );
+    expect(gate).toBeGreaterThanOrEqual(0);
+    expect(skip).toBeGreaterThan(gate);
+    expect(scan).toBeGreaterThan(skip);
+    expect(source).toContain("TOPUP_SCAN_RECOVERY_GRACE_SECONDS");
+    expect(source).toContain("state='OPEN'");
+    expect(source).toContain("state='EXPIRED'");
+  });
+
   it("uses a Cloudflare-supported redirect mode for automatic top-up RPC calls", async () => {
     const source = await readFile(
       "apps/worker/src/mainnet-revenue-hardening.ts",
@@ -46,6 +65,12 @@ describe("mainnet revenue hardening source invariants", () => {
     expect(source).toContain(
       "if (!response.ok) throw new Error(`rpc_http_${response.status}`);",
     );
+  });
+
+  it("does not use the Cloudflare-blocked anonymous PublicNode endpoint", async () => {
+    const config = await readFile("apps/worker/wrangler.mainnet.jsonc", "utf8");
+    expect(config).toContain('"BASE_RPC_URL": "https://base.drpc.org"');
+    expect(config).not.toContain("base-rpc.publicnode.com");
   });
 
   it("exposes key rotation, scopes, and protected admin economics", async () => {

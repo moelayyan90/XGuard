@@ -29,6 +29,7 @@ export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 const XPAY_VERIFY_LIMIT_PER_MINUTE = 90;
 const XPAY_SETTLE_LIMIT_PER_MINUTE = 45;
 const RATE_WINDOW_MS = 60_000;
+const TOPUP_SCAN_RECOVERY_GRACE_SECONDS = 6 * 60 * 60;
 
 type MainnetSupervisorEnv = MainnetRecoveryEnv & {
   XPAY_RATE_GATE: DurableObjectNamespace<XPayGlobalRateGate>;
@@ -141,28 +142,44 @@ export default {
       ),
     );
     ctx.waitUntil(
-      scanAutomaticTopUps(env)
-        .then((result) => {
-          if (result.credited > 0)
-            console.log(
-              JSON.stringify({
-                event: "automatic_topups_credited",
-                count: result.credited,
-                scannedThroughBlock: result.scannedThroughBlock,
-              }),
-            );
-        })
-        .catch((error) =>
-          console.error(
-            JSON.stringify({
-              event: "automatic_topup_scan_failed",
-              code: errorCode(error),
-            }),
-          ),
+      runAutomaticTopUpMaintenance(env).catch((error) =>
+        console.error(
+          JSON.stringify({
+            event: "automatic_topup_scan_failed",
+            code: errorCode(error),
+          }),
         ),
+      ),
     );
   },
 } satisfies ExportedHandler<MainnetSupervisorEnv>;
+
+async function runAutomaticTopUpMaintenance(
+  env: MainnetSupervisorEnv,
+): Promise<void> {
+  const recoveryCutoffEpoch =
+    Math.floor(Date.now() / 1_000) - TOPUP_SCAN_RECOVERY_GRACE_SECONDS;
+  const relevantIntent = await env.DB.prepare(
+    `SELECT intent_id
+       FROM top_up_intents
+       WHERE state='OPEN'
+          OR (state='EXPIRED' AND expires_at_epoch>=?)
+       LIMIT 1`,
+  )
+    .bind(recoveryCutoffEpoch)
+    .first<{ intent_id: string }>();
+  if (relevantIntent === null) return;
+
+  const result = await scanAutomaticTopUps(env);
+  if (result.credited > 0)
+    console.log(
+      JSON.stringify({
+        event: "automatic_topups_credited",
+        count: result.credited,
+        scannedThroughBlock: result.scannedThroughBlock,
+      }),
+    );
+}
 
 async function supervisedFacilitatorRequest(
   request: Request,
