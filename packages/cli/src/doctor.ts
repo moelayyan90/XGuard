@@ -6,7 +6,7 @@ import { validateDiscoveryExtension } from "@x402/extensions/bazaar";
 import { validatePaymentIdentifier } from "@x402/extensions/payment-identifier";
 import { inspectProject, validateGatewayUrl } from "./migration.js";
 
-const ALPHA_NETWORK = "eip155:84532";
+const XGUARD_NETWORKS = new Set(["eip155:8453", "eip155:84532"]);
 const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const UNSIGNED_INTEGER = /^(?:0|[1-9][0-9]*)$/;
 const MAX_UINT256 = (1n << 256n) - 1n;
@@ -152,7 +152,8 @@ async function probeGateway(
     const advertisedKinds = Array.isArray(capabilities.kinds)
       ? capabilities.kinds
       : [];
-    const kinds = advertisedKinds.filter(isAlphaGatewayKind);
+    const kinds = advertisedKinds.filter(isXGuardGatewayKind);
+    const networks = [...new Set(kinds.map((kind) => String(kind.network)))];
     return {
       kinds,
       checks: [
@@ -166,8 +167,8 @@ async function probeGateway(
           status: kinds.length > 0 ? "PASS" : "WARN",
           detail:
             kinds.length > 0
-              ? `${kinds.length} advertised route(s) match the XGuard alpha matrix (v2 exact authorization on ${ALPHA_NETWORK})`
-              : `No advertised route matches the XGuard alpha matrix (${ALPHA_NETWORK} only)`,
+              ? `${kinds.length} advertised x402 v2 exact authorization route(s) match XGuard (${networks.join(", ")})`
+              : "No advertised x402 v2 exact authorization route matches a supported XGuard Base network",
         },
       ],
     };
@@ -228,8 +229,8 @@ async function probePaidEndpoint(
       (item) => "amount" in item,
     );
     const compatibleKinds = v2Requirements.filter((item) => {
-      if (!alphaRequirementCompatible(item)) return false;
-      if (gatewayKinds === null) return item.network === ALPHA_NETWORK;
+      if (!xguardRequirementCompatible(item)) return false;
+      if (gatewayKinds === null) return true;
       return gatewayKinds.some(
         (kind) =>
           kind.x402Version === 2 &&
@@ -267,7 +268,7 @@ async function probePaidEndpoint(
         detail:
           compatibleKinds.length > 0
             ? `${compatibleKinds.length} exact EVM option(s) can use this XGuard release`
-            : `No structurally valid v2 exact authorization option on ${ALPHA_NETWORK} matches this XGuard alpha`,
+            : "No structurally valid v2 exact authorization option matches the XGuard Base networks and advertised gateway capabilities",
       },
       {
         name: "Payment Identifier",
@@ -355,11 +356,12 @@ function mechanismCompatible(
   return true;
 }
 
-function isAlphaGatewayKind(kind: GatewayKind): boolean {
+function isXGuardGatewayKind(kind: GatewayKind): boolean {
   if (
     kind.x402Version !== 2 ||
     kind.scheme !== "exact" ||
-    kind.network !== ALPHA_NETWORK
+    typeof kind.network !== "string" ||
+    !XGUARD_NETWORKS.has(kind.network)
   )
     return false;
   if (
@@ -378,10 +380,10 @@ function isAlphaGatewayKind(kind: GatewayKind): boolean {
   );
 }
 
-function alphaRequirementCompatible(item: PaymentRequirements): boolean {
+function xguardRequirementCompatible(item: PaymentRequirements): boolean {
   if (
     item.scheme !== "exact" ||
-    item.network !== ALPHA_NETWORK ||
+    !XGUARD_NETWORKS.has(item.network) ||
     !EVM_ADDRESS.test(item.asset) ||
     !EVM_ADDRESS.test(item.payTo) ||
     !UNSIGNED_INTEGER.test(item.amount) ||
