@@ -27,9 +27,7 @@ describe("MCP mainnet routing", () => {
 
   it("keeps declared 2025 MCP clients on the legacy implementation", () => {
     expect(
-      shouldUseModernMcp(
-        request({ "MCP-Protocol-Version": "2025-06-18" }),
-      ),
+      shouldUseModernMcp(request({ "MCP-Protocol-Version": "2025-06-18" })),
     ).toBe(false);
   });
 });
