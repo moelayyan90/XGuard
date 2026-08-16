@@ -1,4 +1,4 @@
-# XGuard
+# XGuard — x402 Economic Firewall & Facilitator Safety Gateway
 
 [![CI](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml)
@@ -6,7 +6,7 @@
 
 ## Hosted x402 v2 facilitator + agent discovery
 
-**One safe route for x402 payments.** XGuard gives x402 resource servers a hosted facilitator-compatible endpoint with replay protection, duplicate-settlement protection, settlement ownership, health-aware routing, independent Base finality verification, accounting, reconciliation, production observability, native Bazaar discovery, and a remote MCP discovery surface.
+**XGuard is an x402 economic firewall, settlement-safety layer, and facilitator-compatible gateway for autonomous agents and resource servers.** It gives x402 resource servers a hosted endpoint with replay protection, duplicate-settlement protection, settlement ownership, health-aware routing, independent Base finality verification, accounting, reconciliation, production observability, native Bazaar discovery, and a remote MCP discovery surface.
 
 Existing x402 resource servers do not need an XGuard-specific runtime. They can point the standard x402 facilitator client at the hosted XGuard endpoint.
 
@@ -113,6 +113,11 @@ GET /discovery/resources
 GET /discovery/search?query=...
 POST /mcp
 GET /.well-known/mcp/server.json
+GET /.well-known/agent-card.json
+GET /.well-known/agent-market.json
+GET /llms.txt
+GET /llms-full.txt
+GET /openapi.json
 ```
 
 The remote MCP server exposes three read-only tools:
