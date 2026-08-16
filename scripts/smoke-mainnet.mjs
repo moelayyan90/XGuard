@@ -38,7 +38,10 @@ assert(
   root.body.price?.model === "merchant_prepaid_service_balance",
   "mainnet billing model changed unexpectedly",
 );
-assert(root.body.endpoints?.discovery === "/discovery/resources", "discovery endpoint missing");
+assert(
+  root.body.endpoints?.discovery === "/discovery/resources",
+  "discovery endpoint missing",
+);
 assert(root.body.endpoints?.mcp === "/mcp", "MCP endpoint missing");
 
 const health = await json("/healthz");
@@ -76,8 +79,14 @@ assert(
 
 const discovery = await json("/discovery/resources?limit=1");
 assert(discovery.response.status === 200, "Bazaar discovery endpoint failed");
-assert(discovery.body.x402Version === 2, "Bazaar discovery protocol version changed");
-assert(Array.isArray(discovery.body.items), "Bazaar discovery items are missing");
+assert(
+  discovery.body.x402Version === 2,
+  "Bazaar discovery protocol version changed",
+);
+assert(
+  Array.isArray(discovery.body.items),
+  "Bazaar discovery items are missing",
+);
 assert(
   Number.isInteger(discovery.body.pagination?.total) &&
     discovery.body.pagination.total >= 0,
@@ -103,8 +112,35 @@ const mcp = await json("/mcp", {
 });
 assert(mcp.response.status === 200, "remote MCP endpoint failed");
 assert(mcp.body.jsonrpc === "2.0", "MCP response is not JSON-RPC 2.0");
-assert(mcp.body.result?.serverInfo?.name === "xguard-mainnet", "MCP server identity changed");
-assert(mcp.body.result?.capabilities?.tools !== undefined, "MCP tools capability is missing");
+assert(
+  mcp.body.result?.serverInfo?.name === "xguard-mainnet",
+  "MCP server identity changed",
+);
+assert(
+  mcp.body.result?.capabilities?.tools !== undefined,
+  "MCP tools capability is missing",
+);
+
+const tools = await json("/mcp", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+    "MCP-Protocol-Version": "2025-11-25",
+  },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/list",
+    params: {},
+  }),
+});
+assert(tools.response.status === 200, "MCP tools/list failed");
+assert(
+  Array.isArray(tools.body.result?.tools) &&
+    tools.body.result.tools.some((tool) => tool?.name === "xguard_discover"),
+  "MCP xguard_discover tool is missing",
+);
 
 const status = await json("/status");
 assert(status.response.status === 200, "mainnet status endpoint failed");

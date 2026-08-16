@@ -41,6 +41,12 @@ export default {
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
 
+    if (request.method === "OPTIONS" && url.pathname === "/mcp") {
+      const originError = validateMcpOrigin(request);
+      if (originError !== null) return originError;
+      return corsResponse(new Response(null, { status: 204 }));
+    }
+
     if (request.method === "OPTIONS" && isPublicEdgePath(url.pathname)) {
       return corsResponse(new Response(null, { status: 204 }));
     }
@@ -69,7 +75,7 @@ export default {
       request.method === "GET"
     ) {
       return corsJson({
-        name: "io.xguard/mainnet",
+        name: "io.github.moelayyan90/xguard",
         title: "XGuard",
         description:
           "x402 facilitator discovery and agent tooling for paid HTTP APIs and MCP tools.",
@@ -129,7 +135,9 @@ async function facilitatorWithBazaar(
     ReturnType<typeof parseMainnetFacilitatorRequest>
   > | null = null;
   try {
-    parsed = await parseMainnetFacilitatorRequest(request.clone());
+    parsed = await parseMainnetFacilitatorRequest(
+      request.clone() as unknown as Request,
+    );
   } catch {
     // The authoritative mainnet handler returns the protocol error. The edge
     // wrapper never weakens or replaces its validation path.
@@ -150,14 +158,12 @@ async function facilitatorWithBazaar(
     operation === "/verify" ? body?.isValid === true : body?.success === true;
   if (!accepted) return response;
 
-  const replayed = response.headers.get("X-XGuard-Replayed") === "true";
   let outcome: BazaarCatalogOutcome | null = null;
   try {
     outcome = await catalogBazaarPayment(
       env.DB,
       parsed.paymentPayload,
       parsed.paymentRequirements,
-      operation === "/settle" && !replayed,
     );
   } catch {
     outcome = bazaarExtensionPresent(parsed.paymentPayload)
@@ -299,8 +305,7 @@ async function mcpRequest(
   if (!MCP_PROTOCOLS.has(protocolVersion))
     return corsJson({ error: "unsupported_mcp_protocol_version" }, 400);
 
-  if (isNotification)
-    return corsResponse(new Response(null, { status: 202 }));
+  if (isNotification) return corsResponse(new Response(null, { status: 202 }));
 
   if (method === "ping") return mcpResult(id, {});
 

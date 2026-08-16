@@ -1,7 +1,14 @@
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
+import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 
 const MAX_DESCRIPTION_LENGTH = 512;
-const MAX_SCHEMA_DEPTH = 20;
+const MAX_SCHEMA_BYTES = 64 * 1024;
+const MAX_SCHEMA_NODES = 512;
+const ajv = new Ajv2020({
+  allErrors: false,
+  strict: false,
+  validateFormats: false,
+});
 const MAX_SEARCH_TERMS = 8;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -12,18 +19,18 @@ export interface BazaarCatalogOutcome {
 }
 
 export interface BazaarListOptions {
-  type?: string;
-  payTo?: string;
-  scheme?: string;
-  network?: string;
-  extensions?: string;
-  limit?: number;
-  offset?: number;
+  type?: string | undefined;
+  payTo?: string | undefined;
+  scheme?: string | undefined;
+  network?: string | undefined;
+  extensions?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
 }
 
 export interface BazaarSearchOptions extends Omit<BazaarListOptions, "offset"> {
   query: string;
-  cursor?: string;
+  cursor?: string | undefined;
 }
 
 interface CatalogEntry {
@@ -53,16 +60,17 @@ interface BazaarRow {
   network: string;
   tool_name: string | null;
   last_updated_epoch: number;
-  successful_settlements: number;
 }
 
 export async function catalogBazaarPayment(
   db: D1Database,
   paymentPayload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
-  settled: boolean,
 ): Promise<BazaarCatalogOutcome | null> {
-  const extracted = extractBazaarCatalogEntry(paymentPayload, paymentRequirements);
+  const extracted = extractBazaarCatalogEntry(
+    paymentPayload,
+    paymentRequirements,
+  );
   if (extracted === null) return null;
   if ("rejectedReason" in extracted) {
     return { status: "rejected", rejectedReason: extracted.rejectedReason };
@@ -75,8 +83,8 @@ export async function catalogBazaarPayment(
       `INSERT INTO bazaar_resources(
         resource_key,resource_url,resource_type,x402_version,accepts_json,
         extensions_json,metadata_json,pay_to,scheme,network,tool_name,
-        search_text,first_seen_epoch,last_updated_epoch,successful_settlements
-      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        search_text,first_seen_epoch,last_updated_epoch
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(resource_key) DO UPDATE SET
         resource_url=excluded.resource_url,
         resource_type=excluded.resource_type,
@@ -89,8 +97,7 @@ export async function catalogBazaarPayment(
         network=excluded.network,
         tool_name=excluded.tool_name,
         search_text=excluded.search_text,
-        last_updated_epoch=excluded.last_updated_epoch,
-        successful_settlements=bazaar_resources.successful_settlements + excluded.successful_settlements`,
+        last_updated_epoch=excluded.last_updated_epoch`,
     )
     .bind(
       entry.resourceKey,
@@ -107,7 +114,6 @@ export async function catalogBazaarPayment(
       entry.searchText,
       now,
       now,
-      settled ? 1 : 0,
     )
     .run();
 
@@ -124,19 +130,27 @@ export function extractBazaarCatalogEntry(
   if (rawBazaar === undefined) return null;
 
   const bazaar = asOptionalRecord(rawBazaar);
-  if (bazaar === null) return { rejectedReason: "bazaar extension must be an object" };
+  if (bazaar === null)
+    return { rejectedReason: "bazaar extension must be an object" };
   const info = asOptionalRecord(bazaar.info);
   const schema = asOptionalRecord(bazaar.schema);
   if (info === null || schema === null)
-    return { rejectedReason: "bazaar.info and bazaar.schema are required objects" };
+    return {
+      rejectedReason: "bazaar.info and bazaar.schema are required objects",
+    };
   if (schema.$schema !== "https://json-schema.org/draft/2020-12/schema")
-    return { rejectedReason: "bazaar schema must use JSON Schema Draft 2020-12" };
+    return {
+      rejectedReason: "bazaar schema must use JSON Schema Draft 2020-12",
+    };
   if (!validateJsonSchema(info, schema))
     return { rejectedReason: "bazaar.info failed schema validation" };
 
   const resource = asOptionalRecord(payload.resource);
   if (resource === null)
-    return { rejectedReason: "paymentPayload.resource is required for Bazaar cataloging" };
+    return {
+      rejectedReason:
+        "paymentPayload.resource is required for Bazaar cataloging",
+    };
   const resourceUrl = canonicalResourceUrl(resource.url, bazaar.routeTemplate);
   if (resourceUrl === null)
     return { rejectedReason: "resource.url or routeTemplate is invalid" };
@@ -168,18 +182,26 @@ export function extractBazaarCatalogEntry(
     metadata.mimeType = resource.mimeType;
 
   const requirements = asRecord(paymentRequirements);
-  const payTo = typeof requirements.payTo === "string" ? requirements.payTo : "";
-  const scheme = typeof requirements.scheme === "string" ? requirements.scheme : "";
-  const network = typeof requirements.network === "string" ? requirements.network : "";
+  const payTo =
+    typeof requirements.payTo === "string" ? requirements.payTo : "";
+  const scheme =
+    typeof requirements.scheme === "string" ? requirements.scheme : "";
+  const network =
+    typeof requirements.network === "string" ? requirements.network : "";
   if (payTo === "" || scheme === "" || network === "")
     return { rejectedReason: "payment requirements are incomplete" };
 
   const resourceKey =
     resourceType === "mcp" ? `${resourceUrl}#mcp:${toolName}` : resourceUrl;
-  const tags = Array.isArray(metadata.tags) ? (metadata.tags as string[]).join(" ") : "";
-  const serviceName = typeof metadata.serviceName === "string" ? metadata.serviceName : "";
+  const tags = Array.isArray(metadata.tags)
+    ? (metadata.tags as string[]).join(" ")
+    : "";
+  const serviceName =
+    typeof metadata.serviceName === "string" ? metadata.serviceName : "";
   const toolDescription =
-    typeof input.description === "string" ? input.description.slice(0, 256) : "";
+    typeof input.description === "string"
+      ? input.description.slice(0, 256)
+      : "";
   const searchText = [
     resourceUrl,
     description ?? "",
@@ -211,7 +233,10 @@ export function extractBazaarCatalogEntry(
   };
 }
 
-export async function listBazaarResources(db: D1Database, options: BazaarListOptions) {
+export async function listBazaarResources(
+  db: D1Database,
+  options: BazaarListOptions,
+) {
   const limit = clampLimit(options.limit);
   const offset = clampOffset(options.offset);
   const { whereSql, binds } = buildFilters(options);
@@ -237,7 +262,10 @@ export async function listBazaarResources(db: D1Database, options: BazaarListOpt
   };
 }
 
-export async function searchBazaarResources(db: D1Database, options: BazaarSearchOptions) {
+export async function searchBazaarResources(
+  db: D1Database,
+  options: BazaarSearchOptions,
+) {
   const limit = clampLimit(options.limit);
   const offset = decodeCursor(options.cursor);
   const terms = options.query
@@ -257,7 +285,7 @@ export async function searchBazaarResources(db: D1Database, options: BazaarSearc
   const result = await db
     .prepare(
       `SELECT * FROM bazaar_resources ${whereSql}
-       ORDER BY successful_settlements DESC, last_updated_epoch DESC, resource_key ASC
+       ORDER BY last_updated_epoch DESC, resource_key ASC
        LIMIT ? OFFSET ?`,
     )
     .bind(...binds, ...termBinds, limit + 1, offset)
@@ -293,88 +321,111 @@ export async function bazaarStats(db: D1Database) {
     .prepare(
       `SELECT COUNT(*) AS resources,
               COALESCE(SUM(CASE WHEN resource_type='mcp' THEN 1 ELSE 0 END),0) AS mcp,
-              COALESCE(SUM(CASE WHEN resource_type='http' THEN 1 ELSE 0 END),0) AS http,
-              COALESCE(SUM(successful_settlements),0) AS successfulSettlements
+              COALESCE(SUM(CASE WHEN resource_type='http' THEN 1 ELSE 0 END),0) AS http
        FROM bazaar_resources`,
     )
-    .first<{ resources: number; mcp: number; http: number; successfulSettlements: number }>();
+    .first<{ resources: number; mcp: number; http: number }>();
   return {
     resources: row?.resources ?? 0,
     mcpResources: row?.mcp ?? 0,
     httpResources: row?.http ?? 0,
-    successfulSettlementObservations: row?.successfulSettlements ?? 0,
   };
 }
 
 export function validateJsonSchema(
   value: unknown,
   schemaValue: unknown,
-  depth = 0,
 ): boolean {
-  if (depth > MAX_SCHEMA_DEPTH) return false;
   const schema = asOptionalRecord(schemaValue);
   if (schema === null) return false;
-  if ("$ref" in schema || "dynamicRef" in schema) return false;
-
-  if (Array.isArray(schema.allOf))
-    if (!schema.allOf.every((part) => validateJsonSchema(value, part, depth + 1))) return false;
-  if (Array.isArray(schema.anyOf))
-    if (!schema.anyOf.some((part) => validateJsonSchema(value, part, depth + 1))) return false;
-  if (Array.isArray(schema.oneOf)) {
-    const matches = schema.oneOf.filter((part) => validateJsonSchema(value, part, depth + 1));
-    if (matches.length !== 1) return false;
-  }
-  if (Array.isArray(schema.enum) && !schema.enum.some((item) => jsonEqual(item, value))) return false;
-  if ("const" in schema && !jsonEqual(schema.const, value)) return false;
-
-  const type = schema.type;
-  if (typeof type === "string" && !matchesType(value, type)) return false;
-  if (Array.isArray(type) && !type.some((candidate) => typeof candidate === "string" && matchesType(value, candidate)))
+  if (schema.$schema !== "https://json-schema.org/draft/2020-12/schema")
     return false;
+  if (!schemaReferencesAreLocal(schema)) return false;
 
-  if (typeof value === "string") {
-    if (typeof schema.minLength === "number" && value.length < schema.minLength) return false;
-    if (typeof schema.maxLength === "number" && value.length > schema.maxLength) return false;
-    if (typeof schema.pattern === "string") {
-      if (schema.pattern.length > 128) return false;
-      try {
-        if (!new RegExp(schema.pattern, "u").test(value)) return false;
-      } catch {
-        return false;
-      }
+  try {
+    const serialized = JSON.stringify(schema);
+    if (new TextEncoder().encode(serialized).byteLength > MAX_SCHEMA_BYTES)
+      return false;
+    const validate = ajv.compile(schema);
+    if (!validate(value)) return false;
+    return schemaEnforcesBazaarContract(validate, value);
+  } catch {
+    return false;
+  }
+}
+
+function schemaReferencesAreLocal(root: unknown): boolean {
+  const stack: unknown[] = [root];
+  let nodes = 0;
+  while (stack.length > 0) {
+    const value = stack.pop();
+    if (++nodes > MAX_SCHEMA_NODES) return false;
+    if (Array.isArray(value)) {
+      for (const item of value) stack.push(item);
+      continue;
     }
-  }
-
-  if (typeof value === "number") {
-    if (typeof schema.minimum === "number" && value < schema.minimum) return false;
-    if (typeof schema.maximum === "number" && value > schema.maximum) return false;
-  }
-
-  if (Array.isArray(value)) {
-    if (typeof schema.minItems === "number" && value.length < schema.minItems) return false;
-    if (typeof schema.maxItems === "number" && value.length > schema.maxItems) return false;
-    if (schema.items !== undefined)
-      if (!value.every((item) => validateJsonSchema(item, schema.items, depth + 1))) return false;
-  }
-
-  if (isRecord(value)) {
-    const required = Array.isArray(schema.required)
-      ? schema.required.filter((item): item is string => typeof item === "string")
-      : [];
-    if (required.some((key) => !(key in value))) return false;
-    const properties = asOptionalRecord(schema.properties) ?? {};
+    if (!isRecord(value)) continue;
     for (const [key, item] of Object.entries(value)) {
-      if (key in properties) {
-        if (!validateJsonSchema(item, properties[key], depth + 1)) return false;
-      } else if (schema.additionalProperties === false) {
-        return false;
-      } else if (isRecord(schema.additionalProperties)) {
-        if (!validateJsonSchema(item, schema.additionalProperties, depth + 1)) return false;
+      if (key === "$ref" || key === "$id") {
+        if (
+          typeof item !== "string" ||
+          !(item === "#" || item.startsWith("#/"))
+        )
+          return false;
       }
+      if (key === "$dynamicRef") {
+        if (typeof item !== "string" || !item.startsWith("#")) return false;
+      }
+      stack.push(item);
     }
   }
-
   return true;
+}
+
+function schemaEnforcesBazaarContract(
+  validate: ValidateFunction,
+  value: unknown,
+): boolean {
+  if (!isRecord(value) || !isRecord(value.input)) return false;
+  const input = value.input;
+
+  const withoutInput = structuredClone(value);
+  delete withoutInput.input;
+  if (validate(withoutInput)) return false;
+
+  const wrongType = structuredClone(value);
+  if (!isRecord(wrongType.input)) return false;
+  wrongType.input.type = input.type === "mcp" ? "http" : "mcp";
+  if (validate(wrongType)) return false;
+
+  if (input.type === "mcp") {
+    for (const required of ["toolName", "inputSchema"] as const) {
+      const mutation = structuredClone(value);
+      if (!isRecord(mutation.input)) return false;
+      delete mutation.input[required];
+      if (validate(mutation)) return false;
+    }
+    return true;
+  }
+
+  if (input.type === "http") {
+    const wrongMethod = structuredClone(value);
+    if (!isRecord(wrongMethod.input)) return false;
+    wrongMethod.input.method = "TRACE";
+    if (validate(wrongMethod)) return false;
+
+    if (["POST", "PUT", "PATCH"].includes(String(input.method).toUpperCase())) {
+      for (const required of ["bodyType", "body"] as const) {
+        const mutation = structuredClone(value);
+        if (!isRecord(mutation.input)) return false;
+        delete mutation.input[required];
+        if (validate(mutation)) return false;
+      }
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function isValidHttpInput(input: Record<string, unknown>): boolean {
@@ -390,15 +441,26 @@ function isValidHttpInput(input: Record<string, unknown>): boolean {
 }
 
 function isValidMcpInput(input: Record<string, unknown>): boolean {
-  if (input.type !== "mcp" || typeof input.toolName !== "string" || input.toolName.length === 0)
+  if (
+    input.type !== "mcp" ||
+    typeof input.toolName !== "string" ||
+    input.toolName.length === 0
+  )
     return false;
   if (!isRecord(input.inputSchema)) return false;
-  if (input.transport !== undefined && input.transport !== "streamable-http" && input.transport !== "sse")
+  if (
+    input.transport !== undefined &&
+    input.transport !== "streamable-http" &&
+    input.transport !== "sse"
+  )
     return false;
   return true;
 }
 
-function canonicalResourceUrl(rawUrl: unknown, rawTemplate: unknown): string | null {
+function canonicalResourceUrl(
+  rawUrl: unknown,
+  rawTemplate: unknown,
+): string | null {
   if (typeof rawUrl !== "string" || rawUrl.length > 2048) return null;
   let url: URL;
   try {
@@ -427,9 +489,12 @@ function isValidRouteTemplate(value: string): boolean {
   return !decoded.includes("..") && !decoded.includes("://");
 }
 
-function sanitizeResourceMetadata(resource: Record<string, unknown>): Record<string, unknown> {
+function sanitizeResourceMetadata(
+  resource: Record<string, unknown>,
+): Record<string, unknown> {
   const metadata: Record<string, unknown> = {};
-  if (isPrintableAscii(resource.serviceName, 32)) metadata.serviceName = resource.serviceName;
+  if (isPrintableAscii(resource.serviceName, 32))
+    metadata.serviceName = resource.serviceName;
   if (Array.isArray(resource.tags)) {
     const seen = new Set<string>();
     const tags: string[] = [];
@@ -457,7 +522,8 @@ function isPrintableAscii(value: unknown, max: number): value is string {
 }
 
 function isValidIconUrl(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0 || value.length > 2048) return false;
+  if (typeof value !== "string" || value.length === 0 || value.length > 2048)
+    return false;
   let url: URL;
   try {
     url = new URL(value);
@@ -480,7 +546,14 @@ function isForbiddenHost(hostname: string): boolean {
   } catch {
     return true;
   }
-  if (["localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"].includes(host))
+  if (
+    [
+      "localhost",
+      "localhost.localdomain",
+      "ip6-localhost",
+      "ip6-loopback",
+    ].includes(host)
+  )
     return true;
   if (/^\d+$/.test(host) || /^0x[0-9a-f]+$/i.test(host)) return true;
   if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return true;
@@ -528,7 +601,6 @@ function rowToResource(row: BazaarRow) {
     extensions,
     metadata,
     ...(row.tool_name === null ? {} : { toolName: row.tool_name }),
-    successfulSettlements: row.successful_settlements,
   };
 }
 
@@ -550,7 +622,9 @@ function decodeCursor(cursor: string | undefined): number {
   if (cursor === undefined || cursor === "") return 0;
   try {
     const parsed = JSON.parse(atob(cursor)) as { offset?: unknown };
-    return typeof parsed.offset === "number" && Number.isInteger(parsed.offset) && parsed.offset >= 0
+    return typeof parsed.offset === "number" &&
+      Number.isInteger(parsed.offset) &&
+      parsed.offset >= 0
       ? parsed.offset
       : 0;
   } catch {
@@ -568,31 +642,6 @@ function safeParseJson(value: string, fallback: unknown) {
   } catch {
     return fallback;
   }
-}
-
-function matchesType(value: unknown, type: string): boolean {
-  switch (type) {
-    case "object":
-      return isRecord(value);
-    case "array":
-      return Array.isArray(value);
-    case "string":
-      return typeof value === "string";
-    case "number":
-      return typeof value === "number" && Number.isFinite(value);
-    case "integer":
-      return typeof value === "number" && Number.isInteger(value);
-    case "boolean":
-      return typeof value === "boolean";
-    case "null":
-      return value === null;
-    default:
-      return false;
-  }
-}
-
-function jsonEqual(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -53,7 +53,9 @@ const mcpSchema = {
   required: ["input"],
 };
 
-function paymentPayload(extension: unknown = { info: mcpInfo, schema: mcpSchema }) {
+function paymentPayload(
+  extension: unknown = { info: mcpInfo, schema: mcpSchema },
+) {
   return {
     x402Version: 2,
     resource: {
@@ -124,6 +126,43 @@ describe("mainnet Bazaar extraction", () => {
 describe("Bazaar JSON Schema validation", () => {
   it("validates the canonical MCP info subset", () => {
     expect(validateJsonSchema(mcpInfo, mcpSchema)).toBe(true);
+  });
+
+  it("accepts same-document JSON Pointer refs", () => {
+    const schema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: { input: { $ref: "#/$defs/input" } },
+      required: ["input"],
+      $defs: {
+        input: {
+          type: "object",
+          properties: {
+            type: { const: "mcp" },
+            toolName: { type: "string" },
+            inputSchema: { type: "object" },
+          },
+          required: ["type", "toolName", "inputSchema"],
+          additionalProperties: true,
+        },
+      },
+    };
+    expect(validateJsonSchema(mcpInfo, schema)).toBe(true);
+  });
+
+  it("rejects external refs and ids without resolving them", () => {
+    expect(
+      validateJsonSchema(mcpInfo, {
+        ...mcpSchema,
+        properties: { input: { $ref: "https://evil.example/schema.json" } },
+      }),
+    ).toBe(false);
+    expect(
+      validateJsonSchema(mcpInfo, {
+        ...mcpSchema,
+        $id: "file:///tmp/schema.json",
+      }),
+    ).toBe(false);
   });
 
   it("rejects info that violates a required const", () => {

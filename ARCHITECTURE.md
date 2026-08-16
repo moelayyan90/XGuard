@@ -26,12 +26,12 @@ flowchart TD
 
 ## Runtime surfaces
 
-| Surface | Purpose | Source of truth |
-| --- | --- | --- |
-| `apps/worker/src/index.ts` | Public Base Sepolia/testnet worker | Durable Object settlement truth + D1 projection |
-| `apps/worker/src/mainnet.ts` | Base mainnet financial core | Durable Object settlement ownership + D1 billing/finality/reconciliation |
-| `apps/worker/src/mainnet-edge.ts` | Mainnet discovery/MCP wrapper around the financial core | D1 Bazaar catalog; delegates all financial decisions to `mainnet.ts` |
-| `apps/gateway` | Portable reference/local operations | WAL/FULL-sync SQLite ledger |
+| Surface                           | Purpose                                                 | Source of truth                                                          |
+| --------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `apps/worker/src/index.ts`        | Public Base Sepolia/testnet worker                      | Durable Object settlement truth + D1 projection                          |
+| `apps/worker/src/mainnet.ts`      | Base mainnet financial core                             | Durable Object settlement ownership + D1 billing/finality/reconciliation |
+| `apps/worker/src/mainnet-edge.ts` | Mainnet discovery/MCP wrapper around the financial core | D1 Bazaar catalog; delegates all financial decisions to `mainnet.ts`     |
+| `apps/gateway`                    | Portable reference/local operations                     | WAL/FULL-sync SQLite ledger                                              |
 
 The mainnet Worker currently supports x402 v2 `exact` payments using native USDC on Base mainnet. Merchant service fees are separately disclosed and funded through the prepaid XGuard service balance; they are not silently deducted from the seller's advertised payment amount.
 
@@ -46,7 +46,6 @@ Operational states are `HEALTHY`, `DEGRADED`, `OPEN`, `HALF_OPEN`, `QUARANTINED`
 The mainnet edge implements the x402 Bazaar discovery role natively:
 
 - successful verified x402 payloads with a valid `bazaar` extension may be cataloged;
-- successful non-replayed settlements increment the resource's observed successful-settlement counter;
 - MCP tools use `(resource URL, tool name)` as the stable catalog identity;
 - `/discovery/resources` provides machine-readable catalog listing and filtering;
 - `/discovery/search` provides bounded catalog search;

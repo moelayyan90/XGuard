@@ -12,8 +12,7 @@ CREATE TABLE IF NOT EXISTS bazaar_resources (
   tool_name TEXT,
   search_text TEXT NOT NULL,
   first_seen_epoch INTEGER NOT NULL,
-  last_updated_epoch INTEGER NOT NULL,
-  successful_settlements INTEGER NOT NULL DEFAULT 0 CHECK(successful_settlements >= 0)
+  last_updated_epoch INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_bazaar_resources_type_updated
