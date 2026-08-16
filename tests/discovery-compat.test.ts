@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  compatibilityDiscoveryResponse,
-} from "../apps/worker/src/discovery-compat.js";
+import { compatibilityDiscoveryResponse } from "../apps/worker/src/discovery-compat.js";
 import { discoveryResponse } from "../apps/worker/src/discovery.js";
 
 const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
