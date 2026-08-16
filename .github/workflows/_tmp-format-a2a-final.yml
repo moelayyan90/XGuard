@@ -1,0 +1,38 @@
+name: Temporary format final A2A branch
+
+on:
+  push:
+    branches:
+      - agent/a2a-final-main
+    paths:
+      - ".github/workflows/_tmp-format-a2a-final.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/a2a-final-main
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Format merged mainnet entrypoint and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx prettier --write apps/worker/src/mainnet-modern.ts
+          rm .github/workflows/_tmp-format-a2a-final.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/mainnet-modern.ts .github/workflows/_tmp-format-a2a-final.yml
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "style: format final A2A integration"
+          git push origin HEAD:agent/a2a-final-main
