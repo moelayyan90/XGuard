@@ -3,6 +3,7 @@ import mainnetHandler, {
   MainnetRequestGate,
 } from "./mainnet.js";
 import { discoveryResponse } from "./discovery.js";
+import { searchIndexResponse } from "./search-indexing.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
 
@@ -23,6 +24,9 @@ const mainnetScheduled = mainnetHandler.scheduled as unknown as PublicScheduled;
 
 const handler: ExportedHandler<PublicMainnetEnv> = {
   async fetch(request, env, executionCtx): Promise<Response> {
+    const searchIndex = searchIndexResponse(request);
+    if (searchIndex !== null) return searchIndex;
+
     const discovery = discoveryResponse(request);
     if (discovery !== null) return discovery;
 
@@ -33,7 +37,9 @@ const handler: ExportedHandler<PublicMainnetEnv> = {
         method: "GET",
         body: null,
       });
-      const response = await mainnetFetch(discoveryRequest, env, executionCtx);
+      const response =
+        searchIndexResponse(discoveryRequest) ??
+        (await mainnetFetch(discoveryRequest, env, executionCtx));
       const headers = new Headers(response.headers);
       headers.set("X-XGuard-Discovery", "root-post");
       headers.set("Cache-Control", "no-store");
