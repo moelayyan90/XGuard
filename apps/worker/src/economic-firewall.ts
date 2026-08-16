@@ -299,7 +299,7 @@ app.post("/v1/intents/:intentId/settle", async (context) => {
         "Settlement protocol does not match the bound intent",
         409,
       );
-    const finalized = await stub.recordSettlement({
+    await stub.recordSettlement({
       merchantId,
       executionId: snapshot.executionId,
       protocol,
@@ -309,6 +309,13 @@ app.post("/v1/intents/:intentId/settle", async (context) => {
         "chargedAmountMicroUsd",
       ),
     });
+    const finalized = await stub.getSnapshot(merchantId);
+    if (finalized === null)
+      throw new XGuardError(
+        "INTERNAL_ERROR",
+        "Finalized intent disappeared",
+        500,
+      );
     return context.json(finalized, 200, {
       "X-XGuard-Intent-ID": finalized.intentId,
       "X-XGuard-State": finalized.state,

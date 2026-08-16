@@ -259,9 +259,7 @@ export class EconomicIntentCoordinator extends DurableObject<EconomicIntentCoord
     return this.snapshot(this.requireRow());
   }
 
-  public recordSettlement(
-    input: EconomicIntentSettlementInput,
-  ): EconomicIntentSnapshot {
+  public recordSettlement(input: EconomicIntentSettlementInput): void {
     const row = this.requireExecutionOwner(input.merchantId, input.executionId);
     if (row.authorization_json === null || row.fulfillment_json === null)
       throw conflict(
@@ -283,7 +281,7 @@ export class EconomicIntentCoordinator extends DurableObject<EconomicIntentCoord
         existing.chargedAmountMicroUsd !== settlement.chargedAmountMicroUsd
       )
         throw conflict("Intent is already bound to another settlement");
-      return this.snapshot(row);
+      return;
     }
     if (row.state !== "FULFILLED")
       throw conflict(`Cannot settle intent from state ${row.state}`);
@@ -310,7 +308,6 @@ export class EconomicIntentCoordinator extends DurableObject<EconomicIntentCoord
       new Date().toISOString(),
       input.executionId,
     );
-    return this.snapshot(this.requireRow());
   }
 
   public quarantine(
