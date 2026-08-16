@@ -40,8 +40,9 @@ jobs:
           WRANGLER_SEND_METRICS: "false"
         run: |
           set -euo pipefail
+          mkdir -p economic-preview-diagnostics
           if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-            echo "::error::Cloudflare CI authorization is unavailable."
+            echo "cloudflare_ci_authorization_unavailable" > economic-preview-diagnostics/failure-stage.txt
             exit 1
           fi
 
@@ -52,40 +53,77 @@ jobs:
           printf '%s' "$PREVIEW_TOKEN" | npx wrangler secret put PREVIEW_API_TOKEN --config "$CONFIG"
 
           BASE_URL="https://xguard-economic-preview.maqamapp.workers.dev"
+          HEALTH_OK=0
           for attempt in {1..12}; do
-            if curl -fsS "$BASE_URL/healthz" >/tmp/economic-health.json; then
+            HEALTH_STATUS="$(curl -sS -o economic-preview-diagnostics/health-body.txt -w '%{http_code}' "$BASE_URL/healthz" || true)"
+            printf '%s' "$HEALTH_STATUS" > economic-preview-diagnostics/health-status.txt
+            if [[ "$HEALTH_STATUS" == "200" ]]; then
+              HEALTH_OK=1
               break
             fi
             sleep 5
           done
-          node -e 'const f=require("fs"); const x=JSON.parse(f.readFileSync("/tmp/economic-health.json","utf8")); if(x.status!=="ok") process.exit(1);'
+          if [[ "$HEALTH_OK" != "1" ]]; then
+            echo "health" > economic-preview-diagnostics/failure-stage.txt
+            exit 1
+          fi
+          node -e 'const f=require("fs"); const x=JSON.parse(f.readFileSync("economic-preview-diagnostics/health-body.txt","utf8")); if(x.status!=="ok") process.exit(1);'
 
           EXPIRES_AT="$(node -e 'console.log(new Date(Date.now()+10*60*1000).toISOString())')"
           NONCE="$(node -e 'console.log(require("node:crypto").randomUUID())')"
           CREATE_BODY="$(node -e 'process.stdout.write(JSON.stringify({actorId:"ci-preview-agent",protocol:"preview",resource:{method:"GET",url:"https://example.com/",bodyHash:null},money:{maxAmountMicroUsd:0,currency:"USD",network:null,asset:null},expiresAt:process.argv[1],nonce:process.argv[2],metadataHash:null}))' "$EXPIRES_AT" "$NONCE")"
 
-          CREATE_RESPONSE="$(curl -fsS -X POST "$BASE_URL/v1/intents" -H "Authorization: Bearer $PREVIEW_TOKEN" -H 'Content-Type: application/json' --data "$CREATE_BODY")"
-          INTENT_ID="$(printf '%s' "$CREATE_RESPONSE" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!/^xi_[0-9a-f]{40}$/.test(x.intentId))process.exit(1);process.stdout.write(x.intentId);});')"
+          CREATE_STATUS="$(curl -sS -o economic-preview-diagnostics/create-body.txt -w '%{http_code}' -X POST "$BASE_URL/v1/intents" -H "Authorization: Bearer $PREVIEW_TOKEN" -H 'Content-Type: application/json' --data "$CREATE_BODY" || true)"
+          printf '%s' "$CREATE_STATUS" > economic-preview-diagnostics/create-status.txt
+          if [[ "$CREATE_STATUS" != "201" && "$CREATE_STATUS" != "200" ]]; then
+            echo "create" > economic-preview-diagnostics/failure-stage.txt
+            exit 1
+          fi
+          INTENT_ID="$(cat economic-preview-diagnostics/create-body.txt | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!/^xi_[0-9a-f]{40}$/.test(x.intentId))process.exit(1);process.stdout.write(x.intentId);});')"
 
-          curl -fsS -X POST "$BASE_URL/v1/intents/$INTENT_ID/authorize" \
+          AUTHORIZE_STATUS="$(curl -sS -o economic-preview-diagnostics/authorize-body.txt -w '%{http_code}' -X POST "$BASE_URL/v1/intents/$INTENT_ID/authorize" \
             -H "Authorization: Bearer $PREVIEW_TOKEN" \
             -H 'Content-Type: application/json' \
-            --data '{"authorization":{"kind":"ci-zero-value-preview"},"authorizedAmountMicroUsd":0}' >/tmp/economic-authorize.json
-
-          EXEC_STATUS="$(curl -sS -o /tmp/economic-resource.out -w '%{http_code}' -X POST "$BASE_URL/v1/intents/$INTENT_ID/execute" \
-            -H "Authorization: Bearer $PREVIEW_TOKEN" \
-            -H 'Content-Type: application/json' \
-            --data '{"headers":{"accept":"text/html"}}')"
-          if [[ "$EXEC_STATUS" != "200" ]]; then
-            echo "::error::Economic Firewall execution returned HTTP $EXEC_STATUS"
+            --data '{"authorization":{"kind":"ci-zero-value-preview"},"authorizedAmountMicroUsd":0}' || true)"
+          printf '%s' "$AUTHORIZE_STATUS" > economic-preview-diagnostics/authorize-status.txt
+          if [[ "$AUTHORIZE_STATUS" != "200" ]]; then
+            echo "authorize" > economic-preview-diagnostics/failure-stage.txt
             exit 1
           fi
 
-          SNAPSHOT="$(curl -fsS "$BASE_URL/v1/intents/$INTENT_ID" -H "Authorization: Bearer $PREVIEW_TOKEN")"
-          printf '%s' "$SNAPSHOT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.state!=="FULFILLED"||!x.fulfillmentHash)process.exit(1);});'
-
-          FINAL="$(curl -fsS -X POST "$BASE_URL/v1/intents/$INTENT_ID/settle" \
+          EXEC_STATUS="$(curl -sS -o economic-preview-diagnostics/execute-body.txt -w '%{http_code}' -X POST "$BASE_URL/v1/intents/$INTENT_ID/execute" \
             -H "Authorization: Bearer $PREVIEW_TOKEN" \
             -H 'Content-Type: application/json' \
-            --data '{"protocol":"preview","settlement":{"kind":"ci-zero-value-preview"},"chargedAmountMicroUsd":0}')"
-          printf '%s' "$FINAL" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.state!=="FINAL"||x.proof?.result!=="EXACTLY_ONCE"||x.proof?.chargedAmountMicroUsd!==0)process.exit(1); console.log(JSON.stringify({intentId:x.intentId,state:x.state,result:x.proof.result,proofHash:x.proof.proofHash}));});'
+            --data '{"headers":{"accept":"text/html"}}' || true)"
+          printf '%s' "$EXEC_STATUS" > economic-preview-diagnostics/execute-status.txt
+          if [[ "$EXEC_STATUS" != "200" ]]; then
+            echo "execute" > economic-preview-diagnostics/failure-stage.txt
+            exit 1
+          fi
+
+          SNAPSHOT_STATUS="$(curl -sS -o economic-preview-diagnostics/snapshot-body.txt -w '%{http_code}' "$BASE_URL/v1/intents/$INTENT_ID" -H "Authorization: Bearer $PREVIEW_TOKEN" || true)"
+          printf '%s' "$SNAPSHOT_STATUS" > economic-preview-diagnostics/snapshot-status.txt
+          if [[ "$SNAPSHOT_STATUS" != "200" ]]; then
+            echo "snapshot" > economic-preview-diagnostics/failure-stage.txt
+            exit 1
+          fi
+          cat economic-preview-diagnostics/snapshot-body.txt | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.state!=="FULFILLED"||!x.fulfillmentHash)process.exit(1);});'
+
+          SETTLE_STATUS="$(curl -sS -o economic-preview-diagnostics/settle-body.txt -w '%{http_code}' -X POST "$BASE_URL/v1/intents/$INTENT_ID/settle" \
+            -H "Authorization: Bearer $PREVIEW_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data '{"protocol":"preview","settlement":{"kind":"ci-zero-value-preview"},"chargedAmountMicroUsd":0}' || true)"
+          printf '%s' "$SETTLE_STATUS" > economic-preview-diagnostics/settle-status.txt
+          if [[ "$SETTLE_STATUS" != "200" ]]; then
+            echo "settle" > economic-preview-diagnostics/failure-stage.txt
+            exit 1
+          fi
+          cat economic-preview-diagnostics/settle-body.txt | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.state!=="FINAL"||x.proof?.result!=="EXACTLY_ONCE"||x.proof?.chargedAmountMicroUsd!==0)process.exit(1); console.log(JSON.stringify({intentId:x.intentId,state:x.state,result:x.proof.result,proofHash:x.proof.proofHash}));});'
+          echo "success" > economic-preview-diagnostics/failure-stage.txt
+      - name: Upload Economic Firewall E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: economic-preview-e2e-diagnostics
+          path: economic-preview-diagnostics
+          if-no-files-found: warn
