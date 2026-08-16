@@ -8,6 +8,9 @@ describe("mainnet discovery", () => {
     ["/.well-known/agent-card.json", "application/json"],
     ["/.well-known/agent.json", "application/json"],
     ["/.well-known/agent-market.json", "application/json"],
+    ["/.well-known/x402/facilitator.json", "application/json"],
+    ["/.well-known/x402.json", "application/json"],
+    ["/provider.json", "application/json"],
     ["/openapi.json", "application/json"],
     ["/llms.txt", "text/plain"],
     ["/llms-full.txt", "text/plain"],
@@ -26,6 +29,7 @@ describe("mainnet discovery", () => {
     );
     const card = (await response?.json()) as {
       name: string;
+      providerManifest: string;
       supportedInterfaces: Array<{
         protocolBinding: string;
         protocolVersion: string;
@@ -34,11 +38,64 @@ describe("mainnet discovery", () => {
     };
 
     expect(card.name).toBe("XGuard");
+    expect(card.providerManifest).toBe(
+      `${ORIGIN}/.well-known/x402/facilitator.json`,
+    );
     expect(card.supportedInterfaces[0]?.protocolVersion).toBe("2");
     expect(card.supportedInterfaces[0]?.protocolBinding).toContain("x402");
     expect(card.skills.map((skill) => skill.id)).toContain(
       "x402-payment-settlement",
     );
+  });
+
+  it("publishes facilitator selection metadata without misrepresenting the downstream signer", async () => {
+    const response = discoveryResponse(
+      new Request(`${ORIGIN}/.well-known/x402/facilitator.json`),
+    );
+    const provider = (await response?.json()) as {
+      kind: string;
+      status: string;
+      facilitator: {
+        baseUrl: string;
+        supported: string;
+        verify: string;
+        settle: string;
+        network: string;
+        scheme: string;
+        clientConfig: { type: string; url: string; authentication: string };
+      };
+      onboarding: {
+        packageInstallationRequired: boolean;
+        apiKeyRequiredForVerifyAndSettle: boolean;
+      };
+      pricing: { feeUsd: string; subscription: string };
+      settlementExecution: {
+        mode: string;
+        currentDownstream: string;
+        signerAttribution: string;
+      };
+    };
+
+    expect(provider.kind).toBe("x402-facilitator");
+    expect(provider.status).toBe("production");
+    expect(provider.facilitator.baseUrl).toBe(ORIGIN);
+    expect(provider.facilitator.supported).toBe(`${ORIGIN}/supported`);
+    expect(provider.facilitator.verify).toBe(`${ORIGIN}/verify`);
+    expect(provider.facilitator.settle).toBe(`${ORIGIN}/settle`);
+    expect(provider.facilitator.network).toBe("eip155:8453");
+    expect(provider.facilitator.scheme).toBe("exact");
+    expect(provider.facilitator.clientConfig).toEqual({
+      type: "HTTPFacilitatorClient",
+      url: ORIGIN,
+      authentication: "bearer",
+    });
+    expect(provider.onboarding.packageInstallationRequired).toBe(false);
+    expect(provider.onboarding.apiKeyRequiredForVerifyAndSettle).toBe(true);
+    expect(provider.pricing.feeUsd).toBe("0.002");
+    expect(provider.pricing.subscription).toBe("none");
+    expect(provider.settlementExecution.mode).toBe("routed");
+    expect(provider.settlementExecution.currentDownstream).toBe("xpay");
+    expect(provider.settlementExecution.signerAttribution).toContain("/supported");
   });
 
   it("supports conditional agent-card requests", () => {
@@ -50,6 +107,21 @@ describe("mainnet discovery", () => {
 
     const cached = discoveryResponse(
       new Request(`${ORIGIN}/.well-known/agent-card.json`, {
+        headers: { "If-None-Match": etag ?? "" },
+      }),
+    );
+    expect(cached?.status).toBe(304);
+  });
+
+  it("supports conditional provider-manifest requests", () => {
+    const first = discoveryResponse(
+      new Request(`${ORIGIN}/.well-known/x402/facilitator.json`),
+    );
+    const etag = first?.headers.get("etag");
+    expect(etag).toBeTruthy();
+
+    const cached = discoveryResponse(
+      new Request(`${ORIGIN}/.well-known/x402/facilitator.json`, {
         headers: { "If-None-Match": etag ?? "" },
       }),
     );
