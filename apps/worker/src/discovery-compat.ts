@@ -14,8 +14,7 @@ export async function compatibilityDiscoveryResponse(
 
   const url = new URL(request.url);
   if (url.pathname === X402_ALIAS) return x402AliasResponse(request);
-  if (url.pathname === MONETIZATION_PATH)
-    return monetizationResponse(request);
+  if (url.pathname === MONETIZATION_PATH) return monetizationResponse(request);
   return null;
 }
 
