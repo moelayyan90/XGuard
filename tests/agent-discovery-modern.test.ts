@@ -8,30 +8,75 @@ import {
 const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
 
 describe("modern agent discovery overlay", () => {
-  it("advertises MCP 2026 and Bazaar endpoints in the agent card", async () => {
+  it("advertises A2A JSON-RPC, MCP 2026, and Bazaar endpoints in the agent card", async () => {
     const request = new Request(`${ORIGIN}/.well-known/agent-card.json`);
     const base = discoveryResponse(request);
     expect(base).not.toBeNull();
     const response = await enhanceAgentDiscoveryResponse(request, base!);
     const card = (await response.json()) as {
       version: string;
+      supportedInterfaces: Array<{
+        url: string;
+        protocolBinding: string;
+        protocolVersion: string;
+      }>;
+      provider: { organization: string; url: string };
       skills: Array<{ id: string }>;
       xguardDiscovery: Record<string, unknown>;
+      preferredTransport: string;
+      url: string;
     };
     expect(card.version).toBe("0.4.0");
-    expect(card.skills.map((skill) => skill.id)).toContain(
-      "mcp-x402-discovery",
+    expect(card.supportedInterfaces).toEqual([
+      {
+        url: `${ORIGIN}/a2a`,
+        protocolBinding: "JSONRPC",
+        protocolVersion: "1.0",
+      },
+      {
+        url: `${ORIGIN}/a2a`,
+        protocolBinding: "JSONRPC",
+        protocolVersion: "0.3",
+      },
+    ]);
+    expect(card.provider).toEqual({
+      organization: "XGuard",
+      url: "https://github.com/moelayyan90/XGuard",
+    });
+    expect(card.preferredTransport).toBe("JSONRPC");
+    expect(card.url).toBe(`${ORIGIN}/a2a`);
+    expect(card.skills.map((skill) => skill.id)).toEqual(
+      expect.arrayContaining(["mcp-x402-discovery", "a2a-x402-gateway"]),
     );
     expect(card.xguardDiscovery).toMatchObject({
+      a2a: `${ORIGIN}/a2a`,
       mcp: `${ORIGIN}/mcp`,
       mcpManifest: `${ORIGIN}/.well-known/mcp/server.json`,
       resources: `${ORIGIN}/discovery/resources`,
       search: `${ORIGIN}/discovery/search`,
+      preferredA2AProtocolVersion: "1.0",
       preferredMcpProtocolVersion: "2026-07-28",
     });
   });
 
-  it("advertises MCP and Bazaar endpoints in agent-market metadata", async () => {
+  it("keeps the legacy agent.json alias A2A-compatible", async () => {
+    const request = new Request(`${ORIGIN}/.well-known/agent.json`);
+    const base = discoveryResponse(request);
+    expect(base).not.toBeNull();
+    const response = await enhanceAgentDiscoveryResponse(request, base!);
+    const card = (await response.json()) as any;
+    expect(card.supportedInterfaces[0]).toEqual({
+      url: `${ORIGIN}/a2a`,
+      protocolBinding: "JSONRPC",
+      protocolVersion: "1.0",
+    });
+    expect(card.additionalInterfaces).toContainEqual({
+      url: `${ORIGIN}/a2a`,
+      transport: "JSONRPC",
+    });
+  });
+
+  it("advertises A2A, MCP and Bazaar endpoints in agent-market metadata", async () => {
     const request = new Request(`${ORIGIN}/.well-known/agent-market.json`);
     const base = discoveryResponse(request);
     expect(base).not.toBeNull();
@@ -42,9 +87,11 @@ describe("modern agent discovery overlay", () => {
     };
     expect(market.version).toBe("0.4.0");
     expect(market.discovery).toMatchObject({
+      a2a: `${ORIGIN}/a2a`,
       mcp: `${ORIGIN}/mcp`,
       resources: `${ORIGIN}/discovery/resources`,
       search: `${ORIGIN}/discovery/search`,
+      preferredA2AProtocolVersion: "1.0",
     });
   });
 
