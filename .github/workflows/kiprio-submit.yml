@@ -1,4 +1,4 @@
-name: Inspect Kiprio MCP submit
+name: Submit XGuard to Kiprio MCP registry
 
 on:
   push:
@@ -8,18 +8,26 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  submit:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Inspect public form wiring
+      - name: Submit XGuard
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS --max-time 20 'https://kiprio.com/mcp-registry/' -o /tmp/kiprio.html
-          echo '=== forms ==='
-          grep -oE '<form[^>]*>' /tmp/kiprio.html | tail -20 || true
-          echo '=== submit-area fields ==='
-          grep -n -B10 -A30 'Submit your MCP server' /tmp/kiprio.html | tail -80 || true
-          echo '=== endpoint references ==='
-          grep -oE '.{0,200}(submit|mcp-registry).{0,500}' /tmp/kiprio.html | tail -40 || true
+          response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+            -X POST 'https://kiprio.com/api/mcp-submit' \
+            -H 'Content-Type: application/json' \
+            --data '{"github_url":"https://github.com/moelayyan90/XGuard","submitter":"moelayyan90"}')"
+          code="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          echo "HTTP ${code}"
+          printf '%s\n' "${body}"
+          lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "${code}" =~ ^2[0-9][0-9]$ ]] || [[ "${code}" == "409" ]] || [[ "${lower}" == *"already"* ]] || [[ "${lower}" == *"exist"* ]]; then
+            echo "Kiprio submission accepted or already present."
+            exit 0
+          fi
+          echo "Kiprio rejected XGuard (HTTP ${code})." >&2
+          exit 1
