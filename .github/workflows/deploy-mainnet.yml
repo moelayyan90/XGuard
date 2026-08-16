@@ -116,7 +116,17 @@ jobs:
           fi
 
           curl -fsS --max-time 15 "${BASE_URL}/supported" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||!x.kinds.some(k=>k&&k.x402Version===2&&k.network==="eip155:8453"&&k.scheme==="exact"))process.exit(1)})'
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||!x.kinds.some(k=>k&&k.x402Version===2&&k.network==="eip155:8453"&&k.scheme==="exact")||!Array.isArray(x.extensions)||!x.extensions.includes("bazaar"))process.exit(1)})'
+
+          curl -fsS --max-time 15 "${BASE_URL}/discovery/resources?limit=1" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items)||!Number.isInteger(x.pagination?.total))process.exit(1)})'
+
+          curl -fsS --max-time 15 \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"1.0.0"}}}' \
+            "${BASE_URL}/mcp" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.jsonrpc!=="2.0"||x.result?.serverInfo?.name!=="xguard-mainnet"||x.result?.capabilities?.tools===undefined)process.exit(1)})'
 
           curl -fsS --max-time 15 "${BASE_URL}/status" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet"||x.facilitator!=="HEALTHY")process.exit(1)})'
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet"||x.facilitator!=="HEALTHY"||!Number.isInteger(x.discovery?.resources))process.exit(1)})'
