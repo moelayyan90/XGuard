@@ -115,6 +115,7 @@ function a2aHeaders(): HeadersInit {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers":
       "Content-Type, A2A-Version, A2A-Extensions, Authorization",
+    "Access-Control-Max-Age": "86400",
     "X-Content-Type-Options": "nosniff",
   };
 }
