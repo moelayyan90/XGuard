@@ -6,6 +6,9 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "minify": true,
+  "vars": {
+    "X402_FACILITATOR_URL": "https://xguard-testnet.maqamapp.workers.dev",
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,

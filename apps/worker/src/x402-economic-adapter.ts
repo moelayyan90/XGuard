@@ -219,7 +219,10 @@ function assertIntentMatchesX402(
   payload: PaymentPayload,
   requirements: PaymentRequirements,
 ): void {
-  if (intent.money.network !== null && intent.money.network !== requirements.network)
+  if (
+    intent.money.network !== null &&
+    intent.money.network !== requirements.network
+  )
     throw new XGuardError(
       "PAYMENT_CONFLICT",
       "x402 network does not match the Economic Intent",

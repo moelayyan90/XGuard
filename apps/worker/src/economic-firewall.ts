@@ -12,6 +12,11 @@ import {
   EconomicIntentCoordinator,
   type EconomicIntentSnapshot,
 } from "./economic-intent-coordinator.js";
+import {
+  parseEconomicX402Envelope,
+  settleEconomicX402,
+  verifyEconomicX402,
+} from "./x402-economic-adapter.js";
 
 export { EconomicIntentCoordinator };
 
@@ -43,6 +48,7 @@ interface EconomicFirewallEnv {
   REQUEST_RATE_LIMITER: RateLimit;
   GLOBAL_RATE_LIMITER: RateLimit;
   PREVIEW_API_TOKEN: string;
+  X402_FACILITATOR_URL: string;
 }
 
 type Variables = { requestId: string; merchantId: string };
@@ -88,8 +94,10 @@ app.get("/", (context) =>
       createIntent: "POST /v1/intents",
       getIntent: "GET /v1/intents/:intentId",
       authorize: "POST /v1/intents/:intentId/authorize",
+      x402Authorize: "POST /v1/intents/:intentId/x402/authorize",
       execute: "POST /v1/intents/:intentId/execute",
       settle: "POST /v1/intents/:intentId/settle",
+      x402Settle: "POST /v1/intents/:intentId/x402/settle",
     },
   }),
 );
@@ -171,6 +179,61 @@ app.get("/v1/intents/:intentId", async (context) => {
     if (snapshot === null)
       throw new XGuardError("BAD_REQUEST", "Intent not found", 404);
     return context.json(snapshot);
+  } catch (error) {
+    return errorJson(context, error);
+  }
+});
+
+app.post("/v1/intents/:intentId/x402/authorize", async (context) => {
+  try {
+    const merchantId = context.get("merchantId");
+    const intentId = intentIdParam(context.req.param("intentId"));
+    const stub = context.env.ECONOMIC_INTENT_COORDINATOR.getByName(intentId);
+    const snapshot = await stub.getSnapshot(merchantId);
+    if (snapshot === null)
+      throw new XGuardError("BAD_REQUEST", "Intent not found", 404);
+    if (snapshot.state !== "BOUND" && snapshot.state !== "AUTHORIZED")
+      throw new XGuardError(
+        "PAYMENT_CONFLICT",
+        `x402 authorization cannot run from state ${snapshot.state}`,
+        409,
+      );
+    const raw = await jsonBody(context.req.raw);
+    const envelope = parseEconomicX402Envelope(raw, snapshot.terms);
+    const verified = await verifyEconomicX402(
+      context.env.X402_FACILITATOR_URL,
+      envelope,
+    );
+    if (!verified.isValid)
+      return context.json(
+        {
+          authorized: false,
+          invalidReason: verified.invalidReason ?? "x402_invalid_authorization",
+          invalidMessage:
+            verified.invalidMessage ?? "x402 authorization was rejected",
+        },
+        402,
+      );
+    const authorized = await stub.recordAuthorization({
+      merchantId,
+      authorization: envelope.raw,
+      authorizedAmountMicroUsd: envelope.amountMicroUsd,
+    });
+    return context.json(
+      {
+        authorized: true,
+        payer: envelope.payer,
+        payTo: envelope.payTo,
+        amountMicroUsd: envelope.amountMicroUsd,
+        intent: authorized,
+      },
+      200,
+      {
+        "X-XGuard-Intent-ID": authorized.intentId,
+        "X-XGuard-State": authorized.state,
+        "X-XGuard-Protocol": "x402",
+      },
+    );
   } catch (error) {
     return errorJson(context, error);
   }
@@ -271,6 +334,79 @@ app.post("/v1/intents/:intentId/execute", async (context) => {
         .quarantine(merchantId, `execution_uncertain:${errorCode(error)}`)
         .catch(() => undefined);
     }
+    return errorJson(context, error);
+  }
+});
+
+app.post("/v1/intents/:intentId/x402/settle", async (context) => {
+  try {
+    const merchantId = context.get("merchantId");
+    const intentId = intentIdParam(context.req.param("intentId"));
+    const stub = context.env.ECONOMIC_INTENT_COORDINATOR.getByName(intentId);
+    const snapshot = await stub.getSnapshot(merchantId);
+    if (snapshot === null)
+      throw new XGuardError("BAD_REQUEST", "Intent not found", 404);
+    const raw = await jsonBody(context.req.raw);
+    const envelope = parseEconomicX402Envelope(raw, snapshot.terms);
+    if (snapshot.authorizationHash !== envelope.authorizationHash)
+      throw new XGuardError(
+        "PAYMENT_CONFLICT",
+        "x402 settlement envelope is not the authorization bound to this Intent",
+        409,
+      );
+    if (snapshot.state === "FINAL")
+      return context.json(snapshot, 200, {
+        "X-XGuard-Replayed": "true",
+        "X-XGuard-Intent-ID": snapshot.intentId,
+        "X-XGuard-State": snapshot.state,
+        "X-XGuard-Protocol": "x402",
+      });
+    if (snapshot.state !== "FULFILLED" || snapshot.executionId === null)
+      throw new XGuardError(
+        "PAYMENT_CONFLICT",
+        `x402 settlement cannot run from state ${snapshot.state}`,
+        409,
+      );
+
+    const result = await settleEconomicX402(
+      context.env.X402_FACILITATOR_URL,
+      envelope,
+    );
+    if (!result.success)
+      return context.json(
+        {
+          settled: false,
+          result,
+          intentId: snapshot.intentId,
+          state: snapshot.state,
+        },
+        409,
+      );
+
+    await stub.recordSettlement({
+      merchantId,
+      executionId: snapshot.executionId,
+      protocol: "x402",
+      settlement: rpcSafeJson(result),
+      chargedAmountMicroUsd: envelope.amountMicroUsd,
+    });
+    const finalized = await stub.getSnapshot(merchantId);
+    if (finalized === null)
+      throw new XGuardError(
+        "INTERNAL_ERROR",
+        "Finalized intent disappeared",
+        500,
+      );
+    return context.json({ settled: true, result, intent: finalized }, 200, {
+      "X-XGuard-Replayed": "false",
+      "X-XGuard-Intent-ID": finalized.intentId,
+      "X-XGuard-State": finalized.state,
+      "X-XGuard-Protocol": "x402",
+      ...(finalized.proof === null
+        ? {}
+        : { "X-XGuard-Proof-Hash": finalized.proof.proofHash }),
+    });
+  } catch (error) {
     return errorJson(context, error);
   }
 });
