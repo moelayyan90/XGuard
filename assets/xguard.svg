@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">XGuard</title>
+  <desc id="desc">XGuard shield mark</desc>
+  <rect width="256" height="256" rx="48" fill="#111111"/>
+  <path d="M128 34 205 62v56c0 51-31 88-77 108-46-20-77-57-77-108V62l77-28Z" fill="none" stroke="#ffffff" stroke-width="16" stroke-linejoin="round"/>
+  <path d="m88 88 80 80M168 88l-80 80" stroke="#ffffff" stroke-width="18" stroke-linecap="round"/>
+</svg>
