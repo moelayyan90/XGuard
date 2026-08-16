@@ -241,12 +241,16 @@ describe("one-command reversible migration", () => {
     ).toMatch(/not verified/);
   });
 
-  it("does not diagnose unsupported mainnet or non-authorization options as compatible", async () => {
+  it("accepts supported Base mainnet and rejects non-authorization options", async () => {
     const root = await project();
-    for (const requirements of [
-      fixturePayment({ network: "eip155:8453" }).requirements,
-      fixturePayment().requirements,
-    ]) {
+    const cases = [
+      {
+        requirements: fixturePayment({ network: "eip155:8453" }).requirements,
+        expected: "PASS",
+      },
+      { requirements: fixturePayment().requirements, expected: "FAIL" },
+    ] as const;
+    for (const { requirements, expected } of cases) {
       requirements.extra = {
         ...requirements.extra,
         name: "USDC",
@@ -274,7 +278,7 @@ describe("one-command reversible migration", () => {
       const checks = await runDoctor(root, "https://merchant.example/paid");
       expect(
         checks.find((check) => check.name === "XGuard compatibility")?.status,
-      ).toBe("FAIL");
+      ).toBe(expected);
     }
   });
 
