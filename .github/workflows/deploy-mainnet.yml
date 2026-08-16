@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/worker/src/mainnet*.ts"
       - "apps/worker/src/discovery.ts"
+      - "apps/worker/src/agent-discovery*.ts"
       - "apps/worker/src/base-*.ts"
       - "apps/worker/src/xpay-*.ts"
       - "apps/worker/wrangler.mainnet.jsonc"
@@ -109,21 +110,37 @@ jobs:
           rm -f "${root_headers}"
 
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/agent-card.json${DISCOVERY_QUERY}" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.2.0-mainnet-rc"||!String(x.providerManifest||"").endsWith("/.well-known/x402/facilitator.json")||!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolVersion==="2")||!Array.isArray(x.skills)||!x.skills.some(k=>k&&k.id==="x402-payment-settlement"))process.exit(1)})'
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.4.0"||!String(x.providerManifest||"").endsWith("/.well-known/x402/facilitator.json")||!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolVersion==="2")||!Array.isArray(x.skills)||!x.skills.some(k=>k&&k.id==="x402-payment-settlement")||!x.skills.some(k=>k&&k.id==="mcp-x402-discovery")||!x.xguardDiscovery||!String(x.xguardDiscovery.mcp||"").endsWith("/mcp")||x.xguardDiscovery.preferredMcpProtocolVersion!=="2026-07-28")process.exit(1)})'
 
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/agent-market.json${DISCOVERY_QUERY}" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.protocol!=="x402-v2"||x.network!=="eip155:8453"||!x.discovery||!String(x.discovery.agentCard||"").endsWith("/.well-known/agent-card.json")||!String(x.discovery.provider||"").endsWith("/.well-known/x402/facilitator.json"))process.exit(1)})'
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.4.0"||x.protocol!=="x402-v2"||x.network!=="eip155:8453"||!x.discovery||!String(x.discovery.agentCard||"").endsWith("/.well-known/agent-card.json")||!String(x.discovery.provider||"").endsWith("/.well-known/x402/facilitator.json")||!String(x.discovery.mcp||"").endsWith("/mcp")||x.discovery.preferredMcpProtocolVersion!=="2026-07-28")process.exit(1)})'
 
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/x402/facilitator.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="x402-facilitator"||x.status!=="production"||!x.facilitator||x.facilitator.baseUrl!=="https://xguard-mainnet.maqamapp.workers.dev"||x.facilitator.network!=="eip155:8453"||x.facilitator.scheme!=="exact"||!x.pricing||x.pricing.feeUsd!=="0.002"||!x.onboarding||x.onboarding.packageInstallationRequired!==false||!x.settlementExecution||x.settlementExecution.mode!=="routed"||x.settlementExecution.currentDownstream!=="xpay")process.exit(1)})'
 
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/mcp/server.json${DISCOVERY_QUERY}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="io.github.moelayyan90/xguard"||x.version!=="0.4.0"||!x.mcp||x.mcp.preferredProtocolVersion!=="2026-07-28"||!Array.isArray(x.remotes)||!x.remotes.some(r=>r&&r.type==="streamable-http"&&String(r.url||"").endsWith("/mcp")))process.exit(1)})'
+
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/openapi.json${DISCOVERY_QUERY}" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.openapi!=="3.1.0"||!x.paths||!x.paths["/verify"]||!x.paths["/settle"]||!x.paths["/.well-known/x402/facilitator.json"])process.exit(1)})'
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.openapi!=="3.1.0"||!x.paths||!x.paths["/verify"]||!x.paths["/settle"]||!x.paths["/.well-known/x402/facilitator.json"]||!x.paths["/mcp"]||!x.paths["/discovery/resources"]||!x.paths["/discovery/search"])process.exit(1)})'
+
+          mcp_body="$(curl -fsS --max-time 15 \
+            -X POST \
+            -H 'Accept: application/json, text/event-stream' \
+            -H 'Content-Type: application/json' \
+            -H 'MCP-Protocol-Version: 2026-07-28' \
+            -H 'Mcp-Method: server/discover' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"xguard-deploy-smoke","version":"1.0.0"}}}}' \
+            "${BASE_URL}/mcp")"
+          printf '%s' "${mcp_body}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.jsonrpc!=="2.0"||x.id!==1||!x.result||x.result.resultType!=="complete"||!Array.isArray(x.result.supportedVersions)||!x.result.supportedVersions.includes("2026-07-28")||!x.result.capabilities||!x.result.capabilities.tools||!x.result._meta||!x.result._meta["io.modelcontextprotocol/serverInfo"])process.exit(1)})'
 
           llms_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/llms.txt${DISCOVERY_QUERY}")"
           if ! printf '%s' "${llms_body}" | grep -Fq '# XGuard' \
             || ! printf '%s' "${llms_body}" | grep -Fq '/.well-known/agent-card.json' \
-            || ! printf '%s' "${llms_body}" | grep -Fq '/.well-known/x402/facilitator.json'; then
+            || ! printf '%s' "${llms_body}" | grep -Fq '/.well-known/x402/facilitator.json' \
+            || ! printf '%s' "${llms_body}" | grep -Fq 'MCP:' \
+            || ! printf '%s' "${llms_body}" | grep -Fq '/discovery/resources'; then
             echo "::error::llms.txt discovery metadata is missing or malformed."
             exit 1
           fi
