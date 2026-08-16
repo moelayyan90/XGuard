@@ -1,0 +1,36 @@
+name: Temporary A2A Registry diagnose
+
+on:
+  push:
+    branches:
+      - agent/a2a-registry-diagnose
+    paths:
+      - ".github/workflows/_tmp-a2a-diagnose.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch Agent Card and capture registry response
+        shell: bash
+        run: |
+          set -u
+          URI='https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json'
+          echo '--- Agent Card ---'
+          curl -sS --max-time 30 -D /tmp/card.headers "$URI" -o /tmp/card.json
+          cat /tmp/card.headers
+          cat /tmp/card.json
+          echo
+          echo '--- Registry response ---'
+          status="$(curl -sS --max-time 30 -o /tmp/registry.body -w '%{http_code}' \
+            -X POST 'https://a2aregistry.org/api/agents/register' \
+            -H 'Content-Type: application/json' \
+            --data "{\"wellKnownURI\":\"${URI}\"}")"
+          echo "HTTP ${status}"
+          cat /tmp/registry.body
+          echo
+          exit 0
