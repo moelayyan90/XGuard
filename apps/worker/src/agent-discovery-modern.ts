@@ -34,7 +34,11 @@ export async function enhanceAgentDiscoveryResponse(
     return rewriteJson(response, (body) => {
       body.version = XGUARD_MCP_VERSION;
       const skills = Array.isArray(body.skills) ? body.skills : [];
-      if (!skills.some((skill) => isRecord(skill) && skill.id === "mcp-x402-discovery")) {
+      if (
+        !skills.some(
+          (skill) => isRecord(skill) && skill.id === "mcp-x402-discovery",
+        )
+      ) {
         skills.push({
           id: "mcp-x402-discovery",
           name: "Discover x402 resources over MCP",
@@ -90,7 +94,12 @@ export async function enhanceAgentDiscoveryResponse(
         get: {
           summary: "Search XGuard's x402 Bazaar catalog",
           parameters: [
-            { name: "query", in: "query", required: true, schema: { type: "string" } },
+            {
+              name: "query",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+            },
           ],
           responses: { "200": { description: "Matching resources" } },
         },
@@ -113,7 +122,7 @@ export async function enhanceAgentDiscoveryResponse(
     const appendix = [
       "",
       "## Agent discovery",
-      `MCP: ${url.origin}/mcp (preferred protocol 2026-07-28; Streamable HTTP; stateless)",
+      `MCP: ${url.origin}/mcp (preferred protocol 2026-07-28; Streamable HTTP; stateless)`,
       `MCP manifest: ${url.origin}/.well-known/mcp/server.json`,
       `Bazaar resources: ${url.origin}/discovery/resources`,
       `Bazaar search: ${url.origin}/discovery/search?query=<terms>`,
