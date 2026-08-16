@@ -48,8 +48,12 @@ export function deriveMainnetEconomicShadowBinding(
     "paymentPayload.payload.authorization",
   );
   const nonce = nonEmptyString(authorization.nonce, "authorization.nonce");
-  const validBeforeSeconds = parseUnsignedInteger(
+  const validBefore = nonEmptyString(
     authorization.validBefore,
+    "authorization.validBefore",
+  );
+  const validBeforeSeconds = parseUnsignedInteger(
+    validBefore,
     "authorization.validBefore",
   );
   const maximumDateSeconds = BigInt(Math.floor(8_640_000_000_000_000 / 1000));
