@@ -70,12 +70,13 @@ describe("mainnet revenue hardening source invariants", () => {
     );
   });
 
-  it("does not use RPC endpoints rejected by the deployed Worker", async () => {
+  it("uses Ankr Base RPC instead of endpoints rejected by the deployed Worker", async () => {
     const config = await readFile("apps/worker/wrangler.mainnet.jsonc", "utf8");
-    expect(config).toContain('"BASE_RPC_URL": "https://public.1rpc.io/base"');
+    expect(config).toContain('"BASE_RPC_URL": "https://rpc.ankr.com/base"');
     expect(config).not.toContain("mainnet.base.org");
     expect(config).not.toContain("base-rpc.publicnode.com");
     expect(config).not.toContain("base.drpc.org");
+    expect(config).not.toContain("public.1rpc.io/base");
   });
 
   it("exposes key rotation, scopes, and protected admin economics", async () => {
