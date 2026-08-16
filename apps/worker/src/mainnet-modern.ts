@@ -174,7 +174,9 @@ async function normalizeLegacyMcpToolList(
   response: Response,
 ): Promise<Response> {
   if (!response.ok) return response;
-  if (!(response.headers.get("content-type") ?? "").includes("application/json"))
+  if (
+    !(response.headers.get("content-type") ?? "").includes("application/json")
+  )
     return response;
 
   try {
