@@ -3,6 +3,8 @@ import mainnet, {
   MainnetRequestGate,
   XPayGlobalRateGate,
 } from "./mainnet-supervisor.js";
+import { a2aAgentResponse } from "./a2a-agent.js";
+import { enhanceA2AAgentCard } from "./a2a-discovery.js";
 import {
   modernMcpOptions,
   modernMcpRequest,
@@ -16,6 +18,7 @@ import {
 import { compatibilityDiscoveryResponse } from "./discovery-compat.js";
 import { mainnetBrandingResponse } from "./mainnet-branding.js";
 import { mcpubDiscoveryResponse } from "./mcpub-discovery.js";
+import { xguardMigrationResponse } from "./migration-kit.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -39,6 +42,7 @@ type MainnetScheduled = (
 const delegateFetch = mainnet.fetch as unknown as MainnetFetch;
 const delegateScheduled = mainnet.scheduled as unknown as MainnetScheduled;
 const HSTS_VALUE = "max-age=31536000; includeSubDomains";
+const MCP_TELEMETRY_MAX_BODY_BYTES = 8 * 1024;
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
@@ -47,6 +51,9 @@ export default {
 
     const httpsRedirect = redirectPlaintextRequest(standardRequest, url);
     if (httpsRedirect !== null) return secureResponse(httpsRedirect);
+
+    if (url.pathname === "/mcp" && standardRequest.method === "POST")
+      ctx.waitUntil(observeMcpRpcRequest(standardRequest));
 
     const branding = mainnetBrandingResponse(standardRequest);
     if (branding !== null) return secureResponse(branding);
@@ -59,11 +66,11 @@ export default {
     const mcpubDiscovery = mcpubDiscoveryResponse(standardRequest);
     if (mcpubDiscovery !== null) return secureResponse(mcpubDiscovery);
 
-    if (
-      standardRequest.method === "GET" &&
-      url.pathname === "/.well-known/xguard/migrate"
-    )
-      return secureResponse(publicJson(migrationKit(url)));
+    const a2a = await a2aAgentResponse(standardRequest);
+    if (a2a !== null) return secureResponse(a2a);
+
+    const migration = xguardMigrationResponse(standardRequest);
+    if (migration !== null) return secureResponse(migration);
 
     if (url.pathname === "/mcp" && standardRequest.method === "OPTIONS")
       return secureResponse(modernMcpOptions(standardRequest));
@@ -108,8 +115,14 @@ export default {
         url.pathname === "/openapi.json" ||
         url.pathname === "/llms.txt" ||
         url.pathname === "/llms-full.txt")
-    )
+    ) {
       response = await enhanceAgentDiscoveryResponse(standardRequest, response);
+      if (
+        url.pathname === "/.well-known/agent-card.json" ||
+        url.pathname === "/.well-known/agent.json"
+      )
+        response = await enhanceA2AAgentCard(standardRequest, response);
+    }
 
     return secureResponse(response);
   },
@@ -119,100 +132,124 @@ export default {
   },
 } satisfies ExportedHandler<MainnetModernEnv>;
 
-function migrationKit(url: URL) {
-  const sources = [
-    ...new Set(
-      (url.searchParams.get("from") ?? "unknown")
-        .split(",")
-        .map((value) => value.trim().toLowerCase())
-        .filter((value) => value === "cdp" || value === "payai"),
-    ),
-  ];
-  const resource = migrationResource(url.searchParams.get("resource"));
-  const requestedName = (url.searchParams.get("name") ?? "")
-    .trim()
-    .slice(0, 160);
-  const merchantName =
-    requestedName ||
-    (resource === null ? "merchant" : new URL(resource).hostname);
+async function observeMcpRpcRequest(request: Request): Promise<void> {
+  const protocolVersionHeader = request.headers.get("mcp-protocol-version");
+  const methodHeader = request.headers.get("mcp-method");
+  const userAgent = request.headers.get("user-agent") ?? "unknown";
+  const declaredLength = request.headers.get("content-length");
+  const era = shouldUseModernMcp(request) ? "modern" : "legacy";
 
-  return {
-    schemaVersion: "1",
-    title: "XGuard x402 facilitator switch kit",
-    protocol: "x402-v2",
-    network: "eip155:8453",
-    target: {
-      merchant: merchantName,
-      resource,
-      sourceFacilitators: sources.length > 0 ? sources : ["unknown"],
-    },
-    xguard: {
-      origin: url.origin,
-      register: `${url.origin}/v1/register`,
-      balance: `${url.origin}/v1/balance`,
-      topUpIntent: `${url.origin}/v1/topups/intents`,
-      supported: `${url.origin}/supported`,
-      verify: `${url.origin}/verify`,
-      settle: `${url.origin}/settle`,
-      discovery: `${url.origin}/discovery/resources`,
-    },
-    steps: [
-      {
-        id: "register",
-        request: {
-          method: "POST",
-          url: `${url.origin}/v1/register`,
-          headers: { "Content-Type": "application/json" },
-          body: { name: merchantName },
-        },
-        output: "Store the returned apiKey; XGuard stores only its hash.",
-      },
-      {
-        id: "fund-service-balance",
-        request: {
-          method: "POST",
-          url: `${url.origin}/v1/topups/intents`,
-          authorization: "Bearer <apiKey>",
-        },
-        note: "Create a Base USDC prepaid service-balance intent before billable settlements.",
-      },
-      {
-        id: "switch-facilitator",
-        facilitatorBaseUrl: url.origin,
-        authorization: "Bearer <apiKey>",
-        preserve: [
-          "existing x402 middleware",
-          "payment requirements",
-          "payTo recipient",
-          "resource pricing",
-        ],
-      },
-      {
-        id: "verify-cutover",
-        checks: [
-          `GET ${url.origin}/supported`,
-          `POST ${url.origin}/verify`,
-          `POST ${url.origin}/settle`,
-          `GET ${url.origin}/discovery/resources?network=eip155%3A8453`,
-        ],
-      },
-    ],
-    sideEffects: false,
-    note: "This endpoint generates instructions only. It does not register, fund, modify, or contact any third-party service.",
-  };
+  if (declaredLength === null) {
+    logMcpTelemetry({
+      era,
+      rpcMethod: methodHeader ?? "unknown",
+      toolName: null,
+      protocolVersion: protocolVersionHeader ?? "unspecified",
+      protocolVersionSource:
+        protocolVersionHeader === null ? "absent" : "header",
+      methodHeaderPresent: methodHeader !== null,
+      methodHeaderMatches: null,
+      userAgent,
+      parseState: "length_unknown",
+    });
+    return;
+  }
+
+  const declaredBytes = Number(declaredLength);
+  if (
+    !Number.isFinite(declaredBytes) ||
+    declaredBytes < 0 ||
+    declaredBytes > MCP_TELEMETRY_MAX_BODY_BYTES
+  ) {
+    logMcpTelemetry({
+      era,
+      rpcMethod: methodHeader ?? "unknown",
+      toolName: null,
+      protocolVersion: protocolVersionHeader ?? "unspecified",
+      protocolVersionSource:
+        protocolVersionHeader === null ? "absent" : "header",
+      methodHeaderPresent: methodHeader !== null,
+      methodHeaderMatches: null,
+      userAgent,
+      parseState: "body_not_sampled",
+    });
+    return;
+  }
+
+  try {
+    const text = await request.clone().text();
+    if (
+      new TextEncoder().encode(text).byteLength > MCP_TELEMETRY_MAX_BODY_BYTES
+    )
+      throw new Error("sample_limit_exceeded");
+
+    const parsed = JSON.parse(text) as unknown;
+    if (!isRecord(parsed)) throw new Error("invalid_json_rpc");
+    const rpcMethod =
+      typeof parsed.method === "string" ? parsed.method : "unknown";
+    const params = isRecord(parsed.params) ? parsed.params : {};
+    const initializeProtocolVersion =
+      rpcMethod === "initialize" && typeof params.protocolVersion === "string"
+        ? params.protocolVersion
+        : null;
+    const toolName =
+      rpcMethod === "tools/call" && typeof params.name === "string"
+        ? params.name
+        : null;
+
+    logMcpTelemetry({
+      era,
+      rpcMethod,
+      toolName,
+      protocolVersion:
+        protocolVersionHeader ?? initializeProtocolVersion ?? "unspecified",
+      protocolVersionSource:
+        protocolVersionHeader !== null
+          ? "header"
+          : initializeProtocolVersion !== null
+            ? "initialize_params"
+            : "absent",
+      methodHeaderPresent: methodHeader !== null,
+      methodHeaderMatches:
+        methodHeader === null || rpcMethod === "unknown"
+          ? null
+          : methodHeader === rpcMethod,
+      userAgent,
+      parseState: "parsed",
+    });
+  } catch {
+    logMcpTelemetry({
+      era,
+      rpcMethod: methodHeader ?? "unknown",
+      toolName: null,
+      protocolVersion: protocolVersionHeader ?? "unspecified",
+      protocolVersionSource:
+        protocolVersionHeader === null ? "absent" : "header",
+      methodHeaderPresent: methodHeader !== null,
+      methodHeaderMatches: null,
+      userAgent,
+      parseState: "unparsed",
+    });
+  }
 }
 
-function migrationResource(value: string | null): string | null {
-  if (value === null || value.length === 0 || value.length > 2_048) return null;
-  try {
-    const resource = new URL(value);
-    if (resource.protocol !== "https:" && resource.protocol !== "http:")
-      return null;
-    resource.hash = "";
-    return resource.toString();
-  } catch {
-    return null;
-  }
+function logMcpTelemetry(value: {
+  era: "modern" | "legacy";
+  rpcMethod: string;
+  toolName: string | null;
+  protocolVersion: string;
+  protocolVersionSource: "header" | "initialize_params" | "absent";
+  methodHeaderPresent: boolean;
+  methodHeaderMatches: boolean | null;
+  userAgent: string;
+  parseState: "parsed" | "unparsed" | "body_not_sampled" | "length_unknown";
+}) {
+  console.log(
+    JSON.stringify({
+      event: "mcp_rpc_request",
+      ...value,
+    }),
+  );
 }
 
 async function publicMcpGuard(
