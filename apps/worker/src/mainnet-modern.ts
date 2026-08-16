@@ -103,7 +103,7 @@ export default {
         url.pathname === "/llms.txt" ||
         url.pathname === "/llms-full.txt")
     )
-      response = enhanceAgentDiscoveryResponse(standardRequest, response);
+      response = await enhanceAgentDiscoveryResponse(standardRequest, response);
 
     return secureResponse(response);
   },
