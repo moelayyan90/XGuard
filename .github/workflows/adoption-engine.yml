@@ -1,0 +1,106 @@
+name: XGuard adoption engine
+
+on:
+  pull_request:
+    paths:
+      - "scripts/adoption-engine.mjs"
+      - "scripts/adoption-targets.mjs"
+      - ".github/workflows/adoption-engine.yml"
+      - "package.json"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/adoption-engine.mjs"
+      - "scripts/adoption-targets.mjs"
+      - ".github/workflows/adoption-engine.yml"
+      - "package.json"
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+# Public metadata discovery only; never executes payments, synthetic settlements, or bulk outreach.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: xguard-adoption-engine-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Self-test adoption engine
+        run: npm run adoption:self-test
+
+      - name: Discover, verify, and rank public x402 merchant targets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          XGUARD_ADOPTION_MAX_PAGES: "100"
+          XGUARD_ADOPTION_PROBE_LIMIT: "100"
+          XGUARD_ADOPTION_PROBE_CONCURRENCY: "8"
+          XGUARD_ADOPTION_MIN_SCORE: "25"
+        run: npm run adoption:scan
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xguard-adoption-report
+          path: |
+            adoption-report.json
+            adoption-report.md
+            adoption-targets.json
+            adoption-targets.md
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Update canonical adoption queue issue
+        if: github.event_name != 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require("fs");
+            const title = "[adoption] XGuard public x402 candidate pipeline";
+            const markdown = fs.readFileSync("adoption-targets.md", "utf8");
+            const body = [
+              "This issue is maintained automatically by the XGuard adoption engine.",
+              "",
+              "It ranks distinct public x402 merchant/service targets rather than individual endpoints. The workflow never pays endpoints, fabricates settlements, or sends bulk outreach.",
+              "",
+              markdown,
+              "",
+              `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            ].join("\n").slice(0, 65000);
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = issues.find((issue) => issue.title === title);
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
