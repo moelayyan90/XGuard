@@ -21,3 +21,9 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Run canonical mainnet smoke
         run: npm run smoke:mainnet
+      - name: Print public status contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' 'https://xguard-mainnet.maqamapp.workers.dev/status?diagnose=public-contract' \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify(x,null,2))})'
