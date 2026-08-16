@@ -4,6 +4,14 @@ on:
   pull_request:
     paths:
       - "scripts/adoption-engine.mjs"
+      - "scripts/adoption-targets.mjs"
+      - ".github/workflows/adoption-engine.yml"
+      - "package.json"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/adoption-engine.mjs"
+      - "scripts/adoption-targets.mjs"
       - ".github/workflows/adoption-engine.yml"
       - "package.json"
   schedule:
@@ -33,16 +41,16 @@ jobs:
           package-manager-cache: false
 
       - name: Self-test adoption engine
-        run: node scripts/adoption-engine.mjs --self-test
+        run: npm run adoption:self-test
 
-      - name: Discover and score public x402 adoption candidates
+      - name: Discover, verify, and rank public x402 merchant targets
         env:
           GITHUB_TOKEN: ${{ github.token }}
           XGUARD_ADOPTION_MAX_PAGES: "100"
           XGUARD_ADOPTION_PROBE_LIMIT: "100"
           XGUARD_ADOPTION_PROBE_CONCURRENCY: "8"
           XGUARD_ADOPTION_MIN_SCORE: "25"
-        run: node scripts/adoption-engine.mjs
+        run: npm run adoption:scan
 
       - uses: actions/upload-artifact@v4
         with:
@@ -50,6 +58,8 @@ jobs:
           path: |
             adoption-report.json
             adoption-report.md
+            adoption-targets.json
+            adoption-targets.md
           if-no-files-found: error
           retention-days: 14
 
@@ -60,11 +70,11 @@ jobs:
           script: |
             const fs = require("fs");
             const title = "[adoption] XGuard public x402 candidate pipeline";
-            const markdown = fs.readFileSync("adoption-report.md", "utf8");
+            const markdown = fs.readFileSync("adoption-targets.md", "utf8");
             const body = [
               "This issue is maintained automatically by the XGuard adoption engine.",
               "",
-              "It contains public x402 adoption candidates only. The workflow never pays endpoints, fabricates settlements, or sends bulk outreach.",
+              "It ranks distinct public x402 merchant/service targets rather than individual endpoints. The workflow never pays endpoints, fabricates settlements, or sends bulk outreach.",
               "",
               markdown,
               "",
