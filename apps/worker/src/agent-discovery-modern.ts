@@ -19,6 +19,7 @@ export function modernMcpManifest(origin: string) {
     discovery: {
       resources: `${origin}/discovery/resources`,
       search: `${origin}/discovery/search`,
+      migration: `${origin}/.well-known/xguard/migrate`,
     },
   };
 }
@@ -52,12 +53,29 @@ export async function enhanceAgentDiscoveryResponse(
           ],
         });
       }
+      if (
+        !skills.some(
+          (skill) => isRecord(skill) && skill.id === "x402-safe-migration",
+        )
+      ) {
+        skills.push({
+          id: "x402-safe-migration",
+          name: "Generate a safe XGuard migration kit",
+          description:
+            "Generate side-effect-free instructions for a merchant-controlled switch from an observed facilitator path to XGuard without creating payments or changing third-party infrastructure.",
+          tags: ["x402", "migration", "facilitator", "safety"],
+          examples: [
+            `GET ${url.origin}/.well-known/xguard/migrate?from=cdp&name=my-service`,
+          ],
+        });
+      }
       body.skills = skills;
       body.xguardDiscovery = {
         mcp: `${url.origin}/mcp`,
         mcpManifest: `${url.origin}/.well-known/mcp/server.json`,
         resources: `${url.origin}/discovery/resources`,
         search: `${url.origin}/discovery/search`,
+        migration: `${url.origin}/.well-known/xguard/migrate`,
         preferredMcpProtocolVersion: "2026-07-28",
       };
       return body;
@@ -74,6 +92,7 @@ export async function enhanceAgentDiscoveryResponse(
         mcpManifest: `${url.origin}/.well-known/mcp/server.json`,
         resources: `${url.origin}/discovery/resources`,
         search: `${url.origin}/discovery/search`,
+        migration: `${url.origin}/.well-known/xguard/migrate`,
         preferredMcpProtocolVersion: "2026-07-28",
       };
       return body;
@@ -104,6 +123,23 @@ export async function enhanceAgentDiscoveryResponse(
           responses: { "200": { description: "Matching resources" } },
         },
       };
+      paths["/.well-known/xguard/migrate"] ??= {
+        get: {
+          summary: "Generate a side-effect-free XGuard facilitator switch kit",
+          description:
+            "Returns merchant-controlled migration instructions only. It does not register, fund, mutate third-party configuration, create synthetic payments, or execute verify/settle calls.",
+          parameters: [
+            { name: "from", in: "query", schema: { type: "string" } },
+            { name: "name", in: "query", schema: { type: "string" } },
+            {
+              name: "resource",
+              in: "query",
+              schema: { type: "string", format: "uri" },
+            },
+          ],
+          responses: { "200": { description: "Safe migration kit" } },
+        },
+      };
       paths["/mcp"] ??= {
         post: {
           summary: "XGuard Streamable HTTP MCP endpoint",
@@ -126,6 +162,8 @@ export async function enhanceAgentDiscoveryResponse(
       `MCP manifest: ${url.origin}/.well-known/mcp/server.json`,
       `Bazaar resources: ${url.origin}/discovery/resources`,
       `Bazaar search: ${url.origin}/discovery/search?query=<terms>`,
+      `Safe migration kit: ${url.origin}/.well-known/xguard/migrate?from=<cdp|payai>&name=<merchant>`,
+      "The migration kit is instruction-only and does not move funds, change third-party infrastructure, or synthesize x402 settlements.",
     ].join("\n");
     return textResponse(response, `${text.trimEnd()}${appendix}\n`);
   }

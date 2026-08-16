@@ -8,7 +8,7 @@ import {
 const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
 
 describe("modern agent discovery overlay", () => {
-  it("advertises MCP 2026 and Bazaar endpoints in the agent card", async () => {
+  it("advertises MCP, Bazaar, and safe migration endpoints in the agent card", async () => {
     const request = new Request(`${ORIGIN}/.well-known/agent-card.json`);
     const base = discoveryResponse(request);
     expect(base).not.toBeNull();
@@ -19,19 +19,20 @@ describe("modern agent discovery overlay", () => {
       xguardDiscovery: Record<string, unknown>;
     };
     expect(card.version).toBe("0.4.0");
-    expect(card.skills.map((skill) => skill.id)).toContain(
-      "mcp-x402-discovery",
+    expect(card.skills.map((skill) => skill.id)).toEqual(
+      expect.arrayContaining(["mcp-x402-discovery", "x402-safe-migration"]),
     );
     expect(card.xguardDiscovery).toMatchObject({
       mcp: `${ORIGIN}/mcp`,
       mcpManifest: `${ORIGIN}/.well-known/mcp/server.json`,
       resources: `${ORIGIN}/discovery/resources`,
       search: `${ORIGIN}/discovery/search`,
+      migration: `${ORIGIN}/.well-known/xguard/migrate`,
       preferredMcpProtocolVersion: "2026-07-28",
     });
   });
 
-  it("advertises MCP and Bazaar endpoints in agent-market metadata", async () => {
+  it("advertises MCP, Bazaar, and migration endpoints in agent-market metadata", async () => {
     const request = new Request(`${ORIGIN}/.well-known/agent-market.json`);
     const base = discoveryResponse(request);
     expect(base).not.toBeNull();
@@ -45,10 +46,11 @@ describe("modern agent discovery overlay", () => {
       mcp: `${ORIGIN}/mcp`,
       resources: `${ORIGIN}/discovery/resources`,
       search: `${ORIGIN}/discovery/search`,
+      migration: `${ORIGIN}/.well-known/xguard/migrate`,
     });
   });
 
-  it("publishes a current remote MCP manifest", () => {
+  it("publishes a current remote MCP manifest with migration discovery", () => {
     expect(modernMcpManifest(ORIGIN)).toMatchObject({
       name: "io.github.moelayyan90/xguard",
       version: "0.4.0",
@@ -57,6 +59,9 @@ describe("modern agent discovery overlay", () => {
         stateless: true,
       },
       remotes: [{ type: "streamable-http", url: `${ORIGIN}/mcp` }],
+      discovery: {
+        migration: `${ORIGIN}/.well-known/xguard/migrate`,
+      },
     });
   });
 });
