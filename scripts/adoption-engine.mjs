@@ -31,7 +31,8 @@ const GITHUB_PAIN_QUERIES = [
   'x402 "Payment response header not found"',
 ];
 
-const USER_AGENT = "XGuard-Adoption-Engine/1.0 (+https://github.com/moelayyan90/XGuard)";
+const USER_AGENT =
+  "XGuard-Adoption-Engine/1.0 (+https://github.com/moelayyan90/XGuard)";
 
 function envInt(name, fallback, min, max) {
   const parsed = Number.parseInt(process.env[name] ?? "", 10);
@@ -62,14 +63,20 @@ function acceptsBaseMainnet(item) {
 }
 
 function hasBazaarMetadata(item) {
-  return Boolean(item?.extensions && typeof item.extensions === "object" && item.extensions.bazaar);
+  return Boolean(
+    item?.extensions &&
+    typeof item.extensions === "object" &&
+    item.extensions.bazaar,
+  );
 }
 
 function looksLikeMcp(item) {
   const resource = String(item?.resource ?? "").toLowerCase();
   const type = String(item?.type ?? "").toLowerCase();
   const description = JSON.stringify(item?.extensions ?? {}).toLowerCase();
-  return type === "mcp" || resource.includes("/mcp") || description.includes("mcp");
+  return (
+    type === "mcp" || resource.includes("/mcp") || description.includes("mcp")
+  );
 }
 
 function priceMicroUsd(item) {
@@ -87,7 +94,8 @@ export function normalizeBazaarItem(item, source) {
   const resource = cleanUrl(item?.resource ?? item?.url);
   if (!resource) return null;
   const payTo = Array.isArray(item?.accepts)
-    ? item.accepts.find((entry) => entry?.network === BASE_MAINNET)?.payTo ?? null
+    ? (item.accepts.find((entry) => entry?.network === BASE_MAINNET)?.payTo ??
+      null)
     : null;
   return {
     id: `resource:${resource}`,
@@ -140,7 +148,10 @@ function scoreCandidate(candidate) {
     score += 30;
     reasons.push("public facilitator/discovery pain signal");
   }
-  if (candidate.incumbentHint === "cdp" || candidate.incumbentHint === "payai") {
+  if (
+    candidate.incumbentHint === "cdp" ||
+    candidate.incumbentHint === "payai"
+  ) {
     score += 5;
     reasons.push(`known incumbent hint: ${candidate.incumbentHint}`);
   }
@@ -155,9 +166,13 @@ function recipeFor(candidate) {
     "Confirm /verify and /settle succeed, then verify the resource appears in XGuard /discovery/resources after a successful Bazaar-bearing settlement.",
   ];
   if (candidate.incumbentHint === "cdp") {
-    steps.unshift("Replace the CDP facilitator client/configuration only; keep the resource server payment requirements and payTo unchanged.");
+    steps.unshift(
+      "Replace the CDP facilitator client/configuration only; keep the resource server payment requirements and payTo unchanged.",
+    );
   } else if (candidate.incumbentHint === "payai") {
-    steps.unshift("Replace the PayAI facilitator base URL only; keep the existing x402 middleware and payment requirements unchanged.");
+    steps.unshift(
+      "Replace the PayAI facilitator base URL only; keep the existing x402 middleware and payment requirements unchanged.",
+    );
   }
   return steps;
 }
@@ -171,7 +186,9 @@ async function fetchJson(url, options = {}) {
       ...(options.headers ?? {}),
     },
     redirect: "manual",
-    signal: AbortSignal.timeout(envInt("XGUARD_ADOPTION_TIMEOUT_MS", 8_000, 1_000, 30_000)),
+    signal: AbortSignal.timeout(
+      envInt("XGUARD_ADOPTION_TIMEOUT_MS", 8_000, 1_000, 30_000),
+    ),
   });
   const text = await response.text();
   let body;
@@ -211,13 +228,19 @@ async function collectBazaarSource(source) {
 }
 
 async function probeResource(candidate) {
-  if (candidate.candidateType !== "resource" || !candidate.resource) return candidate;
+  if (candidate.candidateType !== "resource" || !candidate.resource)
+    return candidate;
   try {
     const response = await fetch(candidate.resource, {
       method: "GET",
-      headers: { "User-Agent": USER_AGENT, Accept: "application/json,*/*;q=0.8" },
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: "application/json,*/*;q=0.8",
+      },
       redirect: "manual",
-      signal: AbortSignal.timeout(envInt("XGUARD_ADOPTION_PROBE_TIMEOUT_MS", 5_000, 1_000, 15_000)),
+      signal: AbortSignal.timeout(
+        envInt("XGUARD_ADOPTION_PROBE_TIMEOUT_MS", 5_000, 1_000, 15_000),
+      ),
     });
     const paymentRequired =
       response.headers.has("payment-required") ||
@@ -232,7 +255,10 @@ async function probeResource(candidate) {
       },
     };
   } catch (error) {
-    return { ...candidate, probe: { status: null, paymentRequired: false, error: String(error) } };
+    return {
+      ...candidate,
+      probe: { status: null, paymentRequired: false, error: String(error) },
+    };
   }
 }
 
@@ -246,7 +272,9 @@ async function mapLimit(items, concurrency, mapper) {
       output[index] = await mapper(items[index], index);
     }
   }
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  );
   return output;
 }
 
@@ -266,14 +294,19 @@ async function githubSearch(token) {
       const { body } = await fetchJson(url, { headers });
       for (const item of body?.items ?? []) {
         const repo = item?.repository;
-        if (!repo?.full_name || repo.full_name === "moelayyan90/XGuard") continue;
+        if (!repo?.full_name || repo.full_name === "moelayyan90/XGuard")
+          continue;
         repositories.set(repo.full_name, {
           id: `repo:${repo.full_name}`,
           candidateType: "repository",
           resource: null,
           host: null,
           source: "github-code-search",
-          incumbentHint: query.includes("payai") ? "payai" : query.includes("createFacilitatorConfig") ? "cdp" : null,
+          incumbentHint: query.includes("payai")
+            ? "payai"
+            : query.includes("createFacilitatorConfig")
+              ? "cdp"
+              : null,
           baseMainnet: false,
           bazaarMetadata: false,
           mcp: query.includes("@x402/mcp"),
@@ -287,7 +320,13 @@ async function githubSearch(token) {
         });
       }
     } catch (error) {
-      console.warn(JSON.stringify({ event: "github_code_search_failed", query, error: String(error) }));
+      console.warn(
+        JSON.stringify({
+          event: "github_code_search_failed",
+          query,
+          error: String(error),
+        }),
+      );
     }
   }
 
@@ -301,7 +340,10 @@ async function githubSearch(token) {
     try {
       const { body } = await fetchJson(url, { headers });
       for (const issue of body?.items ?? []) {
-        const repoUrl = String(issue?.repository_url ?? "").replace("https://api.github.com/repos/", "https://github.com/");
+        const repoUrl = String(issue?.repository_url ?? "").replace(
+          "https://api.github.com/repos/",
+          "https://github.com/",
+        );
         if (!repoUrl || repoUrl.includes("/x402-foundation/x402")) continue;
         painSignals.push({
           id: `pain:${issue.id}`,
@@ -323,7 +365,13 @@ async function githubSearch(token) {
         });
       }
     } catch (error) {
-      console.warn(JSON.stringify({ event: "github_issue_search_failed", query, error: String(error) }));
+      console.warn(
+        JSON.stringify({
+          event: "github_issue_search_failed",
+          query,
+          error: String(error),
+        }),
+      );
     }
   }
   return { repositories: [...repositories.values()], painSignals };
@@ -345,7 +393,12 @@ function dedupe(candidates) {
     map.set(key, {
       ...existing,
       ...candidate,
-      source: [...new Set([...(String(existing.source).split(",")), ...(String(candidate.source).split(","))])].join(","),
+      source: [
+        ...new Set([
+          ...String(existing.source).split(","),
+          ...String(candidate.source).split(","),
+        ]),
+      ].join(","),
       baseMainnet: existing.baseMainnet || candidate.baseMainnet,
       bazaarMetadata: existing.bazaarMetadata || candidate.bazaarMetadata,
       mcp: existing.mcp || candidate.mcp,
@@ -359,9 +412,18 @@ function dedupe(candidates) {
 
 function renderMarkdown(report) {
   const rows = report.candidates.slice(0, 50).map((candidate) => {
-    const target = candidate.resource ?? candidate.repoUrl ?? candidate.issueUrl ?? candidate.id;
+    const target =
+      candidate.resource ??
+      candidate.repoUrl ??
+      candidate.issueUrl ??
+      candidate.id;
     const kind = candidate.mcp ? "MCP" : candidate.candidateType;
-    const evidence = candidate.probe?.status === 402 ? "live 402" : candidate.painSignal ? "pain signal" : candidate.source;
+    const evidence =
+      candidate.probe?.status === 402
+        ? "live 402"
+        : candidate.painSignal
+          ? "pain signal"
+          : candidate.source;
     return `| ${candidate.score} | ${kind} | ${target} | ${candidate.incumbentHint ?? "unknown"} | ${evidence} |`;
   });
   return [
@@ -388,20 +450,36 @@ export function selfTest() {
     {
       resource: "https://example.com/mcp",
       type: "mcp",
-      accepts: [{ network: BASE_MAINNET, scheme: "exact", amount: "50000", payTo: "0x0000000000000000000000000000000000000001" }],
+      accepts: [
+        {
+          network: BASE_MAINNET,
+          scheme: "exact",
+          amount: "50000",
+          payTo: "0x0000000000000000000000000000000000000001",
+        },
+      ],
       extensions: { bazaar: { info: { description: "example" } } },
       lastUpdated: 1,
     },
     source,
   );
-  if (!candidate?.baseMainnet || !candidate.mcp || !candidate.bazaarMetadata) throw new Error("self_test_normalization_failed");
-  const scored = scoreCandidate({ ...candidate, probe: { status: 402, paymentRequired: true }, repoUrl: "https://github.com/example/repo" });
+  if (!candidate?.baseMainnet || !candidate.mcp || !candidate.bazaarMetadata)
+    throw new Error("self_test_normalization_failed");
+  const scored = scoreCandidate({
+    ...candidate,
+    probe: { status: 402, paymentRequired: true },
+    repoUrl: "https://github.com/example/repo",
+  });
   if (scored.score < 80) throw new Error("self_test_scoring_failed");
   const wrongNetwork = normalizeBazaarItem(
-    { resource: "https://example.com/solana", accepts: [{ network: "solana:mainnet" }] },
+    {
+      resource: "https://example.com/solana",
+      accepts: [{ network: "solana:mainnet" }],
+    },
     source,
   );
-  if (wrongNetwork?.baseMainnet) throw new Error("self_test_network_filter_failed");
+  if (wrongNetwork?.baseMainnet)
+    throw new Error("self_test_network_filter_failed");
   return true;
 }
 
@@ -414,17 +492,36 @@ async function main() {
 
   const rawSources = process.env.XGUARD_ADOPTION_SOURCES;
   const sources = rawSources
-    ? rawSources.split(",").map((url, index) => ({ id: `custom-${index + 1}`, url: url.trim(), incumbentHint: null })).filter((entry) => entry.url)
+    ? rawSources
+        .split(",")
+        .map((url, index) => ({
+          id: `custom-${index + 1}`,
+          url: url.trim(),
+          incumbentHint: null,
+        }))
+        .filter((entry) => entry.url)
     : DEFAULT_SOURCES;
 
   const all = [];
   for (const source of sources) {
     try {
       const found = await collectBazaarSource(source);
-      console.log(JSON.stringify({ event: "adoption_source_scanned", source: source.id, candidates: found.length }));
+      console.log(
+        JSON.stringify({
+          event: "adoption_source_scanned",
+          source: source.id,
+          candidates: found.length,
+        }),
+      );
       all.push(...found);
     } catch (error) {
-      console.warn(JSON.stringify({ event: "adoption_source_failed", source: source.id, error: String(error) }));
+      console.warn(
+        JSON.stringify({
+          event: "adoption_source_failed",
+          source: source.id,
+          error: String(error),
+        }),
+      );
     }
   }
 
@@ -435,44 +532,85 @@ async function main() {
   const probeLimit = envInt("XGUARD_ADOPTION_PROBE_LIMIT", 75, 0, 250);
   const probeTargets = candidates
     .filter((candidate) => candidate.resource && candidate.baseMainnet)
-    .sort((a, b) => Number(b.mcp) - Number(a.mcp) || Number(b.bazaarMetadata) - Number(a.bazaarMetadata))
+    .sort(
+      (a, b) =>
+        Number(b.mcp) - Number(a.mcp) ||
+        Number(b.bazaarMetadata) - Number(a.bazaarMetadata),
+    )
     .slice(0, probeLimit);
-  const probed = await mapLimit(probeTargets, envInt("XGUARD_ADOPTION_PROBE_CONCURRENCY", 8, 1, 20), probeResource);
+  const probed = await mapLimit(
+    probeTargets,
+    envInt("XGUARD_ADOPTION_PROBE_CONCURRENCY", 8, 1, 20),
+    probeResource,
+  );
   const probes = new Map(probed.map((candidate) => [candidate.id, candidate]));
-  candidates = candidates.map((candidate) => probes.get(candidate.id) ?? candidate);
+  candidates = candidates.map(
+    (candidate) => probes.get(candidate.id) ?? candidate,
+  );
 
   candidates = candidates
     .map((candidate) => {
       const scored = scoreCandidate(candidate);
       return { ...candidate, ...scored, migrationRecipe: recipeFor(candidate) };
     })
-    .filter((candidate) => candidate.score >= envInt("XGUARD_ADOPTION_MIN_SCORE", 25, 0, 100))
-    .sort((a, b) => b.score - a.score || String(a.resource ?? a.repoUrl).localeCompare(String(b.resource ?? b.repoUrl)));
+    .filter(
+      (candidate) =>
+        candidate.score >= envInt("XGUARD_ADOPTION_MIN_SCORE", 25, 0, 100),
+    )
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        String(a.resource ?? a.repoUrl).localeCompare(
+          String(b.resource ?? b.repoUrl),
+        ),
+    );
 
   const report = {
     generatedAt: new Date().toISOString(),
     xguardOrigin: XGUARD_ORIGIN,
     network: BASE_MAINNET,
-    sources: sources.map((source) => source.id).concat(process.env.GITHUB_TOKEN ? ["github-code-search", "github-issues-search"] : []),
+    sources: sources
+      .map((source) => source.id)
+      .concat(
+        process.env.GITHUB_TOKEN
+          ? ["github-code-search", "github-issues-search"]
+          : [],
+      ),
     candidateCount: candidates.length,
-    live402Count: candidates.filter((candidate) => candidate.probe?.status === 402).length,
-    painSignalCount: candidates.filter((candidate) => candidate.painSignal).length,
+    live402Count: candidates.filter(
+      (candidate) => candidate.probe?.status === 402,
+    ).length,
+    painSignalCount: candidates.filter((candidate) => candidate.painSignal)
+      .length,
     candidates,
   };
 
-  await writeFile(process.env.XGUARD_ADOPTION_JSON ?? "adoption-report.json", `${JSON.stringify(report, null, 2)}\n`);
-  await writeFile(process.env.XGUARD_ADOPTION_MARKDOWN ?? "adoption-report.md", renderMarkdown(report));
-  console.log(JSON.stringify({
-    event: "adoption_report_ready",
-    candidates: report.candidateCount,
-    live402: report.live402Count,
-    painSignals: report.painSignalCount,
-  }));
+  await writeFile(
+    process.env.XGUARD_ADOPTION_JSON ?? "adoption-report.json",
+    `${JSON.stringify(report, null, 2)}\n`,
+  );
+  await writeFile(
+    process.env.XGUARD_ADOPTION_MARKDOWN ?? "adoption-report.md",
+    renderMarkdown(report),
+  );
+  console.log(
+    JSON.stringify({
+      event: "adoption_report_ready",
+      candidates: report.candidateCount,
+      live402: report.live402Count,
+      painSignals: report.painSignalCount,
+    }),
+  );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((error) => {
-    console.error(JSON.stringify({ event: "adoption_engine_failed", error: String(error) }));
+    console.error(
+      JSON.stringify({ event: "adoption_engine_failed", error: String(error) }),
+    );
     process.exitCode = 1;
   });
 }
