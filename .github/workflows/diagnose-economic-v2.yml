@@ -22,29 +22,21 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Format check
         run: npm run format:check
-      - name: Lint
-        run: npm run lint
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Unit tests
-        run: npm run test:coverage
-      - name: Worker tests
-        run: npm run test:worker
-      - name: Secret scan
-        run: npm run security:secrets
-      - name: No TODOs
-        run: npm run quality:no-todos
-      - name: Docs check
-        run: npm run quality:docs
-      - name: Build TypeScript
-        run: npm run build
-      - name: Audit dependencies
-        run: npm run security:deps
-      - name: Wrangler types
-        run: npm --workspace @xguard/worker run types -- --check
-      - name: Build testnet Worker
-        run: npm --workspace @xguard/worker run build
-      - name: Build mainnet Worker
-        run: npm --workspace @xguard/worker run build:mainnet
-      - name: Build Economic Firewall preview
-        run: npm --workspace @xguard/worker run build:economic-preview
+      - name: Capture lint report
+        id: lint
+        shell: bash
+        run: |
+          set +e
+          npm run lint > lint-output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload lint report
+        uses: actions/upload-artifact@v4
+        with:
+          name: economic-v2-lint-report
+          path: lint-output.txt
+          if-no-files-found: error
+      - name: Fail if lint failed
+        if: steps.lint.outputs.exit_code != '0'
+        run: exit 1
