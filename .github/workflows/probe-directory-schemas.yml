@@ -12,22 +12,40 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Submit XGuard to ServerHub
+      - name: Inspect ServerHub public submit bundle
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
-            -X POST 'https://www.serverhub.digital/api/submit' \
-            -H 'Content-Type: application/json' \
-            --data '{"githubUrl":"https://github.com/moelayyan90/XGuard"}')"
-          code="${response##*$'\n'}"
-          body="${response%$'\n'*}"
-          echo "HTTP ${code}"
-          printf '%s\n' "${body}"
-          lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
-          if [[ "${code}" =~ ^2[0-9][0-9]$ ]] || [[ "${code}" == "409" ]] || [[ "${lower}" == *"already"* ]] || [[ "${lower}" == *"exist"* ]]; then
-            echo "ServerHub submission accepted or already present."
-            exit 0
-          fi
-          echo "ServerHub rejected XGuard (HTTP ${code})." >&2
-          exit 1
+          mkdir -p /tmp/serverhub
+          curl -fsS --max-time 20 'https://www.serverhub.digital/submit' -o /tmp/serverhub/page.html
+          grep -oE 'src="[^"]+\.js[^" ]*"' /tmp/serverhub/page.html | cut -d'"' -f2 | sort -u > /tmp/serverhub/scripts.txt || true
+          while IFS= read -r src; do
+            [[ -z "${src}" ]] && continue
+            if [[ "${src}" == http* ]]; then url="${src}"; else url="https://www.serverhub.digital${src}"; fi
+            file="/tmp/serverhub/$(basename "${src}" | cut -d'?' -f1)"
+            curl -fsS --max-time 20 "${url}" -o "${file}" || true
+          done < /tmp/serverhub/scripts.txt
+          echo '=== ServerHub /api/submit references ==='
+          grep -RaoE '.{0,500}/api/submit.{0,1200}' /tmp/serverhub/*.js 2>/dev/null | head -20 || true
+          echo '=== ServerHub likely request fields ==='
+          grep -RaoE '.{0,250}(github|repo|repository|description|category|author|homepage|url).{0,500}' /tmp/serverhub/*.js 2>/dev/null | grep -E '/api/submit|fetch\(|JSON.stringify|z\.object|safeParse' | head -40 || true
+
+      - name: Inspect MPP Registry public submit form
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mpp
+          curl -fsS --max-time 20 'https://mpp.directory/v1/services/submit' -o /tmp/mpp/page.html
+          echo '=== MPP form tags ==='
+          grep -oE '<form[^>]*>|<input[^>]*>|<select[^>]*>|<textarea[^>]*>' /tmp/mpp/page.html | head -200 || true
+          echo '=== MPP action/name snippets ==='
+          grep -oE 'action="[^"]+"|name="[^"]+"|value="[^"]+"' /tmp/mpp/page.html | head -300 || true
+          grep -oE 'src="[^"]+\.js[^" ]*"' /tmp/mpp/page.html | cut -d'"' -f2 | sort -u > /tmp/mpp/scripts.txt || true
+          while IFS= read -r src; do
+            [[ -z "${src}" ]] && continue
+            if [[ "${src}" == http* ]]; then url="${src}"; else url="https://mpp.directory${src}"; fi
+            file="/tmp/mpp/$(basename "${src}" | cut -d'?' -f1)"
+            curl -fsS --max-time 20 "${url}" -o "${file}" || true
+          done < /tmp/mpp/scripts.txt
+          echo '=== MPP submission references ==='
+          grep -RaoE '.{0,500}(services/submit|mcp_remote|a2a_agent_card).{0,1200}' /tmp/mpp/*.js 2>/dev/null | head -40 || true
