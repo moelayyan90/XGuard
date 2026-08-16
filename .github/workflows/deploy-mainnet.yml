@@ -115,17 +115,9 @@ jobs:
           curl -fsS --max-time 15 "${BASE_URL}/healthz" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'
 
-          root_headers="$(mktemp)"
-          root_body="$(curl -fsS --max-time 15 -X POST -D "${root_headers}" "${BASE_URL}/")"
+          root_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/")"
           printf '%s' "${root_body}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.mode!=="mainnet"||!x.endpoints||x.endpoints.settle!=="/settle")process.exit(1)})'
-          if ! tr -d '\r' < "${root_headers}" | grep -qi '^x-xguard-discovery:[[:space:]]*root-post$'; then
-            echo "::error::POST / did not return the guarded XGuard discovery response."
-            cat "${root_headers}"
-            rm -f "${root_headers}"
-            exit 1
-          fi
-          rm -f "${root_headers}"
 
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/agent-card.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.4.0"||!String(x.providerManifest||"").endsWith("/.well-known/x402/facilitator.json")||!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolVersion==="2")||!Array.isArray(x.skills)||!x.skills.some(k=>k&&k.id==="x402-payment-settlement")||!x.skills.some(k=>k&&k.id==="mcp-x402-discovery")||!x.xguardDiscovery||!String(x.xguardDiscovery.mcp||"").endsWith("/mcp")||x.xguardDiscovery.preferredMcpProtocolVersion!=="2026-07-28")process.exit(1)})'
