@@ -21,13 +21,35 @@ type PublicScheduled = (
 
 const mainnetFetch = mainnetHandler.fetch as unknown as PublicFetch;
 const mainnetScheduled = mainnetHandler.scheduled as unknown as PublicScheduled;
+const FACILITATOR_DISCOVERY_PATH = "/.well-known/x402/facilitator.json";
+
+function normalizeDiscoveryRequest(request: Request): Request {
+  if (request.method !== "GET" && request.method !== "HEAD") return request;
+
+  const url = new URL(request.url);
+  const malformedLiteral = `${FACILITATOR_DISCOVERY_PATH}'`;
+  const malformedEncoded = `${FACILITATOR_DISCOVERY_PATH}%27`;
+
+  if (
+    url.pathname !== malformedLiteral &&
+    url.pathname.toLowerCase() !== malformedEncoded.toLowerCase()
+  ) {
+    return request;
+  }
+
+  url.pathname = FACILITATOR_DISCOVERY_PATH;
+  return new Request(url.toString(), {
+    method: request.method,
+    headers: request.headers,
+  });
+}
 
 const handler: ExportedHandler<PublicMainnetEnv> = {
   async fetch(request, env, executionCtx): Promise<Response> {
     const searchIndex = searchIndexResponse(request);
     if (searchIndex !== null) return searchIndex;
 
-    const discovery = discoveryResponse(request);
+    const discovery = discoveryResponse(normalizeDiscoveryRequest(request));
     if (discovery !== null) return discovery;
 
     const url = new URL(request.url);
