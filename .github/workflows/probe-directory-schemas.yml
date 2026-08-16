@@ -12,18 +12,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Probe validation errors without creating listings
+      - name: Submit XGuard to VaultPlane
         shell: bash
         run: |
           set -euo pipefail
-          for endpoint in \
-            'https://www.vaultplane.com/api/servers/submit' \
-            'https://www.serverhub.digital/api/submit'
-          do
-            echo "=== ${endpoint} ==="
-            curl -sS --max-time 20 -D - \
-              -X POST "${endpoint}" \
-              -H 'Content-Type: application/json' \
-              --data '{}' || true
-            echo
-          done
+          response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+            -X POST 'https://www.vaultplane.com/api/servers/submit' \
+            -H 'Content-Type: application/json' \
+            --data '{"name":"XGuard","description":"Remote MCP server and x402 economic firewall / facilitator safety gateway for Base mainnet USDC, with replay protection, finality verification, guarded settlement routing, and agent discovery.","githubUrl":"https://github.com/moelayyan90/XGuard","maintainerName":"moelayyan90"}')"
+          code="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          echo "HTTP ${code}"
+          printf '%s\n' "${body}"
+          lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "${code}" =~ ^2[0-9][0-9]$ ]] || [[ "${code}" == "409" ]] || [[ "${lower}" == *"already"* ]] || [[ "${lower}" == *"exist"* ]]; then
+            echo "VaultPlane submission accepted or already present."
+            exit 0
+          fi
+          echo "VaultPlane rejected XGuard (HTTP ${code})." >&2
+          exit 1
+
+      - name: Probe ServerHub with an intentionally incomplete payload
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sS --max-time 20 -D - \
+            -X POST 'https://www.serverhub.digital/api/submit' \
+            -H 'Content-Type: application/json' \
+            --data '{"name":"XGuard"}' || true
