@@ -1,6 +1,6 @@
-const XGUARD_VERSION = "0.2.0-mainnet-rc";
-const AGENT_CARD_ETAG = '"xguard-agent-card-0.2.0-mainnet-rc"';
-const PROVIDER_MANIFEST_ETAG = '"xguard-provider-manifest-v1"';
+const XGUARD_VERSION = "0.4.0";
+const AGENT_CARD_ETAG = '"xguard-agent-card-0.4.0"';
+const PROVIDER_MANIFEST_ETAG = '"xguard-provider-manifest-0.4.0"';
 const DISCOVERY_CACHE_CONTROL =
   "public, max-age=3600, stale-while-revalidate=86400";
 
@@ -460,6 +460,10 @@ XGuard charges $0.002 only for a successful billable settlement. Verification, m
 ## Discovery
 - [Provider manifest](${origin}/.well-known/x402/facilitator.json): machine-readable facilitator identity, integration, pricing, onboarding, and safety metadata
 - [Agent Card](${origin}/.well-known/agent-card.json): machine-readable agent/service capability metadata
+- [MCP server metadata](${origin}/.well-known/mcp/server.json): official remote MCP server metadata
+- [Remote MCP](${origin}/mcp): streamable HTTP MCP endpoint for agent discovery
+- [Bazaar resources](${origin}/discovery/resources): machine-readable catalog of x402-paid HTTP APIs and MCP tools
+- [Bazaar search](${origin}/discovery/search?query=x402): searchable XGuard catalog surface
 - [OpenAPI](${origin}/openapi.json): complete HTTP API description
 - [Supported x402 kinds](${origin}/supported): live x402 capabilities and authoritative signer attribution
 - [Status](${origin}/status): operational status
@@ -514,8 +518,13 @@ Allow: /
 
 # Machine-readable AI/service discovery
 # ${origin}/.well-known/x402/facilitator.json
-# ${origin}/llms.txt
 # ${origin}/.well-known/agent-card.json
+# ${origin}/.well-known/agent-market.json
+# ${origin}/.well-known/mcp/server.json
+# ${origin}/mcp
+# ${origin}/discovery/resources
+# ${origin}/discovery/search?query=x402
+# ${origin}/llms.txt
 # ${origin}/openapi.json
 `;
 }
