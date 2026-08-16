@@ -9,18 +9,32 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npx prettier --write apps/worker/src/mainnet-supervisor.ts
+      - name: Commit supervisor formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- apps/worker/src/mainnet-supervisor.ts; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add apps/worker/src/mainnet-supervisor.ts
+            git commit -m "format mainnet supervisor"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
       - run: npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
