@@ -23,10 +23,13 @@ describe("automatic top-up RPC resilience", () => {
     expect(supervisor).toContain("automatic_topup_scan_deferred");
     expect(supervisor).toContain("automatic_topup_rpc_failover_recovered");
     expect(mainnetConfig).toContain("BASE_RPC_FALLBACK_URLS");
-    expect(mainnetConfig).toContain("https://rpc.ankr.com/base");
-    expect(mainnetConfig).toContain("https://base.drpc.org");
-    expect(mainnetConfig).toContain("https://public.1rpc.io/base");
+    expect(mainnetConfig).toContain(
+      "https://base.public.blockpi.network/v1/rpc/public",
+    );
     expect(mainnetConfig).toContain("https://mainnet.base.org");
+    expect(mainnetConfig).not.toContain("https://rpc.ankr.com/base");
+    expect(mainnetConfig).not.toContain("https://base.drpc.org");
+    expect(mainnetConfig).not.toContain("https://public.1rpc.io/base");
     expect(mainnetConfig).not.toContain("base-rpc.publicnode.com");
   });
 
