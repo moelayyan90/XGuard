@@ -1,0 +1,23 @@
+name: Verify live mainnet smoke once
+
+on:
+  push:
+    branches:
+      - agent/verify-mainnet-smoke
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Run canonical mainnet smoke
+        run: npm run smoke:mainnet
