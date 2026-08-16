@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import {
@@ -175,5 +176,23 @@ describe("Bazaar JSON Schema validation", () => {
         mcpSchema,
       ),
     ).toBe(false);
+  });
+});
+
+describe("Bazaar SQL stays aligned with its migration", () => {
+  it("does not reference removed catalog columns", () => {
+    const source = readFileSync(
+      new URL("../apps/worker/src/mainnet-bazaar.ts", import.meta.url),
+      "utf8",
+    );
+    const migration = readFileSync(
+      new URL(
+        "../apps/worker/migrations/0005_bazaar_discovery.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(migration).not.toContain("successful_settlements");
+    expect(source).not.toContain("successful_settlements");
   });
 });

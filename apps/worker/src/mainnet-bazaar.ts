@@ -309,7 +309,7 @@ export async function findBazaarResource(db: D1Database, resource: string) {
     .prepare(
       `SELECT * FROM bazaar_resources
        WHERE resource_url = ? OR resource_key = ?
-       ORDER BY successful_settlements DESC, last_updated_epoch DESC LIMIT 20`,
+       ORDER BY last_updated_epoch DESC, resource_key ASC LIMIT 20`,
     )
     .bind(resource, resource)
     .all<BazaarRow>();
