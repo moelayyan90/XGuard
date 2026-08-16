@@ -45,13 +45,38 @@ jobs:
         run: npm run adoption:self-test
 
       - name: Discover, verify, and rank public x402 merchant targets
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
           XGUARD_ADOPTION_MAX_PAGES: "100"
           XGUARD_ADOPTION_PROBE_LIMIT: "100"
           XGUARD_ADOPTION_PROBE_CONCURRENCY: "8"
           XGUARD_ADOPTION_MIN_SCORE: "25"
-        run: npm run adoption:scan
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            rm -f adoption-report.json adoption-report.md adoption-targets.json adoption-targets.md adoption-scan.log
+            set +e
+            npm run adoption:scan 2>&1 | tee adoption-scan.log
+            scan_status=${PIPESTATUS[0]}
+            set -e
+
+            if [[ "$scan_status" -eq 0 ]] \
+              && grep -Fq '"event":"adoption_source_scanned","source":"cdp-bazaar"' adoption-scan.log \
+              && grep -Fq '"event":"adoption_source_scanned","source":"payai-bazaar"' adoption-scan.log; then
+              echo "Primary adoption catalogs completed on attempt ${attempt}."
+              exit 0
+            fi
+
+            if [[ "$attempt" -lt 3 ]]; then
+              delay=$((attempt * 5))
+              echo "Primary adoption catalog coverage incomplete on attempt ${attempt}; retrying in ${delay}s."
+              sleep "$delay"
+            fi
+          done
+
+          echo "Primary adoption catalog coverage remained incomplete; keeping the previous canonical queue unchanged."
+          exit 1
 
       - uses: actions/upload-artifact@v4
         with:
