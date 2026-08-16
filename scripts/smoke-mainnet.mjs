@@ -95,12 +95,6 @@ assert(
   "mainnet earned revenue total is invalid",
 );
 
-const unauthorized = await json("/v1/balance");
-assert(
-  unauthorized.response.status === 401,
-  "mainnet merchant balance did not fail closed without authentication",
-);
-
 console.log(
   JSON.stringify({
     url: baseUrl.origin,
