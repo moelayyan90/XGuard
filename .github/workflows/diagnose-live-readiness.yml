@@ -1,0 +1,45 @@
+name: Diagnose live readiness
+
+on:
+  push:
+    branches: [agent/diagnose-live-readiness]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe live endpoints
+        shell: bash
+        run: |
+          set -u
+          BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
+          probe() {
+            name="$1"; method="$2"; path="$3"
+            headers="$(mktemp)"; body="$(mktemp)"
+            if [[ "$method" == "POST" ]]; then
+              code="$(curl -sS --max-time 15 -X POST -D "$headers" -o "$body" -w '%{http_code}' "${BASE_URL}${path}" || true)"
+            else
+              code="$(curl -sS --max-time 15 -D "$headers" -o "$body" -w '%{http_code}' "${BASE_URL}${path}" || true)"
+            fi
+            echo "===== ${name} ${method} ${path} HTTP ${code} ====="
+            cat "$headers"; echo; cat "$body"; echo
+            rm -f "$headers" "$body"
+          }
+          probe healthz GET /healthz
+          probe readyz GET /readyz
+          probe status GET /status
+          probe root POST /
+          probe agent-card GET /.well-known/agent-card.json
+          probe agent-market GET /.well-known/agent-market.json
+          probe x402-manifest GET /.well-known/x402/facilitator.json
+          probe x402-alias GET /.well-known/x402
+          probe monetization GET /.well-known/monetization
+          probe mcp-server GET /.well-known/mcp/server.json
+          probe openapi GET /openapi.json
+          probe llms GET /llms.txt
+          probe llms-full GET /llms-full.txt
+          probe robots GET /robots.txt
