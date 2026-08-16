@@ -1,0 +1,64 @@
+name: Final Bazaar SQL fix
+
+on:
+  push:
+    branches:
+      - agent/complete-agent-discovery-stack
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[bazaar-sql-fixed]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/complete-agent-discovery-stack
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Fix stale Bazaar SQL and add regression guard
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('apps/worker/src/mainnet-bazaar.ts')
+          source = source_path.read_text()
+          old = 'ORDER BY successful_settlements DESC, last_updated_epoch DESC LIMIT 20'
+          new = 'ORDER BY last_updated_epoch DESC, resource_key ASC LIMIT 20'
+          if source.count(old) != 1:
+              raise SystemExit(f'expected exactly one stale SQL reference, got {source.count(old)}')
+          source_path.write_text(source.replace(old, new))
+
+          test_path = Path('tests/mainnet-bazaar.test.ts')
+          tests = test_path.read_text()
+          if 'Bazaar SQL stays aligned with its migration' not in tests:
+              tests = tests.replace(
+                  'import { describe, expect, it } from "vitest";\n',
+                  'import { readFileSync } from "node:fs";\nimport { describe, expect, it } from "vitest";\n',
+                  1,
+              )
+              tests += '''\n\ndescribe("Bazaar SQL stays aligned with its migration", () => {\n  it("does not reference removed catalog columns", () => {\n    const source = readFileSync(\n      new URL("../apps/worker/src/mainnet-bazaar.ts", import.meta.url),\n      "utf8",\n    );\n    const migration = readFileSync(\n      new URL(\n        "../apps/worker/migrations/0005_bazaar_discovery.sql",\n        import.meta.url,\n      ),\n      "utf8",\n    );\n    expect(migration).not.toContain("successful_settlements");\n    expect(source).not.toContain("successful_settlements");\n  });\n});\n'''
+              test_path.write_text(tests)
+          PY
+          npx prettier --write apps/worker/src/mainnet-bazaar.ts tests/mainnet-bazaar.test.ts
+      - name: Verify
+        run: |
+          npm run typecheck
+          npx vitest run tests/mainnet-bazaar.test.ts
+          npm --workspace @xguard/worker run build:mainnet
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "xguard-agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/mainnet-bazaar.ts tests/mainnet-bazaar.test.ts
+          git commit -m "fix: align Bazaar SQL with migration [bazaar-sql-fixed]"
+          git push origin HEAD:agent/complete-agent-discovery-stack
