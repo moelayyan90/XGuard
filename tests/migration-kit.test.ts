@@ -12,6 +12,8 @@ describe("safe merchant migration kit", () => {
     );
     expect(response).not.toBeNull();
     expect(response!.status).toBe(200);
+    expect(response!.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response!.headers.get("x-content-type-options")).toBe("nosniff");
     const body = (await response!.json()) as any;
 
     expect(body).toMatchObject({
@@ -26,6 +28,8 @@ describe("safe merchant migration kit", () => {
       },
     });
     expect(body.target.resource).toBe("https://example.com/api");
+    expect(JSON.stringify(body)).not.toContain("secret");
+    expect(JSON.stringify(body)).not.toContain("user@");
 
     const register = body.steps.find((step: any) => step.id === "register");
     expect(register.request).toMatchObject({
