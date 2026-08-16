@@ -1,0 +1,34 @@
+name: Format adoption targets temporary
+
+on:
+  push:
+    branches: [agent/adoption-engine]
+    paths:
+      - ".github/workflows/format-adoption-targets-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npx prettier scripts/adoption-targets.mjs --write
+      - name: Commit canonical formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- scripts/adoption-targets.mjs; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/adoption-targets.mjs
+          git commit -m "style: format adoption targets"
+          git push origin HEAD:agent/adoption-engine
