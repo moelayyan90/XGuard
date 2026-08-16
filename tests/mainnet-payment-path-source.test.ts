@@ -28,4 +28,31 @@ describe("mainnet payment availability gate", () => {
     expect(source).toContain(degradedDiscovery);
     expect(source).not.toContain(strictHealthyDiscovery);
   });
+
+  it("blocks mainnet verification before any downstream service when prepaid balance is insufficient", async () => {
+    const source = await readFile(
+      "apps/worker/src/mainnet-supervisor.ts",
+      "utf8",
+    );
+    const gate = source.indexOf(
+      'if (operation === "/verify" && inspected !== null)',
+    );
+    const downstream = source.indexOf(
+      "const response = await delegateFetch(request, env, ctx);",
+      gate,
+    );
+
+    expect(gate).toBeGreaterThanOrEqual(0);
+    expect(downstream).toBeGreaterThan(gate);
+    expect(source.slice(gate, downstream)).toContain(
+      "merchantBalance(\n      env.DB,\n      inspected.recovery.merchantId,",
+    );
+    expect(source.slice(gate, downstream)).toContain(
+      'error: "xguard_service_balance_required"',
+    );
+    expect(source.slice(gate, downstream)).toContain("402");
+    expect(source.slice(gate, downstream)).toContain(
+      'topUpEndpoint: "/v1/topups/intents"',
+    );
+  });
 });
