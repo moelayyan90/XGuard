@@ -40,6 +40,11 @@ import {
   deriveMainnetEconomicShadowBinding,
   parseMainnetEconomicShadowMode,
 } from "./mainnet-economic-shadow.js";
+import {
+  mainnetEconomicShadowStats,
+  pruneMainnetEconomicShadowTelemetry,
+  recordMainnetEconomicShadowObservation,
+} from "./mainnet-economic-shadow-telemetry.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
 
@@ -193,6 +198,17 @@ app.get("/status", async (context) => {
   const earned = await context.env.DB.prepare(
     "SELECT COUNT(*) AS count,COALESCE(SUM(fee_micro_usd),0) AS total FROM usage_events",
   ).first<{ count: number; total: number }>();
+  const shadowTelemetry = await mainnetEconomicShadowStats(
+    context.env.DB,
+  ).catch((error) => {
+    console.warn(
+      JSON.stringify({
+        event: "economic_firewall_shadow_telemetry_read_failed",
+        code: errorCode(error),
+      }),
+    );
+    return null;
+  });
   return context.json({
     gateway: "operational",
     mode: "mainnet",
@@ -202,6 +218,20 @@ app.get("/status", async (context) => {
     openReconciliationCases: reconciliation?.count ?? 0,
     successfulBillableSettlements: earned?.count ?? 0,
     earnedMicroUsd: earned?.total ?? 0,
+    economicFirewallShadow: {
+      mode: parseMainnetEconomicShadowMode(
+        context.env.ECONOMIC_FIREWALL_SHADOW_MODE,
+      ),
+      telemetry: shadowTelemetry === null ? "unavailable" : "operational",
+      ...(shadowTelemetry ?? {
+        intents: 0,
+        verifyEvents: 0,
+        settleEvents: 0,
+        correlatedIntents: 0,
+        settleWithoutVerifyIntents: 0,
+        authorizationMismatchEvents: 0,
+      }),
+    },
     measuredAt: new Date().toISOString(),
   });
 });
@@ -628,6 +658,24 @@ function observeEconomicFirewallShadow(
         amountMicroUsd: shadow.amountMicroUsd,
       }),
     );
+    context.executionCtx.waitUntil(
+      recordMainnetEconomicShadowObservation(
+        context.env.DB,
+        merchant.merchantId,
+        shadow,
+        operation,
+      ).catch((error) =>
+        console.warn(
+          JSON.stringify({
+            event: "economic_firewall_shadow_telemetry_write_failed",
+            requestId: context.get("requestId"),
+            operation,
+            merchantId: merchant.merchantId,
+            code: errorCode(error),
+          }),
+        ),
+      ),
+    );
   } catch (error) {
     console.warn(
       JSON.stringify({
@@ -707,6 +755,18 @@ async function runMaintenance(env: MainnetEnv): Promise<void> {
       JSON.stringify({ event: "payai_health_failed", code: errorCode(error) }),
     ),
   );
+  if (
+    parseMainnetEconomicShadowMode(env.ECONOMIC_FIREWALL_SHADOW_MODE) ===
+    "observe"
+  )
+    await pruneMainnetEconomicShadowTelemetry(env.DB).catch((error) =>
+      console.warn(
+        JSON.stringify({
+          event: "economic_firewall_shadow_telemetry_prune_failed",
+          code: errorCode(error),
+        }),
+      ),
+    );
   const nowEpoch = Math.floor(Date.now() / 1_000);
   await env.DB.batch([
     env.DB.prepare(
