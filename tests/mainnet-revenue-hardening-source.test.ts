@@ -68,10 +68,7 @@ describe("mainnet revenue hardening source invariants", () => {
   });
 
   it("does not use the Cloudflare-blocked anonymous PublicNode endpoint", async () => {
-    const config = await readFile(
-      "apps/worker/wrangler.mainnet.jsonc",
-      "utf8",
-    );
+    const config = await readFile("apps/worker/wrangler.mainnet.jsonc", "utf8");
     expect(config).toContain('"BASE_RPC_URL": "https://base.drpc.org"');
     expect(config).not.toContain("base-rpc.publicnode.com");
   });
