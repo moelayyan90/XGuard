@@ -1,0 +1,36 @@
+name: Format migration kit
+
+on:
+  push:
+    branches:
+      - agent/conversion-engine
+    paths:
+      - ".github/workflows/format-migration-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npx prettier apps/worker/src/migration-kit.ts --write
+      - name: Commit formatted module
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- apps/worker/src/migration-kit.ts; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/migration-kit.ts
+          git commit -m "style: format migration kit"
+          git push origin HEAD:agent/conversion-engine
