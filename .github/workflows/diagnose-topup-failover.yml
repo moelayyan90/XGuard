@@ -1,0 +1,62 @@
+name: Diagnose top-up failover once
+
+on:
+  push:
+    branches: ["diag/topup-failover-proof"]
+    paths:
+      - ".github/workflows/diagnose-topup-failover.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Capture one aligned five-minute top-up scan
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::Cloudflare credentials unavailable"
+            exit 1
+          fi
+
+          echo "===== RELEVANT TOP-UP INTENTS BEFORE ====="
+          npx wrangler d1 execute xguard-mainnet --remote --json --command \
+            "SELECT COUNT(*) AS relevant FROM top_up_intents WHERE state IN ('OPEN','EXPIRED') AND expires_at_epoch >= CAST(strftime('%s','now') AS INTEGER) - 21600;"
+          echo "===== SCAN CURSOR BEFORE ====="
+          npx wrangler d1 execute xguard-mainnet --remote --json --command \
+            "SELECT scanner_id,last_scanned_block FROM treasury_scan_state WHERE scanner_id='base-usdc';"
+
+          now="$(date +%s)"
+          next="$(( (now / 300 + 1) * 300 ))"
+          duration="$(( next - now + 45 ))"
+          if (( duration < 60 )); then duration=60; fi
+          echo "Capturing Cloudflare logs through the next five-minute boundary for ${duration}s"
+          timeout "${duration}s" npx wrangler tail xguard-mainnet --format=json > /tmp/xguard-topup.log 2>&1 || true
+
+          echo "===== TOP-UP EVENTS ====="
+          grep -E 'automatic_topup_(scan_failed|scan_deferred|rpc_provider_unavailable|rpc_failover_recovered|topups_credited)' /tmp/xguard-topup.log || true
+          echo "===== SCHEDULED INVOCATIONS ====="
+          grep -E '"cron"|"scheduledTime"' /tmp/xguard-topup.log || true
+
+          echo "===== SCAN CURSOR AFTER ====="
+          npx wrangler d1 execute xguard-mainnet --remote --json --command \
+            "SELECT scanner_id,last_scanned_block FROM treasury_scan_state WHERE scanner_id='base-usdc';"
+          echo "===== RELEVANT TOP-UP INTENTS AFTER ====="
+          npx wrangler d1 execute xguard-mainnet --remote --json --command \
+            "SELECT COUNT(*) AS relevant FROM top_up_intents WHERE state IN ('OPEN','EXPIRED') AND expires_at_epoch >= CAST(strftime('%s','now') AS INTEGER) - 21600;"
