@@ -110,6 +110,35 @@ jobs:
           fi
           rm -f "${root_headers}"
 
+          curl -fsS --max-time 15 "${BASE_URL}/.well-known/agent-card.json" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.2.0-mainnet-rc"||!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolVersion==="2")||!Array.isArray(x.skills)||!x.skills.some(k=>k&&k.id==="x402-payment-settlement"))process.exit(1)})'
+
+          curl -fsS --max-time 15 "${BASE_URL}/.well-known/agent-market.json" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.protocol!=="x402-v2"||x.network!=="eip155:8453"||!x.discovery||!String(x.discovery.agentCard||"").endsWith("/.well-known/agent-card.json"))process.exit(1)})'
+
+          curl -fsS --max-time 15 "${BASE_URL}/openapi.json" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.openapi!=="3.1.0"||!x.paths||!x.paths["/verify"]||!x.paths["/settle"])process.exit(1)})'
+
+          llms_body="$(curl -fsS --max-time 15 "${BASE_URL}/llms.txt")"
+          if ! printf '%s' "${llms_body}" | grep -Fq '# XGuard' \
+            || ! printf '%s' "${llms_body}" | grep -Fq '/.well-known/agent-card.json'; then
+            echo "::error::llms.txt discovery metadata is missing or malformed."
+            exit 1
+          fi
+
+          llms_full_body="$(curl -fsS --max-time 15 "${BASE_URL}/llms-full.txt")"
+          if ! printf '%s' "${llms_full_body}" | grep -Fq 'Settlement safety semantics'; then
+            echo "::error::llms-full.txt discovery metadata is missing or malformed."
+            exit 1
+          fi
+
+          robots_body="$(curl -fsS --max-time 15 "${BASE_URL}/robots.txt")"
+          if ! printf '%s' "${robots_body}" | grep -Fq 'Allow: /' \
+            || ! printf '%s' "${robots_body}" | grep -Fq '/openapi.json'; then
+            echo "::error::robots.txt does not advertise XGuard discovery metadata."
+            exit 1
+          fi
+
           ready=0
           for attempt in {1..18}; do
             response="$(curl -sS --max-time 15 -w $'\n%{http_code}' "${BASE_URL}/readyz" || true)"
