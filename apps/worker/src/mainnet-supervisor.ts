@@ -70,7 +70,9 @@ export default {
       return truthfulStatus(response, env.DB);
     if (
       mcpStatusProbe !== null &&
-      (await isMcpStatusCall(mcpStatusProbe).catch(() => false))
+      (await isMcpStatusCall(
+        mcpStatusProbe as unknown as Request,
+      ).catch(() => false))
     )
       return truthfulMcpStatus(response, env, ctx, url.origin);
     return response;
@@ -97,9 +99,10 @@ async function supervisedFacilitatorRequest(
   ctx: ExecutionContext,
   operation: "/verify" | "/settle",
 ): Promise<Response> {
-  const inspected = await inspectProtectedRequest(request.clone(), env).catch(
-    () => null,
-  );
+  const inspected = await inspectProtectedRequest(
+    request.clone() as unknown as Request,
+    env,
+  ).catch(() => null);
 
   if (operation === "/settle" && inspected !== null) {
     const recovered = await recoveredSettlement(
