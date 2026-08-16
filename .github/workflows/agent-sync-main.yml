@@ -1,0 +1,30 @@
+name: Sync XGuard agent branch with main
+
+on:
+  push:
+    branches:
+      - agent/complete-agent-discovery-stack
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: ${{ !contains(github.event.head_commit.message, '[synced-main]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/complete-agent-discovery-stack
+          fetch-depth: 0
+      - name: Merge latest main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "xguard-agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+          git commit --amend -m "chore: sync latest main [synced-main]"
+          git push origin HEAD:agent/complete-agent-discovery-stack
