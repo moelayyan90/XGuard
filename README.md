@@ -4,11 +4,11 @@
 [![CodeQL](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml)
 [![Mainnet](https://github.com/moelayyan90/XGuard/actions/workflows/deploy-mainnet.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/deploy-mainnet.yml)
 
-## Hosted safety gateway for x402 v2
+## Hosted x402 v2 facilitator + agent discovery
 
-**One safe route for x402 payments.** XGuard gives x402 resource servers a hosted facilitator-compatible endpoint with replay protection, duplicate-settlement protection, settlement ownership, health-aware routing, independent Base finality verification, accounting, reconciliation, and production observability.
+**One safe route for x402 payments.** XGuard gives x402 resource servers a hosted facilitator-compatible endpoint with replay protection, duplicate-settlement protection, settlement ownership, health-aware routing, independent Base finality verification, accounting, reconciliation, production observability, native Bazaar discovery, and a remote MCP discovery surface.
 
-**No XGuard software needs to be installed on the resource server.** Existing x402 clients can point their facilitator configuration at the hosted XGuard endpoint.
+Existing x402 resource servers do not need an XGuard-specific runtime. They can point the standard x402 facilitator client at the hosted XGuard endpoint.
 
 ### Live production
 
@@ -19,10 +19,10 @@
 - **Scheme:** `exact` / EIP-3009 authorization
 - **XGuard fee:** **$0.002 per successful billable settlement**
 - **Subscription:** **None**
-- **Current downstream route:** xpay
-- **Configured downstream facilitator fee:** **$0**
+- **Discovery:** native x402 Bazaar catalog
+- **Remote MCP:** Streamable HTTP at `/mcp`
 
-The live service is continuously checked by CI, CodeQL, guarded Cloudflare deployment, readiness probes, and live Mainnet monitoring.
+The live service is continuously checked by CI, CodeQL, guarded Cloudflare deployment, readiness probes, mainnet monitoring, and dedicated agent-stack smoke checks.
 
 ## Why XGuard
 
@@ -33,11 +33,13 @@ XGuard adds:
 - permanent authorization replay identity and Payment Identifier validation;
 - idempotent duplicate handling and one settlement owner under concurrency;
 - no second-route settlement submission once outbound settlement has started;
-- explicit `OUTBOUND_PREPARED`, `OUTBOUND_STARTED`, `SETTLED`, `FAILED`, and `AMBIGUOUS` boundaries;
+- explicit prepared/started/settled/failed/ambiguous boundaries;
 - facilitator health, circuit state, quarantine, latency tracking, and route controls;
 - independent finalized Base USDC verification before XGuard records earned revenue;
 - merchant service-balance accounting, immutable usage events, reconciliation cases, and fee reservations;
-- rate limiting, strict parsing, capped bodies, structured logs, and public health/status endpoints.
+- strict parsing, capped bodies, rate limiting, concurrency limiting, structured logs, and public health/status endpoints;
+- native Bazaar metadata validation, cataloging, listing, and search;
+- remote MCP tools that let agents discover cataloged paid HTTP APIs and MCP tools.
 
 ## Start using XGuard
 
@@ -48,6 +50,8 @@ curl https://xguard-mainnet.maqamapp.workers.dev/healthz
 curl https://xguard-mainnet.maqamapp.workers.dev/readyz
 curl https://xguard-mainnet.maqamapp.workers.dev/supported
 ```
+
+A healthy production `/supported` response includes x402 v2 `exact` on `eip155:8453` and the native `bazaar` extension.
 
 ### 2. Register your service
 
@@ -79,23 +83,40 @@ const facilitator = new HTTPFacilitatorClient({
 });
 ```
 
-Mainnet billing uses a prepaid XGuard **service balance**. Before the first billable settlement, create a top-up intent, send the exact native Base USDC amount to the returned treasury address, and claim the finalized deposit. See [QUICKSTART.md](QUICKSTART.md) for the exact API sequence.
+Mainnet billing uses a prepaid XGuard **service balance**. Before the first billable settlement, create a top-up intent, send the exact native Base USDC amount to the returned treasury address, and claim the finalized deposit. See [QUICKSTART.md](QUICKSTART.md).
+
+## AI-agent discovery
+
+XGuard catalogs valid Bazaar metadata carried by successful x402 traffic and exposes the resulting machine-readable catalog through:
+
+```text
+GET /discovery/resources
+GET /discovery/search?query=...
+POST /mcp
+GET /.well-known/mcp/server.json
+```
+
+The remote MCP server exposes three read-only tools:
+
+- `xguard_discover`
+- `xguard_resource_details`
+- `xguard_status`
+
+This means an AI agent can discover paid HTTP APIs or paid MCP tools cataloged by XGuard without using a separate human-facing marketplace.
+
+Bazaar catalog failure never bypasses or weakens XGuard's authoritative payment validation/settlement path.
 
 ## Billing boundary
 
 XGuard charges only after an eligible settlement succeeds and independent Base finality confirms the expected USDC transfer.
 
-XGuard does **not** bill malformed requests, failed verification, declined or failed settlements, ambiguous outcomes, duplicate retries representing the same payment, health checks, or testnet traffic.
+XGuard does **not** bill malformed requests, failed verification, definitive failed settlements, unresolved ambiguous outcomes, duplicate retries representing the same logical payment, health checks, discovery queries, MCP discovery calls, or testnet traffic.
 
-Merchant top-ups are customer prepayments, not revenue. The `$0.002` becomes gross XGuard service revenue only at the earned-finality boundary. Operating costs, liabilities, reserves, and any other expenses remain separate from owner-distributable profit.
-
-## Downstream routing
-
-The current production settlement route is **xpay**. XGuard remains the merchant-facing facilitator-compatible safety/routing layer; xpay is the current downstream transaction submitter. The route can be changed without changing the public XGuard integration surface.
+Merchant top-ups are customer prepayments, not revenue. The `$0.002` becomes gross XGuard service revenue only at the earned-finality boundary.
 
 ## SDK and CLI
 
-The repository contains an XGuard SDK and migration CLI, but production use does **not** depend on installing them. The standard x402 `HTTPFacilitatorClient` configuration above is the supported hosted path today.
+The repository contains an XGuard SDK and migration CLI, but hosted production use does not depend on installing them. The standard x402 `HTTPFacilitatorClient` configuration above is the supported integration surface.
 
 The XGuard npm packages are prepared but are not represented as published until registry publication is actually completed.
 
@@ -117,7 +138,7 @@ npm run smoke:live
 npm run smoke:mainnet
 ```
 
-The smoke checks validate liveness, readiness, capabilities, fail-closed behavior, and network boundaries. They do not fabricate a real customer payment.
+The smoke checks validate liveness, readiness, capabilities, fail-closed behavior, network boundaries, Bazaar discovery, and MCP discovery. They do not fabricate a real customer payment.
 
 ## Documentation
 
@@ -127,6 +148,6 @@ The smoke checks validate liveness, readiness, capabilities, fail-closed behavio
 
 Canonical public metadata for directories and ecosystem curators is available in [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md).
 
-XGuard is an independent project and is not an official product of the x402 Foundation, Coinbase, Cloudflare, Base, Circle, xpay, or OKX.
+XGuard is an independent project and is not an official product of the x402 Foundation, Coinbase, Cloudflare, Base, Circle, xpay, PayAI, or OKX.
 
 Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md).
