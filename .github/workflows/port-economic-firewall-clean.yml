@@ -1,0 +1,65 @@
+name: Port Economic Firewall onto latest main
+
+on:
+  push:
+    branches:
+      - agent/economic-firewall-clean
+    paths:
+      - .github/workflows/port-economic-firewall-clean.yml
+
+permissions:
+  contents: write
+
+jobs:
+  port:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/economic-firewall-clean
+      - name: Fetch validated source branch
+        run: git fetch origin agent/economic-firewall-v2
+      - name: Port Economic Firewall files
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE=origin/agent/economic-firewall-v2
+          for path in \
+            apps/worker/src/economic-firewall.ts \
+            apps/worker/src/economic-intent-coordinator.ts \
+            apps/worker/src/x402-economic-adapter.ts \
+            apps/worker/wrangler.economic-preview.jsonc \
+            tests/economic-intent.test.ts \
+            tests/x402-economic-adapter.test.ts; do
+            mkdir -p "$(dirname "$path")"
+            git show "$SOURCE:$path" > "$path"
+          done
+      - name: Preserve latest main and add build hooks
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const workerPath = 'apps/worker/package.json';
+          const worker = JSON.parse(fs.readFileSync(workerPath, 'utf8'));
+          worker.scripts['build:economic-preview'] = 'wrangler deploy --dry-run --config wrangler.economic-preview.jsonc --outdir dist-economic-preview';
+          fs.writeFileSync(workerPath, JSON.stringify(worker, null, 2) + '\n');
+
+          const rootPath = 'package.json';
+          const root = JSON.parse(fs.readFileSync(rootPath, 'utf8'));
+          const needle = 'npm --workspace @xguard/worker run build:mainnet';
+          const addition = 'npm --workspace @xguard/worker run build:economic-preview';
+          if (!root.scripts['verify:release'].includes(addition)) {
+            root.scripts['verify:release'] = root.scripts['verify:release'].replace(needle, `${needle} && ${addition}`);
+          }
+          fs.writeFileSync(rootPath, JSON.stringify(root, null, 2) + '\n');
+          NODE
+      - name: Format
+        run: npx prettier --write package.json apps/worker/package.json packages/core/src/edge.ts packages/core/src/index.ts packages/core/src/economic-intent.ts apps/worker/src/economic-firewall.ts apps/worker/src/economic-intent-coordinator.ts apps/worker/src/x402-economic-adapter.ts apps/worker/wrangler.economic-preview.jsonc tests/economic-intent.test.ts tests/x402-economic-adapter.test.ts
+      - name: Commit clean port
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json apps/worker/package.json packages/core/src/edge.ts packages/core/src/index.ts packages/core/src/economic-intent.ts apps/worker/src/economic-firewall.ts apps/worker/src/economic-intent-coordinator.ts apps/worker/src/x402-economic-adapter.ts apps/worker/wrangler.economic-preview.jsonc tests/economic-intent.test.ts tests/x402-economic-adapter.test.ts
+          git commit -m "feat: port Economic Firewall onto latest main"
+          git push origin HEAD:agent/economic-firewall-clean
