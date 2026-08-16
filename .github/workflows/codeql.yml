@@ -6,6 +6,11 @@ on:
     branches: [main]
   schedule:
     - cron: "17 3 * * 2"
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   security-events: write
   packages: read
