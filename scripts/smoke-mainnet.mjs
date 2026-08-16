@@ -5,10 +5,15 @@ const baseUrl = new URL(
 
 const BASE_MAINNET = "eip155:8453";
 const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const MONITOR_HEADER = "github-actions-mainnet-smoke";
 
 async function json(path, init = {}) {
   const response = await fetch(new URL(path, baseUrl), {
     ...init,
+    headers: {
+      "X-XGuard-Monitor": MONITOR_HEADER,
+      ...(init.headers ?? {}),
+    },
     redirect: "manual",
     signal: AbortSignal.timeout(15_000),
   });
