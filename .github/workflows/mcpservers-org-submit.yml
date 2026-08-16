@@ -1,0 +1,31 @@
+name: Inspect mcpservers.org submit
+
+on:
+  push:
+    branches: [chore/mcpservers-org-submit]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect public submission form wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mcpservers
+          curl -fsS --max-time 20 'https://mcpservers.org/submit' -o /tmp/mcpservers/page.html
+          echo '=== forms/fields ==='
+          grep -oE '<form[^>]*>|<input[^>]*>|<select[^>]*>|<textarea[^>]*>' /tmp/mcpservers/page.html | head -240 || true
+          grep -oE 'src="[^"]+\.js[^" ]*"' /tmp/mcpservers/page.html | cut -d'"' -f2 | sort -u > /tmp/mcpservers/scripts.txt || true
+          while IFS= read -r src; do
+            [[ -z "${src}" ]] && continue
+            if [[ "${src}" == http* ]]; then url="${src}"; else url="https://mcpservers.org${src}"; fi
+            file="/tmp/mcpservers/$(basename "${src}" | cut -d'?' -f1)"
+            curl -fsS --max-time 20 "${url}" -o "${file}" || true
+          done < /tmp/mcpservers/scripts.txt
+          echo '=== submit request references ==='
+          grep -RaoE '.{0,800}(submit|contactEmail|shortDescription|category).{0,1400}' /tmp/mcpservers/*.js 2>/dev/null | grep -E 'fetch\(|/api/|JSON.stringify|FormData|category' | head -80 || true
