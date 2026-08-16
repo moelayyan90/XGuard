@@ -3,9 +3,7 @@ import type { MainnetEconomicShadowBinding } from "./mainnet-economic-shadow.js"
 export type MainnetEconomicAuditMode = "off" | "audit";
 export type MainnetEconomicAuditVerdict = "PASS" | "REVIEW";
 export type MainnetEconomicAuditReason =
-  | "CORRELATED_AUTHORIZATION"
-  | "VERIFY_NOT_OBSERVED"
-  | "AUTHORIZATION_MISMATCH";
+  "CORRELATED_AUTHORIZATION" | "VERIFY_NOT_OBSERVED" | "AUTHORIZATION_MISMATCH";
 
 export interface MainnetEconomicAuditDecision {
   verdict: MainnetEconomicAuditVerdict;

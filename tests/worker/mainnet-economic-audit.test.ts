@@ -20,9 +20,7 @@ beforeEach(async () => {
   ).run();
 });
 
-function shadow(
-  authorizationHash = AUTH_HASH,
-): MainnetEconomicShadowBinding {
+function shadow(authorizationHash = AUTH_HASH): MainnetEconomicShadowBinding {
   return {
     intent: {
       intentId: `xi_${TERMS_HASH.slice(0, 40)}`,
