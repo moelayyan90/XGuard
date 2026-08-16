@@ -43,8 +43,13 @@ async function monetizationResponse(request: Request): Promise<Response> {
   const providerResponse = discoveryResponse(
     new Request(canonicalProviderUrl(request.url)),
   );
-  if (providerResponse === null || !providerResponse.ok)
-    return jsonResponse(request, { error: "provider_manifest_unavailable" }, 503);
+  if (providerResponse === null || !providerResponse.ok) {
+    return jsonResponse(
+      request,
+      { error: "provider_manifest_unavailable" },
+      503,
+    );
+  }
 
   const provider = asRecord(await providerResponse.json());
   const origin = new URL(request.url).origin;
