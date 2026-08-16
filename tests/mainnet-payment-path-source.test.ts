@@ -7,13 +7,13 @@ describe("mainnet payment availability gate", () => {
     const start = source.indexOf("async function requireHealthyPayAI");
     const end = source.indexOf("\nfunction assertRuntimeConfig", start);
     const gate = source.slice(start, end);
+    const healthyFastPath =
+      'if (health !== null && health.state === "HEALTHY") return;';
 
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
     expect(gate).toContain("const health = await currentPayAIHealth(env);");
-    expect(gate).toContain(
-      'if (health !== null && health.state === "HEALTHY") return;',
-    );
+    expect(gate).toContain(healthyFastPath);
     expect(gate).toContain("await refreshPayAIHealth(env);");
     expect(gate).toContain("const recovered = await currentPayAIHealth(env);");
     expect(gate).toContain('recovered.state !== "HEALTHY"');
@@ -21,12 +21,11 @@ describe("mainnet payment availability gate", () => {
 
   it("keeps last-known capabilities discoverable during a transient degraded state", async () => {
     const source = await readFile("apps/worker/src/mainnet.ts", "utf8");
+    const degradedDiscovery = 'if (health === null || health.state === "OPEN")';
+    const strictHealthyDiscovery =
+      'if (health === null || health.state !== "HEALTHY")';
 
-    expect(source).toContain(
-      'if (health === null || health.state === "OPEN")',
-    );
-    expect(source).not.toContain(
-      'if (health === null || health.state !== "HEALTHY")',
-    );
+    expect(source).toContain(degradedDiscovery);
+    expect(source).not.toContain(strictHealthyDiscovery);
   });
 });
