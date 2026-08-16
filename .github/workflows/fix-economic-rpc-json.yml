@@ -1,0 +1,54 @@
+name: Fix Economic Firewall RPC JSON
+
+on:
+  push:
+    branches:
+      - agent/economic-firewall-v2
+    paths:
+      - .github/workflows/fix-economic-rpc-json.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/economic-firewall-v2
+      - name: Convert strict JSON artifacts to RPC-safe plain JSON
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps/worker/src/economic-firewall.ts')
+          s = p.read_text()
+          old1 = '      authorization: body.authorization,'
+          new1 = '      authorization: rpcSafeJson(body.authorization),'
+          old2 = '      settlement: body.settlement,'
+          new2 = '      settlement: rpcSafeJson(body.settlement),'
+          if old1 not in s or old2 not in s:
+              raise SystemExit('RPC JSON targets not found')
+          s = s.replace(old1, new1, 1).replace(old2, new2, 1)
+          marker = 'function requiredSafeInteger(value: unknown, field: string): number {'
+          helper = '''function rpcSafeJson(value: unknown): unknown {\n  return JSON.parse(JSON.stringify(value)) as unknown;\n}\n\n'''
+          if marker not in s:
+              raise SystemExit('helper marker not found')
+          s = s.replace(marker, helper + marker, 1)
+          p.write_text(s)
+          PY
+          npx prettier --write apps/worker/src/economic-firewall.ts
+      - name: Verify focused TypeScript build
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          npm --workspace @xguard/worker run build:economic-preview
+      - name: Commit RPC serialization fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/economic-firewall.ts
+          git commit -m "fix: normalize strict JSON before Durable Object RPC"
+          git push origin HEAD:agent/economic-firewall-v2
