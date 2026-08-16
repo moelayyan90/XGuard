@@ -14,6 +14,7 @@ import {
 } from "./agent-discovery-modern.js";
 import { compatibilityDiscoveryResponse } from "./discovery-compat.js";
 import { mainnetBrandingResponse } from "./mainnet-branding.js";
+import { mcpubDiscoveryResponse } from "./mcpub-discovery.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -48,6 +49,9 @@ export default {
     const compatibilityDiscovery =
       await compatibilityDiscoveryResponse(standardRequest);
     if (compatibilityDiscovery !== null) return compatibilityDiscovery;
+
+    const mcpubDiscovery = mcpubDiscoveryResponse(standardRequest);
+    if (mcpubDiscovery !== null) return mcpubDiscovery;
 
     if (url.pathname === "/mcp" && standardRequest.method === "OPTIONS")
       return modernMcpOptions(standardRequest);
