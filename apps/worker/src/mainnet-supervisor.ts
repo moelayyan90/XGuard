@@ -58,9 +58,18 @@ export default {
       return supervisedFacilitatorRequest(request, env, ctx, url.pathname);
     }
 
+    const mcpStatusProbe =
+      request.method === "POST" && url.pathname === "/mcp"
+        ? request.clone()
+        : null;
     const response = await delegateFetch(request, env, ctx);
     if (request.method === "GET" && url.pathname === "/status")
       return truthfulStatus(response, env.DB);
+    if (
+      mcpStatusProbe !== null &&
+      (await isMcpStatusCall(mcpStatusProbe).catch(() => false))
+    )
+      return truthfulMcpStatus(response, env, ctx, url.origin);
     return response;
   },
 
@@ -153,7 +162,7 @@ async function supervisedFacilitatorRequest(
 
   const response = await delegateFetch(request, env, ctx);
 
-  if (quota !== null && response.headers.get("X-XGuard-Replayed") === "true")
+  if (quota !== null && (await shouldRefundQuota(response)))
     ctx.waitUntil(quota.stub.refund(quota.takenAtMs, RATE_WINDOW_MS));
 
   if (
@@ -252,6 +261,81 @@ async function truthfulStatus(
     return jsonFrom(response, body);
   } catch {
     return response;
+  }
+}
+
+async function truthfulMcpStatus(
+  response: Response,
+  env: MainnetSupervisorEnv,
+  ctx: ExecutionContext,
+  origin: string,
+): Promise<Response> {
+  if (!response.ok) return response;
+  try {
+    const statusResponse = await delegateFetch(
+      new Request(`${origin}/status`),
+      env,
+      ctx,
+    );
+    const truthful = await truthfulStatus(statusResponse, env.DB);
+    if (!truthful.ok) return response;
+    const status = (await truthful.json()) as Record<string, unknown>;
+    const body = (await response.clone().json()) as Record<string, unknown>;
+    const result = asRecord(body.result);
+    const current = asRecord(result.structuredContent);
+    const structured = {
+      ...current,
+      status: status.gateway,
+      facilitator: status.facilitator,
+      facilitatorProvider: status.facilitatorProvider,
+      ambiguousRecovery: status.ambiguousRecovery,
+    };
+    result.structuredContent = structured;
+    if (Array.isArray(result.content) && result.content.length > 0) {
+      const first = result.content[0];
+      if (typeof first === "object" && first !== null && !Array.isArray(first))
+        (first as Record<string, unknown>).text = JSON.stringify(structured);
+    }
+    return jsonFrom(response, body);
+  } catch {
+    return response;
+  }
+}
+
+async function isMcpStatusCall(request: Request): Promise<boolean> {
+  if (
+    request.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase() !==
+    "application/json"
+  )
+    return false;
+  const body = (await request.json()) as unknown;
+  if (typeof body !== "object" || body === null || Array.isArray(body))
+    return false;
+  const record = body as Record<string, unknown>;
+  if (record.method !== "tools/call") return false;
+  const params = record.params;
+  return (
+    typeof params === "object" &&
+    params !== null &&
+    !Array.isArray(params) &&
+    (params as Record<string, unknown>).name === "xguard_status"
+  );
+}
+
+async function shouldRefundQuota(response: Response): Promise<boolean> {
+  if (response.headers.get("X-XGuard-Replayed") === "true") return true;
+  if ([400, 401, 402, 409, 429].includes(response.status)) return true;
+  if (response.status !== 503) return false;
+  try {
+    const body = (await response.clone().json()) as Record<string, unknown>;
+    const reason = body.errorReason ?? body.error;
+    return (
+      reason === "xguard_facilitator_unavailable" ||
+      reason === "facilitator_unavailable" ||
+      reason === "upstream_quota_protection_unavailable"
+    );
+  } catch {
+    return false;
   }
 }
 
