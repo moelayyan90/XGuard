@@ -38,6 +38,8 @@ assert(
   root.body.price?.model === "merchant_prepaid_service_balance",
   "mainnet billing model changed unexpectedly",
 );
+assert(root.body.endpoints?.discovery === "/discovery/resources", "discovery endpoint missing");
+assert(root.body.endpoints?.mcp === "/mcp", "MCP endpoint missing");
 
 const health = await json("/healthz");
 assert(health.response.status === 200, "mainnet health check failed");
@@ -66,6 +68,43 @@ assert(
     ),
   "mainnet Base x402 v2 exact capability is missing",
 );
+assert(
+  Array.isArray(supported.body.extensions) &&
+    supported.body.extensions.includes("bazaar"),
+  "native Bazaar capability is missing",
+);
+
+const discovery = await json("/discovery/resources?limit=1");
+assert(discovery.response.status === 200, "Bazaar discovery endpoint failed");
+assert(discovery.body.x402Version === 2, "Bazaar discovery protocol version changed");
+assert(Array.isArray(discovery.body.items), "Bazaar discovery items are missing");
+assert(
+  Number.isInteger(discovery.body.pagination?.total) &&
+    discovery.body.pagination.total >= 0,
+  "Bazaar discovery pagination is invalid",
+);
+
+const mcp = await json("/mcp", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+  },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-11-25",
+      capabilities: {},
+      clientInfo: { name: "xguard-smoke", version: "1.0.0" },
+    },
+  }),
+});
+assert(mcp.response.status === 200, "remote MCP endpoint failed");
+assert(mcp.body.jsonrpc === "2.0", "MCP response is not JSON-RPC 2.0");
+assert(mcp.body.result?.serverInfo?.name === "xguard-mainnet", "MCP server identity changed");
+assert(mcp.body.result?.capabilities?.tools !== undefined, "MCP tools capability is missing");
 
 const status = await json("/status");
 assert(status.response.status === 200, "mainnet status endpoint failed");
@@ -94,6 +133,11 @@ assert(
     status.body.earnedMicroUsd >= 0,
   "mainnet earned revenue total is invalid",
 );
+assert(
+  Number.isInteger(status.body.discovery?.resources) &&
+    status.body.discovery.resources >= 0,
+  "mainnet discovery resource count is invalid",
+);
 
 console.log(
   JSON.stringify({
@@ -103,6 +147,9 @@ console.log(
     mainnet: true,
     network: status.body.network,
     facilitator: status.body.facilitator,
+    bazaar: true,
+    mcp: true,
+    discoveryResources: status.body.discovery.resources,
     successfulBillableSettlements: status.body.successfulBillableSettlements,
     earnedMicroUsd: status.body.earnedMicroUsd,
     openReconciliationCases: status.body.openReconciliationCases,
