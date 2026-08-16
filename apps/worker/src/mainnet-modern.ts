@@ -150,7 +150,9 @@ async function observeMcpRpcRequest(request: Request): Promise<void> {
 
   try {
     const text = await request.clone().text();
-    if (new TextEncoder().encode(text).byteLength > MCP_TELEMETRY_MAX_BODY_BYTES)
+    if (
+      new TextEncoder().encode(text).byteLength > MCP_TELEMETRY_MAX_BODY_BYTES
+    )
       throw new Error("sample_limit_exceeded");
 
     const parsed = JSON.parse(text) as unknown;
