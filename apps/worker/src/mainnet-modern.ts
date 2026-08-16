@@ -129,9 +129,12 @@ function migrationKit(url: URL) {
     ),
   ];
   const resource = migrationResource(url.searchParams.get("resource"));
-  const requestedName = (url.searchParams.get("name") ?? "").trim().slice(0, 160);
+  const requestedName = (url.searchParams.get("name") ?? "")
+    .trim()
+    .slice(0, 160);
   const merchantName =
-    requestedName || (resource === null ? "merchant" : new URL(resource).hostname);
+    requestedName ||
+    (resource === null ? "merchant" : new URL(resource).hostname);
 
   return {
     schemaVersion: "1",

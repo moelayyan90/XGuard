@@ -55,7 +55,8 @@ export async function enhanceAgentDiscoveryResponse(
       }
       if (
         !skills.some(
-          (skill) => isRecord(skill) && skill.id === "x402-facilitator-migration",
+          (skill) =>
+            isRecord(skill) && skill.id === "x402-facilitator-migration",
         )
       ) {
         skills.push({

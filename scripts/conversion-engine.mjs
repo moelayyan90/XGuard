@@ -37,7 +37,10 @@ function conversionScore(target) {
   let score = Math.min(15, Math.round(targetScore * 0.15));
   if (live402Count > 0) score += 15;
   score += Math.min(25, live402Count * 3);
-  score += Math.min(20, Math.round(Math.log2(Math.max(1, resourceCount) + 1) * 3));
+  score += Math.min(
+    20,
+    Math.round(Math.log2(Math.max(1, resourceCount) + 1) * 3),
+  );
   if (mcpCount > 0) score += 8;
   score += Math.min(7, Math.round(Math.log2(Math.max(1, mcpCount) + 1) * 2));
   if (incumbents.length > 0) score += 7;
@@ -59,7 +62,8 @@ function confidence(target) {
 }
 
 function sampleResource(target) {
-  return Array.isArray(target?.sampleResources) && target.sampleResources.length > 0
+  return Array.isArray(target?.sampleResources) &&
+    target.sampleResources.length > 0
     ? target.sampleResources[0]
     : null;
 }
@@ -79,8 +83,12 @@ function migrationReasons(target) {
   const live402 = Number(target?.live402Count ?? 0);
   const mcp = Number(target?.mcpResourceCount ?? 0);
   const incumbents = knownIncumbents(target);
-  if (live402 > 0) reasons.push(`${live402} paid endpoint(s) returned live HTTP 402`);
-  if (resources > 1) reasons.push(`${resources} paid resources can move with one merchant switch`);
+  if (live402 > 0)
+    reasons.push(`${live402} paid endpoint(s) returned live HTTP 402`);
+  if (resources > 1)
+    reasons.push(
+      `${resources} paid resources can move with one merchant switch`,
+    );
   if (mcp > 0) reasons.push(`${mcp} MCP-facing resource(s)`);
   if (incumbents.length > 0)
     reasons.push(`known facilitator path: ${incumbents.join(" + ")}`);
@@ -126,7 +134,9 @@ function switchKit(target) {
 }
 
 export function buildConversionQueue(targetReport) {
-  const targets = Array.isArray(targetReport?.targets) ? targetReport.targets : [];
+  const targets = Array.isArray(targetReport?.targets)
+    ? targetReport.targets
+    : [];
   const packets = targets.map((target) => {
     const score = conversionScore(target);
     return {
@@ -192,16 +202,18 @@ function renderMarkdown(report) {
     return `| ${packet.priority} | ${packet.conversionScore} | ${packet.target} | ${packet.resourceCount} | ${packet.live402Count} | ${packet.mcpResourceCount} | ${incumbents} | ${priceRange(packet)} | [switch kit](${kit}) |`;
   });
 
-  const top = report.packets.slice(0, 12).flatMap((packet, index) => [
-    `### ${index + 1}. ${packet.target}`,
-    "",
-    `- Priority: **${packet.priority} / ${packet.conversionScore}**`,
-    `- Evidence: ${packet.reasons.join("; ") || "public x402 catalog evidence"}`,
-    `- Migration manifest: ${packet.switchKit.publicMigrationManifest}`,
-    `- Register: \`POST ${packet.switchKit.register.url}\` with \`${JSON.stringify(packet.switchKit.register.body)}\``,
-    `- Switch facilitator base URL to \`${XGUARD_ORIGIN}\` and send \`Authorization: Bearer <apiKey>\`.`,
-    "",
-  ]);
+  const top = report.packets
+    .slice(0, 12)
+    .flatMap((packet, index) => [
+      `### ${index + 1}. ${packet.target}`,
+      "",
+      `- Priority: **${packet.priority} / ${packet.conversionScore}**`,
+      `- Evidence: ${packet.reasons.join("; ") || "public x402 catalog evidence"}`,
+      `- Migration manifest: ${packet.switchKit.publicMigrationManifest}`,
+      `- Register: \`POST ${packet.switchKit.register.url}\` with \`${JSON.stringify(packet.switchKit.register.body)}\``,
+      `- Switch facilitator base URL to \`${XGUARD_ORIGIN}\` and send \`Authorization: Bearer <apiKey>\`.`,
+      "",
+    ]);
 
   return [
     "# XGuard Conversion Queue",
@@ -253,12 +265,17 @@ export function selfTest() {
       },
     ],
   });
-  if (report.packets.length !== 2) throw new Error("self_test_packet_count_failed");
+  if (report.packets.length !== 2)
+    throw new Error("self_test_packet_count_failed");
   if (report.packets[0].target !== "api.example.com")
     throw new Error("self_test_priority_sort_failed");
   if (report.packets[0].priority !== "P0")
     throw new Error("self_test_p0_failed");
-  if (!report.packets[0].switchKit.publicMigrationManifest.includes("from=cdp%2Cpayai"))
+  if (
+    !report.packets[0].switchKit.publicMigrationManifest.includes(
+      "from=cdp%2Cpayai",
+    )
+  )
     throw new Error("self_test_manifest_failed");
   if (report.packets[1].confidence !== "catalog-observed")
     throw new Error("self_test_confidence_failed");
@@ -300,7 +317,10 @@ if (
 ) {
   main().catch((error) => {
     console.error(
-      JSON.stringify({ event: "conversion_engine_failed", error: String(error) }),
+      JSON.stringify({
+        event: "conversion_engine_failed",
+        error: String(error),
+      }),
     );
     process.exitCode = 1;
   });
