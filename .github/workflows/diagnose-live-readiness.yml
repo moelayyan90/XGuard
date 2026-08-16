@@ -12,34 +12,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Probe live endpoints
+      - name: Probe live MCP discover
         shell: bash
         run: |
           set -u
           BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
-          probe() {
-            name="$1"; method="$2"; path="$3"
-            headers="$(mktemp)"; body="$(mktemp)"
-            if [[ "$method" == "POST" ]]; then
-              code="$(curl -sS --max-time 15 -X POST -D "$headers" -o "$body" -w '%{http_code}' "${BASE_URL}${path}" || true)"
-            else
-              code="$(curl -sS --max-time 15 -D "$headers" -o "$body" -w '%{http_code}' "${BASE_URL}${path}" || true)"
-            fi
-            echo "===== ${name} ${method} ${path} HTTP ${code} ====="
-            cat "$headers"; echo; cat "$body"; echo
-            rm -f "$headers" "$body"
-          }
-          probe healthz GET /healthz
-          probe readyz GET /readyz
-          probe status GET /status
-          probe root POST /
-          probe agent-card GET /.well-known/agent-card.json
-          probe agent-market GET /.well-known/agent-market.json
-          probe x402-manifest GET /.well-known/x402/facilitator.json
-          probe x402-alias GET /.well-known/x402
-          probe monetization GET /.well-known/monetization
-          probe mcp-server GET /.well-known/mcp/server.json
-          probe openapi GET /openapi.json
-          probe llms GET /llms.txt
-          probe llms-full GET /llms-full.txt
-          probe robots GET /robots.txt
+          headers="$(mktemp)"
+          body="$(mktemp)"
+          code="$(curl -sS --max-time 15 \
+            -X POST \
+            -D "$headers" \
+            -o "$body" \
+            -w '%{http_code}' \
+            -H 'Accept: application/json, text/event-stream' \
+            -H 'Content-Type: application/json' \
+            -H 'MCP-Protocol-Version: 2026-07-28' \
+            -H 'Mcp-Method: server/discover' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"xguard-diagnostic","version":"1.0.0"}}}}' \
+            "${BASE_URL}/mcp" || true)"
+          echo "===== MCP server/discover HTTP ${code} ====="
+          cat "$headers"; echo; cat "$body"; echo
