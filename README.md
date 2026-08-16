@@ -23,6 +23,7 @@ Existing x402 resource servers do not need an XGuard-specific runtime. They can 
 - **Install:** no XGuard-specific package required
 - **Discovery:** native x402 Bazaar catalog
 - **Remote MCP:** Streamable HTTP at `/mcp`
+- **MCP Registry name:** `io.github.moelayyan90/xguard`
 - **Execution model:** routed facilitator-compatible gateway; current downstream transaction submitter is xpay
 
 The live `/supported` response is authoritative for x402 capabilities and signer attribution. XGuard does not claim that it owns the downstream xpay signer.
@@ -120,6 +121,8 @@ The remote MCP server exposes three read-only tools:
 - `xguard_resource_details`
 - `xguard_status`
 
+The remote server is also published in the official MCP Registry as `io.github.moelayyan90/xguard`. The repository includes a portable [Agent Skill](SKILL.md) for coding agents that need to inspect, integrate, migrate, or diagnose an x402 resource server against XGuard.
+
 This means an AI agent can discover paid HTTP APIs or paid MCP tools cataloged by XGuard without using a separate human-facing marketplace.
 
 Bazaar catalog failure never bypasses or weakens XGuard's authoritative payment validation/settlement path.
@@ -134,9 +137,31 @@ Merchant top-ups are customer prepayments, not revenue. The `$0.002` becomes gro
 
 ## SDK and CLI
 
-The repository contains an XGuard SDK and migration CLI, but hosted production use does not depend on installing them. The standard x402 `HTTPFacilitatorClient` configuration above is the supported integration surface.
+Hosted production use does not require an XGuard package; the standard x402 `HTTPFacilitatorClient` configuration above remains the canonical integration surface.
 
-The XGuard npm packages are prepared but are not represented as published until registry publication is actually completed.
+The CLI, SDK, and core package are also published as CI-built, smoke-tested GitHub prerelease tarballs. Install the CLI directly from the verified public release:
+
+```bash
+npm install -g https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.0/xguard-0.1.0-alpha.0.tgz
+xguard --help
+xguard doctor --help
+```
+
+Install the SDK and core package without waiting for npm registry publication:
+
+```bash
+npm install \
+  https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.0/xguard-core-0.1.0-alpha.0.tgz \
+  https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.0/xguard-sdk-0.1.0-alpha.0.tgz
+```
+
+Release checksums are published at:
+
+```text
+https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.0/SHA256SUMS
+```
+
+The public npm names are prepared, but first npm publication remains identity-gated until an authorized npm credential or trusted publisher owns the packages. XGuard does not represent those npm packages as published before that happens.
 
 ## Security and operations
 
@@ -156,7 +181,7 @@ npm run smoke:live
 npm run smoke:mainnet
 ```
 
-The smoke checks validate liveness, readiness, provider identity, capabilities, fail-closed behavior, network boundaries, Bazaar discovery, and MCP discovery. They do not fabricate a real customer payment.
+The smoke checks validate liveness, readiness, provider identity, capabilities, fail-closed behavior, network boundaries, Bazaar discovery, MCP discovery, package build/install behavior, and public release installation. They do not fabricate a real customer payment.
 
 ## Documentation
 
