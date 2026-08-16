@@ -29,12 +29,17 @@ import {
   payAISettle,
   payAIVerify,
   type MainnetProtocolEnv,
+  type ParsedMainnetRequest,
 } from "./mainnet-protocol.js";
 import {
   MainnetPaymentCoordinator,
   MainnetRequestGate,
   type MainnetPrepareResult,
 } from "./mainnet-coordinator.js";
+import {
+  deriveMainnetEconomicShadowBinding,
+  parseMainnetEconomicShadowMode,
+} from "./mainnet-economic-shadow.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
 
@@ -56,6 +61,7 @@ interface MainnetEnv extends MainnetProtocolEnv {
   PAYMENT_IDENTIFIER_TTL_SECONDS: string;
   HEALTH_MAX_AGE_SECONDS: string;
   PAYAI_DOWNSTREAM_COST_MICRO_USD: string;
+  ECONOMIC_FIREWALL_SHADOW_MODE?: string;
 }
 
 type Variables = { requestId: string };
@@ -303,9 +309,10 @@ app.post("/v1/topups/claim", async (context) => {
 app.post("/verify", async (context) => {
   try {
     assertRuntimeConfig(context.env);
-    await requireMerchant(context);
+    const merchant = await requireMerchant(context);
     await requireHealthyPayAI(context.env);
     const body = await parseMainnetFacilitatorRequest(context.req.raw);
+    observeEconomicFirewallShadow(context, merchant, body, "verify");
     const result = await payAIVerify(context.env, body.raw, body.payer);
     return context.json(result);
   } catch (error) {
@@ -321,6 +328,7 @@ app.post("/settle", async (context) => {
     await requireHealthyPayAI(context.env);
     const body = await parseMainnetFacilitatorRequest(context.req.raw);
     network = body.paymentRequirements.network;
+    observeEconomicFirewallShadow(context, merchant, body, "settle");
     const identities = derivePaymentIdentities(
       body.paymentPayload,
       body.paymentRequirements,
@@ -587,6 +595,49 @@ async function abuseProtection(
     await next();
   } finally {
     if (acquired) await gate.release(requestId).catch(() => undefined);
+  }
+}
+
+function observeEconomicFirewallShadow(
+  context: AppContext,
+  merchant: MerchantIdentity,
+  request: ParsedMainnetRequest,
+  operation: "verify" | "settle",
+): void {
+  if (
+    parseMainnetEconomicShadowMode(
+      context.env.ECONOMIC_FIREWALL_SHADOW_MODE,
+    ) !== "observe"
+  )
+    return;
+
+  try {
+    const shadow = deriveMainnetEconomicShadowBinding(
+      merchant.merchantId,
+      request,
+    );
+    console.log(
+      JSON.stringify({
+        event: "economic_firewall_shadow_bound",
+        requestId: context.get("requestId"),
+        operation,
+        merchantId: merchant.merchantId,
+        intentId: shadow.intent.intentId,
+        termsHash: shadow.intent.termsHash,
+        authorizationHash: shadow.authorizationHash,
+        amountMicroUsd: shadow.amountMicroUsd,
+      }),
+    );
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: "economic_firewall_shadow_rejected",
+        requestId: context.get("requestId"),
+        operation,
+        merchantId: merchant.merchantId,
+        code: errorCode(error),
+      }),
+    );
   }
 }
 
