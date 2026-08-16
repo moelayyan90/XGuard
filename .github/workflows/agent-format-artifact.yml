@@ -31,7 +31,6 @@ jobs:
           npx prettier --write \
             apps/worker/src/mainnet-bazaar.ts \
             apps/worker/src/mainnet-edge.ts \
-            apps/worker/migrations/0005_bazaar_discovery.sql \
             scripts/smoke-mainnet.mjs \
             tests/mainnet-bazaar.test.ts \
             ARCHITECTURE.md \
