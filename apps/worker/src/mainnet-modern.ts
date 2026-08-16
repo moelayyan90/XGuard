@@ -12,6 +12,7 @@ import {
   enhanceAgentDiscoveryResponse,
   modernMcpManifest,
 } from "./agent-discovery-modern.js";
+import { compatibilityDiscoveryResponse } from "./discovery-compat.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -39,6 +40,10 @@ export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
     const url = new URL(standardRequest.url);
+
+    const compatibilityDiscovery =
+      await compatibilityDiscoveryResponse(standardRequest);
+    if (compatibilityDiscovery !== null) return compatibilityDiscovery;
 
     if (url.pathname === "/mcp" && standardRequest.method === "OPTIONS")
       return modernMcpOptions(standardRequest);
