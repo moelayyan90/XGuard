@@ -35,6 +35,7 @@ jobs:
 
           cat > "$work/index.js" <<'JS'
           const providers = [
+            "https://public.1rpc.io/base",
             "https://mainnet.base.org",
             "https://base.drpc.org",
             "https://base-rpc.publicnode.com",
