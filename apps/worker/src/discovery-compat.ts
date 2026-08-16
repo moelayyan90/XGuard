@@ -69,8 +69,7 @@ async function monetizationResponse(request: Request): Promise<Response> {
       verify: `${origin}/verify`,
       settle: `${origin}/settle`,
     },
-    note:
-      "XGuard compatibility metadata for machine pricing discovery. Use /supported for live x402 capabilities and signer attribution.",
+    note: "XGuard compatibility metadata for machine pricing discovery. Use /supported for live x402 capabilities and signer attribution.",
   };
 
   return jsonResponse(request, body, 200, { ETag: MONETIZATION_ETAG });
