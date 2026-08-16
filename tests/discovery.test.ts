@@ -95,7 +95,9 @@ describe("mainnet discovery", () => {
     expect(provider.pricing.subscription).toBe("none");
     expect(provider.settlementExecution.mode).toBe("routed");
     expect(provider.settlementExecution.currentDownstream).toBe("xpay");
-    expect(provider.settlementExecution.signerAttribution).toContain("/supported");
+    expect(provider.settlementExecution.signerAttribution).toContain(
+      "/supported",
+    );
   });
 
   it("supports conditional agent-card requests", () => {

@@ -206,8 +206,7 @@ function buildProviderManifest(origin: string): Record<string, unknown> {
       mode: "routed",
       currentDownstream: "xpay",
       signerAttribution: "Use the live /supported response as authoritative.",
-      note:
-        "XGuard is the merchant-facing facilitator-compatible gateway and safety layer. The current downstream transaction submitter is xpay; XGuard independently verifies finality before recording earned service revenue.",
+      note: "XGuard is the merchant-facing facilitator-compatible gateway and safety layer. The current downstream transaction submitter is xpay; XGuard independently verifies finality before recording earned service revenue.",
     },
     discovery: {
       agentCard: `${origin}/.well-known/agent-card.json`,
