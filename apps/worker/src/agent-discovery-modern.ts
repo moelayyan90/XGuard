@@ -30,9 +30,41 @@ export async function enhanceAgentDiscoveryResponse(
   if (!response.ok || request.method !== "GET") return response;
   const url = new URL(request.url);
 
-  if (url.pathname === "/.well-known/agent-card.json") {
+  if (
+    url.pathname === "/.well-known/agent-card.json" ||
+    url.pathname === "/.well-known/agent.json"
+  ) {
     return rewriteJson(response, (body) => {
       body.version = XGUARD_MCP_VERSION;
+      body.supportedInterfaces = [
+        {
+          url: `${url.origin}/a2a`,
+          protocolBinding: "JSONRPC",
+          protocolVersion: "1.0",
+        },
+        {
+          url: `${url.origin}/a2a`,
+          protocolBinding: "JSONRPC",
+          protocolVersion: "0.3",
+        },
+      ];
+      body.provider = {
+        organization: "XGuard",
+        url: "https://github.com/moelayyan90/XGuard",
+      };
+      body.defaultInputModes = ["text/plain", "application/json"];
+      body.defaultOutputModes = ["text/plain", "application/json"];
+      body.iconUrl = `${url.origin}/logo.svg`;
+
+      // Legacy A2A 0.3 discovery fields. Current A2A 1.0 clients use
+      // supportedInterfaces above; old clients can still negotiate JSONRPC.
+      body.url = `${url.origin}/a2a`;
+      body.protocolVersion = "0.3";
+      body.preferredTransport = "JSONRPC";
+      body.additionalInterfaces = [
+        { url: `${url.origin}/a2a`, transport: "JSONRPC" },
+      ];
+
       const skills = Array.isArray(body.skills) ? body.skills : [];
       if (
         !skills.some(
@@ -52,12 +84,35 @@ export async function enhanceAgentDiscoveryResponse(
           ],
         });
       }
+      if (
+        !skills.some(
+          (skill) => isRecord(skill) && skill.id === "a2a-x402-gateway",
+        )
+      ) {
+        skills.push({
+          id: "a2a-x402-gateway",
+          name: "Query XGuard over A2A",
+          description:
+            "Ask XGuard for live x402 capabilities, status, pricing, or agent-discovery endpoints through the A2A JSON-RPC protocol.",
+          tags: ["a2a", "jsonrpc", "x402", "payments", "agents"],
+          examples: [
+            "What x402 capabilities do you support?",
+            "What is XGuard's live status?",
+            "Show the XGuard discovery endpoints.",
+            "What does XGuard charge?",
+          ],
+          inputModes: ["text/plain", "application/json"],
+          outputModes: ["text/plain", "application/json"],
+        });
+      }
       body.skills = skills;
       body.xguardDiscovery = {
+        a2a: `${url.origin}/a2a`,
         mcp: `${url.origin}/mcp`,
         mcpManifest: `${url.origin}/.well-known/mcp/server.json`,
         resources: `${url.origin}/discovery/resources`,
         search: `${url.origin}/discovery/search`,
+        preferredA2AProtocolVersion: "1.0",
         preferredMcpProtocolVersion: "2026-07-28",
       };
       return body;
@@ -70,10 +125,12 @@ export async function enhanceAgentDiscoveryResponse(
       const discovery = isRecord(body.discovery) ? body.discovery : {};
       body.discovery = {
         ...discovery,
+        a2a: `${url.origin}/a2a`,
         mcp: `${url.origin}/mcp`,
         mcpManifest: `${url.origin}/.well-known/mcp/server.json`,
         resources: `${url.origin}/discovery/resources`,
         search: `${url.origin}/discovery/search`,
+        preferredA2AProtocolVersion: "1.0",
         preferredMcpProtocolVersion: "2026-07-28",
       };
       return body;
@@ -84,6 +141,14 @@ export async function enhanceAgentDiscoveryResponse(
     return rewriteJson(response, (body) => {
       if (isRecord(body.info)) body.info.version = XGUARD_MCP_VERSION;
       const paths = isRecord(body.paths) ? body.paths : {};
+      paths["/a2a"] ??= {
+        post: {
+          summary: "XGuard A2A JSON-RPC endpoint",
+          description:
+            "Supports A2A 1.0 SendMessage and A2A 0.3 message/send over JSON-RPC 2.0.",
+          responses: { "200": { description: "A2A JSON-RPC response" } },
+        },
+      };
       paths["/discovery/resources"] ??= {
         get: {
           summary: "List x402 Bazaar resources cataloged by XGuard",
@@ -122,6 +187,7 @@ export async function enhanceAgentDiscoveryResponse(
     const appendix = [
       "",
       "## Agent discovery",
+      `A2A: ${url.origin}/a2a (JSON-RPC; preferred protocol 1.0; compatible with 0.3 message/send)`,
       `MCP: ${url.origin}/mcp (preferred protocol 2026-07-28; Streamable HTTP; stateless)`,
       `MCP manifest: ${url.origin}/.well-known/mcp/server.json`,
       `Bazaar resources: ${url.origin}/discovery/resources`,
