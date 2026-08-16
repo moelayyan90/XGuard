@@ -1,0 +1,31 @@
+name: MCP format preview
+
+on:
+  push:
+    branches: [fix/mcp-2026-agent-discovery]
+    paths:
+      - "apps/worker/src/mainnet-mcp-modern.ts"
+      - ".github/workflows/format-mcp-preview.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Render formatted source
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'FORMATTED_BASE64_BEGIN'
+          npx prettier apps/worker/src/mainnet-mcp-modern.ts | base64 -w0
+          echo
+          echo 'FORMATTED_BASE64_END'
