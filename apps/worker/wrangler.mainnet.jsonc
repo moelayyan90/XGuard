@@ -16,8 +16,8 @@
     },
   },
   "vars": {
-    "BASE_RPC_URL": "https://rpc.ankr.com/base",
-    "BASE_RPC_FALLBACK_URLS": "https://base.drpc.org,https://public.1rpc.io/base,https://mainnet.base.org",
+    "BASE_RPC_URL": "https://base.public.blockpi.network/v1/rpc/public",
+    "BASE_RPC_FALLBACK_URLS": "https://mainnet.base.org",
     "XGUARD_FEE_MICRO_USD": "2000",
     "XPAY_DOWNSTREAM_COST_MICRO_USD": "0",
     "PAYAI_DOWNSTREAM_COST_MICRO_USD": "0",
