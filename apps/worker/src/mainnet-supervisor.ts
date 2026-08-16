@@ -46,21 +46,27 @@ interface InspectedRequest {
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
-    const url = new URL(request.url);
+    const standardRequest = request as unknown as Request;
+    const url = new URL(standardRequest.url);
 
     if (
-      request.method === "POST" &&
+      standardRequest.method === "POST" &&
       (url.pathname === "/verify" || url.pathname === "/settle")
     ) {
-      return supervisedFacilitatorRequest(request, env, ctx, url.pathname);
+      return supervisedFacilitatorRequest(
+        standardRequest,
+        env,
+        ctx,
+        url.pathname,
+      );
     }
 
     const mcpStatusProbe =
-      request.method === "POST" && url.pathname === "/mcp"
-        ? request.clone()
+      standardRequest.method === "POST" && url.pathname === "/mcp"
+        ? standardRequest.clone()
         : null;
-    const response = await delegateFetch(request, env, ctx);
-    if (request.method === "GET" && url.pathname === "/status")
+    const response = await delegateFetch(standardRequest, env, ctx);
+    if (standardRequest.method === "GET" && url.pathname === "/status")
       return truthfulStatus(response, env.DB);
     if (
       mcpStatusProbe !== null &&
