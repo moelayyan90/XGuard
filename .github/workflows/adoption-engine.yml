@@ -1,0 +1,89 @@
+name: XGuard adoption engine
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: xguard-adoption-engine
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Self-test adoption engine
+        run: node scripts/adoption-engine.mjs --self-test
+
+      - name: Discover and score public x402 adoption candidates
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          XGUARD_ADOPTION_MAX_PAGES: "100"
+          XGUARD_ADOPTION_PROBE_LIMIT: "100"
+          XGUARD_ADOPTION_PROBE_CONCURRENCY: "8"
+          XGUARD_ADOPTION_MIN_SCORE: "25"
+        run: node scripts/adoption-engine.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xguard-adoption-report
+          path: |
+            adoption-report.json
+            adoption-report.md
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Update canonical adoption queue issue
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require("fs");
+            const title = "[adoption] XGuard public x402 candidate pipeline";
+            const markdown = fs.readFileSync("adoption-report.md", "utf8");
+            const body = [
+              "This issue is maintained automatically by the XGuard adoption engine.",
+              "",
+              "It contains public x402 adoption candidates only. The workflow never pays endpoints, fabricates settlements, or sends bulk outreach.",
+              "",
+              markdown,
+              "",
+              `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            ].join("\n").slice(0, 65000);
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = issues.find((issue) => issue.title === title);
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
