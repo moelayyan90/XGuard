@@ -22,8 +22,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Print formatted MCP wrapper
-        run: npx prettier apps/worker/src/mainnet-modern.ts
       - run: npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
