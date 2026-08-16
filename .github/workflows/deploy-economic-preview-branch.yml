@@ -5,7 +5,16 @@ on:
     branches:
       - agent/economic-firewall-v2
     paths:
+      - apps/worker/src/economic-firewall.ts
+      - apps/worker/src/economic-intent-coordinator.ts
+      - apps/worker/wrangler.economic-preview.jsonc
+      - packages/core/src/economic-intent.ts
+      - packages/core/src/edge.ts
+      - packages/core/src/index.ts
+      - apps/worker/package.json
+      - package.json
       - .github/workflows/deploy-economic-preview-branch.yml
+  workflow_dispatch:
 
 permissions:
   contents: read
