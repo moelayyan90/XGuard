@@ -139,7 +139,10 @@ export function bindEconomicAuthorization(input: {
   authorizedAmountMicroUsd: number;
 }): EconomicAuthorizationBinding {
   assertMicroUsd(input.authorizedAmountMicroUsd, "authorizedAmountMicroUsd");
-  if (input.authorizedAmountMicroUsd > input.intent.terms.money.maxAmountMicroUsd) {
+  if (
+    input.authorizedAmountMicroUsd >
+    input.intent.terms.money.maxAmountMicroUsd
+  ) {
     throw new XGuardError(
       "BAD_REQUEST",
       "Authorization exceeds the intent maximum amount",
@@ -173,7 +176,9 @@ export function bindEconomicSettlement(input: {
 }): EconomicSettlementBinding {
   assertNonEmpty(input.protocol, "protocol");
   assertMicroUsd(input.chargedAmountMicroUsd, "chargedAmountMicroUsd");
-  if (input.chargedAmountMicroUsd > input.intent.terms.money.maxAmountMicroUsd) {
+  if (
+    input.chargedAmountMicroUsd > input.intent.terms.money.maxAmountMicroUsd
+  ) {
     throw new XGuardError(
       "BAD_REQUEST",
       "Settlement exceeds the intent maximum amount",
@@ -263,7 +268,11 @@ function normalizeEconomicIntentTerms(
 
   const expiresAtMs = Date.parse(input.expiresAt);
   if (!Number.isFinite(expiresAtMs)) {
-    throw new XGuardError("BAD_REQUEST", "expiresAt must be a valid timestamp", 400);
+    throw new XGuardError(
+      "BAD_REQUEST",
+      "expiresAt must be a valid timestamp",
+      400,
+    );
   }
 
   let normalizedUrl: string;
