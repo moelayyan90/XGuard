@@ -1,4 +1,4 @@
-name: Publish XGuard to MCP directories
+name: Publish XGuard to agent directories
 
 on:
   workflow_dispatch:
@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - "server.json"
+      - "apps/worker/src/mainnet-a2a.ts"
+      - "apps/worker/src/mainnet-modern.ts"
+      - "apps/worker/src/agent-discovery-modern.ts"
       - ".github/workflows/publish-mcp-directories.yml"
 
 permissions:
@@ -48,32 +51,65 @@ jobs:
 
   a2aregistry:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
+      - name: Wait for deployed A2A Agent Card
+        shell: bash
+        run: |
+          set -euo pipefail
+          URI='https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json'
+          for attempt in $(seq 1 40); do
+            if curl -sS --max-time 15 \
+              -H 'Cache-Control: no-cache' \
+              "${URI}?deploy=${GITHUB_SHA}&attempt=${attempt}" \
+              | node -e '
+                let s="";
+                process.stdin.on("data",d=>s+=d).on("end",()=>{
+                  try {
+                    const x=JSON.parse(s);
+                    const ok=Array.isArray(x.supportedInterfaces) && x.supportedInterfaces.some(i =>
+                      i && i.protocolBinding === "JSONRPC" && i.protocolVersion === "1.0" && typeof i.url === "string" && i.url.endsWith("/a2a")
+                    );
+                    process.exit(ok?0:1);
+                  } catch { process.exit(1); }
+                });
+              '
+            then
+              echo "Live XGuard Agent Card advertises A2A JSONRPC 1.0."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Timed out waiting for the deployed A2A Agent Card."
+          exit 1
+
       - name: Register XGuard Agent Card
         shell: bash
         run: |
           set -euo pipefail
           URI='https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json'
-          response="$(curl --fail-with-body -sS --max-time 30 \
+          status="$(curl -sS --max-time 30 -o /tmp/a2a-registry.json -w '%{http_code}' \
             -X POST 'https://a2aregistry.org/api/agents/register' \
             -H 'Content-Type: application/json' \
             --data "{\"wellKnownURI\":\"${URI}\"}")"
-          printf '%s\n' "${response}"
-          printf '%s' "${response}" | node -e '
+          response="$(cat /tmp/a2a-registry.json)"
+          printf 'A2A Registry HTTP %s\n%s\n' "${status}" "${response}"
+          A2A_REGISTRY_STATUS="${status}" printf '%s' "${response}" | node -e '
             let s="";
             process.stdin.on("data",d=>s+=d).on("end",()=>{
-              const x=JSON.parse(s);
+              let x;
+              try { x=JSON.parse(s); } catch { console.error("A2A Registry returned non-JSON"); process.exit(1); }
               const text=JSON.stringify(x).toLowerCase();
-              if (x.error && !text.includes("already") && !text.includes("exist")) {
-                console.error(x.error || x.message || "A2A Registry rejected XGuard");
-                process.exit(1);
-              }
-              if (x.id || x.agent || x.success === true || x.registered === true || text.includes("already") || text.includes("exist")) {
-                console.log("XGuard A2A Registry submission accepted or already registered.");
+              const status=Number(process.env.A2A_REGISTRY_STATUS || 0);
+              if (status >= 200 && status < 300 && (x.id || x.agent || x.success === true || x.registered === true || x.url || x.message)) {
+                console.log("XGuard A2A Registry submission accepted.");
                 return;
               }
-              console.error("Unexpected A2A Registry response shape");
+              if ((status === 200 || status === 409) && (text.includes("already") || text.includes("exist"))) {
+                console.log("XGuard is already registered in A2A Registry.");
+                return;
+              }
+              console.error(x.detail || x.error || x.message || `A2A Registry rejected XGuard (HTTP ${status})`);
               process.exit(1);
             });
           '
