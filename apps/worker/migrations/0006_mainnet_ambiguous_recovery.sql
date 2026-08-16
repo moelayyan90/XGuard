@@ -9,7 +9,7 @@ CREATE TABLE settlement_recovery_jobs (
   authorization_nonce TEXT NOT NULL,
   valid_before_epoch INTEGER NOT NULL CHECK (valid_before_epoch > 0),
   from_block INTEGER,
-  state TEXT NOT NULL CHECK (state IN ('PENDING','CONFIRMED','CANCELED','EXPIRED')),
+  state TEXT NOT NULL CHECK (state IN ('PENDING','CONFIRMED','CANCELED','EXPIRED','FAILED')),
   transaction_hash TEXT,
   result_json TEXT,
   attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
