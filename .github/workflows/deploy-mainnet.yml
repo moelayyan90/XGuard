@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/worker/src/mainnet*.ts"
       - "apps/worker/src/discovery.ts"
+      - "apps/worker/src/discovery-compat.ts"
       - "apps/worker/src/agent-discovery*.ts"
       - "apps/worker/src/base-*.ts"
       - "apps/worker/src/xpay-*.ts"
@@ -94,6 +95,23 @@ jobs:
           VERIFY_TOKEN="${GITHUB_SHA:-$(date +%s)}"
           DISCOVERY_QUERY="?deploy=${VERIFY_TOKEN}"
 
+          propagated=0
+          for attempt in {1..18}; do
+            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/.well-known/agent-card.json${DISCOVERY_QUERY}&attempt=${attempt}" || true)"
+            code="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.4.0"||!x.xguardDiscovery||x.xguardDiscovery.preferredMcpProtocolVersion!=="2026-07-28")process.exit(1)})'; then
+              propagated=1
+              break
+            fi
+            sleep 5
+          done
+          if [[ "${propagated}" -ne 1 ]]; then
+            echo "::error::The newly deployed XGuard discovery surface did not propagate within 90 seconds."
+            exit 1
+          fi
+
           curl -fsS --max-time 15 "${BASE_URL}/healthz" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'
 
@@ -117,6 +135,12 @@ jobs:
 
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/x402/facilitator.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="x402-facilitator"||x.status!=="production"||!x.facilitator||x.facilitator.baseUrl!=="https://xguard-mainnet.maqamapp.workers.dev"||x.facilitator.network!=="eip155:8453"||x.facilitator.scheme!=="exact"||!x.pricing||x.pricing.feeUsd!=="0.002"||!x.onboarding||x.onboarding.packageInstallationRequired!==false||!x.settlementExecution||x.settlementExecution.mode!=="routed"||x.settlementExecution.currentDownstream!=="xpay")process.exit(1)})'
+
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/x402${DISCOVERY_QUERY}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="x402-facilitator"||x.status!=="production"||!x.facilitator||x.facilitator.network!=="eip155:8453")process.exit(1)})'
+
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/monetization${DISCOVERY_QUERY}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.manifest!=="xguard-monetization-v1"||x.schemaVersion!==1||!x.pricing||x.pricing.feeUsd!=="0.002"||!x.x402||!String(x.x402.providerManifest||"").endsWith("/.well-known/x402/facilitator.json"))process.exit(1)})'
 
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/mcp/server.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="io.github.moelayyan90/xguard"||x.version!=="0.4.0"||!x.mcp||x.mcp.preferredProtocolVersion!=="2026-07-28"||!Array.isArray(x.remotes)||!x.remotes.some(r=>r&&r.type==="streamable-http"&&String(r.url||"").endsWith("/mcp")))process.exit(1)})'
