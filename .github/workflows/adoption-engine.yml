@@ -1,6 +1,11 @@
 name: XGuard adoption engine
 
 on:
+  pull_request:
+    paths:
+      - "scripts/adoption-engine.mjs"
+      - ".github/workflows/adoption-engine.yml"
+      - "package.json"
   schedule:
     - cron: "17 */6 * * *"
   workflow_dispatch:
@@ -10,7 +15,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: xguard-adoption-engine
+  group: xguard-adoption-engine-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -49,6 +54,7 @@ jobs:
           retention-days: 14
 
       - name: Update canonical adoption queue issue
+        if: github.event_name != 'pull_request'
         uses: actions/github-script@v8
         with:
           script: |
