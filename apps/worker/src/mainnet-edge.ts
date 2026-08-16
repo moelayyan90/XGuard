@@ -17,7 +17,6 @@ export { MainnetPaymentCoordinator, MainnetRequestGate };
 interface MainnetEdgeEnv {
   DB: D1Database;
   REQUEST_RATE_LIMITER: RateLimit;
-  GLOBAL_RATE_LIMITER: RateLimit;
   [key: string]: unknown;
 }
 
@@ -35,12 +34,7 @@ type MainnetScheduled = (
 const delegateFetch = mainnet.fetch as unknown as MainnetFetch;
 const delegateScheduled = mainnet.scheduled as unknown as MainnetScheduled;
 
-const MCP_PROTOCOLS = new Set([
-  "2025-11-25",
-  "2025-06-18",
-  "2025-03-26",
-  "2024-11-05",
-]);
+const MCP_PROTOCOLS = new Set(["2025-11-25", "2025-06-18", "2025-03-26"]);
 const DEFAULT_MCP_PROTOCOL = "2025-11-25";
 
 export default {
@@ -131,7 +125,9 @@ async function facilitatorWithBazaar(
   ctx: ExecutionContext,
   operation: "/verify" | "/settle",
 ): Promise<Response> {
-  let parsed: Awaited<ReturnType<typeof parseMainnetFacilitatorRequest>> | null = null;
+  let parsed: Awaited<
+    ReturnType<typeof parseMainnetFacilitatorRequest>
+  > | null = null;
   try {
     parsed = await parseMainnetFacilitatorRequest(request.clone());
   } catch {
@@ -171,10 +167,7 @@ async function facilitatorWithBazaar(
   if (outcome === null) return response;
 
   const headers = new Headers(response.headers);
-  headers.set(
-    "EXTENSION-RESPONSES",
-    btoa(JSON.stringify({ bazaar: outcome })),
-  );
+  headers.set("EXTENSION-RESPONSES", btoa(JSON.stringify({ bazaar: outcome })));
   exposeHeader(headers, "EXTENSION-RESPONSES");
   return new Response(response.body, {
     status: response.status,
@@ -222,11 +215,17 @@ async function discoverySearch(request: Request, env: MainnetEdgeEnv) {
   }
 }
 
-async function mcpRequest(request: Request, env: MainnetEdgeEnv): Promise<Response> {
+async function mcpRequest(
+  request: Request,
+  env: MainnetEdgeEnv,
+): Promise<Response> {
+  const originError = validateMcpOrigin(request);
+  if (originError !== null) return originError;
+
   if (request.method === "GET") {
     return corsJson(
       {
-        error: "streamable_http_post_required",
+        error: "sse_not_supported",
         endpoint: new URL(request.url).origin + "/mcp",
       },
       405,
@@ -237,6 +236,14 @@ async function mcpRequest(request: Request, env: MainnetEdgeEnv): Promise<Respon
     return corsJson({ error: "method_not_allowed" }, 405, {
       Allow: "POST, OPTIONS",
     });
+
+  const accept = request.headers.get("accept")?.toLowerCase() ?? "";
+  if (
+    !accept.includes("application/json") ||
+    !accept.includes("text/event-stream")
+  )
+    return corsJson({ error: "mcp_accept_header_required" }, 406);
+
   if (
     request.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase() !==
     "application/json"
@@ -253,31 +260,49 @@ async function mcpRequest(request: Request, env: MainnetEdgeEnv): Promise<Respon
     return mcpError(null, -32700, errorMessage(error));
   }
 
-  const id = rpc.id ?? null;
-  const method = typeof rpc.method === "string" ? rpc.method : "";
-  const params = isRecord(rpc.params) ? rpc.params : {};
+  if (rpc.jsonrpc !== "2.0") return mcpError(null, -32600, "Invalid Request");
 
-  if (method === "notifications/initialized" || method === "notifications/cancelled")
+  if (typeof rpc.method !== "string")
     return corsResponse(new Response(null, { status: 202 }));
-  if (method === "ping") return mcpResult(id, {});
+
+  const id = rpc.id ?? null;
+  const method = rpc.method;
+  const params = isRecord(rpc.params) ? rpc.params : {};
+  const isNotification = rpc.id === undefined;
 
   if (method === "initialize") {
+    if (isNotification)
+      return corsResponse(new Response(null, { status: 202 }));
     const requested =
       typeof params.protocolVersion === "string" ? params.protocolVersion : "";
     const protocolVersion = MCP_PROTOCOLS.has(requested)
       ? requested
       : DEFAULT_MCP_PROTOCOL;
-    return mcpResult(id, {
-      protocolVersion,
-      capabilities: { tools: { listChanged: false } },
-      serverInfo: {
-        name: "xguard-mainnet",
-        version: "0.3.0",
+    return mcpResult(
+      id,
+      {
+        protocolVersion,
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: {
+          name: "xguard-mainnet",
+          version: "0.3.0",
+        },
+        instructions:
+          "Use xguard_discover to find paid x402 HTTP APIs and MCP tools cataloged by XGuard.",
       },
-      instructions:
-        "Use xguard_discover to find paid x402 HTTP APIs and MCP tools cataloged by XGuard.",
-    }, protocolVersion);
+      protocolVersion,
+    );
   }
+
+  const protocolVersion =
+    request.headers.get("mcp-protocol-version") ?? "2025-03-26";
+  if (!MCP_PROTOCOLS.has(protocolVersion))
+    return corsJson({ error: "unsupported_mcp_protocol_version" }, 400);
+
+  if (isNotification)
+    return corsResponse(new Response(null, { status: 202 }));
+
+  if (method === "ping") return mcpResult(id, {});
 
   if (method === "tools/list") {
     return mcpResult(id, {
@@ -291,9 +316,11 @@ async function mcpRequest(request: Request, env: MainnetEdgeEnv): Promise<Respon
     try {
       if (name === "xguard_discover") {
         const query = typeof args.query === "string" ? args.query.trim() : "";
-        const type = args.type === "http" || args.type === "mcp" ? args.type : undefined;
+        const type =
+          args.type === "http" || args.type === "mcp" ? args.type : undefined;
         const payTo = typeof args.payTo === "string" ? args.payTo : undefined;
-        const limit = typeof args.limit === "number" ? Math.trunc(args.limit) : 10;
+        const limit =
+          typeof args.limit === "number" ? Math.trunc(args.limit) : 10;
         const result = query
           ? await searchBazaarResources(env.DB, { query, type, payTo, limit })
           : await listBazaarResources(env.DB, { type, payTo, limit });
@@ -338,9 +365,15 @@ function mcpTools() {
       inputSchema: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Natural-language search query." },
+          query: {
+            type: "string",
+            description: "Natural-language search query.",
+          },
           type: { type: "string", enum: ["http", "mcp"] },
-          payTo: { type: "string", description: "Optional payment recipient address." },
+          payTo: {
+            type: "string",
+            description: "Optional payment recipient address.",
+          },
           limit: { type: "integer", minimum: 1, maximum: 100, default: 10 },
         },
         additionalProperties: false,
@@ -348,7 +381,8 @@ function mcpTools() {
     },
     {
       name: "xguard_resource_details",
-      description: "Return XGuard catalog records for one exact resource URL or resource key.",
+      description:
+        "Return XGuard catalog records for one exact resource URL or resource key.",
       inputSchema: {
         type: "object",
         properties: {
@@ -375,7 +409,9 @@ async function augmentSupported(response: Response): Promise<Response> {
   try {
     const body = (await response.clone().json()) as Record<string, unknown>;
     const current = Array.isArray(body.extensions)
-      ? body.extensions.filter((item): item is string => typeof item === "string")
+      ? body.extensions.filter(
+          (item): item is string => typeof item === "string",
+        )
       : [];
     body.extensions = [...new Set([...current, "bazaar"])];
     return jsonFrom(response, body);
@@ -384,7 +420,10 @@ async function augmentSupported(response: Response): Promise<Response> {
   }
 }
 
-async function augmentStatus(response: Response, db: D1Database): Promise<Response> {
+async function augmentStatus(
+  response: Response,
+  db: D1Database,
+): Promise<Response> {
   if (!response.ok) return response;
   try {
     const body = (await response.clone().json()) as Record<string, unknown>;
@@ -425,11 +464,10 @@ async function publicEdgeGuard(
     request.headers.get("x-real-ip") ??
     "unknown";
   try {
-    const [perClient, global] = await Promise.all([
-      env.REQUEST_RATE_LIMITER.limit({ key: `public:${path}:${client}` }),
-      env.GLOBAL_RATE_LIMITER.limit({ key: `public:${path}` }),
-    ]);
-    if (!perClient.success || !global.success)
+    const perClient = await env.REQUEST_RATE_LIMITER.limit({
+      key: `public:${path}:${client}`,
+    });
+    if (!perClient.success)
       return corsJson({ error: "rate_limit_exceeded" }, 429, {
         "Retry-After": "60",
       });
@@ -437,6 +475,32 @@ async function publicEdgeGuard(
   } catch {
     return corsJson({ error: "protection_unavailable" }, 503);
   }
+}
+
+function validateMcpOrigin(request: Request): Response | null {
+  const rawOrigin = request.headers.get("origin");
+  if (rawOrigin === null) return null;
+  try {
+    const origin = new URL(rawOrigin);
+    if (
+      origin.protocol !== "https:" ||
+      origin.username !== "" ||
+      origin.password !== "" ||
+      isLocalOriginHost(origin.hostname)
+    )
+      throw new Error("invalid_origin");
+    return null;
+  } catch {
+    return corsJson({ error: "invalid_origin" }, 403);
+  }
+}
+
+function isLocalOriginHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return true;
+  if (host.includes(":")) return true;
+  return false;
 }
 
 function isPublicEdgePath(path: string) {
@@ -567,7 +631,10 @@ function mergeHeaderValues(current: string | null, additional: string): string {
   return [...values].join(", ");
 }
 
-async function readBodyCapped(request: Request, maxBytes: number): Promise<string> {
+async function readBodyCapped(
+  request: Request,
+  maxBytes: number,
+): Promise<string> {
   const text = await request.text();
   if (new TextEncoder().encode(text).byteLength > maxBytes)
     throw new Error("request_body_too_large");
@@ -575,7 +642,9 @@ async function readBodyCapped(request: Request, maxBytes: number): Promise<strin
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message !== "" ? error.message : "request_failed";
+  return error instanceof Error && error.message !== ""
+    ? error.message
+    : "request_failed";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
