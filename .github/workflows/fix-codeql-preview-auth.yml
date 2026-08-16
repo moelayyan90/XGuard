@@ -1,0 +1,53 @@
+name: Fix CodeQL preview auth finding
+
+on:
+  push:
+    branches:
+      - agent/economic-firewall-clean
+    paths:
+      - .github/workflows/fix-codeql-preview-auth.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/economic-firewall-clean
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Replace secret hashing with constant-time comparison
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps/worker/src/economic-firewall.ts')
+          s = p.read_text()
+          s = s.replace('import { createHash } from "node:crypto";', 'import { createHash, timingSafeEqual } from "node:crypto";', 1)
+          s = s.replace('  readHttpBodyTextCapped,\n  sha256Hex,\n} from "@xguard/core/edge";', '  readHttpBodyTextCapped,\n} from "@xguard/core/edge";', 1)
+          old = '''  const supplied = authorization.slice("Bearer ".length);\n  if (sha256Hex(supplied) !== sha256Hex(configured))\n    return context.json({ error: "invalid_bearer_token" }, 401);\n\n  const merchantId = `preview_${sha256Hex(configured).slice(0, 24)}`;'''
+          new = '''  const supplied = authorization.slice("Bearer ".length);\n  const suppliedBytes = new TextEncoder().encode(supplied);\n  const configuredBytes = new TextEncoder().encode(configured);\n  if (\n    suppliedBytes.byteLength !== configuredBytes.byteLength ||\n    !timingSafeEqual(suppliedBytes, configuredBytes)\n  )\n    return context.json({ error: "invalid_bearer_token" }, 401);\n\n  const merchantId = "preview_isolated";'''
+          if old not in s:
+              raise SystemExit('preview auth block not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Verify fix
+        run: |
+          npx prettier --write apps/worker/src/economic-firewall.ts
+          npm run lint
+          npm run typecheck
+          npm run test
+          npm --workspace @xguard/worker run build:economic-preview
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/economic-firewall.ts
+          git commit -m "security: compare preview bearer token in constant time"
+          git push origin HEAD:agent/economic-firewall-clean
