@@ -36,6 +36,22 @@ describe("mainnet revenue hardening source invariants", () => {
     expect(source).toContain("releaseExpiredVerifyHolds(env)");
   });
 
+  it("does not hit Base RPC when automatic top-up reconciliation is idle", async () => {
+    const source = await readFile(
+      "apps/worker/src/mainnet-supervisor.ts",
+      "utf8",
+    );
+    const guard = source.indexOf("shouldScanAutomaticTopUps(env)");
+    const scanner = source.indexOf("scanAutomaticTopUps(env)", guard);
+    expect(guard).toBeGreaterThanOrEqual(0);
+    expect(scanner).toBeGreaterThan(guard);
+    expect(source).toContain("TOPUP_RECONCILIATION_GRACE_SECONDS");
+    expect(source).toContain("state IN ('OPEN','EXPIRED')");
+    expect(source).toContain(
+      "DELETE FROM treasury_scan_state WHERE scanner_id='base-usdc'",
+    );
+  });
+
   it("uses a Cloudflare-supported redirect mode for automatic top-up RPC calls", async () => {
     const source = await readFile(
       "apps/worker/src/mainnet-revenue-hardening.ts",
