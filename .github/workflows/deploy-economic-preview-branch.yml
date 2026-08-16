@@ -1,0 +1,91 @@
+name: Deploy Economic Firewall preview branch
+
+on:
+  push:
+    branches:
+      - agent/economic-firewall-v2
+    paths:
+      - .github/workflows/deploy-economic-preview-branch.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xguard-economic-preview-branch-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/economic-firewall-v2
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Verify release candidate
+        run: npm run verify:release
+        env:
+          WRANGLER_SEND_METRICS: "false"
+      - name: Deploy isolated preview and run zero-value E2E
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::Cloudflare CI authorization is unavailable."
+            exit 1
+          fi
+
+          CONFIG="apps/worker/wrangler.economic-preview.jsonc"
+          npx wrangler deploy --config "$CONFIG"
+
+          PREVIEW_TOKEN="$(node -e 'const {createHmac}=require("node:crypto"); process.stdout.write(createHmac("sha256", process.env.CLOUDFLARE_API_TOKEN).update("xguard-economic-preview-v1").digest("hex"));')"
+          printf '%s' "$PREVIEW_TOKEN" | npx wrangler secret put PREVIEW_API_TOKEN --config "$CONFIG"
+
+          BASE_URL="https://xguard-economic-preview.maqamapp.workers.dev"
+          for attempt in {1..12}; do
+            if curl -fsS "$BASE_URL/healthz" >/tmp/economic-health.json; then
+              break
+            fi
+            sleep 5
+          done
+          node -e 'const f=require("fs"); const x=JSON.parse(f.readFileSync("/tmp/economic-health.json","utf8")); if(x.status!=="ok") process.exit(1);'
+
+          EXPIRES_AT="$(node -e 'console.log(new Date(Date.now()+10*60*1000).toISOString())')"
+          NONCE="$(node -e 'console.log(require("node:crypto").randomUUID())')"
+          CREATE_BODY="$(node -e 'process.stdout.write(JSON.stringify({actorId:"ci-preview-agent",protocol:"preview",resource:{method:"GET",url:"https://example.com/",bodyHash:null},money:{maxAmountMicroUsd:0,currency:"USD",network:null,asset:null},expiresAt:process.argv[1],nonce:process.argv[2],metadataHash:null}))' "$EXPIRES_AT" "$NONCE")"
+
+          CREATE_RESPONSE="$(curl -fsS -X POST "$BASE_URL/v1/intents" -H "Authorization: Bearer $PREVIEW_TOKEN" -H 'Content-Type: application/json' --data "$CREATE_BODY")"
+          INTENT_ID="$(printf '%s' "$CREATE_RESPONSE" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!/^xi_[0-9a-f]{40}$/.test(x.intentId))process.exit(1);process.stdout.write(x.intentId);});')"
+
+          curl -fsS -X POST "$BASE_URL/v1/intents/$INTENT_ID/authorize" \
+            -H "Authorization: Bearer $PREVIEW_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data '{"authorization":{"kind":"ci-zero-value-preview"},"authorizedAmountMicroUsd":0}' >/tmp/economic-authorize.json
+
+          EXEC_STATUS="$(curl -sS -o /tmp/economic-resource.out -w '%{http_code}' -X POST "$BASE_URL/v1/intents/$INTENT_ID/execute" \
+            -H "Authorization: Bearer $PREVIEW_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data '{"headers":{"accept":"text/html"}}')"
+          if [[ "$EXEC_STATUS" != "200" ]]; then
+            echo "::error::Economic Firewall execution returned HTTP $EXEC_STATUS"
+            exit 1
+          fi
+
+          SNAPSHOT="$(curl -fsS "$BASE_URL/v1/intents/$INTENT_ID" -H "Authorization: Bearer $PREVIEW_TOKEN")"
+          printf '%s' "$SNAPSHOT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.state!=="FULFILLED"||!x.fulfillmentHash)process.exit(1);});'
+
+          FINAL="$(curl -fsS -X POST "$BASE_URL/v1/intents/$INTENT_ID/settle" \
+            -H "Authorization: Bearer $PREVIEW_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data '{"protocol":"preview","settlement":{"kind":"ci-zero-value-preview"},"chargedAmountMicroUsd":0}')"
+          printf '%s' "$FINAL" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.state!=="FINAL"||x.proof?.result!=="EXACTLY_ONCE"||x.proof?.chargedAmountMicroUsd!==0)process.exit(1); console.log(JSON.stringify({intentId:x.intentId,state:x.state,result:x.proof.result,proofHash:x.proof.proofHash}));});'
