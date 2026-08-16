@@ -1,32 +1,55 @@
 # Distribution
 
-## Prepared adoption surfaces
+## Adoption surfaces
 
 - `xguard init`: local AST-based migration with backup, changed-file/hash manifest, test execution, automatic failure rollback, and no disclosure of an old credential-bearing URL.
 - `xguard rollback`: hash-safe restoration that refuses to overwrite later user edits.
 - `xguard doctor`: repository and public-endpoint diagnostics for x402 v2, facilitator configuration, Payment Identifier, duplicate risk, Bazaar metadata, reachability, security, and latency.
-- `@xguard/sdk`: a minimal official `FacilitatorClient`-compatible wrapper.
-- `examples/x402-xguard-starter`: Express x402 v2 resource with Payment Identifier and Bazaar metadata enabled only when the selected facilitator advertises Bazaar.
-- `apps/mcp-example`: official MCP SDK plus official `@x402/mcp` paid-tool wrapper.
-- public read-only compatibility checker and status endpoint in the gateway.
+- `@xguard/sdk`: a minimal `FacilitatorClient`-compatible wrapper for resource servers.
+- `examples/x402-xguard-starter`: Express x402 v2 resource example with Payment Identifier and Bazaar metadata.
+- `apps/mcp-example`: paid-tool reference integration using the MCP SDK and `@x402/mcp`.
+- `/discovery/resources`: public machine-readable Bazaar catalog.
+- `/discovery/search`: bounded resource search for HTTP APIs and MCP tools.
+- `/mcp`: remote stateless agent interface exposing XGuard discovery tools.
+- `/.well-known/mcp/server.json`: remote MCP server metadata.
 
-The manifests use the candidate names `xguard`, `@xguard/core`, and `@xguard/sdk`. No package is published or reserved, and registry search is not a substitute for ownership; an authorized publisher must re-check and claim the names at publication time or apply the documented scoped rename consistently.
+The mainnet adoption path is:
 
-The public repository is [`moelayyan90/XGuard`](https://github.com/moelayyan90/XGuard). CI and CodeQL pass; `main` is protected by pull-request, up-to-date `verify`, conversation-resolution, CodeQL, deletion, and force-push rules. Dependabot, secret scanning/push protection, and private vulnerability reporting are enabled. Its release workflow runs the full release verification, creates the three npm tarballs, and retains them as GitHub artifacts without publishing. Public npm publication stays intentionally separate until package ownership, npm authentication, and trusted-publisher configuration are proven.
+```text
+AI agent -> paid API/MCP tool -> XGuard /verify + /settle -> settlement facilitator
+                                      |
+                                      +-> Bazaar catalog -> discovery API / XGuard MCP
+```
 
-## Legitimate publication sequence
+The agent does not need a private XGuard integration when it is buying from a resource server that already uses XGuard as its x402 facilitator. The resource server owns the XGuard merchant credential and prepaid service balance.
 
-1. Keep the working testnet URL green and run `npm run verify:release` plus `npm run smoke:live`.
-2. Keep the active CI, CodeQL, protected-branch, Dependabot, secret-scanning/push-protection, and private-vulnerability-reporting controls green.
-3. After an authorized npm owner binds trusted publishing to this repository, add a reviewed publish job and publish provenance-enabled prerelease packages with the `next` tag only.
-4. Verify a fresh `npx xguard@latest init`, `doctor`, starter install, rollback, health, status, pricing, and security links.
-5. Expose eligible paid-resource/MCP Bazaar metadata through a facilitator that supports current cataloging.
-6. Submit accurate ecosystem, developer-tool, extension, facilitator, or MCP listings through their official contribution mechanism only where XGuard actually qualifies.
+## Package publication
 
-XGuard is presently best described as a routing facilitator/gateway, not an official Foundation facilitator and not a Coinbase product. The safety layer has not been submitted as a formal x402 extension because its core guarantees are server-side orchestration; a future protocol extension is warranted only when interoperability requires signed cross-party fields.
+The manifests use the candidate names `xguard`, `@xguard/core`, and `@xguard/sdk`. These names must not be described as published until an authorized npm owner has bound trusted publishing and the packages are verifiably available in the registry.
+
+The public repository is [`moelayyan90/XGuard`](https://github.com/moelayyan90/XGuard). Release verification builds the package tarballs and validates the Worker bundles. Public npm publication remains a separate authenticated release action.
+
+## Publication sequence
+
+1. Keep CI, CodeQL, secret scanning, protected-branch controls, and release verification green.
+2. Merge only code that passes `npm run verify:release`.
+3. Apply D1 migrations before the mainnet Worker deployment.
+4. Require live `/healthz`, `/readyz`, `/supported`, `/status`, Bazaar discovery, and remote MCP smoke checks after deployment.
+5. Bind authorized npm trusted publishing, then publish provenance-enabled prerelease packages before promoting a stable tag.
+6. Verify a clean external install of `xguard`, `@xguard/sdk`, the starter, `init`, `doctor`, and rollback.
+7. Publish the verified MCP server metadata through the official MCP Registry mechanism only after the remote `/mcp` endpoint is live.
+8. Submit XGuard to relevant x402 ecosystem/facilitator listings only with accurate capabilities, pricing, networks, and operational URLs.
+
+## Agent-discovery requirements
+
+XGuard advertises the `bazaar` extension only because the mainnet edge implements cataloging itself. Eligible Bazaar metadata is validated before storage. MCP tools are keyed by resource URL plus tool name, while HTTP resources are keyed by canonical resource URL.
+
+The remote MCP endpoint is intentionally read-only with respect to money. Its tools discover cataloged paid resources and report XGuard status; it does not hold wallets, sign payments, or bypass the x402 resource server's payment policy.
 
 ## Listing quality gate
 
-Every URL and package must work; examples and migration must run; test and security status must be accurate; pricing and downstream costs must be distinct; machine schemas must be complete; no secret may be present; and availability history must contain measurements rather than claims. Submission or acceptance is never reported until it actually occurs.
+Every public URL and package must work; examples and migration must run; test and security status must be accurate; pricing and downstream costs must be distinct; machine schemas must be complete; no secret may be present; and availability history must contain measurements rather than claims. Submission or acceptance is never reported until it actually occurs.
 
-No scraping, unsolicited bulk outreach, fake accounts, reviews, stars, transactions, endorsement, or impersonation is permitted. Growth comes from useful diagnostics, small integration changes, examples, protocol discovery, transparent health, and strong documentation.
+XGuard is an independent routing/facilitator gateway. It is not described as an official x402 Foundation facilitator, Coinbase product, or endorsed MCP Registry service unless such status is actually granted.
+
+No scraping, fake accounts, fake reviews, fake stars, fake transactions, endorsement claims, or impersonation are part of distribution. Growth is driven by working integrations, machine-readable discovery, low-friction SDK/CLI adoption, transparent health, and verifiable settlement behavior.
