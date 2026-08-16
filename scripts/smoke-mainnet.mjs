@@ -284,14 +284,10 @@ assert(
   "mainnet reconciliation count is invalid",
 );
 assert(
-  Number.isInteger(status.body.successfulBillableSettlements) &&
-    status.body.successfulBillableSettlements >= 0,
-  "mainnet earned settlement count is invalid",
-);
-assert(
-  Number.isInteger(status.body.earnedMicroUsd) &&
-    status.body.earnedMicroUsd >= 0,
-  "mainnet earned revenue total is invalid",
+  status.body.financialMetrics === "private" &&
+    status.body.successfulBillableSettlements === undefined &&
+    status.body.earnedMicroUsd === undefined,
+  "mainnet public status exposed protected financial metrics",
 );
 assert(
   Number.isInteger(status.body.discovery?.resources) &&
@@ -311,9 +307,8 @@ console.log(
     a2a: true,
     bazaar: true,
     mcp: true,
+    financialMetrics: status.body.financialMetrics,
     discoveryResources: status.body.discovery.resources,
-    successfulBillableSettlements: status.body.successfulBillableSettlements,
-    earnedMicroUsd: status.body.earnedMicroUsd,
     openReconciliationCases: status.body.openReconciliationCases,
   }),
 );
