@@ -95,6 +95,7 @@ jobs:
           VERIFY_TOKEN="${GITHUB_SHA:-$(date +%s)}"
           DISCOVERY_QUERY="?deploy=${VERIFY_TOKEN}"
 
+          # Retry transient transport/server failures only; response assertions stay strict.
           curl() {
             command curl \
               --retry 6 \
