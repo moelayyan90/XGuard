@@ -1,0 +1,38 @@
+name: Diagnose XGuard live endpoints
+
+on:
+  push:
+    branches: [fix/live-deploy-verification]
+    paths:
+      - ".github/workflows/live-endpoint-diagnose-temp.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe live production endpoints
+        shell: bash
+        run: |
+          set -u
+          BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
+
+          probe() {
+            name="$1"
+            url="$2"
+            body="$(mktemp)"
+            code="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -o "${body}" -w '%{http_code}' "${url}" || true)"
+            echo "### ${name} HTTP ${code}"
+            head -c 4000 "${body}" || true
+            echo
+            rm -f "${body}"
+          }
+
+          probe health "${BASE_URL}/healthz"
+          probe ready "${BASE_URL}/readyz"
+          probe status "${BASE_URL}/status"
+          probe agent-card "${BASE_URL}/.well-known/agent-card.json?diag=${GITHUB_SHA}"
+          probe migration "${BASE_URL}/.well-known/xguard/migrate?from=cdp,payai&name=diag&resource=https%3A%2F%2Fexample.com%2Fapi"
