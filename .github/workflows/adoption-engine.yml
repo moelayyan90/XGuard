@@ -6,6 +6,7 @@ on:
       - "scripts/adoption-engine.mjs"
       - "scripts/adoption-targets.mjs"
       - "scripts/conversion-engine.mjs"
+      - "scripts/migration-engine.mjs"
       - ".github/workflows/adoption-engine.yml"
       - "package.json"
   push:
@@ -14,14 +15,16 @@ on:
       - "scripts/adoption-engine.mjs"
       - "scripts/adoption-targets.mjs"
       - "scripts/conversion-engine.mjs"
+      - "scripts/migration-engine.mjs"
       - ".github/workflows/adoption-engine.yml"
       - "package.json"
   schedule:
     - cron: "17 */6 * * *"
   workflow_dispatch:
 
-# Public metadata discovery and conversion planning only; never executes payments,
-# synthetic settlements, third-party configuration changes, or bulk outreach.
+# Public metadata discovery, conversion planning, and repository/file-level
+# migration analysis only; never executes payments, synthetic settlements,
+# third-party configuration changes, pull requests, or bulk outreach.
 permissions:
   contents: read
   issues: write
@@ -44,10 +47,10 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Self-test adoption and conversion engines
+      - name: Self-test adoption, conversion, and migration engines
         run: npm run adoption:self-test
 
-      - name: Discover, verify, rank, and build safe x402 merchant switch kits
+      - name: Discover, verify, rank, and build x402 migration packets
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -56,10 +59,13 @@ jobs:
           XGUARD_ADOPTION_PROBE_CONCURRENCY: "8"
           XGUARD_ADOPTION_MIN_SCORE: "25"
           XGUARD_CONVERSION_QUEUE_LIMIT: "50"
+          XGUARD_MIGRATION_TARGET_LIMIT: "16"
+          XGUARD_MIGRATION_REPOS_PER_TARGET: "3"
+          XGUARD_MIGRATION_FILES_PER_REPO: "12"
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
-            rm -f adoption-report.json adoption-report.md adoption-targets.json adoption-targets.md conversion-queue.json conversion-queue.md adoption-scan.log
+            rm -f adoption-report.json adoption-report.md adoption-targets.json adoption-targets.md conversion-queue.json conversion-queue.md migration-queue.json migration-queue.md adoption-scan.log
             set +e
             npm run adoption:scan 2>&1 | tee adoption-scan.log
             scan_status=${PIPESTATUS[0]}
@@ -68,24 +74,25 @@ jobs:
             if [[ "$scan_status" -eq 0 ]] \
               && grep -Fq '"event":"adoption_source_scanned","source":"cdp-bazaar"' adoption-scan.log \
               && grep -Fq '"event":"adoption_source_scanned","source":"payai-bazaar"' adoption-scan.log \
-              && grep -Fq '"event":"conversion_queue_ready"' adoption-scan.log; then
-              echo "Primary adoption catalogs and safe conversion queue completed on attempt ${attempt}."
+              && grep -Fq '"event":"conversion_queue_ready"' adoption-scan.log \
+              && grep -Fq '"event":"migration_queue_ready"' adoption-scan.log; then
+              echo "Primary adoption catalogs and migration queue completed on attempt ${attempt}."
               exit 0
             fi
 
             if [[ "$attempt" -lt 3 ]]; then
               delay=$((attempt * 5))
-              echo "Primary adoption/conversion coverage incomplete on attempt ${attempt}; retrying in ${delay}s."
+              echo "Primary adoption/migration coverage incomplete on attempt ${attempt}; retrying in ${delay}s."
               sleep "$delay"
             fi
           done
 
-          echo "Primary adoption/conversion coverage remained incomplete; keeping the previous canonical queue unchanged."
+          echo "Primary adoption/migration coverage remained incomplete; keeping the previous canonical queue unchanged."
           exit 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xguard-adoption-conversion-report
+          name: xguard-adoption-conversion-migration-report
           path: |
             adoption-report.json
             adoption-report.md
@@ -93,10 +100,12 @@ jobs:
             adoption-targets.md
             conversion-queue.json
             conversion-queue.md
+            migration-queue.json
+            migration-queue.md
           if-no-files-found: error
           retention-days: 14
 
-      - name: Update canonical adoption and conversion queue issue
+      - name: Update canonical adoption, conversion, and migration issue
         if: github.event_name != 'pull_request'
         uses: actions/github-script@v8
         with:
@@ -105,10 +114,15 @@ jobs:
             const title = "[adoption] XGuard public x402 candidate pipeline";
             const targets = fs.readFileSync("adoption-targets.md", "utf8");
             const conversion = fs.readFileSync("conversion-queue.md", "utf8");
+            const migration = fs.readFileSync("migration-queue.md", "utf8");
             const body = [
-              "This issue is maintained automatically by the XGuard adoption and conversion engine.",
+              "This issue is maintained automatically by the XGuard adoption, conversion, and migration engine.",
               "",
-              "It ranks distinct public x402 merchant/service targets and produces side-effect-free switch kits. The workflow never pays endpoints, changes third-party infrastructure, fabricates settlements, or sends bulk outreach.",
+              "It ranks distinct public x402 merchant/service targets and produces repository/file-level, side-effect-free switch packets. The workflow never pays endpoints, changes third-party infrastructure, fabricates settlements, opens third-party pull requests, or sends bulk outreach.",
+              "",
+              migration,
+              "",
+              "---",
               "",
               conversion,
               "",
