@@ -187,7 +187,7 @@ app.post("/v1/intents/:intentId/authorize", async (context) => {
       intentId,
     ).recordAuthorization({
       merchantId,
-      authorization: body.authorization,
+      authorization: rpcSafeJson(body.authorization),
       authorizedAmountMicroUsd: requiredSafeInteger(
         body.authorizedAmountMicroUsd,
         "authorizedAmountMicroUsd",
@@ -303,7 +303,7 @@ app.post("/v1/intents/:intentId/settle", async (context) => {
       merchantId,
       executionId: snapshot.executionId,
       protocol,
-      settlement: body.settlement,
+      settlement: rpcSafeJson(body.settlement),
       chargedAmountMicroUsd: requiredSafeInteger(
         body.chargedAmountMicroUsd,
         "chargedAmountMicroUsd",
@@ -597,6 +597,10 @@ function optionalHash(value: unknown, field: string): string | null {
       400,
     );
   return value.toLowerCase();
+}
+
+function rpcSafeJson(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value)) as unknown;
 }
 
 function requiredSafeInteger(value: unknown, field: string): number {
