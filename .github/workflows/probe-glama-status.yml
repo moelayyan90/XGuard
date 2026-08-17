@@ -12,18 +12,34 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Query public Glama directory API
+      - name: Query public Glama directory API for exact XGuard identity
         shell: bash
         run: |
           python - <<'PY'
+          import json
           import urllib.parse
           import urllib.request
 
           base = "https://glama.ai/api/mcp/v1/servers"
-          query = urllib.parse.urlencode({"query":"XGuard","first":"50"})
-          req = urllib.request.Request(base + "?" + query, headers={"User-Agent":"XGuard-registry-status-check/1.0"})
-          with urllib.request.urlopen(req, timeout=30) as r:
-              body = r.read().decode("utf-8", "replace")
-              print("STATUS", r.status)
-              print("BODY", body[:30000])
+          ua = {"User-Agent":"XGuard-registry-status-check/1.0"}
+          targets = ["moelayyan90", "io.github.moelayyan90/xguard", "https://github.com/moelayyan90/XGuard", "XGuard x402"]
+          found = []
+          for term in targets:
+              query = urllib.parse.urlencode({"query":term,"first":"100"})
+              req = urllib.request.Request(base + "?" + query, headers=ua)
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  body = r.read().decode("utf-8", "replace")
+              data = json.loads(body)
+              print("QUERY", term, "COUNT", len(data.get("servers", [])))
+              for server in data.get("servers", []):
+                  repo = str((server.get("repository") or {}).get("url") or "")
+                  namespace = str(server.get("namespace") or "")
+                  name = str(server.get("name") or "")
+                  slug = str(server.get("slug") or "")
+                  hay = " ".join([repo, namespace, name, slug]).lower()
+                  if "moelayyan90" in hay or repo.lower().rstrip("/") == "https://github.com/moelayyan90/xguard".lower():
+                      found.append(server)
+          print("EXACT_MATCH_COUNT", len({s.get('id'): json.dumps(s, sort_keys=True) for s in found}))
+          for server in found:
+              print("MATCH", json.dumps(server, sort_keys=True))
           PY
