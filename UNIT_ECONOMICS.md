@@ -2,66 +2,89 @@
 
 All XGuard monetary values use exact integer micro-USD.
 
-For each normal mainnet route:
+## Zero-friction x402 seller revenue
+
+For one independently finalized successful merchant settlement:
 
 ```text
-$0.002 XGuard service fee
-- downstream facilitator cost attributable to XGuard
-- variable infrastructure cost
-= contribution per successful billable settlement
+proportional fee = floor(settlement_amount_micro_usd × signed_fee_bps / 10,000)
+XGuard gross fee = min(proportional fee, signed_fee_cap_micro_usd)
 ```
 
-Contribution is not owner profit. Fixed infrastructure, refunds/customer liabilities, provider fees, taxes, reserve requirements, off-ramp costs, and any other operating expenses remain separate.
-
-## Current live route assumption
-
-The live Base mainnet Worker is configured with:
+At the current default signed terms:
 
 ```text
-XGuard fee:                         $0.002000
-Conservative PayAI route cost:     $0.001000
-Configured contribution:           $0.001000
+signed fee rate:  50 bps = 0.5%
+signed fee cap:   1,000 micro-USD = $0.001
 ```
 
-The `1,000` micro-USD downstream-cost value deliberately uses PayAI's currently advertised pay-as-you-go rate rather than assuming its free allowance will always apply. PayAI's public facilitator pricing page, checked 2026-08-15, advertises:
+Examples:
 
-- Free Forever: 10,000 settlements per month at $0;
-- Pay As You Go: $0.001 per settlement;
-- Enterprise: custom terms.
+| Merchant settlement | Gross XGuard fee |
+| ---: | ---: |
+| $0.01 | $0.00005 |
+| $0.10 | $0.00050 |
+| $0.20 | $0.00100 |
+| $1.00 | $0.00100 |
+| $100.00 | $0.00100 |
 
-Official pricing source: `https://facilitator.payai.network/`.
+Verification, definitive failure, unresolved ambiguity and idempotent retry do not create another zero-friction x402 fee.
 
-This means the configured `$0.001` contribution is conservative during the advertised free allowance and approximately represents fee minus facilitator cost after the free allowance, before all other costs. Pricing can change and must be refreshed from the provider's current tariff or contract.
+## Contribution
 
-## What is and is not revenue
-
-Merchant Base USDC top-ups are prepaid service balances and are recorded as customer liabilities. They are not XGuard revenue when they arrive at the treasury.
-
-For one eligible settlement, XGuard reserves `2,000` micro-USD from the merchant service balance. The fee becomes `EARNED_REVENUE` only after independent Base finality verifies the successful native-USDC settlement. Definitive failure releases the reservation. Ambiguity remains held for reconciliation.
-
-Therefore:
+For each finalized billable settlement:
 
 ```text
-USDC received as merchant top-up != revenue
-$0.002 reserved fee               != revenue yet
-$0.002 finality-confirmed fee     = gross XGuard earned revenue
-contribution after route cost     != final owner profit
+XGuard gross earned fee
+- attributable downstream facilitator/provider cost
+- variable Cloudflare / D1 / Durable Object cost
+- attributable RPC/finality cost
+- other variable operating cost
+= contribution
 ```
 
-## Live-state reporting rule
+Contribution is not owner profit. Fixed infrastructure, taxes, reserves, legal/compliance expense, off-ramp cost, charge/reconciliation exposure and other operating costs remain separate.
 
-The public mainnet endpoint is technically deployed and passes readiness checks. This document does not invent a customer-volume, revenue, or profit number. Actual billable settlements and earned revenue must be read from the production accounting ledger and reconciled against treasury/provider evidence before being reported as actual results.
+## Downstream-cost rule
 
-## Break-even examples
+Do not invent a provider cost from an old tariff, free-tier advertisement or historical snapshot. The current downstream submitter is xpay; the actual XGuard-attributable downstream cost must be taken from current provider terms, contract or measured invoices/usage.
 
-Using the conservative `$0.001` per-settlement contribution before other variable/fixed costs:
+If a downstream provider charges more than the XGuard fee available under a merchant's signed pricing terms, the route is economically ineligible unless there is another defensible source of margin. XGuard must fail closed or introduce a new disclosed pricing version for future merchant activations; it must not silently rewrite existing signed terms.
 
-| Additional monthly cost | Settlements needed just to cover it |
-| ----------------------: | ----------------------------------: |
-|                   $5.00 |                               5,000 |
-|                  $25.00 |                              25,000 |
-|                 $100.00 |                             100,000 |
+## Revenue recognition
 
-These are arithmetic break-even examples, not traffic or revenue forecasts.
+For the zero-friction x402 seller path:
 
-The route engine fails closed when the configured attributable downstream cost is unknown or is not lower than the XGuard service fee. Network gas paid by another participant is disclosed but is not booked as XGuard expense unless XGuard actually incurs it.
+```text
+merchant activation signature            != revenue
+buyer payment to merchant payTo          != XGuard revenue
+pending downstream success               != XGuard revenue
+unresolved ambiguous settlement          != XGuard revenue
+independently finalized XGuard fee event = gross XGuard earned revenue
+service-fee payment received              = credit against XGuard receivable
+```
+
+The buyer payment remains the merchant's payment. XGuard records a separate postpaid service receivable only after finality.
+
+Legacy prepaid universal-gateway balances remain customer liabilities until their own legacy revenue-recognition boundary is met; they are separate from the zero-friction seller model.
+
+## Break-even formula
+
+Because the XGuard fee varies with merchant payment size until it reaches the cap, there is no single honest settlement-count break-even number without traffic mix and measured cost data.
+
+For a measured period:
+
+```text
+average contribution per finalized billable settlement
+  = (earned XGuard fees - attributable variable costs)
+    / finalized billable settlements
+
+settlements needed to cover fixed cost
+  = fixed cost / average contribution per settlement
+```
+
+Only use this after real production data exists. Revenue is not profit, and settlement count is not a profit guarantee.
+
+## Reporting rule
+
+Actual customer volume, earned revenue, outstanding receivables, contribution and profit must come from production accounting plus treasury/provider evidence. This document intentionally does not invent customer demand or future profit.
