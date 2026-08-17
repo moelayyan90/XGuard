@@ -18,15 +18,15 @@ describe("mainnet discovery compatibility", () => {
     expect(await alias?.json()).toEqual(await canonical?.json());
   });
 
-  it("serves Glama discovery metadata", async () => {
+  it("serves Glama remote connector ownership metadata", async () => {
     const response = await compatibilityDiscoveryResponse(
       new Request(`${ORIGIN}/.well-known/glama.json`),
     );
     expect(response?.status).toBe(200);
     expect(response?.headers.get("content-type")).toContain("application/json");
     expect(await response?.json()).toEqual({
-      $schema: "https://glama.ai/mcp/schemas/server.json",
-      maintainers: ["moelayyan90"],
+      $schema: "https://glama.ai/mcp/schemas/connector.json",
+      maintainers: [{ email: "mo.elayyan2023@gmail.com" }],
     });
 
     const head = await compatibilityDiscoveryResponse(
