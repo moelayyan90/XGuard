@@ -2,8 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 const baseUrl = new URL(
-  process.env.XGUARD_MAINNET_URL ??
-    "https://xguardgate.com",
+  process.env.XGUARD_MAINNET_URL ?? "https://xguardgate.com",
 );
 
 const PAY_TO = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C";
