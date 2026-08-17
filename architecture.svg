@@ -2,14 +2,14 @@
   <rect width="1400" height="760" fill="#f7f8fa"/>
   <style>.t{font-family:Inter,Arial,sans-serif;fill:#111827}.h{font-size:30px;font-weight:800}.b{font-size:19px}.s{font-size:15px;fill:#596170}.box{fill:white;stroke:#cbd2dc;stroke-width:2;rx:18}.g{fill:#edf7ff;stroke:#82b7e8;stroke-width:2}.d{fill:#fff5e8;stroke:#e6ae5b;stroke-width:2}.a{stroke:#657084;stroke-width:3;fill:none;marker-end:url(#m)}</style>
   <defs><marker id="m" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#657084"/></marker></defs>
-  <text x="70" y="70" class="t h">PressPilot — autonomous print-production workflow</text>
+  <text x="70" y="70" class="t h">TrimGate — autonomous print-production workflow</text>
   <text x="70" y="105" class="t s">AI interprets ambiguity. Deterministic evidence controls physical-production safety.</text>
   <rect x="70" y="180" width="210" height="120" class="box"/><text x="100" y="225" class="t b">Job event</text><text x="100" y="257" class="t s">request text + PDF</text>
   <rect x="340" y="160" width="240" height="160" class="g"/><text x="375" y="210" class="t b">Gemini 3.5 Flash</text><text x="375" y="243" class="t s">typed spec extraction</text><text x="375" y="272" class="t s">no invented fields</text>
   <rect x="640" y="160" width="240" height="160" class="d"/><text x="675" y="210" class="t b">PDF preflight</text><text x="675" y="243" class="t s">trim / bleed / size</text><text x="675" y="272" class="t s">deterministic blockers</text>
   <rect x="940" y="160" width="250" height="160" class="g"/><text x="975" y="210" class="t b">Gemini risk gate</text><text x="975" y="243" class="t s">READY vs HOLD</text><text x="975" y="272" class="t s">hard policy enforced after AI</text>
   <path d="M280 240 H340" class="a"/><path d="M580 240 H640" class="a"/><path d="M880 240 H940" class="a"/>
-  <rect x="470" y="430" width="460" height="170" class="box"/><text x="515" y="480" class="t b">Cloud Firestore</text><text x="515" y="515" class="t s">presspilot_jobs · idempotency · durable state</text><text x="515" y="545" class="t s">production_queue OR exceptions_queue</text><text x="515" y="575" class="t s">atomic work-order + route persistence</text>
+  <rect x="470" y="430" width="460" height="170" class="box"/><text x="515" y="480" class="t b">Cloud Firestore</text><text x="515" y="515" class="t s">trimgate_jobs · idempotency · durable state</text><text x="515" y="545" class="t s">production_queue OR exceptions_queue</text><text x="515" y="575" class="t s">atomic work-order + route persistence</text>
   <path d="M1065 320 C1065 390 900 420 900 430" class="a"/>
   <rect x="70" y="450" width="280" height="120" class="box"/><text x="105" y="495" class="t b">Cloud Run + Logging</text><text x="105" y="528" class="t s">HTTP event runtime</text><text x="105" y="553" class="t s">structured execution traces</text>
   <path d="M210 300 V450" class="a"/>

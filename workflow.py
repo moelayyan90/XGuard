@@ -10,7 +10,7 @@ from collections.abc import Callable
 from models import AgentDecision, JobRecord, ParsedSpec
 from preflight import deterministic_blockers, inspect_pdf
 
-log = logging.getLogger("presspilot")
+log = logging.getLogger("trimgate")
 
 ExtractSpecFn = Callable[[str], ParsedSpec]
 DecideFn = Callable[[ParsedSpec, list], AgentDecision]
@@ -73,7 +73,7 @@ async def run_workflow(
         )
     )
 
-    job_id = f"PP-{uuid.uuid4().hex[:10].upper()}"
+    job_id = f"TG-{uuid.uuid4().hex[:10].upper()}"
     trace.append(trace_event("job_persisting", job_id=job_id, route=decision.route))
     record = JobRecord(
         job_id=job_id,

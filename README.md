@@ -1,8 +1,8 @@
-# PressPilot
+# TrimGate
 
 **An autonomous print-production gatekeeper built for the 2026 All Things Agentic Hackathon — Taskmaster track.**
 
-Press shops routinely receive production instructions as messy email/WhatsApp prose plus artwork files. A production manager has to translate that prose into manufacturing specs, inspect the PDF, reconcile mismatches, and decide whether a job is safe to release. PressPilot turns that multi-step manual choke point into an event-driven agentic workflow.
+Press shops routinely receive production instructions as messy email/WhatsApp prose plus artwork files. A production manager has to translate that prose into manufacturing specs, inspect the PDF, reconcile mismatches, and decide whether a job is safe to release. TrimGate turns that multi-step manual choke point into an event-driven agentic workflow.
 
 ## What it does
 
@@ -16,7 +16,7 @@ This is not a chat loop. The input is a job event; the output is a persisted, ro
 
 ## Why this problem
 
-This is a Bring Your Own Friction project based on real print-production workflow: job instructions arrive in inconsistent language while artwork geometry is objective. The costly failure mode is not a bad answer — it is printing the wrong thing. PressPilot deliberately combines AI interpretation with deterministic gates so autonomous execution remains safe.
+This is a Bring Your Own Friction project based on real print-production workflow: job instructions arrive in inconsistent language while artwork geometry is objective. The costly failure mode is not a bad answer — it is printing the wrong thing. TrimGate deliberately combines AI interpretation with deterministic gates so autonomous execution remains safe.
 
 ## Google technology
 
@@ -42,7 +42,7 @@ source .venv/bin/activate      # Windows: .venv\\Scripts\\activate
 pip install -r requirements-dev.txt
 cp .env.example .env
 export GEMINI_API_KEY="YOUR_KEY"
-export PRESSPILOT_STORAGE=memory
+export TRIMGATE_STORAGE=memory
 uvicorn app:app --reload --port 8080
 ```
 
@@ -51,7 +51,7 @@ Open `http://localhost:8080` and click **Run autonomous demo**. The demo generat
 Run the tests (deterministic preflight, fail-closed policy, and an end-to-end workflow/idempotency contract test):
 
 ```bash
-PYTHONPATH=. PRESSPILOT_STORAGE=memory pytest -q tests
+PYTHONPATH=. TRIMGATE_STORAGE=memory pytest -q tests
 ```
 
 ## Deploy to Google Cloud Run
@@ -66,7 +66,7 @@ export GOOGLE_CLOUD_REGION="us-central1"
 
 Cloud Run source deployment builds the container, scales to zero when idle, and returns a public `.run.app` URL. The script also enables Firestore and configures the production storage backend.
 
-The runtime service account is granted only `roles/datastore.user`; Secret Manager access is scoped to the `presspilot-gemini-key` secret with `roles/secretmanager.secretAccessor`.
+The runtime service account is granted only `roles/datastore.user`; Secret Manager access is scoped to the `trimgate-gemini-key` secret with `roles/secretmanager.secretAccessor`.
 
 ## API
 
@@ -93,11 +93,11 @@ Health and configured model.
 - The LLM cannot override a blocker: a post-model safety check enforces `HOLD`.
 - Firestore batches the job and queue document in one commit.
 - Content-derived idempotency prevents duplicate orders caused by webhook retries.
-- Local development uses in-memory storage only when `PRESSPILOT_STORAGE=memory` is explicit; production Firestore errors fail closed rather than silently losing durable state.
+- Local development uses in-memory storage only when `TRIMGATE_STORAGE=memory` is explicit; production Firestore errors fail closed rather than silently losing durable state.
 
 ## Hackathon disclosure
 
-PressPilot was created during the All Things Agentic Hackathon submission period. It is a new project and does not reuse XGuard source code. General-purpose open-source libraries listed in `requirements.txt` are used under their respective licenses.
+TrimGate was created during the All Things Agentic Hackathon submission period. It is a new project and does not reuse XGuard source code. General-purpose open-source libraries listed in `requirements.txt` are used under their respective licenses.
 
 ## License
 

@@ -13,7 +13,7 @@ _LOCK = Lock()
 
 
 def _firestore_client():
-    if os.getenv("PRESSPILOT_STORAGE", "firestore").lower() == "memory":
+    if os.getenv("TRIMGATE_STORAGE", "firestore").lower() == "memory":
         return None
     # Production is deliberately fail-closed. A Firestore/IAM/configuration error
     # must surface instead of silently degrading durable state to process memory.
@@ -23,7 +23,7 @@ def _firestore_client():
 def get_by_idempotency(key: str) -> JobRecord | None:
     db = _firestore_client()
     if db:
-        docs = db.collection("presspilot_jobs").where("idempotency_key", "==", key).limit(1).stream()
+        docs = db.collection("trimgate_jobs").where("idempotency_key", "==", key).limit(1).stream()
         for doc in docs:
             return JobRecord.model_validate(doc.to_dict())
         return None
@@ -36,7 +36,7 @@ def save(record: JobRecord) -> None:
     db = _firestore_client()
     if db:
         batch = db.batch()
-        ref = db.collection("presspilot_jobs").document(record.job_id)
+        ref = db.collection("trimgate_jobs").document(record.job_id)
         batch.set(ref, record.model_dump())
         queue = db.collection(record.decision.route).document(record.job_id)
         batch.set(
@@ -58,7 +58,7 @@ def save(record: JobRecord) -> None:
 def get(job_id: str) -> JobRecord | None:
     db = _firestore_client()
     if db:
-        doc = db.collection("presspilot_jobs").document(job_id).get()
+        doc = db.collection("trimgate_jobs").document(job_id).get()
         return JobRecord.model_validate(doc.to_dict()) if doc.exists else None
     with _LOCK:
         item = _MEMORY.get(job_id)

@@ -4,10 +4,10 @@ set -euo pipefail
 : "${GOOGLE_CLOUD_PROJECT:?Set GOOGLE_CLOUD_PROJECT}"
 : "${GEMINI_API_KEY:?Set GEMINI_API_KEY}"
 REGION="${GOOGLE_CLOUD_REGION:-us-central1}"
-SERVICE="${PRESSPILOT_SERVICE:-presspilot-agent}"
-SA_NAME="${PRESSPILOT_SERVICE_ACCOUNT:-presspilot-runtime}"
+SERVICE="${TRIMGATE_SERVICE:-trimgate-agent}"
+SA_NAME="${TRIMGATE_SERVICE_ACCOUNT:-trimgate-runtime}"
 SA_EMAIL="${SA_NAME}@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com"
-SECRET="presspilot-gemini-key"
+SECRET="trimgate-gemini-key"
 
 gcloud config set project "$GOOGLE_CLOUD_PROJECT"
 gcloud services enable \
@@ -28,7 +28,7 @@ gcloud firestore databases describe --database='(default)' >/dev/null 2>&1 || \
 
 # Runtime identity with only the application permissions it needs.
 gcloud iam service-accounts describe "$SA_EMAIL" >/dev/null 2>&1 || \
-  gcloud iam service-accounts create "$SA_NAME" --display-name="PressPilot Cloud Run runtime"
+  gcloud iam service-accounts create "$SA_NAME" --display-name="TrimGate Cloud Run runtime"
 gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
   --member="serviceAccount:$SA_EMAIL" \
   --role="roles/datastore.user" \
@@ -50,7 +50,7 @@ gcloud run deploy "$SERVICE" \
   --region "$REGION" \
   --service-account="$SA_EMAIL" \
   --allow-unauthenticated \
-  --set-env-vars="GEMINI_MODEL=gemini-3.5-flash,GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT,PRESSPILOT_STORAGE=firestore" \
+  --set-env-vars="GEMINI_MODEL=gemini-3.5-flash,GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT,TRIMGATE_STORAGE=firestore" \
   --set-secrets="GEMINI_API_KEY=$SECRET:latest" \
   --min=0 \
   --max=2 \
@@ -59,6 +59,6 @@ gcloud run deploy "$SERVICE" \
   --quiet
 
 URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"
-printf '\nPressPilot deployed: %s\n' "$URL"
+printf '\nTrimGate deployed: %s\n' "$URL"
 printf 'Health: %s/health\n' "$URL"
 printf 'Demo:   %s\n' "$URL"

@@ -1,4 +1,4 @@
-name: PressPilot CI
+name: TrimGate CI
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: .
-          PRESSPILOT_STORAGE: memory
+          TRIMGATE_STORAGE: memory
         run: pytest -q tests
       - name: Compile check
         run: python -m compileall -q .
