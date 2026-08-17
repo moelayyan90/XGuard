@@ -22,6 +22,12 @@
     "WATCHDOG_PRODUCER": "xguard-mainnet",
     "WATCHDOG_MAINNET_URL": "https://xguard-mainnet.maqamapp.workers.dev",
   },
+  "services": [
+    {
+      "binding": "MAINNET_SERVICE",
+      "service": "xguard-mainnet",
+    },
+  ],
   "d1_databases": [
     {
       "binding": "DB",
