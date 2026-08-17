@@ -1,0 +1,71 @@
+name: Fix universal gateway redirect billing once
+
+on:
+  push:
+    branches: [fix/universal-gateway-redirect-billing]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/universal-gateway-redirect-billing
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Apply billing correction and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('apps/worker/src/universal-gateway.ts')
+          source = source_path.read_text()
+          old = '  if (upstream.status < 200 || upstream.status >= 400) {'
+          new = '  if (!isBillableGatewayStatus(upstream.status)) {'
+          if old not in source and new not in source:
+              raise SystemExit('provider proxy status gate not found')
+          source = source.replace(old, new, 1)
+          marker = '\nfunction upstreamUrl(baseUrl: string, suffix: string, search: string): string {'
+          helper = '''\nexport function isBillableGatewayStatus(status: number): boolean {\n  return Number.isInteger(status) && status >= 200 && status < 300;\n}\n'''
+          if 'export function isBillableGatewayStatus' not in source:
+              if marker not in source:
+                  raise SystemExit('upstreamUrl marker not found')
+              source = source.replace(marker, helper + marker, 1)
+          source_path.write_text(source)
+
+          test_path = Path('tests/universal-gateway.test.ts')
+          test = test_path.read_text()
+          old_import = 'import { universalGatewayResponse } from "../apps/worker/src/universal-gateway.js";'
+          new_import = '''import {\n  isBillableGatewayStatus,\n  universalGatewayResponse,\n} from "../apps/worker/src/universal-gateway.js";'''
+          if old_import in test:
+              test = test.replace(old_import, new_import, 1)
+          elif 'isBillableGatewayStatus' not in test:
+              raise SystemExit('universal gateway test import not found')
+          block = '''\n  it("treats only 2xx provider responses as billable success", () => {\n    for (const status of [200, 201, 204, 206, 299])\n      expect(isBillableGatewayStatus(status)).toBe(true);\n\n    for (const status of [199, 300, 301, 302, 307, 308, 399, 400, 429, 500])\n      expect(isBillableGatewayStatus(status)).toBe(false);\n  });\n'''
+          if 'treats only 2xx provider responses as billable success' not in test:
+              close = '\n  it("does not intercept non-gateway routes", async () => {'
+              if close not in test:
+                  raise SystemExit('test insertion marker not found')
+              test = test.replace(close, block + close, 1)
+          test_path.write_text(test)
+          PY
+          npx prettier --write apps/worker/src/universal-gateway.ts tests/universal-gateway.test.ts
+          npx vitest run tests/universal-gateway.test.ts
+          npm run typecheck
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/universal-gateway.ts tests/universal-gateway.test.ts
+          if git diff --cached --quiet; then
+            echo "No code changes required."
+            exit 0
+          fi
+          git commit -m "Do not bill gateway redirects as successful events"
+          git push origin HEAD:fix/universal-gateway-redirect-billing
