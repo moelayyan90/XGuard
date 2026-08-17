@@ -12,11 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Print mcpservers.org submit route bundle
+      - name: Print mcpservers.org server function transport bundle
         shell: bash
         run: |
           set -euo pipefail
           curl -fsSL --max-time 20 -A 'Mozilla/5.0 XGuard directory submission probe' \
-            'https://mcpservers.org/assets/submit-D6ie-Y5K.js' -o /tmp/submit.js
-          wc -c /tmp/submit.js
-          cat /tmp/submit.js
+            'https://mcpservers.org/assets/createServerFn-DZZNDdqS.js' -o /tmp/serverfn.js
+          wc -c /tmp/serverfn.js
+          cat /tmp/serverfn.js
