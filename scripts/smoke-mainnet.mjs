@@ -58,7 +58,10 @@ assert(
 );
 
 const capabilities = await json("/v1/gateway/capabilities");
-assert(capabilities.response.status === 200, "universal gateway capabilities failed");
+assert(
+  capabilities.response.status === 200,
+  "universal gateway capabilities failed",
+);
 assert(
   capabilities.body.billing?.modelMicroUsd === 100,
   "model gateway fee changed unexpectedly",
@@ -175,7 +178,10 @@ assert(
 
 const status = await json("/status");
 assert(status.response.status === 200, "mainnet status endpoint failed");
-assert(status.body.gateway === "operational", "mainnet gateway is not operational");
+assert(
+  status.body.gateway === "operational",
+  "mainnet gateway is not operational",
+);
 assert(status.body.mode === "mainnet", "mainnet status mode changed");
 assert(
   status.body.facilitator === "HEALTHY",
