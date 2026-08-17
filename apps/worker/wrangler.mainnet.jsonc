@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "xguard-mainnet",
-  "main": "src/monetized-mainnet.ts",
+  "main": "src/universal-mainnet.ts",
   "compatibility_date": "2026-08-14",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
@@ -51,47 +51,47 @@
     "ECONOMIC_FIREWALL_SHADOW_MODE": "observe",
     "PAYMENT_IDENTIFIER_TTL_SECONDS": "86400",
     "HEALTH_MAX_AGE_SECONDS": "300",
-    "XGUARD_TREASURY_USDC_ADDRESS": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
+    "XGUARD_TREASURY_USDC_ADDRESS": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07"
   },
   "ratelimits": [
     {
       "name": "REQUEST_RATE_LIMITER",
       "namespace_id": "2001",
-      "simple": { "limit": 45, "period": 60 },
+      "simple": { "limit": 45, "period": 60 }
     },
     {
       "name": "GLOBAL_RATE_LIMITER",
       "namespace_id": "2002",
-      "simple": { "limit": 10000, "period": 60 },
-    },
+      "simple": { "limit": 10000, "period": 60 }
+    }
   ],
   "durable_objects": {
     "bindings": [
       {
         "name": "PAYMENT_COORDINATOR",
-        "class_name": "MainnetPaymentCoordinator",
+        "class_name": "MainnetPaymentCoordinator"
       },
       { "name": "REQUEST_GATE", "class_name": "MainnetRequestGate" },
-      { "name": "XPAY_RATE_GATE", "class_name": "XPayGlobalRateGate" },
-    ],
+      { "name": "XPAY_RATE_GATE", "class_name": "XPayGlobalRateGate" }
+    ]
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["MainnetPaymentCoordinator", "MainnetRequestGate"],
+      "new_sqlite_classes": ["MainnetPaymentCoordinator", "MainnetRequestGate"]
     },
     {
       "tag": "v2",
-      "new_sqlite_classes": ["XPayGlobalRateGate"],
-    },
+      "new_sqlite_classes": ["XPayGlobalRateGate"]
+    }
   ],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "xguard-mainnet",
       "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
-  "triggers": { "crons": ["*/1 * * * *"] },
+  "triggers": { "crons": ["*/1 * * * *"] }
 }
