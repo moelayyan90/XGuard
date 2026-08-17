@@ -61,7 +61,9 @@ function normalizedPathname(request: Request): string {
   return pathname;
 }
 
-export function writeEndpointDiscoveryResponse(request: Request): Response | null {
+export function writeEndpointDiscoveryResponse(
+  request: Request,
+): Response | null {
   const pathname = normalizedPathname(request);
   const descriptor = WRITE_ENDPOINTS[pathname];
   if (descriptor === undefined) return null;
