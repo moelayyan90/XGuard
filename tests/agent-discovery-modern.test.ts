@@ -114,6 +114,8 @@ describe("modern agent discovery overlay", () => {
       `${ORIGIN}/v1/settlements/<logicalPaymentKey>/truth`,
     );
     expect(text).toContain("FINALIZED, PENDING, PROVEN_FAILED, and CONFLICT");
-    expect(text).toContain("never blindly resubmits an ambiguous authorization");
+    expect(text).toContain(
+      "never blindly resubmits an ambiguous authorization",
+    );
   });
 });
