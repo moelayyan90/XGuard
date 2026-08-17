@@ -16,13 +16,29 @@ export function isZeroFrictionMerchantId(merchantId: string): boolean {
   return merchantId.startsWith(ZERO_FRICTION_PREFIX);
 }
 
-export async function ensureZeroFrictionMerchant(
+export function normalizeZeroFrictionPayTo(value: string): string {
+  const normalized = value.toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(normalized))
+    throw new Error("invalid_zero_friction_pay_to");
+  return normalized;
+}
+
+export async function zeroFrictionMerchantId(rawPayTo: string): Promise<string> {
+  const payTo = normalizeZeroFrictionPayTo(rawPayTo);
+  const digest = await sha256Hex(payTo);
+  return `${ZERO_FRICTION_PREFIX}${digest.slice(0, 40)}`;
+}
+
+/**
+ * Creates the postpaid account only after the caller has independently proven
+ * control of payTo. Never call this from /verify or /settle.
+ */
+export async function activateZeroFrictionMerchant(
   db: D1Database,
   rawPayTo: string,
 ): Promise<ZeroFrictionAccount> {
-  const payTo = normalizeAddress(rawPayTo);
-  const digest = await sha256Hex(payTo);
-  const merchantId = `${ZERO_FRICTION_PREFIX}${digest.slice(0, 40)}`;
+  const payTo = normalizeZeroFrictionPayTo(rawPayTo);
+  const merchantId = await zeroFrictionMerchantId(payTo);
   const disabledCredentialHash = await sha256Hex(
     `zero-friction-disabled-credential:${payTo}`,
   );
@@ -39,21 +55,23 @@ export async function ensureZeroFrictionMerchant(
       .bind(merchantId, `zero-friction:${payTo}`, disabledCredentialHash, now),
     db
       .prepare(
-        `INSERT OR IGNORE INTO zero_friction_accounts(
-          pay_to,merchant_id,accrued_micro_usd,paid_micro_usd,created_at,updated_at
-        ) VALUES(?,?,0,0,?,?)`,
+        `INSERT INTO zero_friction_accounts(
+          pay_to,merchant_id,accrued_micro_usd,paid_micro_usd,
+          claimed_at,created_at,updated_at
+        ) VALUES(?,?,0,0,?,?,?)
+        ON CONFLICT(pay_to) DO UPDATE SET claimed_at=excluded.claimed_at,updated_at=excluded.updated_at`,
       )
-      .bind(payTo, merchantId, now, now),
+      .bind(payTo, merchantId, now, now, now),
   ]);
 
   return zeroFrictionAccount(db, payTo);
 }
 
-export async function zeroFrictionAccount(
+export async function zeroFrictionAccountOrNull(
   db: D1Database,
   rawPayTo: string,
-): Promise<ZeroFrictionAccount> {
-  const payTo = normalizeAddress(rawPayTo);
+): Promise<ZeroFrictionAccount | null> {
+  const payTo = normalizeZeroFrictionPayTo(rawPayTo);
   const row = await db
     .prepare(
       `SELECT merchant_id,pay_to,accrued_micro_usd,paid_micro_usd
@@ -66,7 +84,7 @@ export async function zeroFrictionAccount(
       accrued_micro_usd: number;
       paid_micro_usd: number;
     }>();
-  if (row === null) throw new Error("zero_friction_account_not_found");
+  if (row === null) return null;
   const accrued = safeMoney(row.accrued_micro_usd);
   const paid = safeMoney(row.paid_micro_usd);
   return {
@@ -77,6 +95,15 @@ export async function zeroFrictionAccount(
     dueMicroUsd: Math.max(0, accrued - paid),
     creditMicroUsd: Math.max(0, paid - accrued),
   };
+}
+
+export async function zeroFrictionAccount(
+  db: D1Database,
+  rawPayTo: string,
+): Promise<ZeroFrictionAccount> {
+  const account = await zeroFrictionAccountOrNull(db, rawPayTo);
+  if (account === null) throw new Error("zero_friction_account_not_found");
+  return account;
 }
 
 export async function zeroFrictionAccountByMerchant(
@@ -107,7 +134,8 @@ export async function accrueZeroFrictionFee(
     .first<{ fee_micro_usd: number; state: string }>();
   if (projection === null || projection.state !== "SETTLED")
     throw new Error("zero_friction_finality_not_confirmed");
-  const feeMicroUsd = safePositiveMoney(projection.fee_micro_usd);
+  const feeMicroUsd = safeMoney(projection.fee_micro_usd);
+  if (feeMicroUsd === 0) return { amountMicroUsd: 0 };
   const now = new Date().toISOString();
   const eventId = `zf-fee:${logicalPaymentKey}`;
 
@@ -147,7 +175,7 @@ export async function recordZeroFrictionPayment(
   rawPayTo: string,
   deposit: FinalizedUsdcDeposit,
 ): Promise<ZeroFrictionAccount> {
-  const account = await ensureZeroFrictionMerchant(db, rawPayTo);
+  const account = await zeroFrictionAccount(db, rawPayTo);
   if (deposit.sender.toLowerCase() !== account.payTo)
     throw new Error("zero_friction_payment_sender_mismatch");
   if (deposit.amountMicroUsd <= 0)
@@ -189,23 +217,10 @@ export async function recordZeroFrictionPayment(
   return zeroFrictionAccount(db, account.payTo);
 }
 
-function normalizeAddress(value: string): string {
-  const normalized = value.toLowerCase();
-  if (!/^0x[0-9a-f]{40}$/.test(normalized))
-    throw new Error("invalid_zero_friction_pay_to");
-  return normalized;
-}
-
 function safeMoney(value: number): number {
   if (!Number.isSafeInteger(value) || value < 0 || value > MAX_SAFE_MICRO_USD)
     throw new Error("invalid_zero_friction_money");
   return value;
-}
-
-function safePositiveMoney(value: number): number {
-  const safe = safeMoney(value);
-  if (safe < 1) throw new Error("invalid_zero_friction_fee");
-  return safe;
 }
 
 async function sha256Hex(value: string): Promise<string> {
