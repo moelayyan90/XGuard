@@ -10,7 +10,10 @@ const manifest = JSON.parse(
   manifest_version: number;
   permissions?: string[];
   host_permissions?: string[];
-  content_scripts?: Array<{ matches?: string[]; exclude_matches?: string[] }>;
+  content_scripts?: Array<{
+    matches?: string[];
+    exclude_matches?: string[];
+  }>;
   icons?: Record<string, string>;
 };
 
@@ -39,7 +42,10 @@ describe("browser extension store release", () => {
 
   it("ships explicit privacy and store-review disclosures", () => {
     const privacy = readFileSync(join(extension, "PRIVACY.md"), "utf8");
-    const listing = readFileSync(join(extension, "STORE_SUBMISSION.md"), "utf8");
+    const listing = readFileSync(
+      join(extension, "STORE_SUBMISSION.md"),
+      "utf8",
+    );
     expect(privacy).toContain("Continue without XGuard");
     expect(privacy).toContain("does not sell user data");
     expect(privacy).toContain("card number");
