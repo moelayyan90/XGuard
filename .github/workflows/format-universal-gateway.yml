@@ -1,0 +1,31 @@
+name: Format Universal Gateway
+
+on:
+  push:
+    branches:
+      - agent/universal-gateway-v2
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Format universal gateway files
+        run: npx prettier --write apps/worker/src/universal-gateway.ts apps/worker/src/universal-gateway-billing.ts
+      - name: Upload formatted sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-gateway-formatted
+          path: |
+            apps/worker/src/universal-gateway.ts
+            apps/worker/src/universal-gateway-billing.ts
+          if-no-files-found: error
+          retention-days: 1
