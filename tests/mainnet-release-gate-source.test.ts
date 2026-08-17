@@ -25,6 +25,7 @@ describe("mainnet release gate", () => {
   it("uses the mainnet-specific gate in the production deploy workflow", () => {
     expect(deployWorkflow).toContain("npm run verify:mainnet-release");
     expect(deployWorkflow).not.toContain("npm run verify:release\n");
+    expect(deployWorkflow).toContain("src\\/monetized-mainnet\\.ts");
   });
 
   it("does not dry-run non-production Worker targets from the mainnet gate", () => {
@@ -38,6 +39,15 @@ describe("mainnet release gate", () => {
   it("keeps discovery compatibility behind the monetized production entrypoint", () => {
     expect(mainnetConfig).toContain('"main": "src/monetized-mainnet.ts"');
     expect(monetizedMainnetEntrypoint).toContain("import mainnetModern, {");
+    expect(monetizedMainnetEntrypoint).toContain(
+      '["/discovery/search", "discovery.search"]',
+    );
+    expect(monetizedMainnetEntrypoint).toContain(
+      '["/discovery/resources", "discovery.resources"]',
+    );
+    expect(monetizedMainnetEntrypoint).toContain(
+      'authorizeMerchantScope(request, env, "billing")',
+    );
     expect(monetizedMainnetEntrypoint).toContain(
       "return delegateFetch(request, env, ctx)",
     );
