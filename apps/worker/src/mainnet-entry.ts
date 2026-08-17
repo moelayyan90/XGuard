@@ -3,7 +3,9 @@ import mainnetHandler, {
   MainnetRequestGate,
 } from "./mainnet.js";
 import { discoveryResponse } from "./discovery.js";
-import { writeEndpointDiscoveryResponse } from "./mainnet-endpoint-discovery.js";
+import {
+  writeEndpointDiscoveryResponse,
+} from "./mainnet-endpoint-discovery.js";
 import { searchIndexResponse } from "./search-indexing.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
