@@ -20,7 +20,7 @@ This is a Bring Your Own Friction project based on real print-production workflo
 
 ## Google technology
 
-- **Gemini 3.5 Flash** (`gemini-3.5-flash`) for multimodal/agentic reasoning and structured extraction.
+- **Gemini 3.5 Flash** (`gemini-3.5-flash`) for structured intent extraction and agentic production reasoning.
 - **Google GenAI SDK** (`google-genai`) as the required Google agent framework.
 - **Google Cloud Run** for the event-driven API and live UI.
 - **Cloud Firestore** for durable work-order state, idempotency and queue documents.
@@ -39,7 +39,7 @@ Python 3.12 recommended.
 ```bash
 python -m venv .venv
 source .venv/bin/activate      # Windows: .venv\\Scripts\\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 cp .env.example .env
 export GEMINI_API_KEY="YOUR_KEY"
 export PRESSPILOT_STORAGE=memory
@@ -48,10 +48,10 @@ uvicorn app:app --reload --port 8080
 
 Open `http://localhost:8080` and click **Run autonomous demo**. The demo generates an A4 PDF in memory and submits it against an A5 request; the agent should route the job to `exceptions_queue` with a `SIZE_MISMATCH` blocker.
 
-Run the deterministic tests:
+Run the tests (deterministic preflight, fail-closed policy, and an end-to-end workflow/idempotency contract test):
 
 ```bash
-PYTHONPATH=. pytest -q tests
+PYTHONPATH=. PRESSPILOT_STORAGE=memory pytest -q tests
 ```
 
 ## Deploy to Google Cloud Run

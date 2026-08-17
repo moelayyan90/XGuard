@@ -16,7 +16,7 @@ Open the hosted UI. Explain that the request is for 500 A5 flyers but the bundle
 Refresh Firestore and show the new work order plus the corresponding exceptions queue document. Re-run the same demo and show the same job id / idempotency behavior instead of a duplicate order.
 
 **3:15–3:45 — Safety / architecture**
-Open the post-model enforcement in `agent.py`. “The LLM interprets messy intent, but deterministic blockers are sovereign. This is how we make autonomous execution safe enough for physical production.”
+Open the post-model enforcement in `policy.py`. “The LLM interprets messy intent, but deterministic blockers are sovereign. This is how we make autonomous execution safe enough for physical production.”
 
 **3:45–4:00 — Close**
 “PressPilot turns a production manager’s repetitive gatekeeping chore into a safe autonomous workflow: interpret, verify, decide, act, and leave an audit trail.”

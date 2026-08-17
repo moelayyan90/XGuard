@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import os
-import time
-import uuid
 from io import BytesIO
 
 from pypdf import PdfWriter
@@ -15,8 +11,8 @@ from fastapi.responses import HTMLResponse
 
 from agent import decide, extract_spec
 from models import JobRecord
-from preflight import deterministic_blockers, inspect_pdf
 from storage import get, get_by_idempotency, save
+from workflow import run_workflow as orchestrate
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(message)s")
 log = logging.getLogger("presspilot")
@@ -24,55 +20,18 @@ log = logging.getLogger("presspilot")
 app = FastAPI(title="PressPilot", version="1.0.0")
 
 
-def _trace(event: str, **data):
-    item = {"event": event, "ts_ms": int(time.time() * 1000), **data}
-    log.info(json.dumps(item, ensure_ascii=False))
-    return item
-
-
-def _idempotency(customer: str, request_text: str, artwork: bytes | None) -> str:
-    h = hashlib.sha256()
-    h.update(customer.encode())
-    h.update(request_text.encode())
-    if artwork:
-        h.update(artwork)
-    return h.hexdigest()
-
 
 async def run_workflow(customer_name: str, request_text: str, artwork_name: str | None, artwork_bytes: bytes | None) -> JobRecord:
-    trace = [_trace("job_received", customer=customer_name, artwork=artwork_name)]
-    idem = _idempotency(customer_name, request_text, artwork_bytes)
-    existing = get_by_idempotency(idem)
-    if existing:
-        existing.trace.append(_trace("idempotency_hit", job_id=existing.job_id))
-        return existing
-
-    parsed = extract_spec(request_text)
-    trace.append(_trace("spec_extracted", missing=parsed.missing_fields))
-
-    findings = list(deterministic_blockers(parsed))
-    findings.extend(inspect_pdf(artwork_bytes, parsed))
-    trace.append(_trace("preflight_completed", blockers=sum(f.severity == "blocker" for f in findings)))
-
-    decision = decide(parsed, findings)
-    trace.append(_trace("routing_decision", status=decision.status, route=decision.route, confidence=decision.confidence))
-
-    job_id = f"PP-{uuid.uuid4().hex[:10].upper()}"
-    trace.append(_trace("job_persisting", job_id=job_id, route=decision.route))
-    record = JobRecord(
-        job_id=job_id,
-        idempotency_key=idem,
-        customer_name=customer_name,
-        request_text=request_text,
-        artwork_name=artwork_name,
-        parsed_spec=parsed,
-        findings=findings,
-        decision=decision,
-        trace=trace,
+    return await orchestrate(
+        customer_name,
+        request_text,
+        artwork_name,
+        artwork_bytes,
+        extract_spec_fn=extract_spec,
+        decide_fn=decide,
+        get_by_idempotency_fn=get_by_idempotency,
+        save_fn=save,
     )
-    save(record)
-    _trace("job_persisted", job_id=record.job_id, route=decision.route)
-    return record
 
 
 @app.get("/health")
