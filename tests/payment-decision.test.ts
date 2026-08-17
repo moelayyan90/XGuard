@@ -6,14 +6,27 @@ import {
 } from "../apps/worker/src/payment-decision.js";
 
 describe("buyer/agent payment decision", () => {
-  it("keeps offer and skip non-billable", () => {
+  it("keeps offer, skip, and failed service non-billable until a result is completed", () => {
     const offer = paymentDecisionOffer({
       DB: null as unknown as D1Database,
       XGUARD_PAYMENT_DECISION_FEE_MICRO_USD: "1000",
     });
     expect(offer.billable).toBe(false);
+    expect(offer.actions).toEqual([
+      {
+        id: "use_xguard",
+        label: "Use XGuard",
+        billableWhen: "decision_and_evidence_completed",
+      },
+      {
+        id: "continue_without_xguard",
+        label: "Continue without XGuard",
+        billable: false,
+      },
+    ]);
     expect(offer.guarantees.showingOfferChargesFee).toBe(false);
     expect(offer.guarantees.skippingChargesFee).toBe(false);
+    expect(offer.guarantees.failedXGuardServiceChargesFee).toBe(false);
     expect(offer.guarantees.completedAllowReviewOrBlockChargesFee).toBe(true);
   });
 
