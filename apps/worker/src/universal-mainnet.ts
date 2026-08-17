@@ -16,6 +16,8 @@ interface UniversalMainnetEnv {
   DB: D1Database;
   BASE_RPC_URL: string;
   XGUARD_TREASURY_USDC_ADDRESS: string;
+  REQUEST_RATE_LIMITER: RateLimit;
+  GLOBAL_RATE_LIMITER: RateLimit;
   XGUARD_TOOL_FEE_MICRO_USD?: string;
   XGUARD_SECURITY_FEE_MICRO_USD?: string;
   XGUARD_PAYMENT_DECISION_FEE_MICRO_USD?: string;
