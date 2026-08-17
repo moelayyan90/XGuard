@@ -108,7 +108,7 @@ async function handleVerify(
     const parsed = await parseMainnetFacilitatorRequest(request);
     return withProtection(request, env, parsed.payTo, async () => {
       const account = await ensureZeroFrictionMerchant(env.DB, parsed.payTo);
-      const debtBlock = dueBlock(account);
+      const debtBlock = dueBlock(account, env);
       if (debtBlock !== null) return debtBlock;
       const result = await xPayVerify(env, parsed.raw, parsed.payer);
       return json(result, 200, feeHeaders(account, "not-charged"));
@@ -130,7 +130,7 @@ async function handleSettle(
     network = parsed.paymentRequirements.network;
     return withProtection(request, env, parsed.payTo, async () => {
       const account = await ensureZeroFrictionMerchant(env.DB, parsed.payTo);
-      const debtBlock = dueBlock(account);
+      const debtBlock = dueBlock(account, env);
       if (debtBlock !== null) return debtBlock;
       return settleProtected(parsed, account, env, ctx);
     });
@@ -333,7 +333,7 @@ async function feeBalance(
     const payTo = new URL(request.url).searchParams.get("payTo") ?? "";
     return withProtection(request, env, payTo, async () => {
       const account = await ensureZeroFrictionMerchant(env.DB, payTo);
-      return json(feeBalanceBody(account));
+      return json(feeBalanceBody(account, env));
     });
   } catch (error) {
     return errorResponse(error);
@@ -370,7 +370,7 @@ async function claimFeePayment(
         account.payTo,
         deposit,
       );
-      return json({ credited: true, ...feeBalanceBody(updated) });
+      return json({ credited: true, ...feeBalanceBody(updated, env) });
     });
   } catch (error) {
     return errorResponse(error);
@@ -488,15 +488,18 @@ async function claimPaymentIdentifier(
     );
 }
 
-function dueBlock(account: ZeroFrictionAccount): Response | null {
+function dueBlock(
+  account: ZeroFrictionAccount,
+  env: ZeroFrictionEnv,
+): Response | null {
   const limit = account.postpaidLimitMicroUsd;
   if (account.dueMicroUsd < limit) return null;
   return json(
     {
       error: "xguard_service_fee_due",
       message:
-        "XGuard starts with no signup or prepayment. This payTo address has reached its postpaid service limit; settle the accrued fee to continue.",
-      ...feeBalanceBody(account),
+        "This activated payTo address has reached its signed postpaid XGuard service limit; settle the accrued service fee to continue.",
+      ...feeBalanceBody(account, env),
       claimEndpoint: "/v1/fees/claim",
       claimBody: {
         payTo: account.payTo,
@@ -507,10 +510,13 @@ function dueBlock(account: ZeroFrictionAccount): Response | null {
   );
 }
 
-function feeBalanceBody(account: ZeroFrictionAccount) {
+function feeBalanceBody(
+  account: ZeroFrictionAccount,
+  env: ZeroFrictionEnv,
+) {
   return {
     payTo: account.payTo,
-    billingModel: "capped-share-after-finality",
+    billingModel: "postpaid_capped_revenue_share",
     pricingVersion: account.pricingVersion,
     feeBps: account.feeBps,
     feePercent: `${account.feeBps / 100}%`,
@@ -521,6 +527,7 @@ function feeBalanceBody(account: ZeroFrictionAccount) {
     dueMicroUsd: account.dueMicroUsd,
     creditMicroUsd: account.creditMicroUsd,
     postpaidLimitMicroUsd: account.postpaidLimitMicroUsd,
+    postpaidLimitUsd: microUsdToUsd(account.postpaidLimitMicroUsd),
     treasury: {
       network: BASE_MAINNET,
       asset: BASE_USDC,
@@ -535,7 +542,7 @@ function feeHeaders(
 ): Record<string, string> {
   return {
     "X-XGuard-Auth": "none-after-one-time-wallet-activation",
-    "X-XGuard-Billing": "capped-share-after-finality",
+    "X-XGuard-Billing": "postpaid-capped-revenue-share",
     "X-XGuard-Fee-State": state,
     "X-XGuard-Pricing-Version": account.pricingVersion,
     "X-XGuard-Fee-Bps": String(account.feeBps),
@@ -556,25 +563,37 @@ async function rewritePublicSurface(
       const body = (await response.clone().json()) as Record<string, unknown>;
       if (pathname === "/") {
         body.price = {
-          amount: microUsdToUsd(feeMicroUsd(env)),
+          pricingVersion: pricingVersion(env),
+          model: "postpaid_capped_revenue_share",
+          feeBps: feeBps(env),
+          feePercent: `${feeBps(env) / 100}%`,
+          feeCapMicroUsd: feeCapMicroUsd(env),
+          feeCapUsd: microUsdToUsd(feeCapMicroUsd(env)),
           currency: "USD",
-          event: "finalized_successful_settlement",
-          model: "zero_signup_postpaid",
+          event: "independently_finalized_successful_settlement",
           verify: "free",
           failedSettlement: "free",
           retry: "no additional fee",
         };
         body.onboarding = {
-          signup: false,
+          account: false,
+          email: false,
+          password: false,
           apiKey: false,
           prepay: false,
-          integration: "Set facilitator URL to https://xguardgate.com",
+          walletActivation: "one_signature",
+          activation: "https://xguardgate.com/start",
+          integration:
+            "Activate payTo once, then set facilitator URL to https://xguardgate.com",
         };
       } else {
         body.billing = {
-          model: "zero_signup_postpaid",
-          feeMicroUsd: feeMicroUsd(env),
+          pricingVersion: pricingVersion(env),
+          model: "postpaid_capped_revenue_share",
+          feeBps: feeBps(env),
+          feeCapMicroUsd: feeCapMicroUsd(env),
           postpaidLimitMicroUsd: postpaidLimitMicroUsd(env),
+          activation: "/start",
         };
       }
       return jsonFromResponse(response, body);
@@ -585,9 +604,13 @@ async function rewritePublicSurface(
 
   if (contentType.includes("text/html")) {
     const html = (await response.text())
-      .replaceAll("$0.04", `$${microUsdToUsd(feeMicroUsd(env))}`)
+      .replaceAll("$0.04", `up to $${microUsdToUsd(feeCapMicroUsd(env))}`)
+      .replaceAll("$0.002", `up to $${microUsdToUsd(feeCapMicroUsd(env))}`)
       .replaceAll("prepaid", "postpaid")
-      .replaceAll("API key required", "No API key required");
+      .replaceAll(
+        "API key required",
+        "No API key required after one wallet signature",
+      );
     const headers = new Headers(response.headers);
     headers.delete("content-length");
     headers.set("cache-control", "no-store");
@@ -601,8 +624,7 @@ async function rewritePublicSurface(
 }
 
 function quickstartResponse(origin: string, env: ZeroFrictionEnv): Response {
-  const fee = microUsdToUsd(feeMicroUsd(env));
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>XGuard Quickstart</title></head><body><main style="font-family:system-ui;max-width:760px;margin:48px auto;padding:0 20px;line-height:1.55"><h1>XGuard: change one URL</h1><p>No account. No API key. No prepaid balance.</p><pre><code>const facilitator = new HTTPFacilitatorClient({ url: "${origin}" });</code></pre><p>Verify is free. Failed settlements are free. A fee of $${fee} is accrued only after XGuard independently confirms a successful finalized settlement on Base.</p><p>Fee status: <code>GET ${origin}/v1/fees?payTo=0x...</code></p><p>When the postpaid limit is reached, send native Base USDC from the same <code>payTo</code> address to the treasury returned by that endpoint, then claim the transaction once.</p></main></body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>XGuard Quickstart</title></head><body><main style="font-family:system-ui;max-width:760px;margin:48px auto;padding:0 20px;line-height:1.55"><h1>XGuard: activate once, then change one URL</h1><p>No account. No email. No password. No API key. No prepaid balance.</p><p><a href="${origin}/start">Connect the merchant payTo wallet and sign once</a> to accept ${feeBps(env) / 100}% of independently finalized successful settlements, capped at $${microUsdToUsd(feeCapMicroUsd(env))} per settlement.</p><pre><code>const facilitator = new HTTPFacilitatorClient({ url: "${origin}" });</code></pre><p>Verify, failed settlements and idempotent retries add no fee.</p><p>Fee status: <code>GET ${origin}/v1/fees?payTo=0x...</code></p></main></body></html>`;
   return new Response(html, {
     status: 200,
     headers: {
@@ -636,16 +658,34 @@ function validateRuntime(env: ZeroFrictionEnv): void {
   const rpc = new URL(env.BASE_RPC_URL);
   if (rpc.protocol !== "https:" || rpc.username || rpc.password)
     throw new Error("invalid_base_rpc_url");
-  feeMicroUsd(env);
+  pricingVersion(env);
+  feeBps(env);
+  feeCapMicroUsd(env);
   postpaidLimitMicroUsd(env);
 }
 
-function feeMicroUsd(env: ZeroFrictionEnv): number {
+function pricingVersion(env: ZeroFrictionEnv): string {
+  const value = env.XGUARD_PRICING_VERSION ?? "2026-08-zero-friction-v1";
+  if (!/^[a-z0-9._-]{1,64}$/i.test(value))
+    throw new Error("XGUARD_PRICING_VERSION_invalid");
+  return value;
+}
+
+function feeBps(env: ZeroFrictionEnv): number {
   return boundedInteger(
-    env.XGUARD_FEE_MICRO_USD,
-    1,
-    1_000_000,
-    "XGUARD_FEE_MICRO_USD",
+    env.XGUARD_FEE_BPS ?? "50",
+    0,
+    10_000,
+    "XGUARD_FEE_BPS",
+  );
+}
+
+function feeCapMicroUsd(env: ZeroFrictionEnv): number {
+  return boundedInteger(
+    env.XGUARD_FEE_CAP_MICRO_USD ?? "1000",
+    0,
+    1_000_000_000,
+    "XGUARD_FEE_CAP_MICRO_USD",
   );
 }
 
@@ -715,7 +755,7 @@ function publicErrorMessage(error: unknown): string {
     error instanceof Error &&
     error.message === "zero_friction_activation_required"
   )
-    return "Activate this merchant payTo once at https://xguardgate.com/start. No account, API key, or prepayment is required.";
+    return "Activate this merchant payTo once at https://xguardgate.com/start. No account, email, API key, or prepayment is required.";
   if (error instanceof Error && error.name === "AbortError")
     return "Upstream facilitator timed out";
   return "XGuard could not safely complete the request";
