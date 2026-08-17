@@ -1,0 +1,46 @@
+name: Publish XGuard to MCP Registry now
+
+on:
+  push:
+    branches: [agent/mcp-registry-publish]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/mcp-registry-publish
+      - name: Confirm live XGuard MCP
+        shell: bash
+        run: |
+          set -euo pipefail
+          body='{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"registry-check","version":"1.0.0"}}}}'
+          code="$(curl -sS -o /tmp/mcp.json -w '%{http_code}' -X POST https://xguardgate.com/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -H 'mcp-protocol-version: 2026-07-28' -H 'mcp-method: tools/list' --data "$body")"
+          [[ "$code" == "200" ]]
+          jq -e '.result.tools | map(.name) | index("xguard_payment_offer") != null' /tmp/mcp.json >/dev/null
+          jq -e '.result.tools | map(.name) | index("xguard_payment_decision") != null' /tmp/mcp.json >/dev/null
+      - name: Install publisher
+        run: |
+          curl --fail --location --retry 5 --retry-all-errors "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --help >/dev/null
+      - name: Authenticate
+        run: ./mcp-publisher login github-oidc
+      - name: Publish
+        run: ./mcp-publisher publish
+      - name: Verify discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 20); do
+            curl -fsSL "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.moelayyan90%2Fxguard" -o /tmp/registry.json || true
+            if jq -e '.servers[]? | select((.server.name // .name) == "io.github.moelayyan90/xguard" and (.server.version // .version) == "0.6.0")' /tmp/registry.json >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 1
