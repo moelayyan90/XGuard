@@ -22,6 +22,6 @@ Protocol behavior must cite the current official x402 specification or SDK behav
 - Database migrations must be additive/reversible where practical and include backup/restore evidence.
 - Public API or CLI changes require examples and removal/rollback instructions.
 
-Never include credentials, keys, seed phrases, customer payloads, personal data, or payout destination details in code, issues, fixtures, logs, screenshots, commits, or CI output. Report vulnerabilities through the private channel described in [SECURITY.md](SECURITY.md) after publication.
+Never include credentials, keys, seed phrases, customer payloads, personal data, or payout destination details in code, issues, fixtures, logs, screenshots, commits, or CI output. Report vulnerabilities through the private channel described in [SECURITY.md](SECURITY.md); do not publish sensitive vulnerability details in a normal issue.
 
 Pull requests must pass formatting, lint, strict typecheck, Node and Workers-runtime tests, protocol tests, secret scan, unfinished-marker scan, dependency audit, and build. Major dependency upgrades are reviewed and tested rather than automatically deployed.

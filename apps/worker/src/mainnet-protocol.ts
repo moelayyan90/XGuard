@@ -18,11 +18,17 @@ import {
 
 export const BASE_MAINNET = "eip155:8453";
 export const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-export const PAYAI_URL = "https://facilitator.xpay.sh";
+export const XPAY_URL = "https://facilitator.xpay.sh";
+/** @deprecated Legacy source-level alias retained while persisted historical identifiers are migrated separately. */
+export const PAYAI_URL = XPAY_URL;
 export const MAX_HTTP_BODY_BYTES = 64 * 1024;
 
 export interface MainnetProtocolEnv {
+  XPAY_API_KEY_ID?: string;
+  XPAY_API_KEY_SECRET?: string;
+  /** @deprecated xpay's current public facilitator does not require these legacy fields. */
   PAYAI_API_KEY_ID?: string;
+  /** @deprecated xpay's current public facilitator does not require these legacy fields. */
   PAYAI_API_KEY_SECRET?: string;
 }
 
@@ -183,12 +189,12 @@ export function enforceBaseMainnetUsdc(
     );
 }
 
-export async function payAIVerify(
+export async function xPayVerify(
   _env: MainnetProtocolEnv,
   body: Record<string, unknown>,
   expectedPayer: string,
 ): Promise<VerifyResponse> {
-  const response = await payAIRequest("verify", body, 8_000);
+  const response = await xPayRequest("verify", body, 8_000);
   const record = asRecord(response);
   if (typeof record.isValid !== "boolean")
     throw new Error("malformed_verify_response");
@@ -200,13 +206,13 @@ export async function payAIVerify(
   return record as unknown as VerifyResponse;
 }
 
-export async function payAISettle(
+export async function xPaySettle(
   _env: MainnetProtocolEnv,
   body: Record<string, unknown>,
   requirements: PaymentRequirements,
   expectedPayer: string,
 ): Promise<SettleResponse> {
-  const response = await payAIRequest("settle", body, 20_000);
+  const response = await xPayRequest("settle", body, 20_000);
   const record = asRecord(response);
   if (
     typeof record.success !== "boolean" ||
@@ -233,13 +239,13 @@ export async function payAISettle(
   return record as unknown as SettleResponse;
 }
 
-export async function fetchPayAISupported(
+export async function fetchXPaySupported(
   _env: MainnetProtocolEnv,
 ): Promise<SupportedResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5_000);
   try {
-    const response = await fetch(`${PAYAI_URL}/supported`, {
+    const response = await fetch(`${XPAY_URL}/supported`, {
       headers: { "User-Agent": "XGuard/0.1.0" },
       redirect: "manual",
       signal: controller.signal,
@@ -274,7 +280,14 @@ export async function fetchPayAISupported(
   }
 }
 
-async function payAIRequest(
+/** @deprecated Use xPayVerify; retained to avoid changing persisted production call sites in the same release. */
+export const payAIVerify = xPayVerify;
+/** @deprecated Use xPaySettle; retained to avoid changing persisted production call sites in the same release. */
+export const payAISettle = xPaySettle;
+/** @deprecated Use fetchXPaySupported; retained for source compatibility. */
+export const fetchPayAISupported = fetchXPaySupported;
+
+async function xPayRequest(
   operation: "verify" | "settle",
   body: Record<string, unknown>,
   timeoutMs: number,
@@ -282,7 +295,7 @@ async function payAIRequest(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`${PAYAI_URL}/${operation}`, {
+    const response = await fetch(`${XPAY_URL}/${operation}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

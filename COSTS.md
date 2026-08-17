@@ -1,35 +1,41 @@
-# Bootstrap infrastructure and costs
+# Infrastructure cost evidence
 
-Research was retrieved 2026-08-14 from official provider documentation. No paid service was purchased. The public testnet Worker and D1 database are running on the authorized Cloudflare Free plan; the current actual externally invoiced operating cost remains **$0.00**. This is an observed bootstrap result, not a guarantee that future usage remains within free quotas.
+## Historical bootstrap snapshot
 
-## Selected zero-cash deployment
+The Cloudflare quota/pricing snapshot below was retrieved from official provider documentation on **2026-08-14** while XGuard was still validating its public testnet bootstrap. At that time, no paid service had been purchased and the observed externally invoiced testnet bootstrap cost was `$0.00`.
 
-Cloudflare Workers Free is the current testnet deployment, not a guarantee of future suitability:
+That historical testnet observation is **not evidence that the current `xguard-mainnet` production deployment costs `$0.00`**. The repository cannot see the owner's current Cloudflare billing statement. Current production cost must be taken from measured Cloudflare usage/billing plus any downstream provider, RPC, monitoring, backup, and off-ramp expenses.
 
-- [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/) currently provides 100,000 Worker requests per day on the Free plan with 10 ms CPU per invocation; limits reset daily.
-- [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/) currently includes 5 million rows read/day, 100,000 rows written/day, and 5 GB total storage on Free.
-- [D1 limits](https://developers.cloudflare.com/d1/platform/limits/) limit each Free database to 500 MB and provide seven days of Time Travel.
-- [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/) now supports SQLite-backed objects on Free and currently includes 100,000 requests/day, 13,000 GB-s/day, 5 million rows read/day, 100,000 rows written/day, and 5 GB SQL storage/account. Exceeding a Free dimension stops further operations rather than charging an owner card.
+## Cloudflare Free-plan planning snapshot from 2026-08-14
 
-The prepared edge architecture uses one Durable Object per immutable authorization for serialization and D1 for projections. Quotas are shared/account-specific and can change; deployment must re-check the official pages and measure actual usage.
+These values are retained only as the dated bootstrap planning record and must be re-checked against current official Cloudflare documentation before being used for a production decision:
 
-## Expense ledger
+- [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/) was recorded as providing 100,000 Worker requests per day on the Free plan with a per-invocation CPU allowance.
+- [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/) was recorded as including daily row-read/write quotas and a Free storage allowance.
+- [D1 limits](https://developers.cloudflare.com/d1/platform/limits/) was recorded as limiting each Free database and providing Time Travel recovery.
+- [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/) was recorded as supporting SQLite-backed objects on Free with request, duration, row, and storage quotas.
 
-Record every incurred amount, evidence/reference, finality, and category:
+The current production architecture uses Durable Objects for settlement/request coordination and D1 for merchant, billing, finality, reconciliation, and discovery state. Quotas are account-specific and provider terms can change; production decisions must use current official documentation and actual measured usage.
+
+## Production cost evidence
+
+For `xguard-mainnet`, record actual measured/invoiced costs rather than inferring them from the historical testnet bootstrap:
 
 ```text
-gross XGuard revenue
-- facilitator expense
-- compute
-- database/storage/backup
-- network/egress
-- monitoring/alerting
-- off-ramp/payout
+gross XGuard earned revenue
+- downstream facilitator/provider expense
+- Cloudflare Workers / Durable Objects
+- D1 storage and operations
+- RPC/network services
+- monitoring / observability / backup
+- off-ramp / payout cost
 - other infrastructure
 = contribution
 ```
 
-Merchant transaction value and prepaid liability are not revenue or available operating cash.
+Merchant transaction value and prepaid merchant liability are not revenue or available operating cash.
+
+If a provider currently reports zero invoiced cost for a period, record the billing/usage evidence and the covered period. Do not convert “free tier exists” into a claim that production cost is permanently zero.
 
 ## Upgrade rule
 

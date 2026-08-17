@@ -1,22 +1,22 @@
 # Operations
 
-Normal traffic is designed to require no owner processing. Financial ambiguity is the exception: automation quarantines it and waits for independent evidence rather than risking a second transfer.
+XGuard production operations are centered on the `xguard-mainnet` Cloudflare Worker. Normal traffic is designed to require no owner processing. Financial ambiguity is the exception: automation quarantines it and waits for independent evidence rather than risking a second transfer.
 
-| Cadence / trigger               | Implemented automatic action                                                     | Failure behavior                                |
-| ------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------- |
-| every request                   | structured request/latency/result metrics; no raw payment body                   | sanitized error and request ID                  |
-| every 5 minutes on Worker       | facilitator capability/health probe, expired-ID cleanup, D1 ledger-balance check | degrade/open/quarantine route or reconciliation |
-| every 30 minutes on GitHub      | non-billable live smoke check of the public testnet                              | open one monitor issue; auto-close on recovery  |
-| each started Durable Object     | stale-submission alarm and durable outbox retry                                  | mark ambiguous; never retry settlement          |
-| every minute on Node process    | refresh capabilities; expire prepared work; quarantine stale started work        | keep last safe state and log sanitized failure  |
-| operator reconciliation command | ledger/ambiguity/recovery report                                                 | non-zero exit; payout considered suspended      |
-| weekly / dependency event       | locked build, tests, audit, CodeQL/Dependabot review                             | block release on high/critical finding          |
+| Cadence / trigger                 | Implemented automatic action                                                               | Failure behavior                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| every request                     | structured request/latency/result metrics; no raw payment body                             | sanitized error and request ID                  |
+| every minute on mainnet Worker    | refresh facilitator health; expire stale payment IDs/top-up intents; process finality jobs | degrade/open/quarantine route or reconciliation |
+| every 5 minutes on mainnet Worker | scan relevant recent top-up intents with bounded Base RPC failover                         | defer transient RPC outages; log fatal failures |
+| every 30 minutes on GitHub        | non-billable live smoke check of `xguard-mainnet`                                          | open one monitor issue; auto-close on recovery  |
+| each started Durable Object       | stale-submission alarm and durable outbox retry                                            | mark ambiguous; never retry settlement          |
+| operator reconciliation command   | ledger/ambiguity/recovery report                                                           | non-zero exit; payout considered suspended      |
+| weekly / dependency event         | locked build, tests, audit, CodeQL/Dependabot review                                       | block release on high/critical finding          |
 
-The testnet Worker, Durable Objects, D1 projection, five-minute health cron, and GitHub-based live smoke monitor are configured. The smoke monitor performs no payment: it checks public health/readiness/capabilities, reconciliation state, malformed-input rejection, and the mainnet hard gate. Repeated failures are deduplicated into one GitHub issue and a later successful run closes that issue automatically.
+The production Worker, Durable Objects, D1 projection, one-minute scheduled maintenance, five-minute automatic top-up scan cadence, and GitHub live mainnet monitor are configured. The live monitor performs no payment: it checks public health/readiness/capabilities, provider and discovery surfaces, MCP/Glama exposure, reconciliation state, billing metadata privacy, and the Base mainnet contract. Repeated failures are deduplicated into one GitHub issue and a later successful run closes that issue automatically.
 
-Daily external treasury/provider reconciliation, encrypted off-platform backup rotation, off-platform alert delivery, and owner payout submission are not connected in the testnet release. Testnet has no billable money or owner payout.
+Automatic testnet deployment is disabled. The separate Base Sepolia Worker remains available only through its manual deployment workflow for explicit non-billable testing and is not part of production monitoring.
 
-## Portable commands
+## Portable local commands
 
 ```bash
 npm run ops:reconcile -- ./xguard.db
@@ -24,7 +24,9 @@ npm run ops:backup -- ./xguard.db ./backups
 npm run ops:payout-check -- ./xguard.db
 ```
 
-`ops:reconcile` exits non-zero for a ledger imbalance or open ambiguity and also recovers stale/prepared local records. `ops:payout-check` reports a decision but neither prepares nor submits a transfer. The Cloudflare Worker uses alarms for stale-start recovery and durable outbox projection, plus a cron trigger for facilitator health and D1 integrity checks.
+These commands operate on the legacy/local Node SQLite path; they are not the deployment mechanism for `xguard-mainnet`. `ops:reconcile` exits non-zero for a ledger imbalance or open ambiguity and also recovers stale/prepared local records. `ops:payout-check` reports a decision but neither prepares nor submits a transfer.
+
+The production Cloudflare Worker uses Durable Object alarms for stale-start recovery and durable coordination, D1 for mainnet state, and scheduled Worker maintenance for facilitator health, finality, cleanup, reconciliation, and top-up discovery.
 
 ## Service objectives
 
@@ -42,4 +44,6 @@ An upgrade also requires an authorized business payment method. Otherwise the se
 
 ## Backup and restore
 
-The Node backup command uses SQLite's online backup API and immediately runs `PRAGMA integrity_check`. Restore is performed into a new path, integrity-checked, reconciled, and smoke-tested before atomically changing the service configuration. Never overwrite the only database copy. Cloudflare D1 Free currently provides seven-day Time Travel; production financial retention still requires an independent, encrypted export and a recorded restore exercise. No external backup destination is configured in this environment.
+The legacy/local Node backup command uses SQLite's online backup API and immediately runs `PRAGMA integrity_check`. Restore is performed into a new path, integrity-checked, reconciled, and smoke-tested before changing local service configuration. Never overwrite the only database copy.
+
+Production mainnet persistence is Cloudflare D1 and must be treated separately from the local SQLite backup path. Cloudflare's native recovery features do not replace the need for an independent encrypted production export and a recorded restore exercise before claiming an off-platform backup objective is satisfied.

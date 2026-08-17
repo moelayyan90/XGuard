@@ -11,8 +11,8 @@ This page is the canonical copy for ecosystem directories, developer-tool catalo
 - **Name:** XGuard
 - **Category:** x402 infrastructure / hosted safety & routing gateway / facilitator-compatible middleware
 - **Repository:** https://github.com/moelayyan90/XGuard
-- **Live mainnet endpoint:** https://xguard-mainnet.maqamapp.workers.dev
-- **Testnet endpoint:** https://xguard-testnet.maqamapp.workers.dev
+- **Live production mainnet endpoint:** https://xguard-mainnet.maqamapp.workers.dev
+- **Optional non-billable testnet endpoint:** https://xguard-testnet.maqamapp.workers.dev
 - **Protocol:** x402 v2
 - **Mainnet network:** Base (`eip155:8453`)
 - **Asset:** native USDC (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`)

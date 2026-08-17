@@ -2,35 +2,43 @@
 
 ## Supported status
 
-`0.1.0-alpha.0` is testnet-only and not a mainnet production release. Security claims are limited to controls implemented and tests executed; XGuard is not described as unhackable or risk-free.
+The canonical production runtime is the live `xguard-mainnet` Cloudflare Worker on Base mainnet. The repository's npm/CLI artifacts remain alpha/prerelease software; that package versioning is separate from the production Worker deployment status.
+
+The separate Base Sepolia Worker and the legacy/local Node gateway are test paths. In particular, `apps/gateway` remains compile-time blocked from mainnet and is not the source of truth for `xguard-mainnet`.
+
+Security claims are limited to controls implemented and tests executed. XGuard is not described as unhackable, risk-free, independently certified, or externally audited unless such evidence is obtained separately.
 
 ## Private reporting
 
-Do not open a public issue containing vulnerability details, payment payloads, API keys, wallet secrets, personal data, or financial destination data. Use GitHub private vulnerability reporting after the repository is published. Until then, no public reporting channel exists; publication is recorded as an external blocker.
+Do not open a public issue containing vulnerability details, payment payloads, API keys, wallet secrets, personal data, or financial destination data. Use GitHub's private vulnerability reporting/security channel when available for this repository. If a private channel is unavailable, contact the maintainer without including secrets in a public issue.
 
 ## Implemented controls
 
-- Strict JSON parser: 64 KiB default, depth/key limits, duplicate-key rejection, prototype-key rejection.
-- Official schema parsing and exact top-level envelope validation.
-- Integer atomic token amounts and `bigint` micro-USD throughout the billable Node ledger. The edge Worker uses bounded safe integers only on its hard-coded, zero-fee testnet projection and cannot be enabled for mainnet.
-- Network, asset, recipient, amount, expiry, mechanism, and accepted-requirements binding.
-- Permanent replay identity, official Payment Identifier conflict handling, transactional uniqueness, concurrency serialization.
-- Outbound state persisted before network settlement; unknown post-submit outcome is ambiguous and never auto-retried.
-- Bounded/streamed request and facilitator-response bodies, HTTPS-only configured routes, no redirects, public-only Node DNS, malformed-response quarantine.
-- Per-client and global edge rate limits, per-client concurrency leases, and a bounded Node limiter.
-- Typed finality/failure/payout evidence at financial state transitions; mainnet remains compile-time disabled because no production chain adapter or payout connector ships.
-- SSRF-safe public checker: HTTPS/443 only, public DNS only, DNS pinning, no redirects, bounded response.
-- HMAC API-key hashes with required production pepper, constant-time admin-token comparison, no secret values in logs.
-- Structured logs, safe error responses, no raw payment payload telemetry.
-- Database constraints, double-entry balance verification, idempotent usage and payout keys.
-- Secret scan, dependency audit, CodeQL workflow, Dependabot, non-root/read-only Docker runtime.
+- Strict JSON/request parsing with bounded body size and schema validation on protected mainnet paths.
+- Exact x402 v2 Base mainnet network, asset, recipient, amount, expiry, mechanism, and accepted-requirements binding.
+- Permanent replay identity plus official Payment Identifier conflict handling and bounded retry semantics.
+- SQLite-backed Durable Object serialization for per-authorization settlement ownership and concurrency control.
+- Outbound state persisted before network settlement; uncertain post-submit outcomes become ambiguous and are not blindly resubmitted.
+- Independent Base USDC finality verification before a held XGuard mainnet service fee becomes earned revenue.
+- D1-backed merchant balance, finality, reconciliation, usage, and discovery projections with idempotent keys/constraints.
+- HTTPS-only configured production routes, bounded upstream responses, redirect rejection where financial routing requires it, and fail-closed behavior when required protection is unavailable.
+- Per-client/public rate limits plus dedicated upstream quota protection on the current mainnet route.
+- Merchant bearer authentication for protected mainnet billing/verify/settle paths; production API keys are stored as hashes rather than plaintext credentials.
+- Structured logs and sanitized error responses; raw payment bodies and secret values are not intentionally emitted as telemetry.
+- Public discovery metadata is treated as untrusted input and kept separate from settlement correctness.
+- Secret scanning, dependency audit, release verification, CodeQL, Dependabot, unit/concurrency/worker tests, and post-deploy live mainnet smoke checks.
+- The legacy/local Node gateway remains compile-time blocked from mainnet; environment variables cannot promote that code path into the production Worker.
 
 ## Secret rules
 
-Never commit seed phrases, private keys, production API keys, webhook secrets, provider credentials, personal payout destinations, or banking data. Store only secret names/references in code and documentation. Deployment secrets must use the platform encrypted secret store; local secrets belong in untracked `.env` or `.dev.vars` files.
+Never commit seed phrases, private keys, production API keys, webhook secrets, provider credentials, personal payout destinations, or banking data. Store only secret names/references in code and documentation where a secret is required. Deployment credentials must use the platform encrypted secret store; local secrets belong in untracked `.env` or `.dev.vars` files.
 
-The repository scanner intentionally prints only the file and finding class, never the matching value.
+Public blockchain addresses, including the configured mainnet treasury address, are identifiers rather than private credentials and must never be confused with the private keys that control them.
 
-## Mainnet security gate
+The repository scanner intentionally prints only the file and finding class, never the matching secret value.
 
-Mainnet requires an external security review, current dependency review, real chain tests, a production independent-finality adapter, multi-instance database validation, webhook signature/replay tests for the selected billing/off-ramp providers, restore exercise, alert delivery, and closure of every critical/high finding. Both gateway release artifacts keep the code gate false until that evidence is recorded.
+## Mainnet security status
+
+The production Worker is protected by repository CI, CodeQL, adversarial/replay/concurrency tests, Cloudflare/D1/Durable Object controls, independent finality checks, and live mainnet smoke monitoring. Those are first-party controls and operational evidence, not an independent external security attestation.
+
+Any future claim of independent certification, completed third-party audit, regulatory approval, provider-contract completion, or guaranteed security requires separate evidence outside this repository. External limitations are tracked in [DEPLOYMENT.md](DEPLOYMENT.md) and [docs/EXTERNAL_BLOCKERS.md](docs/EXTERNAL_BLOCKERS.md).
