@@ -57,6 +57,31 @@ export async function augmentCompatibilityDiscovery(
           canonicalizesTo: "x402-v2 exact@eip155:8453",
         },
       };
+
+      const safety = isRecord(parsed.safety) ? parsed.safety : {};
+      parsed.safety = {
+        ...safety,
+        merchantFacingSettlementTruth: true,
+        activeAmbiguityResolution: true,
+        releaseSafeOnlyAfterIndependentFinality: true,
+        blindResubmissionAfterAmbiguity: false,
+      };
+      parsed.settlementTruth = {
+        version: "xguard-settlement-truth-v1",
+        role: "independent-finality-and-recovery-layer",
+        states: ["FINALIZED", "PENDING", "PROVEN_FAILED", "CONFLICT"],
+        releaseSafeState: "FINALIZED",
+        truthEndpoint: "/v1/settlements/{logicalPaymentKey}/truth",
+        resolveEndpoint: "/v1/settlements/{logicalPaymentKey}/resolve",
+        authentication: "merchant-bearer",
+        evidence: [
+          "finalized Base USDC transfer",
+          "EIP-3009 AuthorizationUsed",
+          "EIP-3009 AuthorizationCanceled",
+        ],
+        invariant:
+          "An ambiguous post-submit outcome is never treated as permission for a blind second settlement submission.",
+      };
     }
 
     if (
