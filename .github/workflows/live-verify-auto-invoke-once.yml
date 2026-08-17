@@ -1,0 +1,36 @@
+name: Verify live zero-study auto invoke once
+
+on:
+  push:
+    branches: [agent/live-verify-auto-invoke]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify live XGuard zero-study discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://xguard-mainnet.maqamapp.workers.dev/.well-known/xguard.json'
+          headers="$(mktemp)"
+          body="$(mktemp)"
+          code="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -D "$headers" -o "$body" -w '%{http_code}' "$URL")"
+          echo "status=$code"
+          cat "$body"
+          test "$code" = "200"
+          node - "$body" <<'NODE'
+          const fs = require('node:fs');
+          const x = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (x.name !== 'XGuard') throw new Error('wrong name');
+          if (x.mode !== 'zero-study-auto-invoke') throw new Error('wrong mode');
+          if (x.xguardSpecificHeaderRequiredPerRequest !== false) throw new Error('special header still required');
+          if (!x.standardClients?.openai || !x.standardClients?.anthropic || !x.standardClients?.geminiOpenAICompatibility) throw new Error('missing standard clients');
+          if (x.oneTimeProviderLink?.path !== '/v1/gateway/vault') throw new Error('missing one-time provider link');
+          if (!Array.isArray(x.automaticBehavior) || x.automaticBehavior.length < 5) throw new Error('automatic behavior missing');
+          console.log(JSON.stringify({verified:true,mode:x.mode,noSpecialHeader:x.xguardSpecificHeaderRequiredPerRequest,clients:Object.keys(x.standardClients)}));
+          NODE
+          grep -qi '^strict-transport-security:' "$headers"
