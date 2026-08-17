@@ -1,0 +1,24 @@
+name: Probe mainnet watchdog now
+
+on:
+  push:
+    branches:
+      - fix/mainnet-deploy-latest-wins
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe live watchdog and mainnet readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- watchdog healthz ---'
+          curl -sS --max-time 20 -w $'\nHTTP=%{http_code}\n' https://xguard-watchdog.maqamapp.workers.dev/healthz
+          echo '--- mainnet healthz ---'
+          curl -sS --max-time 20 -w $'\nHTTP=%{http_code}\n' https://xguard-mainnet.maqamapp.workers.dev/healthz
+          echo '--- mainnet readyz ---'
+          curl -sS --max-time 20 -w $'\nHTTP=%{http_code}\n' https://xguard-mainnet.maqamapp.workers.dev/readyz
