@@ -1,0 +1,127 @@
+name: Publish XGuard to broader agent discovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-agent-discovery.yml"
+      - "apps/worker/src/a2a-agent.ts"
+      - "apps/worker/src/a2a-discovery.ts"
+      - "apps/worker/src/agent-discovery-modern.ts"
+      - "apps/worker/src/mainnet-mcp-modern.ts"
+      - "apps/worker/src/universal-mainnet.ts"
+      - "apps/worker/src/payment-decision.ts"
+      - "README.md"
+      - "docs/ECOSYSTEM.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-xguard-agent-discovery
+  cancel-in-progress: true
+
+jobs:
+  not-human-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit and verify XGuard in Not Human Search
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://xguardgate.com'
+          API='https://nothumansearch.ai/api/v1'
+
+          # Refuse to publish a dead or non-machine-readable site.
+          curl -fsS --max-time 20 "${BASE}/healthz" >/dev/null
+          curl -fsS --max-time 20 "${BASE}/llms.txt" >/dev/null
+          curl -fsS --max-time 20 "${BASE}/openapi.json" >/dev/null
+          curl -fsS --max-time 20 "${BASE}/.well-known/mcp/server.json" >/dev/null
+
+          response="$(curl --fail-with-body -sS --max-time 45 \
+            -X POST "${API}/submit" \
+            -H 'Content-Type: application/json' \
+            --data '{"url":"https://xguardgate.com"}')"
+          printf '%s\n' "${response}"
+
+          found=0
+          for attempt in 1 2 3 4 5 6; do
+            detail="$(curl -sS --max-time 30 -w $'\n%{http_code}' "${API}/site/xguardgate.com")"
+            code="${detail##*$'\n'}"
+            body="${detail%$'\n'*}"
+            if [[ "${code}" == "200" ]] && printf '%s' "${body}" | grep -Eqi 'xguard|xguardgate'; then
+              printf '%s\n' "${body}"
+              found=1
+              break
+            fi
+            sleep 10
+          done
+
+          if [[ "${found}" != "1" ]]; then
+            echo 'Not Human Search accepted the submission but XGuard was not yet readable from the site endpoint.' >&2
+            exit 1
+          fi
+
+          echo 'XGuard Not Human Search publication verified.'
+
+  global-a2a-registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit and verify XGuard in Global A2A Registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://xguardgate.com'
+          API='https://api.a2a-registry.org'
+          CARD="${BASE}/.well-known/agent-card.json"
+
+          card="$(curl -fsS --max-time 20 "${CARD}")"
+          printf '%s' "${card}" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const x=JSON.parse(s);
+              const text=JSON.stringify(x).toLowerCase();
+              if (!text.includes("xguard") || !text.includes("xguardgate.com")) process.exit(1);
+            });
+          '
+
+          submission="$(curl -sS --max-time 45 -w $'\n%{http_code}' \
+            -X POST "${API}/public/ingest" \
+            -H 'Content-Type: application/json' \
+            --data '{"manifestUrl":"https://xguardgate.com/.well-known/agent-card.json"}')"
+          code="${submission##*$'\n'}"
+          body="${submission%$'\n'*}"
+          printf '%s\n' "${body}"
+
+          # First publication should normally be 2xx. Treat explicit duplicate/already-exists
+          # responses as a refresh-safe success, but reject unrelated failures.
+          lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
+          if [[ ! "${code}" =~ ^2[0-9][0-9]$ ]] && \
+             [[ "${code}" != "409" ]] && \
+             [[ "${lower}" != *"already"* ]] && \
+             [[ "${lower}" != *"duplicate"* ]] && \
+             [[ "${lower}" != *"exist"* ]]; then
+            echo "Global A2A Registry rejected XGuard publication (HTTP ${code})." >&2
+            exit 1
+          fi
+
+          found=0
+          for attempt in 1 2 3 4 5 6; do
+            results="$(curl -fsS --max-time 30 "${API}/public/agents?q=XGuard" || true)"
+            if printf '%s' "${results}" | grep -Eqi 'xguardgate\.com|xguard'; then
+              printf '%s\n' "${results}"
+              found=1
+              break
+            fi
+            sleep 10
+          done
+
+          if [[ "${found}" != "1" ]]; then
+            echo 'Global A2A Registry accepted/recognized the submission but XGuard is not searchable yet.' >&2
+            exit 1
+          fi
+
+          echo 'XGuard Global A2A Registry publication verified.'
