@@ -48,6 +48,37 @@ describe("watchdog policy", () => {
     ).resolves.toBeNull();
   });
 
+  it("does not turn expected client errors with error logs into write breakers", async () => {
+    const errorLog = [
+      {
+        level: "error",
+        message: ['{"event":"request_rejected","code":"unauthorized"}'],
+      },
+    ];
+    await expect(
+      classifyTailEvent(
+        tailItem({
+          method: "POST",
+          path: "/verify",
+          status: 401,
+          logs: errorLog,
+        }),
+        PRODUCER,
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      classifyTailEvent(
+        tailItem({
+          method: "POST",
+          path: "/verify",
+          status: 400,
+          logs: errorLog,
+        }),
+        PRODUCER,
+      ),
+    ).resolves.toBeNull();
+  });
+
   it("ignores its own circuit-open 503 so retries cannot extend the breaker forever", async () => {
     await expect(
       classifyTailEvent(
