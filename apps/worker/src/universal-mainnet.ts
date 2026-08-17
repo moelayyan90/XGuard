@@ -3,6 +3,7 @@ import monetizedMainnet, {
   MainnetRequestGate,
   XPayGlobalRateGate,
 } from "./monetized-mainnet.js";
+import { buyerPassResponse } from "./buyer-pass.js";
 import { buyerPortalResponse } from "./buyer-portal.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 import { paymentDecisionResponse } from "./payment-decision.js";
@@ -13,6 +14,8 @@ export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
 interface UniversalMainnetEnv {
   DB: D1Database;
+  BASE_RPC_URL: string;
+  XGUARD_TREASURY_USDC_ADDRESS: string;
   XGUARD_TOOL_FEE_MICRO_USD?: string;
   XGUARD_SECURITY_FEE_MICRO_USD?: string;
   XGUARD_PAYMENT_DECISION_FEE_MICRO_USD?: string;
@@ -37,6 +40,13 @@ const mainnetScheduled =
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
+
+    // Buyer Pass is the low-friction identity/balance surface used by browser
+    // buyers and autonomous agents. It is intentionally routed before legacy
+    // merchant endpoints so a new buyer never needs a merchant API key merely
+    // to ask XGuard for a payment decision.
+    const buyerPass = await buyerPassResponse(standardRequest, env);
+    if (buyerPass !== null) return buyerPass;
 
     // Buyer/agent-side XGuard owns the pre-payment decision boundary. It runs
     // before any settlement-protocol adapter so x402 is one rail, not the
