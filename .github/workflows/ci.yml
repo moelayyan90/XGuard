@@ -12,6 +12,7 @@ concurrency:
 permissions:
   contents: read
   checks: write
+  pull-requests: read
 
 jobs:
   verify:
@@ -31,14 +32,16 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-          MERGE_SHA: ${{ github.sha }}
+          TESTED_MERGE_SHA: ${{ github.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
 
           publish_verify_check() {
             local sha="$1"
+            [[ -n "$sha" && "$sha" != "null" ]] || return 0
             node - "$sha" <<'NODE' > /tmp/verify-check.json
           const sha = process.argv[2];
           process.stdout.write(JSON.stringify({
@@ -61,7 +64,19 @@ jobs:
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/check-runs" >/dev/null
           }
 
-          publish_verify_check "$MERGE_SHA"
-          if [[ "$HEAD_SHA" != "$MERGE_SHA" ]]; then
-            publish_verify_check "$HEAD_SHA"
-          fi
+          CURRENT_MERGE_SHA="$(
+            curl --fail-with-body --silent --show-error \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+              | jq -r '.merge_commit_sha // empty'
+          )"
+
+          declare -A SEEN=()
+          for sha in "$TESTED_MERGE_SHA" "$HEAD_SHA" "$CURRENT_MERGE_SHA"; do
+            [[ -n "$sha" && "$sha" != "null" ]] || continue
+            [[ -z "${SEEN[$sha]:-}" ]] || continue
+            publish_verify_check "$sha"
+            SEEN[$sha]=1
+          done
