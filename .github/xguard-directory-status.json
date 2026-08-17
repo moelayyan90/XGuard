@@ -1,11 +1,12 @@
 {
-  "updatedAt": "2026-08-17T05:12:32Z",
+  "updatedAt": "2026-08-17T09:20:00Z",
   "entries": {
     "officialMcpRegistry": {
       "status": "listed",
       "name": "io.github.moelayyan90/xguard",
       "version": "0.4.0",
-      "evidence": "mcp-publisher completed successfully and registry verification passed"
+      "checkedAt": "2026-08-17T09:15:49Z",
+      "evidence": "official Registry API returned exactly one latest match with status=active and the public streamable-http /mcp remote"
     },
     "mcpRepository": {
       "status": "listed",
@@ -14,21 +15,33 @@
     "mcpDirectory": {
       "status": "submitted_for_review",
       "submittedAt": "2026-08-16",
-      "evidence": "MCP.Directory accepted the server submission for review"
+      "evidence": "MCP.Directory accepted the server submission for review; no duplicate resubmission was made"
     },
     "mcpub": {
       "status": "listed",
       "submittedAt": "2026-08-16",
       "evidence": "mcpub submission accepted and live endpoint was indexed"
     },
+    "mcpFly": {
+      "status": "submitted_for_review",
+      "submittedAt": "2026-08-17T09:06:14Z",
+      "submissionId": "moelayyan90/XGuard",
+      "evidence": "public MCPFly API returned success=true and 'Submission received and pending approval' after a duplicate search returned zero XGuard results"
+    },
+    "lobeHub": {
+      "status": "submitted_for_review",
+      "submittedAt": "2026-08-17T09:18:45Z",
+      "issue": "https://github.com/lobehub/lobehub/issues/18423",
+      "evidence": "public marketplace review request opened with truthful remote MCP metadata and downstream-signer attribution caveat"
+    },
     "agentNdx": {
       "status": "manual_review_required",
       "evidence": "XGuard is absent from the public AgentNDX index; attempted machine submissions returned redirects/HTTP 405, so no successful submission is claimed and the interactive curated-review flow is not bypassed"
     },
     "mcpSo": {
-      "status": "manual_review_requested",
-      "submittedAt": "2026-08-16",
-      "evidence": "the machine submission endpoint returned a Cloudflare Managed Challenge; no bypass was attempted and a listing request was sent to support@mcp.so from the project owner's email"
+      "status": "account_required",
+      "checkedAt": "2026-08-17",
+      "evidence": "the current free submission client requires an authenticated mcp.so session before POSTing marketplace submissions; no sign-in credential is fabricated or bypassed"
     },
     "a2aRegistry": {
       "status": "listed",
@@ -44,15 +57,56 @@
       "runId": "31997034944",
       "evidence": "ToolHive remote proxy initialized XGuard successfully and tools/list returned xguard_discover, xguard_resource_details, and xguard_status; compatibility run ended with TOOLHIVE_XGUARD_COMPATIBILITY=PASS"
     },
+    "mcpFoundry": {
+      "status": "not_applicable_remote_only",
+      "checkedAt": "2026-08-17",
+      "evidence": "the registry review pipeline requires toolbox.toml sections [tool], [binary], [permissions] and a required binary entry field; XGuard's public MCP is remote-only, so no local-binary claim is fabricated"
+    },
+    "pulseMcp": {
+      "status": "public_submissions_paused",
+      "checkedAt": "2026-08-17",
+      "evidence": "the public submit page currently states submissions are paused; XGuard remains eligible for downstream discovery through its active Official MCP Registry metadata when PulseMCP ingestion resumes"
+    },
+    "ad402": {
+      "status": "human_verification_required_for_free_submission",
+      "checkedAt": "2026-08-17",
+      "evidence": "402.ad offers a free website submission path but the page includes Cloudflare Turnstile; its programmatic submission path costs $0.10 USDC, so no CAPTCHA bypass or paid submission was attempted"
+    },
     "x402scan": {
       "status": "pending_maintainer_review",
       "issue": "https://github.com/Merit-Systems/x402scan/issues/1077",
-      "evidence": "routed-gateway patch model is documented in the issue; XGuard deliberately preserves xpay signer attribution and requested review from an active facilitators-registry contributor"
+      "evidence": "issue remains open with no maintainer acceptance yet; XGuard deliberately preserves downstream xpay signer attribution"
     },
     "x402Foundation": {
       "status": "pending_maintainer_review",
       "target": "docs/dev-tools/facilitators.md",
       "evidence": "production-provider listing request sent to info@x402.org; GitHub App writes to the foundation repository are not authorized"
+    },
+    "x402List": {
+      "status": "blocked_custom_domain_required",
+      "checkedAt": "2026-08-17",
+      "evidence": "x402-list accepts free first submissions for services/facilitators but explicitly rejects workers.dev and other free-hosting/dev-tunnel domains; XGuard's current public mainnet URL is on workers.dev"
+    },
+    "x402Watch": {
+      "status": "account_required",
+      "checkedAt": "2026-08-17",
+      "evidence": "x402.watch exposes an Add facilitator flow but redirects to operator login/registration; no existing x402.watch credential is available"
+    },
+    "aiAgentMarketplace": {
+      "status": "access_key_required",
+      "checkedAt": "2026-08-17",
+      "evidence": "AI Agent Marketplace/aiagenta2z allows public registration but its CLI/API submission path requires an AI_AGENT_MARKETPLACE_ACCESS_KEY from an account; no such credential is available"
+    },
+    "openModelsMcpRegistry": {
+      "status": "external_fork_required",
+      "checkedAt": "2026-08-17",
+      "repository": "https://github.com/openmodelsrun/mcp",
+      "evidence": "public registry accepts remote http-streaming servers through servers/{id}.yaml plus a pull request; the connected GitHub App cannot create a new external fork"
+    },
+    "paySkills": {
+      "status": "not_applicable_currently",
+      "checkedAt": "2026-08-17",
+      "evidence": "the public pay-skills catalog currently requires paid endpoints to return valid Solana-mainnet 402 challenges accepting USDC or USDT; XGuard's public facilitator gateway is Base mainnet and is not a paid provider endpoint for this catalog"
     },
     "x402Scout": {
       "status": "not_applicable",
