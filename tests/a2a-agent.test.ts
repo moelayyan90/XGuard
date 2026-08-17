@@ -48,7 +48,9 @@ describe("XGuard A2A compatibility", () => {
   it("responds to crawler reachability probes on GET and HEAD /a2a", async () => {
     const getResponse = await a2aAgentResponse(new Request(`${ORIGIN}/a2a`));
     expect(getResponse?.status).toBe(200);
-    expect(getResponse?.headers.get("cache-control")).toBe("public, max-age=300");
+    expect(getResponse?.headers.get("cache-control")).toBe(
+      "public, max-age=300",
+    );
     const descriptor = (await getResponse?.json()) as {
       status: string;
       protocol: string;
