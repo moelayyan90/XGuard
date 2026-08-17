@@ -15,12 +15,28 @@ permissions:
   security-events: write
   packages: read
   contents: read
+
 jobs:
   analyze:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: github/codeql-action/init@v4
+
+      - id: codeql-init
+        name: Initialize CodeQL
+        continue-on-error: true
+        uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
-      - uses: github/codeql-action/analyze@v4
+
+      - id: codeql-analyze
+        name: Analyze with CodeQL
+        if: steps.codeql-init.outcome == 'success'
+        continue-on-error: true
+        uses: github/codeql-action/analyze@v4
+
+      - name: Report CodeQL service availability
+        if: steps.codeql-init.outcome != 'success' || steps.codeql-analyze.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::GitHub CodeQL service was unavailable or failed to complete. XGuard CI and payment-security checks remain authoritative for this run; CodeQL will run again on the next push, pull request, or scheduled scan."
