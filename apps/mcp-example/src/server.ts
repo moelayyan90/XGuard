@@ -6,7 +6,15 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { createXGuardFacilitator } from "@xguard/sdk";
 import { z } from "zod";
 
-const xguardUrl = process.env.XGUARD_URL ?? "http://127.0.0.1:8787";
+const MAINNET_NETWORK = "eip155:8453";
+const XGUARD_MAINNET_URL = "https://xguard-mainnet.maqamapp.workers.dev";
+const xguardUrl = process.env.XGUARD_URL ?? XGUARD_MAINNET_URL;
+const apiKey = process.env.XGUARD_API_KEY;
+if (apiKey === undefined || apiKey === "") {
+  throw new Error(
+    "XGUARD_API_KEY is required before the Base mainnet MCP example can start",
+  );
+}
 const payTo = process.env.XGUARD_EXAMPLE_PAY_TO;
 if (
   payTo === undefined ||
@@ -14,29 +22,27 @@ if (
   /^0x0{40}$/.test(payTo)
 ) {
   throw new Error(
-    "XGUARD_EXAMPLE_PAY_TO must be a testnet EVM address; never put a private key in this server",
+    "XGUARD_EXAMPLE_PAY_TO must be a non-zero Base mainnet receiving address; never put a private key in this server",
   );
 }
 
 const facilitator = createXGuardFacilitator({
   url: xguardUrl,
-  ...(process.env.XGUARD_API_KEY === undefined
-    ? {}
-    : { apiKey: process.env.XGUARD_API_KEY }),
+  apiKey,
   timeoutMs: 20_000,
 });
 const resourceServer = new x402ResourceServer(facilitator).register(
-  "eip155:84532",
+  MAINNET_NETWORK,
   new ExactEvmScheme(),
 );
 await resourceServer.initialize();
 const bazaarSupported = resourceServer
-  .getFacilitatorExtensions(2, "eip155:84532", "exact")
+  .getFacilitatorExtensions(2, MAINNET_NETWORK, "exact")
   .includes("bazaar");
 
 const accepts = await resourceServer.buildPaymentRequirements({
   scheme: "exact",
-  network: "eip155:84532",
+  network: MAINNET_NETWORK,
   payTo,
   price: "$0.001",
 });
@@ -45,17 +51,17 @@ const paid = createPaymentWrapper(resourceServer, {
   resource: {
     url: "mcp://tool/safe_echo",
     description:
-      "Testnet-only short text echo settled through the XGuard facilitator route.",
+      "Short text echo settled through the XGuard production Base mainnet facilitator route.",
     mimeType: "application/json",
     serviceName: "XGuard MCP Example",
-    tags: ["x402", "testnet", "safety"],
+    tags: ["x402", "mainnet", "safety"],
   },
   ...(bazaarSupported
     ? {
         extensions: declareDiscoveryExtension({
           toolName: "safe_echo",
           description:
-            "Echo one short message after a testnet x402 payment routed through XGuard.",
+            "Echo one short message after a Base mainnet x402 payment routed through XGuard.",
           inputSchema: {
             type: "object",
             properties: {
@@ -63,8 +69,7 @@ const paid = createPaymentWrapper(resourceServer, {
                 type: "string",
                 minLength: 1,
                 maxLength: 200,
-                description:
-                  "Text to echo after successful testnet settlement.",
+                description: "Text to echo after successful mainnet settlement.",
               },
             },
             required: ["message"],
@@ -110,9 +115,9 @@ server.tool(
         type: "text",
         text: JSON.stringify({
           x402Version: 2,
-          network: "eip155:84532",
+          network: MAINNET_NETWORK,
           facilitator: xguardUrl,
-          mode: "testnet",
+          mode: "mainnet",
           transport: "stdio",
           mcpSdkGeneration:
             "1.x compatibility line required by @x402/mcp 2.22.0",
@@ -127,7 +132,7 @@ server.tool(
 
 server.tool(
   "safe_echo",
-  "Testnet paid tool: echoes a short message after x402 verification and settlement through XGuard. Resource price is $0.001; XGuard's separate merchant service fee is not charged on testnet.",
+  "Base mainnet paid tool: echoes a short message after x402 verification and settlement through XGuard. Resource price is $0.001; XGuard's separate $0.002 successful-settlement service fee is charged to the merchant's prepaid XGuard balance.",
   { message: z.string().min(1).max(200) },
   paid(async ({ message }) => ({ content: [{ type: "text", text: message }] })),
 );
