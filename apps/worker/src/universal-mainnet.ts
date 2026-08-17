@@ -12,6 +12,7 @@ import {
   normalizePublicPaymentContract,
   publicPaymentContractResponse,
 } from "./public-payment-contract.js";
+import { publicDiscoveryPreflight } from "./public-discovery-preflight.js";
 import {
   WebhookDeliveryQueue,
   resilientWebhookIngressResponse,
@@ -106,6 +107,9 @@ async function buyerPassCreationGuard(
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
+
+    const discoveryPreflight = publicDiscoveryPreflight(standardRequest);
+    if (discoveryPreflight !== null) return discoveryPreflight;
 
     const paymentContract = publicPaymentContractResponse(standardRequest, env);
     if (paymentContract !== null) return paymentContract;
