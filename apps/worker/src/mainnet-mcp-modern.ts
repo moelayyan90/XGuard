@@ -118,262 +118,60 @@ export async function modernMcpRequest(
     const args = isRecord(params.arguments) ? params.arguments : {};
     try {
       if (name === "xguard_discover") {
-        return mcpResult(id, {
-          resultType: "complete",
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                await discoverTool(env, args),
-                null,
-                2,
-              ),
-            },
-          ],
-          isError: false,
-          _meta: serverMeta(),
-        });
+        const query = typeof args.query === "string" ? args.query.trim() : "";
+        const type =
+          args.type === "http" || args.type === "mcp" ? args.type : undefined;
+        const payTo = typeof args.payTo === "string" ? args.payTo : undefined;
+        const limit =
+          typeof args.limit === "number" ? Math.trunc(args.limit) : 10;
+        const result = query
+          ? await searchBazaarResources(env.DB, { query, type, payTo, limit })
+          : await listBazaarResources(env.DB, { type, payTo, limit });
+        return mcpToolResult(id, result);
       }
+
       if (name === "xguard_resource_details") {
-        return mcpResult(id, {
-          resultType: "complete",
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                await resourceDetailsTool(env, args),
-                null,
-                2,
-              ),
-            },
-          ],
-          isError: false,
-          _meta: serverMeta(),
+        const resource =
+          typeof args.resource === "string" ? args.resource.trim() : "";
+        if (resource === "") return mcpToolError(id, "resource is required");
+        return mcpToolResult(id, {
+          resource,
+          matches: await findBazaarResource(env.DB, resource),
         });
       }
+
       if (name === "xguard_status") {
-        const status = statusProvider ? await statusProvider() : { ok: true };
-        return mcpResult(id, {
-          resultType: "complete",
-          content: [{ type: "text", text: JSON.stringify(status, null, 2) }],
-          isError: false,
-          _meta: serverMeta(),
-        });
+        const status =
+          statusProvider === undefined
+            ? {
+                status: "operational",
+                mode: "mainnet",
+                protocol: "x402-v2",
+                network: "eip155:8453",
+                discovery: await bazaarStats(env.DB),
+              }
+            : await statusProvider();
+        return mcpToolResult(id, status);
       }
+
+      return mcpHttpError(id, -32602, "unknown tool", 400);
     } catch (error) {
-      return mcpResult(id, {
-        resultType: "complete",
-        content: [{ type: "text", text: errorMessage(error) }],
-        isError: true,
-        _meta: serverMeta(),
-      });
+      return mcpToolError(id, errorMessage(error));
     }
-    return mcpHttpError(id, -32601, `Unknown tool: ${name}`, 404);
-  }
-
-  if (method === "resources/list") {
-    return mcpResult(id, {
-      resultType: "complete",
-      resources: [],
-      _meta: serverMeta(),
-    });
-  }
-
-  if (method === "prompts/list") {
-    return mcpResult(id, {
-      resultType: "complete",
-      prompts: [],
-      _meta: serverMeta(),
-    });
   }
 
   return mcpHttpError(id, -32601, "Method not found", 404);
 }
 
-export function modernMcpOptionsResponse(): Response {
+export function modernMcpOptions(request: Request): Response {
+  const originError = validateOrigin(request);
+  if (originError !== null) return originError;
   return corsResponse(new Response(null, { status: 204 }));
 }
 
-export function modernMcpManifestResponse(request: Request): Response | null {
-  if (request.method !== "GET" && request.method !== "HEAD") return null;
-  const url = new URL(request.url);
-  if (url.pathname !== "/.well-known/mcp/server.json") return null;
-  const body = modernMcpManifest(url.origin);
-  return corsResponse(
-    new Response(request.method === "HEAD" ? null : JSON.stringify(body, null, 2), {
-      status: 200,
-      headers: {
-        "Cache-Control": "public, max-age=300",
-        "Content-Type": "application/json; charset=utf-8",
-        "X-Content-Type-Options": "nosniff",
-      },
-    }),
-  );
-}
-
-export function modernMcpManifest(origin: string) {
-  return {
-    $schema:
-      "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-    name: "io.github.moelayyan90/xguard",
-    title: "XGuard",
-    description:
-      "Remote MCP server for discovering x402-paid HTTP APIs and MCP tools cataloged by XGuard.",
-    repository: {
-      url: "https://github.com/moelayyan90/XGuard",
-      source: "github",
-    },
-    version: XGUARD_MCP_VERSION,
-    remotes: [{ type: "streamable-http", url: `${origin}/mcp` }],
-  };
-}
-
-function xguardMcpTools() {
-  return [
-    {
-      name: "xguard_discover",
-      title: "Discover x402 resources",
-      description:
-        "Search XGuard's public x402 Bazaar catalog for paid HTTP APIs and MCP tools. Example: query='weather' finds resources related to weather data.",
-      inputSchema: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          query: {
-            type: "string",
-            description:
-              "Optional free-text search matched against resource URI, type, protocol, network, and metadata.",
-          },
-          resourceType: {
-            type: "string",
-            enum: ["http", "mcp"],
-            description: "Optional resource-type filter: paid HTTP API or MCP tool.",
-          },
-          network: {
-            type: "string",
-            description:
-              "Optional exact CAIP-2 network filter such as eip155:8453.",
-          },
-          provider: {
-            type: "string",
-            description:
-              "Optional facilitator/provider filter such as cdp or payai.",
-          },
-          limit: {
-            type: "integer",
-            minimum: 1,
-            maximum: 100,
-            description: "Maximum number of catalog entries to return, from 1 to 100.",
-          },
-        },
-      },
-      annotations: readOnlyAnnotations(),
-    },
-    {
-      name: "xguard_resource_details",
-      title: "Read x402 resource details",
-      description:
-        "Return one exact XGuard Bazaar resource, including payment requirements and metadata when known. Example: resource='https://api.example.com/weather' returns that catalog entry.",
-      inputSchema: {
-        type: "object",
-        additionalProperties: false,
-        required: ["resource"],
-        properties: {
-          resource: {
-            type: "string",
-            description: "Exact resource URI to look up in the XGuard catalog.",
-          },
-        },
-      },
-      annotations: readOnlyAnnotations(),
-    },
-    {
-      name: "xguard_status",
-      title: "Read XGuard gateway status",
-      description:
-        "Return the live XGuard gateway status without creating or settling a payment. Example: call before relying on XGuard discovery or settlement routes.",
-      inputSchema: {
-        type: "object",
-        additionalProperties: false,
-        properties: {},
-      },
-      annotations: readOnlyAnnotations(),
-    },
-  ];
-}
-
-function readOnlyAnnotations() {
-  return {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  };
-}
-
-async function discoverTool(env: ModernMcpEnv, args: Record<string, unknown>) {
-  const query = readOptionalString(args.query);
-  const resourceType = readResourceType(args.resourceType);
-  const network = readOptionalString(args.network);
-  const provider = readOptionalString(args.provider);
-  const limit = readLimit(args.limit);
-
-  const result = query
-    ? await searchBazaarResources(env.DB, {
-        query,
-        resourceType,
-        network,
-        provider,
-        limit,
-      })
-    : await listBazaarResources(env.DB, {
-        resourceType,
-        network,
-        provider,
-        limit,
-      });
-
-  return {
-    ...result,
-    stats: await bazaarStats(env.DB),
-  };
-}
-
-async function resourceDetailsTool(env: ModernMcpEnv, args: Record<string, unknown>) {
-  const resource = readRequiredString(args.resource, "resource");
-  const item = await findBazaarResource(env.DB, resource);
-  if (!item) throw new Error("resource_not_found");
-  return item;
-}
-
-function readOptionalString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, 300) : undefined;
-}
-
-function readRequiredString(value: unknown, field: string): string {
-  const parsed = readOptionalString(value);
-  if (!parsed) throw new Error(`${field}_required`);
-  return parsed;
-}
-
-function readResourceType(value: unknown): "http" | "mcp" | undefined {
-  if (value === "http" || value === "mcp") return value;
-  return undefined;
-}
-
-function readLimit(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return 50;
-  return Math.max(1, Math.min(100, Math.trunc(value)));
-}
-
-function serverMeta() {
-  return {
-    serverInfo: SERVER_INFO,
-    protocolVersion: MODERN_MCP_PROTOCOL,
-    supportedVersions: SUPPORTED_PROTOCOLS,
-  };
+export function shouldUseModernMcp(request: Request): boolean {
+  const version = request.headers.get("mcp-protocol-version");
+  return version !== null && !LEGACY_MCP_PROTOCOLS.has(version);
 }
 
 function validateModernEnvelope(
@@ -381,39 +179,166 @@ function validateModernEnvelope(
   method: string,
   params: Record<string, unknown>,
 ): string | null {
-  const methodHeader = request.headers.get("mcp-method");
-  if (methodHeader !== method)
-    return "MCP-Method header must exactly match the JSON-RPC method";
+  const headerVersion = request.headers.get("mcp-protocol-version");
+  if (headerVersion === null) return "MCP-Protocol-Version header is required";
 
-  const paramsHeader = request.headers.get("mcp-params");
-  if (!paramsHeader) return "MCP-Params header is required";
-  let parsedHeader: unknown;
-  try {
-    parsedHeader = JSON.parse(paramsHeader);
-  } catch {
-    return "MCP-Params header must be valid JSON";
+  const meta = isRecord(params._meta) ? params._meta : null;
+  if (meta === null) return "params._meta is required";
+  if (meta["io.modelcontextprotocol/protocolVersion"] !== headerVersion)
+    return "MCP-Protocol-Version header does not match params._meta protocolVersion";
+  if (!isRecord(meta["io.modelcontextprotocol/clientCapabilities"]))
+    return "params._meta clientCapabilities is required";
+  const clientInfo = meta["io.modelcontextprotocol/clientInfo"];
+  if (
+    clientInfo !== undefined &&
+    (!isRecord(clientInfo) ||
+      typeof clientInfo.name !== "string" ||
+      typeof clientInfo.version !== "string")
+  )
+    return "params._meta clientInfo is malformed";
+
+  const methodHeader = request.headers.get("mcp-method");
+  if (methodHeader === null) return "Mcp-Method header is required";
+  if (methodHeader !== method) return "Mcp-Method header does not match method";
+
+  if (method === "tools/call") {
+    if (typeof params.name !== "string" || params.name === "")
+      return "tools/call params.name is required";
+    const rawName = request.headers.get("mcp-name");
+    if (rawName === null) return "Mcp-Name header is required for tools/call";
+    const decoded = decodeHeaderValue(rawName);
+    if (decoded === null || decoded !== params.name)
+      return "Mcp-Name header does not match params.name";
   }
-  if (!deepEqual(parsedHeader, params))
-    return "MCP-Params header must exactly match JSON-RPC params";
+
   return null;
 }
 
-function mcpUnsupportedProtocol(id: unknown, requested: string | null): Response {
-  return mcpHttpError(
-    id,
-    -32001,
-    `Unsupported MCP-Protocol-Version: ${requested ?? "missing"}`,
-    400,
-    { "MCP-Protocol-Version": MODERN_MCP_PROTOCOL },
-  );
+export function xguardMcpTools() {
+  const safeReadAnnotations = {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  };
+
+  return [
+    {
+      name: "xguard_discover",
+      title: "Discover x402 resources",
+      description:
+        "Search XGuard's x402 catalog or list recent entries. Returns matching HTTP or MCP resources. Example: query='weather API', type='http'.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search phrase; omit to list recent resources.",
+          },
+          type: {
+            type: "string",
+            enum: ["http", "mcp"],
+            description: "Optional resource kind: http or mcp.",
+          },
+          payTo: {
+            type: "string",
+            description: "Filter by exact payment-recipient address.",
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 100,
+            default: 10,
+            description: "Maximum results to return (1-100; default 10).",
+          },
+        },
+        additionalProperties: false,
+      },
+      annotations: { ...safeReadAnnotations },
+    },
+    {
+      name: "xguard_resource_details",
+      title: "Inspect x402 resource",
+      description:
+        "Look up one exact XGuard catalog resource by URL or key and return matching records. Example: resource='https://api.example.com/pay'.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          resource: {
+            type: "string",
+            description: "Exact resource URL or XGuard resource key.",
+          },
+        },
+        required: ["resource"],
+        additionalProperties: false,
+      },
+      annotations: { ...safeReadAnnotations },
+    },
+    {
+      name: "xguard_status",
+      title: "XGuard status",
+      description:
+        "Return live XGuard mainnet gateway health and discovery statistics. Example: call with no arguments before routing traffic.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+      annotations: { ...safeReadAnnotations },
+    },
+  ];
+}
+
+function serverMeta(): Record<string, unknown> {
+  return { "io.modelcontextprotocol/serverInfo": SERVER_INFO };
+}
+
+function mcpResult(id: unknown, result: unknown): Response {
+  return corsJson({ jsonrpc: "2.0", id, result }, 200, {
+    "MCP-Protocol-Version": MODERN_MCP_PROTOCOL,
+  });
+}
+
+function mcpToolResult(id: unknown, value: unknown): Response {
+  return mcpResult(id, {
+    resultType: "complete",
+    content: [{ type: "text", text: JSON.stringify(value) }],
+    structuredContent: value,
+    isError: false,
+    _meta: serverMeta(),
+  });
+}
+
+function mcpToolError(id: unknown, message: string): Response {
+  return mcpResult(id, {
+    resultType: "complete",
+    content: [{ type: "text", text: message }],
+    isError: true,
+    _meta: serverMeta(),
+  });
 }
 
 function mcpHeaderMismatch(id: unknown, message: string): Response {
-  return mcpHttpError(id, -32600, message, 400);
+  return mcpHttpError(id, -32020, `Header mismatch: ${message}`, 400);
 }
 
-function mcpResult(id: unknown, result: Record<string, unknown>): Response {
-  return mcpJson({ jsonrpc: "2.0", id, result }, 200);
+function mcpUnsupportedProtocol(
+  id: unknown,
+  requestedVersion: string | null,
+): Response {
+  return corsJson(
+    {
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32022,
+        message: `Unsupported MCP protocol version: ${requestedVersion ?? "missing"}`,
+        data: { supportedVersions: SUPPORTED_PROTOCOLS },
+      },
+    },
+    400,
+    { "MCP-Protocol-Version": MODERN_MCP_PROTOCOL },
+  );
 }
 
 function mcpHttpError(
@@ -421,27 +346,68 @@ function mcpHttpError(
   code: number,
   message: string,
   status: number,
-  headers: HeadersInit = {},
+  headers?: Record<string, string>,
 ): Response {
-  return mcpJson(
-    {
-      jsonrpc: "2.0",
-      id,
-      error: { code, message },
-    },
-    status,
-    headers,
-  );
+  return corsJson({ jsonrpc: "2.0", id, error: { code, message } }, status, {
+    "MCP-Protocol-Version": MODERN_MCP_PROTOCOL,
+    ...(headers ?? {}),
+  });
 }
 
-function mcpJson(body: unknown, status: number, headers: HeadersInit = {}): Response {
-  const out = new Headers(headers);
-  out.set("Cache-Control", "no-store");
-  out.set("Content-Type", "application/json; charset=utf-8");
-  out.set("MCP-Protocol-Version", MODERN_MCP_PROTOCOL);
-  out.set("Strict-Transport-Security", HSTS_VALUE);
-  out.set("X-Content-Type-Options", "nosniff");
-  return corsResponse(new Response(JSON.stringify(body), { status, headers: out }));
+function decodeHeaderValue(value: string): string | null {
+  if (!value.startsWith("=?base64?") || !value.endsWith("?=")) return value;
+  try {
+    const encoded = value.slice("=?base64?".length, -2);
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) =>
+      character.charCodeAt(0),
+    );
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function validateOrigin(request: Request): Response | null {
+  const rawOrigin = request.headers.get("origin");
+  if (rawOrigin === null) return null;
+  try {
+    const origin = new URL(rawOrigin);
+    if (
+      origin.protocol !== "https:" ||
+      origin.username !== "" ||
+      origin.password !== "" ||
+      isLocalHost(origin.hostname)
+    )
+      throw new Error("invalid_origin");
+    return null;
+  } catch {
+    return corsJson({ error: "invalid_origin" }, 403);
+  }
+}
+
+function isLocalHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return true;
+  return host.includes(":");
+}
+
+function corsJson(
+  value: unknown,
+  status = 200,
+  extraHeaders?: Record<string, string>,
+): Response {
+  return corsResponse(
+    new Response(JSON.stringify(value), {
+      status,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        ...(extraHeaders ?? {}),
+      },
+    }),
+  );
 }
 
 function corsResponse(response: Response): Response {
@@ -449,15 +415,12 @@ function corsResponse(response: Response): Response {
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set(
     "Access-Control-Allow-Headers",
-    "Accept, Content-Type, MCP-Method, MCP-Params, MCP-Protocol-Version, Origin, X-Requested-With",
+    "Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name, MCP-Session-Id",
   );
   headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  headers.set(
-    "Access-Control-Expose-Headers",
-    "MCP-Protocol-Version, Strict-Transport-Security",
-  );
+  headers.set("Access-Control-Expose-Headers", "MCP-Protocol-Version");
   headers.set("Strict-Transport-Security", HSTS_VALUE);
-  headers.set("Vary", "Origin, Accept, MCP-Protocol-Version");
+  headers.set("X-Content-Type-Options", "nosniff");
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -465,63 +428,25 @@ function corsResponse(response: Response): Response {
   });
 }
 
-function validateOrigin(request: Request): Response | null {
-  const origin = request.headers.get("origin");
-  if (!origin) return null;
-  try {
-    const parsed = new URL(origin);
-    if (parsed.protocol === "https:" || parsed.hostname === "localhost") return null;
-  } catch {
-    // Rejected below.
-  }
-  return mcpHttpError(null, -32600, "Untrusted Origin", 403);
+async function readBodyCapped(
+  request: Request,
+  maxBytes: number,
+): Promise<string> {
+  const declared = request.headers.get("content-length");
+  if (declared !== null && Number(declared) > maxBytes)
+    throw new Error("request_body_too_large");
+  const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > maxBytes)
+    throw new Error("request_body_too_large");
+  return text;
 }
 
-async function readBodyCapped(request: Request, maxBytes: number): Promise<string> {
-  const reader = request.body?.getReader();
-  if (!reader) return "";
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) throw new Error("request_too_large");
-    chunks.push(value);
-  }
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(merged);
-}
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a !== typeof b) return false;
-  if (a === null || b === null) return false;
-  if (Array.isArray(a)) {
-    if (!Array.isArray(b) || a.length !== b.length) return false;
-    return a.every((value, index) => deepEqual(value, b[index]));
-  }
-  if (isRecord(a)) {
-    if (!isRecord(b)) return false;
-    const aKeys = Object.keys(a).sort();
-    const bKeys = Object.keys(b).sort();
-    if (aKeys.length !== bKeys.length) return false;
-    return aKeys.every(
-      (key, index) => key === bKeys[index] && deepEqual(a[key], b[key]),
-    );
-  }
-  return false;
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message !== ""
+    ? error.message
+    : "request_failed";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
