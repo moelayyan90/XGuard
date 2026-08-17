@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const XGUARD_ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const XGUARD_ORIGIN = "https://xguardgate.com";
 const USER_AGENT =
   "XGuard-Code-Switch-Engine/1.1 (+https://github.com/moelayyan90/XGuard)";
 const INCUMBENT_URLS = [
@@ -224,7 +224,7 @@ function containsExactXGuardOrigin(content) {
       const candidate = new URL(match[0]);
       if (
         candidate.protocol === "https:" &&
-        candidate.hostname === "xguard-mainnet.maqamapp.workers.dev"
+        candidate.hostname === "xguardgate.com"
       )
         return true;
     } catch {

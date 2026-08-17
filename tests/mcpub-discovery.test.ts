@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mcpubDiscoveryResponse } from "../apps/worker/src/mcpub-discovery.js";
 
-const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const ORIGIN = "https://xguardgate.com";
 
 describe("mcpub discovery alias", () => {
   it("serves /.well-known/mcp.json", async () => {

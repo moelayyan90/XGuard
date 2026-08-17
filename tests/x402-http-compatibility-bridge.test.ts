@@ -5,7 +5,7 @@ import {
   x402HttpCompatibilityResponse,
 } from "../apps/worker/src/x402-http-compatibility-bridge.js";
 
-const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const ORIGIN = "https://xguardgate.com";
 const TARGET = "https://merchant.example/paid";
 const PAY_TO = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C";
 const PAYER = "0x857b06519E91e3A54538791bDbb0E22373e36b66";

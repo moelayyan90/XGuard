@@ -27,7 +27,7 @@ interface TelemetryPoint {
 }
 
 const DEFAULT_PRODUCER = "xguard-mainnet";
-const DEFAULT_MAINNET_URL = "https://xguard-mainnet.maqamapp.workers.dev";
+const DEFAULT_MAINNET_URL = "https://xguardgate.com";
 const WATCHDOG_POLICY_VERSION = "2026-08-17-v2";
 const PROBE_FAILURE_THRESHOLD = 3;
 

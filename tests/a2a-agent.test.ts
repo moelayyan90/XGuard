@@ -3,7 +3,7 @@ import { a2aAgentResponse } from "../apps/worker/src/a2a-agent.js";
 import { enhanceA2AAgentCard } from "../apps/worker/src/a2a-discovery.js";
 import { discoveryResponse } from "../apps/worker/src/discovery.js";
 
-const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const ORIGIN = "https://xguardgate.com";
 
 describe("XGuard A2A compatibility", () => {
   it("publishes a v0.3-compatible Agent Card pointing to the live A2A endpoint", async () => {

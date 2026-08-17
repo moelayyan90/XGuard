@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { shouldUseModernMcp } from "../apps/worker/src/mainnet-mcp-modern.js";
 
-const URL = "https://xguard-mainnet.maqamapp.workers.dev/mcp";
+const URL = "https://xguardgate.com/mcp";
 
 function request(headers: Record<string, string> = {}) {
   return new Request(URL, {

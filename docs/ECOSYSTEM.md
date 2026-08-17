@@ -11,7 +11,7 @@ This page is the canonical copy for ecosystem directories, developer-tool catalo
 - **Name:** XGuard
 - **Category:** x402 infrastructure / hosted safety & routing gateway / facilitator-compatible middleware
 - **Repository:** https://github.com/moelayyan90/XGuard
-- **Live production mainnet endpoint:** https://xguard-mainnet.maqamapp.workers.dev
+- **Live production mainnet endpoint:** https://xguardgate.com
 - **Optional non-billable testnet endpoint:** https://xguard-testnet.maqamapp.workers.dev
 - **Protocol:** x402 v2
 - **Mainnet network:** Base (`eip155:8453`)
@@ -47,7 +47,7 @@ XGuard is the merchant-facing hosted safety/routing gateway. It is **not represe
 Existing x402 v2 resource servers can use the standard `HTTPFacilitatorClient` and point it at:
 
 ```text
-https://xguard-mainnet.maqamapp.workers.dev
+https://xguardgate.com
 ```
 
 Mainnet requests require an XGuard merchant API key and sufficient prepaid XGuard service balance. Full onboarding is documented in the repository Quickstart.

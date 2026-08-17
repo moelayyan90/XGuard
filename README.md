@@ -34,8 +34,8 @@ Existing x402 resource servers do not need an XGuard-specific runtime. They can 
 
 ### Live production
 
-- **Mainnet endpoint:** `https://xguard-mainnet.maqamapp.workers.dev`
-- **Provider manifest:** `https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json`
+- **Mainnet endpoint:** `https://xguardgate.com`
+- **Provider manifest:** `https://xguardgate.com/.well-known/x402/facilitator.json`
 - **Settlement truth:** `/v1/settlements/{logicalPaymentKey}/truth`
 - **Immediate resolver:** `/v1/settlements/{logicalPaymentKey}/resolve`
 - **Protocol:** x402 v2
@@ -91,10 +91,10 @@ The provider manifest is **XGuard-specific discovery metadata**. It supplements 
 ### 1. Check the live gateway and provider identity
 
 ```bash
-curl https://xguard-mainnet.maqamapp.workers.dev/healthz
-curl https://xguard-mainnet.maqamapp.workers.dev/readyz
-curl https://xguard-mainnet.maqamapp.workers.dev/supported
-curl https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json
+curl https://xguardgate.com/healthz
+curl https://xguardgate.com/readyz
+curl https://xguardgate.com/supported
+curl https://xguardgate.com/.well-known/x402/facilitator.json
 ```
 
 A healthy production `/supported` response includes x402 v2 `exact` on `eip155:8453` and the native `bazaar` extension.
@@ -102,7 +102,7 @@ A healthy production `/supported` response includes x402 v2 `exact` on `eip155:8
 ### 2. Register your service
 
 ```bash
-curl -sS -X POST https://xguard-mainnet.maqamapp.workers.dev/v1/register \
+curl -sS -X POST https://xguardgate.com/v1/register \
   -H 'Content-Type: application/json' \
   --data '{"name":"my-x402-service"}'
 ```
@@ -119,7 +119,7 @@ const headers = {
 };
 
 const facilitator = new HTTPFacilitatorClient({
-  url: "https://xguard-mainnet.maqamapp.workers.dev",
+  url: "https://xguardgate.com",
   createAuthHeaders: async () => ({
     verify: headers,
     settle: headers,

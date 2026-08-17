@@ -24,7 +24,7 @@ Agent-facing production metadata must state:
 The live remote MCP endpoint is:
 
 ```text
-https://xguard-mainnet.maqamapp.workers.dev/mcp
+https://xguardgate.com/mcp
 ```
 
 It exposes XGuard discovery/status tools and is intentionally read-only with respect to money. It does not hold merchant wallets, sign payments, create synthetic settlements, or bypass a resource server's x402 policy.

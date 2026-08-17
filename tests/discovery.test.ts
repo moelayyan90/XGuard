@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { discoveryResponse } from "../apps/worker/src/discovery.js";
 
-const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const ORIGIN = "https://xguardgate.com";
 
 describe("mainnet discovery", () => {
   it.each([

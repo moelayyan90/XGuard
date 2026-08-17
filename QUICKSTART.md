@@ -2,7 +2,7 @@
 
 XGuard production runs on Base mainnet at:
 
-- **Production gateway:** `https://xguard-mainnet.maqamapp.workers.dev`
+- **Production gateway:** `https://xguardgate.com`
 - **Network:** Base mainnet (`eip155:8453`)
 - **Asset:** Native USDC
 
@@ -13,10 +13,10 @@ Mainnet charges `$0.002` only for a successful billable settlement after indepen
 ## 1. Verify mainnet readiness
 
 ```bash
-curl https://xguard-mainnet.maqamapp.workers.dev/healthz
-curl https://xguard-mainnet.maqamapp.workers.dev/readyz
-curl https://xguard-mainnet.maqamapp.workers.dev/supported
-curl https://xguard-mainnet.maqamapp.workers.dev/status
+curl https://xguardgate.com/healthz
+curl https://xguardgate.com/readyz
+curl https://xguardgate.com/supported
+curl https://xguardgate.com/status
 ```
 
 A ready mainnet gateway reports `mode: "mainnet"`, `mainnet: true`, a healthy facilitator, and an x402 v2 `exact` capability for `eip155:8453`.
@@ -26,7 +26,7 @@ A ready mainnet gateway reports `mode: "mainnet"`, `mainnet: true`, a healthy fa
 Registration creates a merchant identifier and a high-entropy API key. The API key is returned in the response and should be stored as a secret.
 
 ```bash
-curl -sS -X POST https://xguard-mainnet.maqamapp.workers.dev/v1/register \
+curl -sS -X POST https://xguardgate.com/v1/register \
   -H 'Content-Type: application/json' \
   --data '{"name":"my-x402-service"}'
 ```
@@ -34,7 +34,7 @@ curl -sS -X POST https://xguard-mainnet.maqamapp.workers.dev/v1/register \
 Save the returned key:
 
 ```bash
-export XGUARD_URL=https://xguard-mainnet.maqamapp.workers.dev
+export XGUARD_URL=https://xguardgate.com
 export XGUARD_API_KEY='xg_live_...'
 ```
 
@@ -101,7 +101,7 @@ const createAuthHeaders = async () => {
 };
 
 const facilitatorClient = new HTTPFacilitatorClient({
-  url: process.env.XGUARD_URL ?? "https://xguard-mainnet.maqamapp.workers.dev",
+  url: process.env.XGUARD_URL ?? "https://xguardgate.com",
   createAuthHeaders,
 });
 ```

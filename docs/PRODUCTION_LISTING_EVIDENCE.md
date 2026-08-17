@@ -4,7 +4,7 @@ This document is a concise machine-verifiable evidence pack for production x402 
 
 ## Production service
 
-- Mainnet origin: `https://xguard-mainnet.maqamapp.workers.dev`
+- Mainnet origin: `https://xguardgate.com`
 - Protocol: x402 v2
 - Network: Base mainnet (`eip155:8453`)
 - Asset: native Circle USDC
@@ -36,9 +36,9 @@ XGuard charges the merchant service balance only for a successful billable settl
 ## Public source and verification
 
 - Source: `https://github.com/moelayyan90/XGuard`
-- Live machine-readable provider metadata: `https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json`
-- Live protocol capabilities: `https://xguard-mainnet.maqamapp.workers.dev/supported`
-- Live readiness: `https://xguard-mainnet.maqamapp.workers.dev/readyz`
-- Live status: `https://xguard-mainnet.maqamapp.workers.dev/status`
+- Live machine-readable provider metadata: `https://xguardgate.com/.well-known/x402/facilitator.json`
+- Live protocol capabilities: `https://xguardgate.com/supported`
+- Live readiness: `https://xguardgate.com/readyz`
+- Live status: `https://xguardgate.com/status`
 
 This evidence pack intentionally makes no claim that XGuard is part of the x402 protocol standard or endorsed by the x402 Foundation. It exists so directory maintainers can independently evaluate the live service.

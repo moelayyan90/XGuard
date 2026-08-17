@@ -6,7 +6,7 @@ import {
 } from "../apps/worker/src/watchdog-policy.js";
 
 const PRODUCER = "xguard-mainnet";
-const BASE = "https://xguard-mainnet.maqamapp.workers.dev";
+const BASE = "https://xguardgate.com";
 
 function tailItem(input: {
   method?: string;

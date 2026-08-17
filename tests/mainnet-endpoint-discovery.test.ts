@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { writeEndpointDiscoveryResponse } from "../apps/worker/src/mainnet-endpoint-discovery.js";
 
-const BASE = "https://xguard-mainnet.maqamapp.workers.dev";
+const BASE = "https://xguardgate.com";
 const PAYMENT_KEY = "a".repeat(64);
 
 function request(path: string, method: string) {

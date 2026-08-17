@@ -11,7 +11,7 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://xguard-mainnet.maqamapp.workers.dev/mcp"
+      "url": "https://xguardgate.com/mcp"
     }
   ]
 }

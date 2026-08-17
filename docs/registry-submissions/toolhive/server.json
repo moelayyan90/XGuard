@@ -11,13 +11,13 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://xguard-mainnet.maqamapp.workers.dev/mcp"
+      "url": "https://xguardgate.com/mcp"
     }
   ],
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "io.github.stacklok": {
-        "https://xguard-mainnet.maqamapp.workers.dev/mcp": {
+        "https://xguardgate.com/mcp": {
           "tier": "Community",
           "status": "Active",
           "tags": ["remote", "x402", "payments", "security", "discovery"],

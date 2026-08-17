@@ -10,7 +10,7 @@ info:
   license:
     name: Apache-2.0
 servers:
-  - url: https://xguard-mainnet.maqamapp.workers.dev
+  - url: https://xguardgate.com
     description: Live Base mainnet Worker
 tags:
   - name: Operations

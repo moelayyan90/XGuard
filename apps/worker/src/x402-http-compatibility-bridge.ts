@@ -5,7 +5,7 @@ const BASE_V1 = "base";
 const BASE_V2 = "eip155:8453";
 const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const MAX_PAYMENT_HEADER_BYTES = 32 * 1024;
-const XGUARD_MAINNET_HOST = "xguard-mainnet.maqamapp.workers.dev";
+const XGUARD_MAINNET_HOST = "xguardgate.com";
 
 interface RateLimitDecision {
   success: boolean;

@@ -10,7 +10,7 @@ This example runs an MCP stdio server whose `safe_echo` tool is protected by x40
 The gateway defaults to:
 
 ```text
-https://xguard-mainnet.maqamapp.workers.dev
+https://xguardgate.com
 ```
 
 Set `XGUARD_URL` only when you deliberately want another explicit environment. Never place a wallet private key in the example process or repository.

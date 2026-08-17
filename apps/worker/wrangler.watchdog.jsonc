@@ -20,7 +20,7 @@
   },
   "vars": {
     "WATCHDOG_PRODUCER": "xguard-mainnet",
-    "WATCHDOG_MAINNET_URL": "https://xguard-mainnet.maqamapp.workers.dev",
+    "WATCHDOG_MAINNET_URL": "https://xguardgate.com",
   },
   "services": [
     {
