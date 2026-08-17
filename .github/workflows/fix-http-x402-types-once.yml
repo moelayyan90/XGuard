@@ -28,7 +28,7 @@ jobs:
 
           source_path = Path('apps/worker/src/x402-http-compatibility-bridge.ts')
           source = source_path.read_text()
-          old = '''  if (!Number.isSafeInteger(raw.maxTimeoutSeconds) || raw.maxTimeoutSeconds <= 0)\n    throw new Error("invalid_requirement_max_timeout_seconds");\n  const extra = raw.extra === undefined ? undefined : asRecord(raw.extra);\n  return {\n    scheme: "exact",\n    network: BASE_V2,\n    amount,\n    asset: raw.asset,\n    payTo,\n    maxTimeoutSeconds: raw.maxTimeoutSeconds,\n'''
+          old = '''  if (\n    !Number.isSafeInteger(raw.maxTimeoutSeconds) ||\n    raw.maxTimeoutSeconds <= 0\n  )\n    throw new Error("invalid_requirement_max_timeout_seconds");\n  const extra = raw.extra === undefined ? undefined : asRecord(raw.extra);\n  return {\n    scheme: "exact",\n    network: BASE_V2,\n    amount,\n    asset: raw.asset,\n    payTo,\n    maxTimeoutSeconds: raw.maxTimeoutSeconds,\n'''
           new = '''  if (\n    typeof raw.maxTimeoutSeconds !== "number" ||\n    !Number.isSafeInteger(raw.maxTimeoutSeconds) ||\n    raw.maxTimeoutSeconds <= 0\n  )\n    throw new Error("invalid_requirement_max_timeout_seconds");\n  const maxTimeoutSeconds = raw.maxTimeoutSeconds;\n  const extra = raw.extra === undefined ? undefined : asRecord(raw.extra);\n  return {\n    scheme: "exact",\n    network: BASE_V2,\n    amount,\n    asset: raw.asset,\n    payTo,\n    maxTimeoutSeconds,\n'''
           if old not in source:
               raise SystemExit('expected type-guard source block not found')
