@@ -1,21 +1,61 @@
 export * from "./mainnet-billing-legacy.js";
 
 import {
+  earnSettlementFee as legacyEarnSettlementFee,
   releaseSettlementFee as legacyReleaseSettlementFee,
   type FeeReservation,
 } from "./mainnet-billing-legacy.js";
+import {
+  accrueZeroFrictionFee,
+  isZeroFrictionMerchantId,
+} from "./zero-friction-billing.js";
 
 /**
- * Attempt fees are earned before downstream execution. Once a logical payment
- * has been charged, later settlement/finality failure must not refund that
- * accepted-attempt fee. Legacy callers still invoke releaseSettlementFee on
- * definitive failures, so make release idempotent for already-earned fees.
+ * Zero-friction merchants never prepay and never carry a request-time fee hold.
+ * Their fee is accrued only after the independent finality processor has moved
+ * settlement_projection to SETTLED. Legacy authenticated merchants retain the
+ * prior reservation model for backwards compatibility.
+ */
+export async function earnSettlementFee(
+  db: D1Database,
+  merchantId: string,
+  logicalPaymentKey: string,
+): Promise<FeeReservation> {
+  if (isZeroFrictionMerchantId(merchantId)) {
+    const accrued = await accrueZeroFrictionFee(
+      db,
+      merchantId,
+      logicalPaymentKey,
+    );
+    return {
+      logicalPaymentKey,
+      merchantId,
+      amountMicroUsd: accrued.amountMicroUsd,
+      state: "EARNED",
+    };
+  }
+  return legacyEarnSettlementFee(db, merchantId, logicalPaymentKey);
+}
+
+/**
+ * Zero-friction fees do not exist until finality, so failures and ambiguous
+ * attempts have nothing to refund. Legacy callers still use the original
+ * prepaid release path.
  */
 export async function releaseSettlementFee(
   db: D1Database,
   merchantId: string,
   logicalPaymentKey: string,
 ): Promise<FeeReservation> {
+  if (isZeroFrictionMerchantId(merchantId)) {
+    return {
+      logicalPaymentKey,
+      merchantId,
+      amountMicroUsd: 0,
+      state: "RELEASED",
+    };
+  }
+
   const row = await db
     .prepare(
       "SELECT amount_micro_usd,state FROM fee_reservations WHERE logical_payment_key=? AND merchant_id=?",
