@@ -39,6 +39,15 @@ jobs:
         run: |
           set -euo pipefail
 
+          github_curl() {
+            curl --fail-with-body --silent --show-error \
+              --retry 6 \
+              --retry-all-errors \
+              --retry-delay 2 \
+              --retry-max-time 45 \
+              "$@"
+          }
+
           publish_verify_check() {
             local sha="$1"
             [[ -n "$sha" && "$sha" != "null" ]] || return 0
@@ -55,7 +64,7 @@ jobs:
             }
           }));
           NODE
-            curl --fail-with-body --silent --show-error \
+            github_curl \
               --request POST \
               --header "Authorization: Bearer ${GH_TOKEN}" \
               --header "Accept: application/vnd.github+json" \
@@ -64,8 +73,13 @@ jobs:
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/check-runs" >/dev/null
           }
 
+          # Publish the required PR-head check first. The workflow tests GitHub's
+          # pull-request merge ref, so this marks the head only after the full
+          # merge-state verification suite has passed.
+          publish_verify_check "$HEAD_SHA"
+
           CURRENT_MERGE_SHA="$(
-            curl --fail-with-body --silent --show-error \
+            github_curl \
               --header "Authorization: Bearer ${GH_TOKEN}" \
               --header "Accept: application/vnd.github+json" \
               --header "X-GitHub-Api-Version: 2022-11-28" \
@@ -74,7 +88,8 @@ jobs:
           )"
 
           declare -A SEEN=()
-          for sha in "$TESTED_MERGE_SHA" "$HEAD_SHA" "$CURRENT_MERGE_SHA"; do
+          SEEN["$HEAD_SHA"]=1
+          for sha in "$TESTED_MERGE_SHA" "$CURRENT_MERGE_SHA"; do
             [[ -n "$sha" && "$sha" != "null" ]] || continue
             [[ -z "${SEEN[$sha]:-}" ]] || continue
             publish_verify_check "$sha"

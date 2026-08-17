@@ -66,52 +66,33 @@ jobs:
 
           echo 'XGuard Not Human Search publication verified.'
 
-  global-a2a-registry:
+  agenthermes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Submit and verify XGuard in Global A2A Registry
+      - name: Scan and verify XGuard in AgentHermes discovery
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://xguardgate.com'
-          API='https://api.a2a-registry.org'
-          CARD="${BASE}/.well-known/agent-card.json"
+          API='https://agenthermes.ai/api/v1'
 
-          card="$(curl -fsS --max-time 20 "${CARD}")"
-          printf '%s' "${card}" | node -e '
-            let s="";
-            process.stdin.on("data",d=>s+=d).on("end",()=>{
-              const x=JSON.parse(s);
-              const text=JSON.stringify(x).toLowerCase();
-              if (!text.includes("xguard") || !text.includes("xguardgate.com")) process.exit(1);
-            });
-          '
+          # AgentHermes documents POST /scan as a public no-signup endpoint and
+          # indexes domains with an Agent Card through its discovery scanner.
+          curl -fsS --max-time 20 "${BASE}/.well-known/agent-card.json" >/dev/null
+          curl -fsS --max-time 20 "${BASE}/.well-known/mcp/server.json" >/dev/null
+          curl -fsS --max-time 20 "${BASE}/openapi.json" >/dev/null
 
-          submission="$(curl -sS --max-time 45 -w $'\n%{http_code}' \
-            -X POST "${API}/public/ingest" \
+          scan="$(curl --fail-with-body -sS --max-time 60 \
+            -X POST "${API}/scan" \
             -H 'Content-Type: application/json' \
-            --data '{"manifestUrl":"https://xguardgate.com/.well-known/agent-card.json"}')"
-          code="${submission##*$'\n'}"
-          body="${submission%$'\n'*}"
-          printf '%s\n' "${body}"
-
-          # First publication should normally be 2xx. Treat explicit duplicate/already-exists
-          # responses as a refresh-safe success, but reject unrelated failures.
-          lower="$(printf '%s' "${body}" | tr '[:upper:]' '[:lower:]')"
-          if [[ ! "${code}" =~ ^2[0-9][0-9]$ ]] && \
-             [[ "${code}" != "409" ]] && \
-             [[ "${lower}" != *"already"* ]] && \
-             [[ "${lower}" != *"duplicate"* ]] && \
-             [[ "${lower}" != *"exist"* ]]; then
-            echo "Global A2A Registry rejected XGuard publication (HTTP ${code})." >&2
-            exit 1
-          fi
+            --data '{"url":"xguardgate.com"}')"
+          printf '%s\n' "${scan}"
 
           found=0
           for attempt in 1 2 3 4 5 6; do
-            results="$(curl -fsS --max-time 30 "${API}/public/agents?q=XGuard" || true)"
-            if printf '%s' "${results}" | grep -Eqi 'xguardgate\.com|xguard'; then
+            results="$(curl -fsS --max-time 30 "${API}/discover?q=XGuard" || true)"
+            if printf '%s' "${results}" | grep -Eqi 'xguardgate\.com|"name"[[:space:]]*:[[:space:]]*"XGuard"'; then
               printf '%s\n' "${results}"
               found=1
               break
@@ -120,8 +101,8 @@ jobs:
           done
 
           if [[ "${found}" != "1" ]]; then
-            echo 'Global A2A Registry accepted/recognized the submission but XGuard is not searchable yet.' >&2
+            echo 'AgentHermes scan completed but XGuard is not yet present in public discovery.' >&2
             exit 1
           fi
 
-          echo 'XGuard Global A2A Registry publication verified.'
+          echo 'XGuard AgentHermes discovery publication verified.'
