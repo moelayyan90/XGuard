@@ -58,13 +58,24 @@ describe("mainnet release gate", () => {
     expect(script).not.toContain("build:economic-preview");
   });
 
-  it("puts the universal router ahead of the monetized production entrypoint", () => {
+  it("puts payment discovery and hardening ahead of the monetized production entrypoint", () => {
     expect(mainnetConfig).toContain('"main": "src/universal-mainnet.ts"');
+    expect(mainnetConfig).toContain('"workers_dev": false');
+    expect(mainnetConfig).toContain('"global_fetch_strictly_public"');
     expect(universalMainnetEntrypoint).toContain(
       'import { genericHttpConnectorResponse } from "./generic-http-connector.js";',
     );
     expect(universalMainnetEntrypoint).toContain(
       'import { universalProtocolResponse } from "./universal-protocol-router.js";',
+    );
+    expect(universalMainnetEntrypoint).toContain(
+      "const paymentContract = publicPaymentContractResponse(",
+    );
+    expect(universalMainnetEntrypoint).toContain(
+      "const securityBlock = universalSecurityGuardResponse(",
+    );
+    expect(universalMainnetEntrypoint).toContain(
+      "const resilientWebhook = await resilientWebhookIngressResponse(",
     );
     expect(universalMainnetEntrypoint).toContain(
       "const protocolResponse = await universalProtocolResponse(",
@@ -73,7 +84,7 @@ describe("mainnet release gate", () => {
       "const genericHttp = await genericHttpConnectorResponse(",
     );
     expect(universalMainnetEntrypoint).toContain(
-      "return mainnetFetch(standardRequest, env, ctx);",
+      "return normalizePublicPaymentContract(standardRequest, response);",
     );
   });
 
