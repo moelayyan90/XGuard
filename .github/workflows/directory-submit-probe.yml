@@ -12,53 +12,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect mcpservers.org client submission code
+      - name: Inspect mcpservers.org submit route bundle
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import html as htmllib
-          import re
-          import urllib.parse
-          import urllib.request
-
-          base='https://mcpservers.org/submit'
+          import re, urllib.request
           headers={'User-Agent':'Mozilla/5.0 XGuard directory submission probe'}
-          with urllib.request.urlopen(urllib.request.Request(base,headers=headers),timeout=20) as r:
-              page=r.read().decode('utf-8','replace')
-          scripts=[urllib.parse.urljoin(base,htmllib.unescape(x)) for x in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']',page,re.I)]
-          print('SCRIPT_URLS')
-          for s in scripts: print(s)
-
-          needles=(
-              'toolautosubmit','toolname','submit_mcp_server','Submit a new MCP server',
-              'FormData','fetch(','XMLHttpRequest','serverAction','action=','/submit',
-              'contact_email','category','One sentence about your server'
-          )
-          for src in scripts:
-              try:
-                  with urllib.request.urlopen(urllib.request.Request(src,headers=headers),timeout=20) as r:
-                      js=r.read().decode('utf-8','replace')
-              except Exception as e:
-                  print('SCRIPT_ERROR',src,repr(e)); continue
-              print('SCRIPT',src,'BYTES',len(js))
-              found=False
-              for needle in needles:
-                  pos=[]; start=0
-                  while len(pos)<8:
-                      i=js.find(needle,start)
-                      if i<0: break
-                      pos.append(i); start=i+len(needle)
-                  if pos:
-                      found=True
-                      print('NEEDLE',needle,'POSITIONS',pos)
-                      for i in pos[:3]:
-                          print('CONTEXT',re.sub(r'\s+',' ',js[max(0,i-1200):i+2400]))
-              if not found:
-                  print('NO_MATCH')
-
-          print('PAGE_MARKERS')
-          for needle in ('toolautosubmit','toolname','__next_f.push','submit_mcp_server','serverAction','action'):
-              for m in list(re.finditer(re.escape(needle),page,re.I))[:5]:
-                  i=m.start(); print(needle,re.sub(r'\s+',' ',page[max(0,i-1200):i+2400]))
+          urls=[
+            'https://mcpservers.org/assets/submit-D6ie-Y5K.js',
+            'https://mcpservers.org/assets/createServerFn-DZZNDdqS.js',
+            'https://mcpservers.org/assets/submit-success-panel-B7w4a_jb.js',
+            'https://mcpservers.org/assets/submit-success-CRRGWbL4.js',
+          ]
+          needles=('submit','fetch(','createServerFn','validator','method','POST','serverFn','plan','email','category','url','name','description','action','premium','stripe')
+          for url in urls:
+            print('=====URL',url,'=====')
+            try:
+              with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=20) as r:
+                js=r.read().decode('utf-8','replace')
+            except Exception as e:
+              print('ERROR',repr(e)); continue
+            print('BYTES',len(js))
+            print('IMPORTS',re.findall(r'from["\']([^"\']+)["\']',js)[:50])
+            for needle in needles:
+              matches=list(re.finditer(re.escape(needle),js,re.I))[:8]
+              if not matches: continue
+              print('NEEDLE',needle,'COUNT_AT_LEAST',len(matches))
+              for m in matches[:4]:
+                i=m.start(); print('CTX',re.sub(r'\s+',' ',js[max(0,i-1600):i+3200]))
           PY
