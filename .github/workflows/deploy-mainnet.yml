@@ -70,12 +70,17 @@ jobs:
             [/"name"\s*:\s*"xguard-mainnet"/, "Worker target"],
             [/"main"\s*:\s*"src\/universal-mainnet\.ts"/, "universal mainnet entrypoint"],
             [/"database_name"\s*:\s*"xguard-mainnet"/, "D1 target"],
+            [/"workers_dev"\s*:\s*false/, "workers.dev disabled"],
+            [/"global_fetch_strictly_public"/, "strict public outbound fetch"],
+            [/"XGUARD_FEE_MICRO_USD"\s*:\s*"40000"/, "x402 attempt fee"],
             [/"XGUARD_VERIFY_FEE_MICRO_USD"\s*:\s*"200"/, "verify fee"],
             [/"XGUARD_MODEL_FEE_MICRO_USD"\s*:\s*"100"/, "model fee"],
             [/"XGUARD_TOOL_FEE_MICRO_USD"\s*:\s*"200"/, "tool fee"],
             [/"XGUARD_SOURCE_FEE_MICRO_USD"\s*:\s*"1000"/, "source fee"],
             [/"XGUARD_ANALYSIS_FEE_MICRO_USD"\s*:\s*"2000"/, "analysis fee"],
             [/"XGUARD_SECURITY_FEE_MICRO_USD"\s*:\s*"1000"/, "security fee"],
+            [/"WEBHOOK_DELIVERY_QUEUE"/, "durable webhook delivery queue"],
+            [/"WEBHOOK_RATE_LIMITER"/, "webhook rate limiter"],
           ];
           for (const [pattern, label] of required) {
             if (!pattern.test(source)) throw new Error(`refusing deployment: invalid ${label}`);
@@ -93,7 +98,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
+          BASE_URL="https://xguardgate.com"
           VERIFY_TOKEN="${GITHUB_SHA:-$(date +%s)}"
 
           propagated=0
@@ -112,6 +117,17 @@ jobs:
             echo "::error::The universal XGuard protocol registry did not propagate."
             exit 1
           fi
+
+          payment_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/payment-manifest?deploy=${VERIFY_TOKEN}")"
+          printf '%s' "${payment_body}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const p=x.pricing||{};if(p.amountUsd!=="0.04"||p.amountMicroUsd!==40000||p.event!=="accepted_authenticated_economic_attempt")process.exit(1);if(!x.onboarding?.human||!x.execution?.verify||!x.execution?.settle)process.exit(1)})'
+
+          agent_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/agent-card.json?deploy=${VERIFY_TOKEN}")"
+          printf '%s' "${agent_body}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolVersion==="1.0"&&i.protocolBinding==="JSONRPC"))process.exit(1)})'
+
+          curl -fsS --max-time 15 -H 'Accept: text/html' "${BASE_URL}/pay?deploy=${VERIFY_TOKEN}" \
+            | grep -q '\$0.04'
 
           health_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/healthz?deploy=${VERIFY_TOKEN}")"
           if ! printf '%s' "${health_body}" \
