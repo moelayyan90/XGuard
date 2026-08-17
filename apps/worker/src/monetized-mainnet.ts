@@ -4,6 +4,12 @@ import mainnetModern, {
   XPayGlobalRateGate,
 } from "./mainnet-modern.js";
 import { merchantBalance } from "./mainnet-billing.js";
+import {
+  classifyMcpToolCall,
+  configuredFee,
+  feeForMcpKind,
+  type McpBillingDescriptor,
+} from "./monetization-policy.js";
 import { authorizeMerchantScope } from "./mainnet-revenue-hardening.js";
 import {
   reserveGatewayFee,
@@ -44,14 +50,6 @@ const delegateFetch = mainnetModern.fetch as unknown as CoreFetch;
 const delegateScheduled = mainnetModern.scheduled as unknown as CoreScheduled;
 
 const MCP_BODY_LIMIT = 128 * 1024;
-const FREE_MCP_TOOLS = new Set(["xguard_status"]);
-
-export interface McpBillingDescriptor {
-  name: string;
-  kind: GatewayEventKind;
-  provider: string;
-  operation: string;
-}
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
@@ -249,47 +247,6 @@ export async function inspectMcpBillingDescriptor(
   return classifyMcpToolCall(payload);
 }
 
-export function classifyMcpToolCall(
-  payload: unknown,
-): McpBillingDescriptor | null {
-  if (!isRecord(payload) || payload.method !== "tools/call") return null;
-  const params = isRecord(payload.params) ? payload.params : null;
-  const name =
-    params !== null && typeof params.name === "string" ? params.name : "";
-  if (name === "" || FREE_MCP_TOOLS.has(name)) return null;
-
-  if (name === "xguard_discover" || name === "xguard_resource_details")
-    return {
-      name,
-      kind: "SOURCE",
-      provider: "xguard-mcp",
-      operation: `mcp.${name}`,
-    };
-
-  if (name.includes("security"))
-    return {
-      name,
-      kind: "SECURITY",
-      provider: "xguard-mcp",
-      operation: `mcp.${name}`,
-    };
-
-  if (name.includes("analy"))
-    return {
-      name,
-      kind: "ANALYSIS",
-      provider: "xguard-mcp",
-      operation: `mcp.${name}`,
-    };
-
-  return {
-    name,
-    kind: "TOOL",
-    provider: "xguard-mcp",
-    operation: `mcp.${name}`,
-  };
-}
-
 async function successfulMcpToolResponse(response: Response): Promise<boolean> {
   if (response.status < 200 || response.status >= 300) return false;
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
@@ -298,54 +255,6 @@ async function successfulMcpToolResponse(response: Response): Promise<boolean> {
   if (!isRecord(payload) || payload.error !== undefined) return false;
   if (!isRecord(payload.result)) return false;
   return payload.result.isError !== true;
-}
-
-function feeForMcpKind(
-  env: MonetizedMainnetEnv,
-  kind: GatewayEventKind,
-): number {
-  if (kind === "MODEL")
-    return configuredFee(
-      env.XGUARD_MODEL_FEE_MICRO_USD,
-      100,
-      "XGUARD_MODEL_FEE_MICRO_USD",
-    );
-  if (kind === "TOOL")
-    return configuredFee(
-      env.XGUARD_TOOL_FEE_MICRO_USD,
-      200,
-      "XGUARD_TOOL_FEE_MICRO_USD",
-    );
-  if (kind === "SOURCE")
-    return configuredFee(
-      env.XGUARD_SOURCE_FEE_MICRO_USD,
-      1_000,
-      "XGUARD_SOURCE_FEE_MICRO_USD",
-    );
-  if (kind === "ANALYSIS")
-    return configuredFee(
-      env.XGUARD_ANALYSIS_FEE_MICRO_USD,
-      2_000,
-      "XGUARD_ANALYSIS_FEE_MICRO_USD",
-    );
-  return configuredFee(
-    env.XGUARD_SECURITY_FEE_MICRO_USD,
-    1_000,
-    "XGUARD_SECURITY_FEE_MICRO_USD",
-  );
-}
-
-function configuredFee(
-  raw: string | undefined,
-  fallback: number,
-  name: string,
-): number {
-  const value = raw ?? String(fallback);
-  if (!/^[0-9]+$/.test(value)) throw new Error(`invalid_${name.toLowerCase()}`);
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > 1_000_000)
-    throw new Error(`invalid_${name.toLowerCase()}`);
-  return parsed;
 }
 
 function requestId(request: Request): string {
