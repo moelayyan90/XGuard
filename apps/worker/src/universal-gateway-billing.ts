@@ -1,9 +1,5 @@
 export type GatewayEventKind =
-  | "MODEL"
-  | "TOOL"
-  | "SOURCE"
-  | "ANALYSIS"
-  | "SECURITY";
+  "MODEL" | "TOOL" | "SOURCE" | "ANALYSIS" | "SECURITY";
 
 interface GatewayReservationRow {
   event_key: string;
@@ -49,7 +45,8 @@ export interface GatewayEarnInput {
 const MAX_SAFE_MICRO_USD = Number.MAX_SAFE_INTEGER;
 
 export function gatewayEventKey(merchantId: string, requestId: string): string {
-  if (!/^[0-9a-f-]{36}$/i.test(merchantId)) throw new Error("invalid_merchant_id");
+  if (!/^[0-9a-f-]{36}$/i.test(merchantId))
+    throw new Error("invalid_merchant_id");
   if (!/^[A-Za-z0-9._:-]{8,96}$/.test(requestId))
     throw new Error("invalid_gateway_request_id");
   return `gw:${merchantId}:${requestId}`;
@@ -64,7 +61,8 @@ export async function reserveGatewayFee(
   const existing = await reservation(db, eventKey);
   if (existing !== null) {
     assertReservationMatches(existing, input);
-    if (existing.state === "EARNED") throw new Error("gateway_event_already_earned");
+    if (existing.state === "EARNED")
+      throw new Error("gateway_event_already_earned");
     if (existing.state === "HELD") throw new Error("gateway_event_in_progress");
     return reholdGatewayFee(db, existing);
   }
@@ -134,8 +132,14 @@ export async function earnGatewayFee(
   if (row.state !== "HELD") throw new Error("gateway_fee_not_held");
   const upstreamStatus = optionalHttpStatus(input.upstreamStatus);
   const latencyMs = nonNegativeInteger(input.latencyMs, "latency_ms");
-  const requestBytes = nonNegativeInteger(input.requestBytes ?? 0, "request_bytes");
-  const responseBytes = nonNegativeInteger(input.responseBytes ?? 0, "response_bytes");
+  const requestBytes = nonNegativeInteger(
+    input.requestBytes ?? 0,
+    "request_bytes",
+  );
+  const responseBytes = nonNegativeInteger(
+    input.responseBytes ?? 0,
+    "response_bytes",
+  );
   const operationId = crypto.randomUUID();
   const now = new Date().toISOString();
   const eventId = `gateway:${row.event_key}`;
@@ -227,7 +231,8 @@ export async function earnGatewayFee(
   ]);
 
   const final = await requireReservation(db, row.merchant_id, row.event_key);
-  if (final.state !== "EARNED") throw new Error("gateway_fee_transition_race_lost");
+  if (final.state !== "EARNED")
+    throw new Error("gateway_fee_transition_race_lost");
   return publicReservation(final);
 }
 
@@ -238,7 +243,8 @@ export async function releaseGatewayFee(
 ): Promise<GatewayReservation> {
   const row = await requireReservation(db, merchantId, eventKey);
   if (row.state === "RELEASED") return publicReservation(row);
-  if (row.state === "EARNED") throw new Error("earned_gateway_fee_cannot_be_released");
+  if (row.state === "EARNED")
+    throw new Error("earned_gateway_fee_cannot_be_released");
   const operationId = crypto.randomUUID();
   const now = new Date().toISOString();
 
@@ -273,7 +279,8 @@ export async function releaseGatewayFee(
   ]);
 
   const final = await requireReservation(db, merchantId, eventKey);
-  if (final.state !== "RELEASED") throw new Error("gateway_fee_transition_race_lost");
+  if (final.state !== "RELEASED")
+    throw new Error("gateway_fee_transition_race_lost");
   return publicReservation(final);
 }
 

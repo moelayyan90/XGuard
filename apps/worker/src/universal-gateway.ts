@@ -169,19 +169,31 @@ async function billProviderProxy(
   const url = new URL(request.url);
   const remainder = url.pathname.slice(PROXY_PREFIX.length);
   const slash = remainder.indexOf("/");
-  const providerId = (slash === -1 ? remainder : remainder.slice(0, slash)).toLowerCase();
+  const providerId = (
+    slash === -1 ? remainder : remainder.slice(0, slash)
+  ).toLowerCase();
   const suffix = slash === -1 ? "/" : remainder.slice(slash);
   const provider = PROVIDERS[providerId];
-  if (provider === undefined) return jsonResponse({ error: "unsupported_gateway_provider" }, 404);
-  if (!safeProxySuffix(suffix)) return jsonResponse({ error: "invalid_upstream_path" }, 400);
-  if (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS")
+  if (provider === undefined)
+    return jsonResponse({ error: "unsupported_gateway_provider" }, 404);
+  if (!safeProxySuffix(suffix))
+    return jsonResponse({ error: "invalid_upstream_path" }, 400);
+  if (
+    request.method === "GET" ||
+    request.method === "HEAD" ||
+    request.method === "OPTIONS"
+  )
     return jsonResponse(
-      { error: "proxy_method_not_billable", message: "Use POST, PUT, PATCH or DELETE for provider execution" },
+      {
+        error: "proxy_method_not_billable",
+        message: "Use POST, PUT, PATCH or DELETE for provider execution",
+      },
       405,
       { Allow: "POST, PUT, PATCH, DELETE" },
     );
 
-  const upstreamKey = request.headers.get("x-xguard-upstream-key")?.trim() ?? "";
+  const upstreamKey =
+    request.headers.get("x-xguard-upstream-key")?.trim() ?? "";
   if (upstreamKey.length < 8 || upstreamKey.length > 4096)
     return jsonResponse({ error: "upstream_key_required" }, 401);
 
@@ -212,7 +224,9 @@ async function billProviderProxy(
       }),
     );
   } catch {
-    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(() => undefined);
+    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
+      () => undefined,
+    );
     return gatewayResponse(
       { error: "upstream_unavailable", provider: provider.id },
       502,
@@ -223,7 +237,9 @@ async function billProviderProxy(
 
   const latencyMs = Math.max(0, Date.now() - started);
   if (upstream.status < 200 || upstream.status >= 400) {
-    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(() => undefined);
+    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
+      () => undefined,
+    );
     return proxiedResponse(upstream, requestId, 0, provider.id, latencyMs);
   }
 
@@ -235,7 +251,13 @@ async function billProviderProxy(
     requestBytes: contentLength(request.headers),
     responseBytes: contentLength(upstream.headers),
   });
-  return proxiedResponse(upstream, requestId, feeMicroUsd, provider.id, latencyMs);
+  return proxiedResponse(
+    upstream,
+    requestId,
+    feeMicroUsd,
+    provider.id,
+    latencyMs,
+  );
 }
 
 async function billDelegatedSourceSearch(
@@ -274,14 +296,29 @@ async function billDelegatedSourceSearch(
     target.search = `?query=${encodeURIComponent(query)}`;
     sourceResponse = await delegate(new Request(target.toString()));
   } catch {
-    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(() => undefined);
-    return gatewayResponse({ error: "source_search_unavailable" }, 503, requestId, 0);
+    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
+      () => undefined,
+    );
+    return gatewayResponse(
+      { error: "source_search_unavailable" },
+      503,
+      requestId,
+      0,
+    );
   }
 
   const latencyMs = Math.max(0, Date.now() - started);
   if (!sourceResponse.ok) {
-    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(() => undefined);
-    return proxiedResponse(sourceResponse, requestId, 0, "xguard-catalog", latencyMs);
+    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
+      () => undefined,
+    );
+    return proxiedResponse(
+      sourceResponse,
+      requestId,
+      0,
+      "xguard-catalog",
+      latencyMs,
+    );
   }
   await earnGatewayFee(env.DB, {
     merchantId,
@@ -290,7 +327,13 @@ async function billDelegatedSourceSearch(
     latencyMs,
     responseBytes: contentLength(sourceResponse.headers),
   });
-  return proxiedResponse(sourceResponse, requestId, feeMicroUsd, "xguard-catalog", latencyMs);
+  return proxiedResponse(
+    sourceResponse,
+    requestId,
+    feeMicroUsd,
+    "xguard-catalog",
+    latencyMs,
+  );
 }
 
 async function billLocalOperation(
@@ -329,7 +372,9 @@ async function billLocalOperation(
       "X-XGuard-Gateway-Kind": kind.toLowerCase(),
     });
   } catch (error) {
-    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(() => undefined);
+    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
+      () => undefined,
+    );
     return gatewayResponse({ error: errorCode(error) }, 400, requestId, 0);
   }
 }
@@ -353,21 +398,28 @@ async function reserveOrResponse(
       return gatewayResponse(
         {
           error: code,
-          message: "Top up the XGuard prepaid service balance before executing billable gateway traffic",
+          message:
+            "Top up the XGuard prepaid service balance before executing billable gateway traffic",
         },
         402,
         input.requestId,
         0,
       );
-    if (code === "gateway_event_already_earned" || code === "gateway_event_in_progress")
+    if (
+      code === "gateway_event_already_earned" ||
+      code === "gateway_event_in_progress"
+    )
       return gatewayResponse({ error: code }, 409, input.requestId, 0);
     return gatewayResponse({ error: code }, 400, input.requestId, 0);
   }
 }
 
-function securityInspection(body: Record<string, unknown>): Record<string, unknown> {
+function securityInspection(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
   const flags: string[] = [];
-  const targetRaw = typeof body.targetUrl === "string" ? body.targetUrl.trim() : "";
+  const targetRaw =
+    typeof body.targetUrl === "string" ? body.targetUrl.trim() : "";
   if (targetRaw !== "") {
     let target: URL;
     try {
@@ -376,7 +428,8 @@ function securityInspection(body: Record<string, unknown>): Record<string, unkno
       throw new Error("invalid_target_url");
     }
     if (target.protocol !== "https:") flags.push("PLAINTEXT_TARGET");
-    if (isPrivateHostname(target.hostname)) flags.push("PRIVATE_OR_LOCAL_TARGET");
+    if (isPrivateHostname(target.hostname))
+      flags.push("PRIVATE_OR_LOCAL_TARGET");
     for (const key of target.searchParams.keys())
       if (/token|secret|password|api[_-]?key|authorization/i.test(key)) {
         flags.push("CREDENTIAL_IN_QUERY");
@@ -384,25 +437,38 @@ function securityInspection(body: Record<string, unknown>): Record<string, unkno
       }
   }
 
-  const method = typeof body.method === "string" ? body.method.toUpperCase() : "GET";
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) flags.push("MUTATING_REQUEST");
+  const method =
+    typeof body.method === "string" ? body.method.toUpperCase() : "GET";
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method))
+    flags.push("MUTATING_REQUEST");
   const headerNames = Array.isArray(body.headerNames)
-    ? body.headerNames.filter((value): value is string => typeof value === "string")
+    ? body.headerNames.filter(
+        (value): value is string => typeof value === "string",
+      )
     : [];
-  if (headerNames.some((name) => /authorization|api-key|x-api-key|cookie/i.test(name)))
+  if (
+    headerNames.some((name) =>
+      /authorization|api-key|x-api-key|cookie/i.test(name),
+    )
+  )
     flags.push("CREDENTIAL_BEARING_REQUEST");
 
-  const denied = flags.includes("PLAINTEXT_TARGET") || flags.includes("PRIVATE_OR_LOCAL_TARGET");
+  const denied =
+    flags.includes("PLAINTEXT_TARGET") ||
+    flags.includes("PRIVATE_OR_LOCAL_TARGET");
   const decision = denied ? "DENY" : flags.length > 0 ? "REVIEW" : "ALLOW";
   return {
     decision,
     flags: [...new Set(flags)],
-    risk: decision === "DENY" ? "high" : decision === "REVIEW" ? "medium" : "low",
+    risk:
+      decision === "DENY" ? "high" : decision === "REVIEW" ? "medium" : "low",
     inspectedAt: new Date().toISOString(),
   };
 }
 
-function analyzeCandidates(body: Record<string, unknown>): Record<string, unknown> {
+function analyzeCandidates(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
   if (!Array.isArray(body.candidates) || body.candidates.length === 0)
     throw new Error("analysis_candidates_required");
   if (body.candidates.length > MAX_ANALYSIS_CANDIDATES)
@@ -412,21 +478,33 @@ function analyzeCandidates(body: Record<string, unknown>): Record<string, unknow
     if (typeof value !== "object" || value === null || Array.isArray(value))
       throw new Error("invalid_analysis_candidate");
     const row = value as Record<string, unknown>;
-    const provider = typeof row.provider === "string" ? row.provider.trim() : "";
+    const provider =
+      typeof row.provider === "string" ? row.provider.trim() : "";
     if (!/^[A-Za-z0-9._-]{1,64}$/.test(provider))
       throw new Error("invalid_analysis_provider");
     return {
       index,
       provider,
       latencyMs: boundedNumber(row.latencyMs, 0, 120_000, "latencyMs"),
-      costMicroUsd: boundedNumber(row.costMicroUsd, 0, 1_000_000_000, "costMicroUsd"),
+      costMicroUsd: boundedNumber(
+        row.costMicroUsd,
+        0,
+        1_000_000_000,
+        "costMicroUsd",
+      ),
       errorRateBps: boundedNumber(row.errorRateBps, 0, 10_000, "errorRateBps"),
       qualityBps: boundedNumber(row.qualityBps, 0, 10_000, "qualityBps"),
     };
   });
 
-  const maxLatency = Math.max(1, ...candidates.map((candidate) => candidate.latencyMs));
-  const maxCost = Math.max(1, ...candidates.map((candidate) => candidate.costMicroUsd));
+  const maxLatency = Math.max(
+    1,
+    ...candidates.map((candidate) => candidate.latencyMs),
+  );
+  const maxCost = Math.max(
+    1,
+    ...candidates.map((candidate) => candidate.costMicroUsd),
+  );
   const ranked = candidates
     .map((candidate) => {
       const quality = candidate.qualityBps / 10_000;
@@ -434,7 +512,8 @@ function analyzeCandidates(body: Record<string, unknown>): Record<string, unknow
       const latency = 1 - candidate.latencyMs / maxLatency;
       const cost = 1 - candidate.costMicroUsd / maxCost;
       const scoreBps = Math.round(
-        (quality * 0.4 + reliability * 0.3 + latency * 0.15 + cost * 0.15) * 10_000,
+        (quality * 0.4 + reliability * 0.3 + latency * 0.15 + cost * 0.15) *
+          10_000,
       );
       return { ...candidate, scoreBps };
     })
@@ -450,7 +529,9 @@ function analyzeCandidates(body: Record<string, unknown>): Record<string, unknow
 
 function upstreamUrl(baseUrl: string, suffix: string, search: string): string {
   const base = new URL(baseUrl);
-  const basePath = base.pathname.endsWith("/") ? base.pathname.slice(0, -1) : base.pathname;
+  const basePath = base.pathname.endsWith("/")
+    ? base.pathname.slice(0, -1)
+    : base.pathname;
   base.pathname = `${basePath}${suffix}`;
   base.search = search;
   return base.toString();
@@ -478,9 +559,11 @@ function upstreamHeaders(
       continue;
     headers.set(name, value);
   }
-  if (provider.auth === "bearer") headers.set("Authorization", `Bearer ${upstreamKey}`);
+  if (provider.auth === "bearer")
+    headers.set("Authorization", `Bearer ${upstreamKey}`);
   if (provider.auth === "x-api-key") headers.set("x-api-key", upstreamKey);
-  if (provider.auth === "x-goog-api-key") headers.set("x-goog-api-key", upstreamKey);
+  if (provider.auth === "x-goog-api-key")
+    headers.set("x-goog-api-key", upstreamKey);
   if (provider.id === "github" && !headers.has("User-Agent"))
     headers.set("User-Agent", "XGuard-Universal-Gateway/1.0");
   return headers;
@@ -520,14 +603,14 @@ function gatewayResponse(
 function feeForKind(env: UniversalGatewayEnv, kind: GatewayEventKind): number {
   const raw =
     kind === "MODEL"
-      ? env.XGUARD_MODEL_FEE_MICRO_USD ?? "10"
+      ? (env.XGUARD_MODEL_FEE_MICRO_USD ?? "10")
       : kind === "TOOL"
-        ? env.XGUARD_TOOL_FEE_MICRO_USD ?? "10"
+        ? (env.XGUARD_TOOL_FEE_MICRO_USD ?? "10")
         : kind === "SOURCE"
-          ? env.XGUARD_SOURCE_FEE_MICRO_USD ?? "25"
+          ? (env.XGUARD_SOURCE_FEE_MICRO_USD ?? "25")
           : kind === "ANALYSIS"
-            ? env.XGUARD_ANALYSIS_FEE_MICRO_USD ?? "50"
-            : env.XGUARD_SECURITY_FEE_MICRO_USD ?? "5";
+            ? (env.XGUARD_ANALYSIS_FEE_MICRO_USD ?? "50")
+            : (env.XGUARD_SECURITY_FEE_MICRO_USD ?? "5");
   if (!/^[0-9]+$/.test(raw)) throw new Error("invalid_gateway_fee_config");
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value <= 0 || value > 1_000_000)
@@ -546,12 +629,17 @@ function gatewayRequestId(request: Request): string {
 }
 
 async function jsonObject(request: Request): Promise<Record<string, unknown>> {
-  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase();
-  if (contentType !== "application/json") throw new Error("application_json_required");
+  const contentType = request.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.toLowerCase();
+  if (contentType !== "application/json")
+    throw new Error("application_json_required");
   const declared = contentLength(request.headers);
   if (declared > MAX_JSON_BODY_BYTES) throw new Error("request_body_too_large");
   const text = await request.text();
-  if (text.length > MAX_JSON_BODY_BYTES) throw new Error("request_body_too_large");
+  if (text.length > MAX_JSON_BODY_BYTES)
+    throw new Error("request_body_too_large");
   const value = JSON.parse(text) as unknown;
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error("json_object_required");
@@ -578,9 +666,14 @@ function safeProxySuffix(value: string): boolean {
 
 function isPrivateHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local"))
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local")
+  )
     return true;
-  if (host === "169.254.169.254" || host === "0.0.0.0" || host === "::1") return true;
+  if (host === "169.254.169.254" || host === "0.0.0.0" || host === "::1")
+    return true;
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (match === null) return false;
   const octets = match.slice(1).map(Number);
@@ -601,8 +694,18 @@ function contentLength(headers: Headers): number {
   return Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
-function boundedNumber(value: unknown, min: number, max: number, field: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max)
+function boundedNumber(
+  value: unknown,
+  min: number,
+  max: number,
+  field: string,
+): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < min ||
+    value > max
+  )
     throw new Error(`invalid_${field}`);
   return value;
 }
