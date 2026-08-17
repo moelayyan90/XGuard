@@ -10,6 +10,12 @@ import {
 import { authorizeMerchantScope } from "./mainnet-revenue-hardening.js";
 import { universalGatewayResponse } from "./universal-gateway.js";
 import { releaseStaleGatewayHolds } from "./universal-gateway-billing.js";
+import {
+  adaptCompatibilityResponse,
+  augmentSupportedCompatibility,
+  normalizeX402CompatibilityRequest,
+  type CompatibilityRequest,
+} from "./x402-compatibility-bridge.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -43,24 +49,43 @@ const GATEWAY_STALE_HOLD_LIMIT = 50;
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
+    let compatibility: CompatibilityRequest | null = null;
+    let effectiveRequest = standardRequest;
+
+    try {
+      compatibility = await normalizeX402CompatibilityRequest(standardRequest);
+      if (compatibility !== null) effectiveRequest = compatibility.request;
+    } catch (error) {
+      return secureResponse(
+        compatibilityErrorResponse(
+          error instanceof Error ? error.message : "compatibility_bridge_failed",
+        ),
+      );
+    }
 
     const rotated = await rotateCredentialWithVaultRewrap(
-      standardRequest,
+      effectiveRequest,
       env,
       ctx,
     );
     if (rotated !== null) return secureResponse(rotated);
 
-    const automatic = await autoInvokeResponse(standardRequest, env);
+    const automatic = await autoInvokeResponse(effectiveRequest, env);
     if (automatic !== null) return secureResponse(automatic);
 
     const gateway = await universalGatewayResponse(
-      standardRequest,
+      effectiveRequest,
       env,
       async (internalRequest) => delegateFetch(internalRequest, env, ctx),
     );
     if (gateway !== null) return secureResponse(gateway);
-    return delegateFetch(standardRequest, env, ctx);
+
+    let response = await delegateFetch(effectiveRequest, env, ctx);
+    const url = new URL(effectiveRequest.url);
+    if (effectiveRequest.method === "GET" && url.pathname === "/supported")
+      response = await augmentSupportedCompatibility(response);
+    response = await adaptCompatibilityResponse(response, compatibility);
+    return secureResponse(response);
   },
 
   async scheduled(controller, env, ctx): Promise<void> {
@@ -139,6 +164,34 @@ async function rotateCredentialWithVaultRewrap(
       },
     });
   }
+}
+
+function compatibilityErrorResponse(code: string): Response {
+  return new Response(
+    JSON.stringify({
+      error: "x402_compatibility_rejected",
+      reason: code,
+      supportedLegacy: {
+        x402Version: 1,
+        scheme: "exact",
+        network: "base",
+        asset: "native Base USDC",
+      },
+      canonical: {
+        x402Version: 2,
+        scheme: "exact",
+        network: "eip155:8453",
+      },
+    }),
+    {
+      status: 400,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-XGuard-Compatibility": "rejected",
+      },
+    },
+  );
 }
 
 function secureResponse(response: Response): Response {
