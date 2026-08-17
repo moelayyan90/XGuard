@@ -9,8 +9,6 @@ const PAY_TO = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C";
 const PAYER = "0x857b06519E91e3A54538791bDbb0E22373e36b66";
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const SMOKE_TOKEN = `${Date.now()}-${randomUUID()}`;
-const COMPATIBILITY_PROPAGATION_ATTEMPTS = 18;
-const COMPATIBILITY_PROPAGATION_INTERVAL_MS = 5_000;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -101,64 +99,6 @@ function legacyEnvelope(network = "base") {
   };
 }
 
-async function waitForCompatibilitySurface() {
-  let last = { unauthenticatedLegacy: null, wrongNetwork: null };
-
-  for (
-    let attempt = 1;
-    attempt <= COMPATIBILITY_PROPAGATION_ATTEMPTS;
-    attempt += 1
-  ) {
-    try {
-      const unauthenticatedLegacy = await request(
-        `/verify?compatSmoke=${encodeURIComponent(SMOKE_TOKEN)}&surface=legacy&attempt=${attempt}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(legacyEnvelope()),
-        },
-      );
-      const wrongNetwork = await request(
-        `/verify?compatSmoke=${encodeURIComponent(SMOKE_TOKEN)}&surface=reject&attempt=${attempt}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(legacyEnvelope("base-sepolia")),
-        },
-      );
-      last = { unauthenticatedLegacy, wrongNetwork };
-
-      const bridgeReady =
-        unauthenticatedLegacy.response.status === 401 &&
-        unauthenticatedLegacy.response.headers.get("x-xguard-compatibility") ===
-          "x402-v1-to-v2" &&
-        unauthenticatedLegacy.response.headers.get(
-          "x-xguard-canonical-network",
-        ) === "eip155:8453";
-      const rejectionReady =
-        wrongNetwork.response.status === 400 &&
-        wrongNetwork.body?.error === "x402_compatibility_rejected" &&
-        wrongNetwork.response.headers.get("x-xguard-compatibility") ===
-          "rejected";
-
-      if (bridgeReady && rejectionReady) return last;
-    } catch (error) {
-      console.warn(
-        JSON.stringify({
-          compatibilityPropagationPending: true,
-          attempt,
-          code: error instanceof Error ? error.name : "unknown_error",
-        }),
-      );
-    }
-
-    if (attempt < COMPATIBILITY_PROPAGATION_ATTEMPTS)
-      await delay(COMPATIBILITY_PROPAGATION_INTERVAL_MS);
-  }
-
-  return last;
-}
-
 const supported = await waitForCompatibilityMetadata();
 assert(supported !== null, "compatibility /supported did not respond");
 assert(supported.response.status === 200, "compatibility /supported failed");
@@ -186,52 +126,39 @@ assert(
   "compatibility bridge metadata missing after propagation window",
 );
 
-const { unauthenticatedLegacy, wrongNetwork } =
-  await waitForCompatibilitySurface();
-assert(
-  unauthenticatedLegacy !== null,
-  "legacy V1 compatibility surface did not respond after propagation window",
-);
+// /verify is now value-producing prepaid execution. Anonymous live probes must
+// stop at merchant authentication before request compatibility processing.
+// V1 -> V2 translation and unsupported-network rejection remain covered by
+// unit tests without creating billable production execution.
+const unauthenticatedLegacy = await request("/verify", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(legacyEnvelope()),
+});
 assert(
   unauthenticatedLegacy.response.status === 401,
-  "legacy V1 request did not reach the existing merchant authentication boundary after propagation window",
-);
-assert(
-  unauthenticatedLegacy.response.headers.get("x-xguard-compatibility") ===
-    "x402-v1-to-v2",
-  "legacy V1 request was not marked as bridged after propagation window",
-);
-assert(
-  unauthenticatedLegacy.response.headers.get("x-xguard-canonical-network") ===
-    "eip155:8453",
-  "canonical compatibility network header missing after propagation window",
+  "legacy V1 request bypassed the prepaid merchant authentication boundary",
 );
 
+const unauthenticatedWrongNetwork = await request("/verify", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(legacyEnvelope("base-sepolia")),
+});
 assert(
-  wrongNetwork !== null,
-  "unsupported legacy network surface did not respond after propagation window",
-);
-assert(
-  wrongNetwork.response.status === 400,
-  "unsupported legacy network was not rejected fail-closed after propagation window",
-);
-assert(
-  wrongNetwork.body?.error === "x402_compatibility_rejected",
-  "unsupported legacy network returned the wrong error boundary after propagation window",
-);
-assert(
-  wrongNetwork.response.headers.get("x-xguard-compatibility") === "rejected",
-  "rejected compatibility request is not observable after propagation window",
+  unauthenticatedWrongNetwork.response.status === 401,
+  "unsupported legacy request bypassed the prepaid merchant authentication boundary",
 );
 
 console.log(
   JSON.stringify({
     url: baseUrl.origin,
-    x402CompatibilityBridge: true,
+    x402CompatibilityBridgeAdvertised: true,
     nativeV2: "exact@eip155:8453",
     bridgedV1: "exact@base",
-    liveTranslationReachedAuthBoundary: true,
-    unsupportedLegacyNetworkFailsClosed: true,
+    anonymousVerifyRequiresMerchantAuth: true,
+    compatibilityExecutionRequiresPrepaidAccess: true,
+    translationValidatedByUnitTests: true,
     propagationSafe: true,
     billableExecutionPerformed: false,
   }),
