@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  augmentCompatibilityDiscovery,
-} from "../apps/worker/src/x402-compatibility-discovery.js";
+import { augmentCompatibilityDiscovery } from "../apps/worker/src/x402-compatibility-discovery.js";
 
 describe("x402 compatibility discovery", () => {
   it("advertises V1 and V2 compatibility in facilitator discovery", async () => {
@@ -32,9 +30,7 @@ describe("x402 compatibility discovery", () => {
     ]);
     expect(bridge.canonicalizesTo).toBe("x402-v2 exact@eip155:8453");
     expect(compatibility.mode).toBe("transaction-compatibility-bridge");
-    expect(response.headers.get("x-xguard-compatibility")).toBe(
-      "x402-v1-v2",
-    );
+    expect(response.headers.get("x-xguard-compatibility")).toBe("x402-v1-v2");
   });
 
   it("marks the agent card as compatibility-bridge capable", async () => {
