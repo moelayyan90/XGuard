@@ -21,6 +21,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: node scripts/patch-auto-invoke-key-rotation.mjs
       - run: npx prettier --write apps/worker/src/mainnet-revenue-hardening.ts tests/worker/auto-invoke-vault-rotation.test.ts
+      - run: npm run build
       - run: npx vitest run --config vitest.worker.config.ts tests/worker/auto-invoke-vault-rotation.test.ts
       - run: npm run typecheck
       - name: Commit key rotation hardening
