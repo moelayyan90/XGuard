@@ -1,0 +1,32 @@
+name: Sync Buyer Pass with main
+
+on:
+  push:
+    branches: [agent/buyer-pass]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/buyer-pass
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Merge latest protected main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+      - run: npm run verify:release
+      - name: Push verified merge
+        run: git push origin HEAD:agent/buyer-pass
