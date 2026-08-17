@@ -61,8 +61,10 @@ jobs:
           mkdir -p /tmp/xguard-cli-prefix
           npm install --global --prefix /tmp/xguard-cli-prefix "$CLI_TARBALL"
           /tmp/xguard-cli-prefix/bin/xguard --help | tee /tmp/xguard-help.txt
+          /tmp/xguard-cli-prefix/bin/xguard init --help | tee /tmp/xguard-init.txt
           /tmp/xguard-cli-prefix/bin/xguard doctor --help | tee /tmp/xguard-doctor.txt
           grep -qi 'xguard' /tmp/xguard-help.txt
+          grep -Fq 'https://xguard-mainnet.maqamapp.workers.dev' /tmp/xguard-init.txt
           grep -qi 'doctor' /tmp/xguard-doctor.txt
 
       - name: Verify SDK and core install together from local tarballs
@@ -110,8 +112,10 @@ jobs:
           for attempt in {1..12}; do
             if npm install --global --prefix /tmp/xguard-public-prefix "$URL"; then
               /tmp/xguard-public-prefix/bin/xguard --help | tee /tmp/xguard-public-help.txt
+              /tmp/xguard-public-prefix/bin/xguard init --help | tee /tmp/xguard-public-init.txt
               /tmp/xguard-public-prefix/bin/xguard doctor --help | tee /tmp/xguard-public-doctor.txt
               grep -qi 'xguard' /tmp/xguard-public-help.txt
+              grep -Fq 'https://xguard-mainnet.maqamapp.workers.dev' /tmp/xguard-public-init.txt
               grep -qi 'doctor' /tmp/xguard-public-doctor.txt
               exit 0
             fi

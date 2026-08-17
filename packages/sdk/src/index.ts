@@ -3,7 +3,7 @@ import { HTTPFacilitatorClient, type FacilitatorClient } from "@x402/core/http";
 export interface XGuardClientOptions {
   /** XGuard gateway origin, without /verify or /settle. */
   url: string;
-  /** Merchant API key. Testnet-only public gateways may leave this unset. */
+  /** Merchant API key. Required by production mainnet; omit only for an explicit public testnet gateway. */
   apiKey?: string;
   /** Hard deadline for each downstream facilitator operation. */
   timeoutMs?: number;
