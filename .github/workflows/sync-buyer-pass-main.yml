@@ -22,11 +22,35 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Merge latest protected main
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git merge --no-edit origin/main
+
+          EXPECTED_MAIN_UNIVERSAL_BLOB="069d2e759e2135bc47960f2b93d6e513746fcea2"
+          MAIN_UNIVERSAL_BLOB="$(git rev-parse origin/main:apps/worker/src/universal-mainnet.ts)"
+
+          if git merge --no-edit origin/main; then
+            exit 0
+          fi
+
+          CONFLICTS="$(git diff --name-only --diff-filter=U)"
+          if [[ "$CONFLICTS" != "apps/worker/src/universal-mainnet.ts" ]]; then
+            echo "Unexpected merge conflicts: $CONFLICTS" >&2
+            exit 1
+          fi
+          if [[ "$MAIN_UNIVERSAL_BLOB" != "$EXPECTED_MAIN_UNIVERSAL_BLOB" ]]; then
+            echo "main universal-mainnet.ts changed after manual resolution; refusing stale resolution" >&2
+            exit 1
+          fi
+
+          # The branch version is a deliberate semantic merge of the exact main
+          # blob above plus Buyer Pass routing/rate-limit bindings.
+          git checkout --ours apps/worker/src/universal-mainnet.ts
+          git add apps/worker/src/universal-mainnet.ts
+          git commit --no-edit
       - run: npm run verify:release
       - name: Push verified merge
         run: git push origin HEAD:agent/buyer-pass
