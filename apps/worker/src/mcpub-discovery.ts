@@ -10,7 +10,7 @@ export function mcpubDiscoveryResponse(request: Request): Response | null {
     name: "XGuard",
     description:
       "Remote MCP server and x402 economic firewall for payment discovery, verification, and guarded settlement routing.",
-    version: "0.4.0",
+    version: "0.5.1",
     transport: "streamable-http",
     mcp: `${url.origin}/mcp`,
     repository: "https://github.com/moelayyan90/XGuard",
