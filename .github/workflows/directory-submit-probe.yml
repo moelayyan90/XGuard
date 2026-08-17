@@ -12,33 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect mcpservers.org submit route bundle
+      - name: Print mcpservers.org submit route bundle
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import re, urllib.request
-          headers={'User-Agent':'Mozilla/5.0 XGuard directory submission probe'}
-          urls=[
-            'https://mcpservers.org/assets/submit-D6ie-Y5K.js',
-            'https://mcpservers.org/assets/createServerFn-DZZNDdqS.js',
-            'https://mcpservers.org/assets/submit-success-panel-B7w4a_jb.js',
-            'https://mcpservers.org/assets/submit-success-CRRGWbL4.js',
-          ]
-          needles=('submit','fetch(','createServerFn','validator','method','POST','serverFn','plan','email','category','url','name','description','action','premium','stripe')
-          for url in urls:
-            print('=====URL',url,'=====')
-            try:
-              with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=20) as r:
-                js=r.read().decode('utf-8','replace')
-            except Exception as e:
-              print('ERROR',repr(e)); continue
-            print('BYTES',len(js))
-            print('IMPORTS',re.findall(r'from["\']([^"\']+)["\']',js)[:50])
-            for needle in needles:
-              matches=list(re.finditer(re.escape(needle),js,re.I))[:8]
-              if not matches: continue
-              print('NEEDLE',needle,'COUNT_AT_LEAST',len(matches))
-              for m in matches[:4]:
-                i=m.start(); print('CTX',re.sub(r'\s+',' ',js[max(0,i-1600):i+3200]))
-          PY
+          curl -fsSL --max-time 20 -A 'Mozilla/5.0 XGuard directory submission probe' \
+            'https://mcpservers.org/assets/submit-D6ie-Y5K.js' -o /tmp/submit.js
+          wc -c /tmp/submit.js
+          cat /tmp/submit.js
