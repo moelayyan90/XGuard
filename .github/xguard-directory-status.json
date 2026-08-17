@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-17T05:12:32Z",
+  "updatedAt": "2026-08-17T08:42:00Z",
   "entries": {
     "officialMcpRegistry": {
       "status": "listed",
@@ -14,7 +14,7 @@
     "mcpDirectory": {
       "status": "submitted_for_review",
       "submittedAt": "2026-08-16",
-      "evidence": "MCP.Directory accepted the server submission for review"
+      "evidence": "MCP.Directory accepted the server submission for review; current public search still does not surface XGuard"
     },
     "mcpub": {
       "status": "listed",
@@ -28,7 +28,7 @@
     "mcpSo": {
       "status": "manual_review_requested",
       "submittedAt": "2026-08-16",
-      "evidence": "the machine submission endpoint returned a Cloudflare Managed Challenge; no bypass was attempted and a listing request was sent to support@mcp.so from the project owner's email"
+      "evidence": "the machine submission endpoint returned a Cloudflare Managed Challenge; no bypass was attempted and a listing request was sent to support@mcp.so from the project owner's email; current public search still does not surface XGuard"
     },
     "a2aRegistry": {
       "status": "listed",
@@ -42,17 +42,42 @@
       "testedAt": "2026-08-17T05:12:31Z",
       "toolHiveVersion": "0.43.0",
       "runId": "31997034944",
-      "evidence": "ToolHive remote proxy initialized XGuard successfully and tools/list returned xguard_discover, xguard_resource_details, and xguard_status; compatibility run ended with TOOLHIVE_XGUARD_COMPATIBILITY=PASS"
+      "evidence": "ToolHive remote proxy initialized XGuard successfully and tools/list returned xguard_discover, xguard_resource_details, and xguard_status; compatibility run ended with TOOLHIVE_XGUARD_COMPATIBILITY=PASS; official contribution still requires a fork/PR to the external registry repository"
+    },
+    "mcpFoundry": {
+      "status": "ready_for_submission_fork_required",
+      "verifiedAt": "2026-08-17",
+      "evidence": "MCP Foundry is free, open-source and accepts public MCP tool submissions through a toolbox.toml manifest in submissions/ followed by automated security scanning; XGuard is a public read-only remote MCP server and qualifies in principle, but the required external-repository fork/PR cannot be created by the currently connected GitHub app"
     },
     "x402scan": {
       "status": "pending_maintainer_review",
       "issue": "https://github.com/Merit-Systems/x402scan/issues/1077",
-      "evidence": "routed-gateway patch model is documented in the issue; XGuard deliberately preserves xpay signer attribution and requested review from an active facilitators-registry contributor"
+      "evidence": "issue remains open with no maintainer status change; routed-gateway patch model is documented and preserves xpay signer attribution"
     },
     "x402Foundation": {
       "status": "pending_maintainer_review",
       "target": "docs/dev-tools/facilitators.md",
       "evidence": "production-provider listing request sent to info@x402.org; GitHub App writes to the foundation repository are not authorized"
+    },
+    "agenticMarket": {
+      "status": "not_applicable",
+      "verifiedAt": "2026-08-17",
+      "evidence": "Agentic Market lists seller APIs that expose x402-paid endpoints; XGuard's facilitator safety gateway endpoints are not themselves seller resources returning x402 payment challenges"
+    },
+    "payShCatalog": {
+      "status": "not_applicable",
+      "verifiedAt": "2026-08-17",
+      "evidence": "pay.sh public catalog requires paid endpoints that return MPP or x402 402 challenges on supported mainnet payment rails; XGuard is facilitator-compatible infrastructure rather than a paid seller endpoint"
+    },
+    "ampersendMarketplace": {
+      "status": "not_applicable",
+      "verifiedAt": "2026-08-17",
+      "evidence": "Ampersend marketplace is for pay-per-use API services consumed by agent wallets; XGuard's verify/settle gateway is not a marketplace seller endpoint"
+    },
+    "publicMcp": {
+      "status": "not_applicable",
+      "verifiedAt": "2026-08-17",
+      "evidence": "PUBLICMCP requires its business-profile MCP tool contract including get_info, get_services and get_location; XGuard exposes xguard_discover, xguard_resource_details and xguard_status instead"
     },
     "x402Scout": {
       "status": "not_applicable",
