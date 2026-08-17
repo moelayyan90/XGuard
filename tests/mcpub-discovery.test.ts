@@ -17,7 +17,7 @@ describe("mcpub discovery alias", () => {
       registryName: string;
     };
     expect(body.name).toBe("XGuard");
-    expect(body.version).toBe("0.4.0");
+    expect(body.version).toBe("0.5.1");
     expect(body.mcp).toBe(`${ORIGIN}/mcp`);
     expect(body.registryName).toBe("io.github.moelayyan90/xguard");
   });
