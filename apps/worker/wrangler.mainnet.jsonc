@@ -73,5 +73,6 @@
       "migrations_dir": "migrations",
     },
   ],
+  "tail_consumers": [{ "service": "xguard-watchdog" }],
   "triggers": { "crons": ["*/1 * * * *"] },
 }
