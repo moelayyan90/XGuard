@@ -23,6 +23,7 @@ interface TelemetryPoint {
 
 const DEFAULT_PRODUCER = "xguard-mainnet";
 const DEFAULT_MAINNET_URL = "https://xguard-mainnet.maqamapp.workers.dev";
+const WATCHDOG_POLICY_VERSION = "2026-08-17-v2";
 const PROBE_FAILURE_THRESHOLD = 3;
 
 export default {
@@ -62,6 +63,7 @@ async function watchdogFetch(
     const body = {
       service: "XGuard Watchdog",
       mode: "self-healing-control-plane",
+      policyVersion: WATCHDOG_POLICY_VERSION,
       status: healthy ? "ok" : "degraded",
       producer: env.WATCHDOG_PRODUCER ?? DEFAULT_PRODUCER,
       openBreakers: state.openBreakers,

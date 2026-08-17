@@ -4,20 +4,13 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - "apps/worker/src/mainnet-watchdog.ts"
-      - "apps/worker/src/watchdog-policy.ts"
-      - "apps/worker/src/watchdog-store.ts"
-      - "apps/worker/wrangler.watchdog.jsonc"
-      - "apps/worker/migrations/0012_watchdog_control_plane.sql"
-      - ".github/workflows/deploy-watchdog.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: xguard-mainnet-deploy
-  cancel-in-progress: false
+  group: xguard-watchdog-deploy
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -88,13 +81,13 @@ jobs:
             code="${response##*$'\n'}"
             body="${response%$'\n'*}"
             if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
-              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.service!=="XGuard Watchdog"||x.mode!=="self-healing-control-plane")process.exit(1)})'; then
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.service!=="XGuard Watchdog"||x.mode!=="self-healing-control-plane"||x.policyVersion!=="2026-08-17-v2")process.exit(1)})'; then
               ready=1
               break
             fi
             sleep 5
           done
           if [[ "${ready}" -ne 1 ]]; then
-            echo "::error::XGuard watchdog did not become healthy after deployment."
+            echo "::error::XGuard watchdog policy v2 did not become healthy after deployment."
             exit 1
           fi

@@ -6,22 +6,52 @@ const tailWorkflow = readFileSync(
   ".github/workflows/verify-watchdog-tail.yml",
   "utf8",
 );
+const watchdogWorkflow = readFileSync(
+  ".github/workflows/deploy-watchdog.yml",
+  "utf8",
+);
+const watchdogWorker = readFileSync(
+  "apps/worker/src/mainnet-watchdog.ts",
+  "utf8",
+);
 
 describe("watchdog-aware deployment verification", () => {
-  it("waits for active watchdog circuits to quiesce before protected protocol smokes", () => {
+  it("requires the current watchdog policy and a quiet circuit before protected smokes", () => {
     expect(smokeRunner).toContain("waitForWatchdogQuiescence");
-    expect(smokeRunner).toContain("openBreakers === 0");
+    expect(smokeRunner).toContain('WATCHDOG_POLICY_VERSION = "2026-08-17-v2"');
+    expect(smokeRunner).toContain(
+      "body?.policyVersion === WATCHDOG_POLICY_VERSION",
+    );
+    expect(smokeRunner).toContain("body.openBreakers === 0");
     expect(smokeRunner).toContain("WATCHDOG_QUIET_ATTEMPTS = 40");
     expect(
       smokeRunner.indexOf("await waitForWatchdogQuiescence()"),
     ).toBeLessThan(smokeRunner.indexOf("for (const check of checks)"));
   });
 
-  it("falls back to direct smokes if watchdog health is completely unavailable", () => {
-    expect(smokeRunner).toContain("if (watchdogObserved)");
+  it("fails if an old watchdog is reachable instead of testing against stale policy", () => {
+    expect(smokeRunner).toContain("if (watchdogReachable)");
+    expect(smokeRunner).toContain(
+      "did not become live before mainnet protocol smokes",
+    );
     expect(smokeRunner).toContain(
       "watchdog health could not be observed; proceeding with direct protocol smokes",
     );
+  });
+
+  it("publishes the same policy version from watchdog health", () => {
+    expect(watchdogWorker).toContain(
+      'WATCHDOG_POLICY_VERSION = "2026-08-17-v2"',
+    );
+    expect(watchdogWorker).toContain("policyVersion: WATCHDOG_POLICY_VERSION");
+  });
+
+  it("deploys watchdog independently on every main push", () => {
+    expect(watchdogWorkflow).toContain("push:\n    branches: [main]");
+    expect(watchdogWorkflow).not.toContain("paths:");
+    expect(watchdogWorkflow).toContain("group: xguard-watchdog-deploy");
+    expect(watchdogWorkflow).toContain("cancel-in-progress: true");
+    expect(watchdogWorkflow).toContain('x.policyVersion!=="2026-08-17-v2"');
   });
 
   it("proves real mainnet invocations arrive in watchdog logs after successful deploys", () => {
