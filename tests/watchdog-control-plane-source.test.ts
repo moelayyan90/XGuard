@@ -97,11 +97,12 @@ describe("watchdog control plane source", () => {
     );
   });
 
-  it("has an automated deployment and live health verification workflow", () => {
+  it("has an independently ordered deployment and live health verification workflow", () => {
     expect(deployWorkflow).toContain("Deploy XGuard watchdog");
-    expect(deployWorkflow).toContain("group: xguard-mainnet-deploy");
+    expect(deployWorkflow).toContain("group: xguard-watchdog-deploy");
     expect(deployWorkflow).toContain("wrangler deploy --config");
     expect(deployWorkflow).toContain("xguard-watchdog.maqamapp.workers.dev");
+    expect(deployWorkflow).toContain("policyVersion");
     expect(deployWorkflow).toContain("/healthz");
   });
 
