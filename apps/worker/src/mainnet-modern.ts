@@ -9,6 +9,7 @@ import {
 } from "./auto-invoke.js";
 import { authorizeMerchantScope } from "./mainnet-revenue-hardening.js";
 import { universalGatewayResponse } from "./universal-gateway.js";
+import { releaseStaleGatewayHolds } from "./universal-gateway-billing.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -36,6 +37,8 @@ type CoreScheduled = (
 const delegateFetch = modernCore.fetch as unknown as CoreFetch;
 const delegateScheduled = modernCore.scheduled as unknown as CoreScheduled;
 const HSTS_VALUE = "max-age=31536000; includeSubDomains";
+const GATEWAY_STALE_HOLD_MS = 60 * 60 * 1000;
+const GATEWAY_STALE_HOLD_LIMIT = 50;
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
@@ -62,6 +65,21 @@ export default {
 
   async scheduled(controller, env, ctx): Promise<void> {
     await delegateScheduled(controller, env, ctx);
+    const recovery = await releaseStaleGatewayHolds(env.DB, {
+      nowMs:
+        typeof controller.scheduledTime === "number"
+          ? controller.scheduledTime
+          : Date.now(),
+      staleAfterMs: GATEWAY_STALE_HOLD_MS,
+      limit: GATEWAY_STALE_HOLD_LIMIT,
+    });
+    if (recovery.scanned > 0)
+      console.log(
+        JSON.stringify({
+          event: "gateway_stale_hold_recovery",
+          ...recovery,
+        }),
+      );
   },
 } satisfies ExportedHandler<MainnetModernEnv>;
 

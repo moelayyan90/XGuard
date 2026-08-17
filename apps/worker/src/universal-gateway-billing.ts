@@ -306,6 +306,63 @@ export async function releaseGatewayFee(
   return publicReservation(final);
 }
 
+export interface GatewayHeldRecoveryResult {
+  scanned: number;
+  released: number;
+  failed: number;
+}
+
+export async function releaseStaleGatewayHolds(
+  db: D1Database,
+  options: {
+    nowMs?: number;
+    staleAfterMs?: number;
+    limit?: number;
+  } = {},
+): Promise<GatewayHeldRecoveryResult> {
+  const nowMs = options.nowMs ?? Date.now();
+  const staleAfterMs = options.staleAfterMs ?? 60 * 60 * 1000;
+  const limit = options.limit ?? 50;
+  if (!Number.isSafeInteger(nowMs) || nowMs < 0)
+    throw new Error("invalid_gateway_recovery_now");
+  if (!Number.isSafeInteger(staleAfterMs) || staleAfterMs <= 0)
+    throw new Error("invalid_gateway_recovery_age");
+  if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 200)
+    throw new Error("invalid_gateway_recovery_limit");
+
+  const cutoff = new Date(nowMs - staleAfterMs).toISOString();
+  const result = await db
+    .prepare(
+      `SELECT r.event_key,r.merchant_id
+       FROM gateway_fee_reservations r
+       WHERE r.state='HELD' AND r.updated_at<=?
+         AND NOT EXISTS(
+           SELECT 1 FROM gateway_usage_events u WHERE u.event_key=r.event_key
+         )
+       ORDER BY r.updated_at ASC
+       LIMIT ?`,
+    )
+    .bind(cutoff, limit)
+    .all<{ event_key: string; merchant_id: string }>();
+
+  let released = 0;
+  let failed = 0;
+  for (const row of result.results ?? []) {
+    try {
+      const final = await releaseGatewayFee(db, row.merchant_id, row.event_key);
+      if (final.state === "RELEASED") released += 1;
+      else failed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return {
+    scanned: result.results?.length ?? 0,
+    released,
+    failed,
+  };
+}
+
 async function reholdGatewayFee(
   db: D1Database,
   row: GatewayReservationRow,
