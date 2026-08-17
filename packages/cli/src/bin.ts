@@ -2,6 +2,7 @@
 import process from "node:process";
 import { Command } from "commander";
 import pc from "picocolors";
+import { resolveXGuardGatewayUrl } from "./defaults.js";
 import { runDoctor } from "./doctor.js";
 import { applyMigration, rollbackLatest } from "./migration.js";
 
@@ -19,7 +20,7 @@ program
   .option(
     "--gateway <url>",
     "XGuard gateway URL",
-    process.env.XGUARD_URL ?? "http://localhost:8787",
+    resolveXGuardGatewayUrl(process.env.XGUARD_URL),
   )
   .option("--skip-tests", "Do not run the repository's existing test script")
   .action(async (options: { gateway: string; skipTests?: boolean }) => {
@@ -40,7 +41,7 @@ program
       console.log(`  ${change.file} (facilitator URL migrated)`);
     for (const change of manifest.configurationChanges)
       console.log(`  ${change.file} (configuration)`);
-    console.log(`Rollback: ${pc.bold("npx xguard rollback")}`);
+    console.log(`Rollback: ${pc.bold("xguard rollback")}`);
   });
 
 program
