@@ -1,0 +1,38 @@
+name: Patch gateway stale held recovery once
+
+on:
+  push:
+    branches: [fix/gateway-stale-held-recovery]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/gateway-stale-held-recovery
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: node scripts/patch-gateway-stale-held-recovery.mjs
+      - run: npx prettier --write apps/worker/src/universal-gateway-billing.ts apps/worker/src/mainnet-modern.ts tests/worker/gateway-stale-held-recovery.test.ts
+      - run: npm run build
+      - run: npx vitest run --config vitest.worker.config.ts tests/worker/gateway-stale-held-recovery.test.ts tests/worker/universal-gateway-billing.test.ts tests/worker/auto-invoke-accounting.test.ts
+      - run: npm run typecheck
+      - name: Commit stale hold recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/universal-gateway-billing.ts apps/worker/src/mainnet-modern.ts tests/worker/gateway-stale-held-recovery.test.ts
+          git commit -m "Recover stale unearned gateway holds"
+          git push origin HEAD:fix/gateway-stale-held-recovery
