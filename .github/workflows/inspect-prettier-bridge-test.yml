@@ -1,0 +1,31 @@
+name: Inspect bridge test Prettier output
+
+on:
+  push:
+    branches: [feature/x402-v1-v2-compatibility-bridge]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/x402-v1-v2-compatibility-bridge
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Print canonical file
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx prettier --write tests/x402-compatibility-bridge.test.ts >/dev/null
+          echo '---CANONICAL-BEGIN---'
+          cat tests/x402-compatibility-bridge.test.ts
+          echo '---CANONICAL-END---'
