@@ -3,11 +3,17 @@ import monetizedMainnet, {
   MainnetRequestGate,
   XPayGlobalRateGate,
 } from "./monetized-mainnet.js";
+import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 import { universalProtocolResponse } from "./universal-protocol-router.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
-type UniversalMainnetEnv = Record<string, unknown>;
+interface UniversalMainnetEnv {
+  DB: D1Database;
+  XGUARD_TOOL_FEE_MICRO_USD?: string;
+  [key: string]: unknown;
+}
+
 type MainnetFetch = (
   request: Request,
   env: UniversalMainnetEnv,
@@ -31,6 +37,9 @@ export default {
       settleX402: (x402Request) => mainnetFetch(x402Request, env, ctx),
     });
     if (protocolResponse !== null) return protocolResponse;
+
+    const genericHttp = await genericHttpConnectorResponse(standardRequest, env);
+    if (genericHttp !== null) return genericHttp;
 
     return mainnetFetch(standardRequest, env, ctx);
   },
