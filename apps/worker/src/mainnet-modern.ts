@@ -16,6 +16,7 @@ import {
   normalizeX402CompatibilityRequest,
   type CompatibilityRequest,
 } from "./x402-compatibility-bridge.js";
+import { augmentCompatibilityDiscovery } from "./x402-compatibility-discovery.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -84,6 +85,8 @@ export default {
     const url = new URL(effectiveRequest.url);
     if (effectiveRequest.method === "GET" && url.pathname === "/supported")
       response = await augmentSupportedCompatibility(response);
+    if (effectiveRequest.method === "GET")
+      response = await augmentCompatibilityDiscovery(response, url.pathname);
     response = await adaptCompatibilityResponse(response, compatibility);
     return secureResponse(response);
   },
