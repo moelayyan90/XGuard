@@ -2,6 +2,10 @@ name: Verify XGuard post-deploy health
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/verify-watchdog-tail.yml"
   workflow_run:
     workflows: ["Deploy XGuard mainnet"]
     types: [completed]
@@ -17,6 +21,7 @@ jobs:
   verify:
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
       (github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
