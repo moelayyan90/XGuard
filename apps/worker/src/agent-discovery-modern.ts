@@ -197,7 +197,9 @@ export async function enhanceAgentDiscoveryResponse(
           parameters: [logicalPaymentKeyParameter()],
           responses: {
             "200": { description: "Resolution reached a terminal truth state" },
-            "202": { description: "Sufficient final evidence is not yet available" },
+            "202": {
+              description: "Sufficient final evidence is not yet available",
+            },
             "401": { description: "Merchant authentication required" },
             "404": { description: "Settlement truth record not found" },
           },
