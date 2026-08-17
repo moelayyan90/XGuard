@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyMcpToolCall } from "../apps/worker/src/monetized-mainnet.js";
+import { classifyMcpToolCall } from "../apps/worker/src/monetization-policy.js";
 
 describe("mainnet monetization gate", () => {
   it("keeps MCP status free", () => {
