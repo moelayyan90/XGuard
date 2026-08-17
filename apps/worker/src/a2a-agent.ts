@@ -84,24 +84,25 @@ function answer(input: string, origin: string): string {
 
   if (normalized.includes("supported") || normalized.includes("capabil")) {
     return [
-      "XGuard is an x402 v2 economic firewall and facilitator-compatible safety gateway on Base mainnet USDC.",
-      `Capabilities: ${origin}/supported`,
+      "XGuard is a prepaid universal execution gateway for AI models, tools, source discovery, security inspection, analysis, and x402 payment flows.",
+      `Capabilities: ${origin}/v1/gateway/capabilities`,
+      `x402 support: ${origin}/supported`,
       `Provider manifest: ${origin}/.well-known/x402/facilitator.json`,
       `MCP: ${origin}/mcp`,
     ].join("\n");
   }
 
   if (normalized.includes("price") || normalized.includes("fee")) {
-    return "XGuard charges $0.002 only for a successful billable settlement; discovery and failed or duplicate operations are not billed.";
+    return "XGuard meters successful execution from a prepaid service balance. Current production fees: model $0.0001, tool or x402 verify $0.0002, source or security $0.001, analysis $0.002, and finalized x402 settlement $0.002. Readiness and protocol metadata remain free.";
   }
 
   if (normalized.includes("register") || normalized.includes("onboard")) {
-    return `Merchant onboarding starts at POST ${origin}/v1/register. Verify and settle require the issued Bearer API key and funded prepaid service balance.`;
+    return `Merchant onboarding starts at POST ${origin}/v1/register. Billable execution requires the issued Bearer API key and funded prepaid service balance.`;
   }
 
   return [
     "XGuard A2A endpoint is online.",
-    "I can describe XGuard's x402 capabilities, pricing, onboarding, MCP discovery, and guarded settlement interface.",
+    "I can describe XGuard's universal gateway capabilities, pricing, onboarding, MCP interface, and guarded x402 settlement path.",
     `Documentation: ${origin}/llms-full.txt`,
   ].join("\n");
 }
