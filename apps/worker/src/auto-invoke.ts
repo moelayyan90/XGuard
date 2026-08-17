@@ -73,7 +73,10 @@ export async function classifyAutoInvokeRoute(
   }
 
   if (!isOpenAiCompatiblePath(path)) return null;
-  const model = await readModel(request);
+  const model =
+    merchantTokenFromStandardClient(request) === null
+      ? null
+      : await readModel(request);
   if (model?.toLowerCase().startsWith("gemini-")) {
     const suffix = path.startsWith("/v1") ? path.slice(3) : path;
     return {

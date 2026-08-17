@@ -45,7 +45,10 @@ describe("XGuard zero-study auto invoke", () => {
     const route = await classifyAutoInvokeRoute(
       new Request(`${ORIGIN}/v1/chat/completions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Api-Key": `xg_live_${"a".repeat(48)}`,
+        },
         body: JSON.stringify({
           model: "gemini-3.6-flash",
           messages: [{ role: "user", content: "hello" }],
@@ -56,6 +59,23 @@ describe("XGuard zero-study auto invoke", () => {
       provider: "gemini",
       upstreamUrl:
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    });
+  });
+
+  it("does not inspect the model body for provider inference before XGuard authentication", async () => {
+    const route = await classifyAutoInvokeRoute(
+      new Request(`${ORIGIN}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "gemini-3.6-flash",
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      }),
+    );
+    expect(route).toMatchObject({
+      provider: "openai",
+      upstreamUrl: "https://api.openai.com/v1/chat/completions",
     });
   });
 
