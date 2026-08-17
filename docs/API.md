@@ -22,15 +22,15 @@ The machine-readable production contract is [openapi.yaml](openapi.yaml). Curren
 
 Use `Authorization: Bearer <XGUARD_API_KEY>`.
 
-| Method | Path                                             | Purpose                                                                    |
-| ------ | ------------------------------------------------ | -------------------------------------------------------------------------- |
-| GET    | `/v1/balance`                                    | Return available and held prepaid service balance                          |
-| POST   | `/v1/topups/intents`                             | Create a one-time exact native-USDC Base deposit intent                    |
-| POST   | `/v1/topups/claim`                               | Verify finality of a matching Base deposit and credit the merchant balance |
-| GET    | `/v1/settlements/{logicalPaymentKey}/truth`      | Read XGuard's independent settlement truth                                 |
-| POST   | `/v1/settlements/{logicalPaymentKey}/resolve`    | Trigger an immediate independent finality/recovery check                    |
-| POST   | `/verify`                                        | Validate a complete x402 v2 payment request without submitting value       |
-| POST   | `/settle`                                        | Reserve the XGuard fee and submit one safe settlement route                |
+| Method | Path                                          | Purpose                                                                    |
+| ------ | --------------------------------------------- | -------------------------------------------------------------------------- |
+| GET    | `/v1/balance`                                 | Return available and held prepaid service balance                          |
+| POST   | `/v1/topups/intents`                          | Create a one-time exact native-USDC Base deposit intent                    |
+| POST   | `/v1/topups/claim`                            | Verify finality of a matching Base deposit and credit the merchant balance |
+| GET    | `/v1/settlements/{logicalPaymentKey}/truth`   | Read XGuard's independent settlement truth                                 |
+| POST   | `/v1/settlements/{logicalPaymentKey}/resolve` | Trigger an immediate independent finality/recovery check                   |
+| POST   | `/verify`                                     | Validate a complete x402 v2 payment request without submitting value       |
+| POST   | `/settle`                                     | Reserve the XGuard fee and submit one safe settlement route                |
 
 `POST` requests use `Content-Type: application/json`. Mainnet `/verify` and `/settle` require the official v2 facilitator envelope containing `x402Version`, `paymentPayload`, and `paymentRequirements`.
 
