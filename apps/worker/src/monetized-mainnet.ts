@@ -37,19 +37,28 @@ type CoreScheduled = (
   ctx: ExecutionContext,
 ) => Promise<void>;
 
-const modernFetch = mainnetModern.fetch as unknown as CoreFetch;
+const delegateFetch = mainnetModern.fetch as unknown as CoreFetch;
 const legacyFetch = legacyMonetized.fetch as unknown as CoreFetch;
 const legacyScheduled = legacyMonetized.scheduled as unknown as CoreScheduled;
 const ATTEMPT_FEE_MICRO_USD = 40_000;
+const BILLABLE_DISCOVERY_PATHS = new Map<string, string>([
+  ["/discovery/search", "discovery.search"],
+  ["/discovery/resources", "discovery.resources"],
+]);
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const url = new URL(request.url);
-    if (
-      request.method === "POST" &&
-      (url.pathname === "/verify" || url.pathname === "/settle")
-    ) {
-      return chargeEconomicAttempt(request, env, ctx, url.pathname);
+
+    if (request.method === "POST" && url.pathname === "/verify")
+      return billVerify(request, env, ctx);
+    if (request.method === "POST" && url.pathname === "/settle")
+      return billSettle(request, env, ctx);
+
+    if (request.method === "GET") {
+      const discoveryOperation = BILLABLE_DISCOVERY_PATHS.get(url.pathname);
+      if (discoveryOperation !== undefined)
+        return billDirectDiscovery(request, env, ctx, discoveryOperation);
     }
 
     const response = await legacyFetch(request, env, ctx);
@@ -61,30 +70,17 @@ export default {
   },
 } satisfies ExportedHandler<AttemptPricedMainnetEnv>;
 
-async function chargeEconomicAttempt(
+async function billVerify(
   request: Request,
   env: AttemptPricedMainnetEnv,
   ctx: ExecutionContext,
-  operation: "/verify" | "/settle",
 ): Promise<Response> {
-  if (env.XGUARD_FEE_MICRO_USD !== String(ATTEMPT_FEE_MICRO_USD)) {
-    return jsonResponse(
-      {
-        error: "attempt_fee_configuration_invalid",
-        expectedMicroUsd: ATTEMPT_FEE_MICRO_USD,
-      },
-      503,
-    );
-  }
+  const configError = attemptFeeConfigError(env);
+  if (configError !== null) return configError;
 
-  // Establish merchant identity before compatibility parsing. Anonymous or
-  // invalid credentials are never chargeable because there is no authenticated
-  // prepaid account to debit.
-  const access = await authorizeMerchantScope(
-    request,
-    env,
-    operation === "/verify" ? "verify" : "settle",
-  );
+  // Authentication deliberately remains before compatibility parsing. This is
+  // the production security boundary established by the prior hardening fix.
+  const access = await authorizeMerchantScope(request, env, "verify");
   if (!access.ok) return access.response;
 
   let compatibility: CompatibilityRequest | null = null;
@@ -93,31 +89,90 @@ async function chargeEconomicAttempt(
     compatibility = await normalizeX402CompatibilityRequest(request);
     if (compatibility !== null) effectiveRequest = compatibility.request;
   } catch {
-    // A malformed/unsupported envelope has not crossed the accepted economic
-    // attempt boundary, so it is rejected without a fee.
-    return modernFetch(request, env, ctx);
+    // Invalid authenticated legacy traffic is rejected by the canonical
+    // handler before XGuard accepts a chargeable economic attempt.
+    return delegateFetch(request, env, ctx);
   }
 
-  let logicalPaymentKey: string;
+  const logicalPaymentKey = await paymentKeyFor(effectiveRequest);
+  if (logicalPaymentKey === null)
+    return delegateFetch(effectiveRequest, env, ctx);
+
+  return billExecution({
+    request: effectiveRequest,
+    env,
+    merchantId: access.merchant.merchantId,
+    logicalPaymentKey,
+    execute: async () =>
+      adaptCompatibilityResponse(
+        await delegateFetch(effectiveRequest, env, ctx),
+        compatibility,
+      ),
+  });
+}
+
+async function billDirectDiscovery(
+  request: Request,
+  env: AttemptPricedMainnetEnv,
+  ctx: ExecutionContext,
+  _operation: string,
+): Promise<Response> {
+  // Preserve the existing authenticated monetized discovery contract. The
+  // legacy monetized layer still owns its SOURCE accounting and fee schedule.
+  const access = await authorizeMerchantScope(request, env, "billing");
+  if (!access.ok) return access.response;
+  return legacyFetch(request, env, ctx);
+}
+
+async function billSettle(
+  request: Request,
+  env: AttemptPricedMainnetEnv,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const configError = attemptFeeConfigError(env);
+  if (configError !== null) return configError;
+
+  const access = await authorizeMerchantScope(request, env, "settle");
+  if (!access.ok) return access.response;
+
+  let compatibility: CompatibilityRequest | null = null;
+  let effectiveRequest = request;
   try {
-    const parsed = await parseMainnetFacilitatorRequest(
-      effectiveRequest.clone() as unknown as Request,
-    );
-    logicalPaymentKey = derivePaymentIdentities(
-      parsed.paymentPayload,
-      parsed.paymentRequirements,
-    ).logicalPaymentKey;
+    compatibility = await normalizeX402CompatibilityRequest(request);
+    if (compatibility !== null) effectiveRequest = compatibility.request;
   } catch {
-    // Syntactically invalid economic traffic is not billable. We only charge
-    // after merchant auth and a canonical logical payment identity exist.
-    return modernFetch(effectiveRequest, env, ctx);
+    return delegateFetch(request, env, ctx);
   }
 
+  const logicalPaymentKey = await paymentKeyFor(effectiveRequest);
+  if (logicalPaymentKey === null)
+    return delegateFetch(effectiveRequest, env, ctx);
+
+  return billExecution({
+    request: effectiveRequest,
+    env,
+    merchantId: access.merchant.merchantId,
+    logicalPaymentKey,
+    execute: async () =>
+      adaptCompatibilityResponse(
+        await delegateFetch(effectiveRequest, env, ctx),
+        compatibility,
+      ),
+  });
+}
+
+async function billExecution(input: {
+  request: Request;
+  env: AttemptPricedMainnetEnv;
+  merchantId: string;
+  logicalPaymentKey: string;
+  execute: () => Promise<Response>;
+}): Promise<Response> {
   try {
     const reservation = await reserveSettlementFee(
-      env.DB,
-      access.merchant.merchantId,
-      logicalPaymentKey,
+      input.env.DB,
+      input.merchantId,
+      input.logicalPaymentKey,
       ATTEMPT_FEE_MICRO_USD,
     );
 
@@ -125,7 +180,7 @@ async function chargeEconomicAttempt(
       return jsonResponse(
         {
           error: "attempt_fee_terms_conflict",
-          logicalPaymentKey,
+          logicalPaymentKey: input.logicalPaymentKey,
           expectedMicroUsd: ATTEMPT_FEE_MICRO_USD,
           existingMicroUsd: reservation.amountMicroUsd,
         },
@@ -133,19 +188,21 @@ async function chargeEconomicAttempt(
       );
     }
 
+    // Earning occurs before downstream execution by design. The same logical
+    // payment key is idempotent, so verify -> settle and retries never earn the
+    // fixed fee twice.
     if (reservation.state !== "EARNED") {
       await earnSettlementFee(
-        env.DB,
-        access.merchant.merchantId,
-        logicalPaymentKey,
+        input.env.DB,
+        input.merchantId,
+        input.logicalPaymentKey,
       );
     }
   } catch (error) {
     if (errorCode(error) === "insufficient_service_balance") {
-      const balance = await merchantBalance(
-        env.DB,
-        access.merchant.merchantId,
-      ).catch(() => null);
+      const balance = await merchantBalance(input.env.DB, input.merchantId).catch(
+        () => null,
+      );
       return jsonResponse(
         {
           error: "xguard_service_balance_required",
@@ -164,8 +221,7 @@ async function chargeEconomicAttempt(
     );
   }
 
-  let response = await modernFetch(effectiveRequest, env, ctx);
-  response = await adaptCompatibilityResponse(response, compatibility);
+  const response = await input.execute();
   const headers = new Headers(response.headers);
   headers.set("X-XGuard-Attempt-Fee-USD", "0.04");
   headers.set(
@@ -174,12 +230,37 @@ async function chargeEconomicAttempt(
   );
   headers.set("X-XGuard-Attempt-Fee-State", "earned");
   headers.set("X-XGuard-Attempt-Fee-Refundable", "false");
-  headers.set("X-XGuard-Attempt-Key", logicalPaymentKey);
+  headers.set("X-XGuard-Attempt-Key", input.logicalPaymentKey);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
     headers,
   });
+}
+
+async function paymentKeyFor(request: Request): Promise<string | null> {
+  try {
+    const parsed = await parseMainnetFacilitatorRequest(
+      request.clone() as unknown as Request,
+    );
+    return derivePaymentIdentities(
+      parsed.paymentPayload,
+      parsed.paymentRequirements,
+    ).logicalPaymentKey;
+  } catch {
+    return null;
+  }
+}
+
+function attemptFeeConfigError(env: AttemptPricedMainnetEnv): Response | null {
+  if (env.XGUARD_FEE_MICRO_USD === String(ATTEMPT_FEE_MICRO_USD)) return null;
+  return jsonResponse(
+    {
+      error: "attempt_fee_configuration_invalid",
+      expectedMicroUsd: ATTEMPT_FEE_MICRO_USD,
+    },
+    503,
+  );
 }
 
 async function rewritePublicPricing(
