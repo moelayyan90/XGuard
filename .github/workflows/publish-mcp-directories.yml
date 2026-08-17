@@ -52,25 +52,24 @@ jobs:
           '
 
   a2aregistry:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Refresh XGuard in A2A Registry on explicit request
+      - name: Refresh XGuard in A2A Registry
         shell: bash
         run: |
           set -euo pipefail
-          URI='https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json'
+          URI='https://xguardgate.com/.well-known/agent-card.json'
           card="$(curl -fsS --max-time 20 "${URI}")"
           if ! printf '%s' "${card}" | node -e '
             let s="";
             process.stdin.on("data",d=>s+=d).on("end",()=>{
               const x=JSON.parse(s);
-              const ok=String(x.protocolVersion||"").startsWith("0.3") && String(x.url||"").endsWith("/a2a") && x.preferredTransport==="JSONRPC";
+              const ok=String(x.protocolVersion||"").startsWith("0.3") && String(x.url||"")==="https://xguardgate.com/a2a" && x.preferredTransport==="JSONRPC";
               process.exit(ok?0:1);
             });
           '; then
-            echo "XGuard Agent Card is not A2A-compatible; refusing registry refresh."
+            echo "XGuard Agent Card is not A2A-compatible on the canonical domain; refusing registry refresh."
             exit 1
           fi
           response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
