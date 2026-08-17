@@ -57,7 +57,7 @@ jobs:
           printf '%s' "$(cat /tmp/xguard-bazaar.json)" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.error!=="unauthorized")process.exit(1)})'
 
           retry_json "${BASE_URL}/.well-known/mcp/server.json" \
-            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="io.github.moelayyan90/xguard"||x.protocol!=="x402-v2"||!Array.isArray(x.remotes)||!x.remotes.some(r=>r&&r.type==="streamable-http"&&String(r.url||"").endsWith("/mcp")))process.exit(1)})'
+            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="io.github.moelayyan90/xguard"||!Array.isArray(x.remotes)||!x.remotes.some(r=>r&&r.type==="streamable-http"&&r.url==="https://xguardgate.com/mcp"))process.exit(1)})'
 
           mcp_body='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"xguard-smoke","version":"1.0.0"}}}'
           for attempt in {1..18}; do
