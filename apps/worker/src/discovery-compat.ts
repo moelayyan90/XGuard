@@ -3,11 +3,17 @@ import { discoveryResponse } from "./discovery.js";
 const X402_ALIAS = "/.well-known/x402";
 const MONETIZATION_PATH = "/.well-known/monetization";
 const GLAMA_PATH = "/.well-known/glama.json";
+const DEVELOPER_SDKS_PATH = "/developers/sdks";
 const PROVIDER_PATH = "/.well-known/x402/facilitator.json";
 const DISCOVERY_CACHE_CONTROL =
   "public, max-age=3600, stale-while-revalidate=86400";
 const MONETIZATION_ETAG = '"xguard-monetization-v1"';
 const GLAMA_ETAG = '"xguard-glama-v2"';
+const DEVELOPER_SDKS_ETAG = '"xguard-developer-sdks-v1"';
+const RELEASE_TAG = "xguard-packages-v0.1.0-alpha.0";
+const RELEASE_BASE = `https://github.com/moelayyan90/XGuard/releases/download/${RELEASE_TAG}`;
+const RELEASE_PAGE = `https://github.com/moelayyan90/XGuard/releases/tag/${RELEASE_TAG}`;
+const REPOSITORY_URL = "https://github.com/moelayyan90/XGuard";
 const GLAMA_METADATA = {
   $schema: "https://glama.ai/mcp/schemas/connector.json",
   maintainers: [{ email: "mo.elayyan2023@gmail.com" }],
@@ -22,6 +28,8 @@ export async function compatibilityDiscoveryResponse(
   if (url.pathname === X402_ALIAS) return x402AliasResponse(request);
   if (url.pathname === MONETIZATION_PATH) return monetizationResponse(request);
   if (url.pathname === GLAMA_PATH) return glamaResponse(request);
+  if (url.pathname === DEVELOPER_SDKS_PATH)
+    return developerSdksResponse(request);
   return null;
 }
 
@@ -47,6 +55,70 @@ function glamaResponse(request: Request): Response {
     });
 
   return jsonResponse(request, GLAMA_METADATA, 200, { ETag: GLAMA_ETAG });
+}
+
+function developerSdksResponse(request: Request): Response {
+  if (request.headers.get("if-none-match") === DEVELOPER_SDKS_ETAG)
+    return new Response(null, {
+      status: 304,
+      headers: discoveryHeaders({ ETag: DEVELOPER_SDKS_ETAG }),
+    });
+
+  const origin = new URL(request.url).origin;
+  const sdkTarball = `${RELEASE_BASE}/xguard-sdk-0.1.0-alpha.0.tgz`;
+  const coreTarball = `${RELEASE_BASE}/xguard-core-0.1.0-alpha.0.tgz`;
+  const cliTarball = `${RELEASE_BASE}/xguard-0.1.0-alpha.0.tgz`;
+  const body = {
+    schemaVersion: 1,
+    service: {
+      id: "xguard",
+      name: "XGuard",
+      version: "0.1.0-alpha.0",
+      baseUrl: origin,
+    },
+    sdks: [
+      {
+        language: "typescript",
+        runtime: "node",
+        package: "@xguard/sdk",
+        version: "0.1.0-alpha.0",
+        source: `${REPOSITORY_URL}/tree/main/packages/sdk`,
+        install: `npm install ${sdkTarball} ${coreTarball}`,
+        artifacts: {
+          sdk: sdkTarball,
+          core: coreTarball,
+          checksums: `${RELEASE_BASE}/SHA256SUMS`,
+        },
+      },
+      {
+        language: "http",
+        runtime: "any",
+        protocol: "x402-v2",
+        endpoints: {
+          supported: `${origin}/supported`,
+          verify: `${origin}/verify`,
+          settle: `${origin}/settle`,
+          openapi: `${origin}/openapi.json`,
+        },
+      },
+    ],
+    cli: {
+      package: "xguard",
+      version: "0.1.0-alpha.0",
+      install: `npm install --global ${cliTarball}`,
+      artifact: cliTarball,
+    },
+    agentIntegration: {
+      mcp: `${origin}/mcp`,
+      manifest: `${origin}/.well-known/mcp/server.json`,
+      agentCard: `${origin}/.well-known/agent-card.json`,
+    },
+    release: RELEASE_PAGE,
+    repository: REPOSITORY_URL,
+    note: "GitHub Release tarballs are the verified install path while first public npm publication remains identity-gated.",
+  };
+
+  return jsonResponse(request, body, 200, { ETag: DEVELOPER_SDKS_ETAG });
 }
 
 async function monetizationResponse(request: Request): Promise<Response> {

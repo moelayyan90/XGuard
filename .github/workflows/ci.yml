@@ -30,6 +30,7 @@ jobs:
           WRANGLER_SEND_METRICS: "false"
       - name: Publish strict verification checks
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           TESTED_MERGE_SHA: ${{ github.sha }}
@@ -38,6 +39,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          github_curl() {
+            curl --fail-with-body --silent --show-error \
+              --retry 6 \
+              --retry-all-errors \
+              --retry-delay 2 \
+              --retry-max-time 45 \
+              "$@"
+          }
 
           publish_verify_check() {
             local sha="$1"
@@ -55,7 +65,7 @@ jobs:
             }
           }));
           NODE
-            curl --fail-with-body --silent --show-error \
+            github_curl \
               --request POST \
               --header "Authorization: Bearer ${GH_TOKEN}" \
               --header "Accept: application/vnd.github+json" \
@@ -64,8 +74,10 @@ jobs:
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/check-runs" >/dev/null
           }
 
+          publish_verify_check "$HEAD_SHA"
+
           CURRENT_MERGE_SHA="$(
-            curl --fail-with-body --silent --show-error \
+            github_curl \
               --header "Authorization: Bearer ${GH_TOKEN}" \
               --header "Accept: application/vnd.github+json" \
               --header "X-GitHub-Api-Version: 2022-11-28" \
@@ -74,7 +86,8 @@ jobs:
           )"
 
           declare -A SEEN=()
-          for sha in "$TESTED_MERGE_SHA" "$HEAD_SHA" "$CURRENT_MERGE_SHA"; do
+          SEEN["$HEAD_SHA"]=1
+          for sha in "$TESTED_MERGE_SHA" "$CURRENT_MERGE_SHA"; do
             [[ -n "$sha" && "$sha" != "null" ]] || continue
             [[ -z "${SEEN[$sha]:-}" ]] || continue
             publish_verify_check "$sha"

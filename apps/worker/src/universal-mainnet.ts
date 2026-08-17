@@ -30,14 +30,15 @@ export {
 interface UniversalMainnetEnv {
   DB: D1Database;
   BASE_RPC_URL: string;
+  XGUARD_TREASURY_USDC_ADDRESS: string;
   REQUEST_RATE_LIMITER: RateLimit;
   GLOBAL_RATE_LIMITER: RateLimit;
+  BUYER_PASS_CREATE_RATE_LIMITER: RateLimit;
   WEBHOOK_DELIVERY_QUEUE: DurableObjectNamespace<WebhookDeliveryQueue>;
   WEBHOOK_RATE_LIMITER: RateLimit;
   XGUARD_PAYMENT_DECISION_FEE_MICRO_USD?: string;
   XGUARD_SECURITY_FEE_MICRO_USD?: string;
   XGUARD_TOOL_FEE_MICRO_USD?: string;
-  XGUARD_TREASURY_USDC_ADDRESS: string;
   [key: string]: unknown;
 }
 
@@ -56,6 +57,50 @@ const mainnetFetch = monetizedMainnet.fetch as unknown as MainnetFetch;
 const mainnetScheduled =
   monetizedMainnet.scheduled as unknown as MainnetScheduled;
 
+async function buyerPassCreationGuard(
+  request: Request,
+  env: UniversalMainnetEnv,
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (url.pathname !== "/v1/buyer-pass" || request.method !== "POST")
+    return null;
+
+  const client = (request.headers.get("cf-connecting-ip") ??
+    request.headers.get("x-real-ip") ??
+    "unknown")
+    .trim()
+    .slice(0, 128);
+
+  try {
+    const decision = await env.BUYER_PASS_CREATE_RATE_LIMITER.limit({
+      key: `buyer-pass:create:${client}`,
+    });
+    if (decision.success) return null;
+    return new Response(JSON.stringify({ error: "rate_limit_exceeded" }), {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Retry-After": "60",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "protection_unavailable" }), {
+      status: 503,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      },
+    });
+  }
+}
+
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
@@ -66,9 +111,12 @@ export default {
     const securityBlock = universalSecurityGuardResponse(standardRequest);
     if (securityBlock !== null) return securityBlock;
 
-    // Buyer Pass is the low-friction buyer/agent identity and prepaid service
-    // balance. Keep it behind the universal security guard, but before A2A and
-    // legacy merchant surfaces so a buyer never needs merchant onboarding.
+    const buyerPassCreateBlock = await buyerPassCreationGuard(
+      standardRequest,
+      env,
+    );
+    if (buyerPassCreateBlock !== null) return buyerPassCreateBlock;
+
     const buyerPass = await buyerPassResponse(standardRequest, env);
     if (buyerPass !== null) return buyerPass;
 

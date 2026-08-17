@@ -38,9 +38,11 @@ describe("watchdog control plane source", () => {
     expect(watchdogConfig).toContain('"crons": ["*/1 * * * *"]');
   });
 
-  it("attaches the live watchdog to every mainnet invocation", () => {
-    expect(mainnetConfig).toContain('"tail_consumers"');
-    expect(mainnetConfig).toContain('"service": "xguard-watchdog"');
+  it("keeps mainnet observability without requiring a paid Tail Worker binding", () => {
+    expect(mainnetConfig).not.toContain('"tail_consumers"');
+    expect(mainnetConfig).not.toContain('"service": "xguard-watchdog"');
+    expect(mainnetConfig).toContain('"observability"');
+    expect(mainnetConfig).toContain('"invocation_logs": true');
     expect(mainnetConfig).toContain('"traces"');
     expect(mainnetConfig).toContain('"head_sampling_rate": 0.1');
   });

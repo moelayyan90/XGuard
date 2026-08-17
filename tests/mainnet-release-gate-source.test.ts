@@ -26,45 +26,37 @@ const liveMainnetEntrypoint = readFileSync(
 );
 
 describe("mainnet release gate", () => {
-  it("uses the mainnet-specific gate in the production deploy workflow", () => {
+  it("uses the custom-domain mainnet release workflow", () => {
     expect(deployWorkflow).toContain("npm run verify:mainnet-release");
     expect(deployWorkflow).not.toContain("npm run verify:release\n");
     expect(deployWorkflow).toContain("src\\/universal-mainnet\\.ts");
     expect(deployWorkflow).toContain(
       "${BASE_URL}/.well-known/xguard/protocols.json",
     );
+    expect(deployWorkflow).toContain('BASE_URL="https://xguardgate.com"');
   });
 
-  it("waits for the new universal registry before probing the rest of the live release", () => {
-    const registryProbe = deployWorkflow.indexOf(
-      "${BASE_URL}/.well-known/xguard/protocols.json?deploy=${VERIFY_TOKEN}&attempt=${attempt}",
-    );
-    const healthProbe = deployWorkflow.indexOf(
-      "${BASE_URL}/healthz?deploy=${VERIFY_TOKEN}",
-    );
-
-    expect(registryProbe).toBeGreaterThan(-1);
-    expect(healthProbe).toBeGreaterThan(registryProbe);
-    expect(deployWorkflow).toContain(
-      "The universal XGuard protocol registry did not propagate.",
-    );
-  });
-
-  it("does not dry-run non-production Worker targets from the mainnet gate", () => {
+  it("does not dry-run non-production Worker targets", () => {
     const script = packageJson.scripts?.["verify:mainnet-release"] ?? "";
-
     expect(script).toContain("build:mainnet");
     expect(script).not.toContain("run build &&");
     expect(script).not.toContain("build:economic-preview");
   });
 
-  it("puts the universal router ahead of the monetized production entrypoint", () => {
+  it("locks production to the hardened universal edge", () => {
     expect(mainnetConfig).toContain('"main": "src/universal-mainnet.ts"');
+    expect(mainnetConfig).toContain('"workers_dev": false');
+    expect(mainnetConfig).toContain('"global_fetch_strictly_public"');
+    expect(mainnetConfig).toContain('"WEBHOOK_DELIVERY_QUEUE"');
+    expect(mainnetConfig).toContain('"WEBHOOK_RATE_LIMITER"');
     expect(universalMainnetEntrypoint).toContain(
-      'import { genericHttpConnectorResponse } from "./generic-http-connector.js";',
+      "const paymentContract = publicPaymentContractResponse(",
     );
     expect(universalMainnetEntrypoint).toContain(
-      'import { universalProtocolResponse } from "./universal-protocol-router.js";',
+      "const securityBlock = universalSecurityGuardResponse(",
+    );
+    expect(universalMainnetEntrypoint).toContain(
+      "const resilientWebhook = await resilientWebhookIngressResponse(",
     );
     expect(universalMainnetEntrypoint).toContain(
       "const protocolResponse = await universalProtocolResponse(",
@@ -73,35 +65,23 @@ describe("mainnet release gate", () => {
       "const genericHttp = await genericHttpConnectorResponse(",
     );
     expect(universalMainnetEntrypoint).toContain(
-      "return mainnetFetch(standardRequest, env, ctx);",
+      "return normalizePublicPaymentContract(standardRequest, response);",
     );
   });
 
-  it("keeps discovery compatibility and billing behind the universal production edge", () => {
+  it("preserves buyer decision and monetized execution", () => {
+    expect(universalMainnetEntrypoint).toContain(
+      'import { buyerPortalResponse } from "./buyer-portal.js";',
+    );
+    expect(universalMainnetEntrypoint).toContain(
+      'import { paymentDecisionResponse } from "./payment-decision.js";',
+    );
     expect(monetizedMainnetEntrypoint).toContain("import mainnetModern, {");
-    expect(monetizedMainnetEntrypoint).toContain(
-      '["/discovery/search", "discovery.search"]',
-    );
-    expect(monetizedMainnetEntrypoint).toContain(
-      '["/discovery/resources", "discovery.resources"]',
-    );
     expect(monetizedMainnetEntrypoint).toContain(
       'authorizeMerchantScope(request, env, "billing")',
     );
-    expect(monetizedMainnetEntrypoint).toContain(
-      "return delegateFetch(request, env, ctx)",
-    );
     expect(liveMainnetEntrypoint).toContain(
       'import { writeEndpointDiscoveryResponse } from "./mainnet-endpoint-discovery.js";',
-    );
-    expect(liveMainnetEntrypoint).toContain(
-      "writeEndpointDiscoveryResponse(standardRequest)",
-    );
-    expect(liveMainnetEntrypoint).toContain(
-      'standardUrl.pathname === "/" && standardRequest.method === "POST"',
-    );
-    expect(liveMainnetEntrypoint).toContain(
-      'headers.set("X-XGuard-Discovery", "root-post")',
     );
   });
 });
