@@ -1,10 +1,9 @@
-name: Live XGuard monitor
+name: Live XGuard mainnet monitor
 
 on:
   workflow_run:
     workflows:
       - Deploy XGuard mainnet
-      - Deploy live testnet
     types: [completed]
   schedule:
     - cron: "*/30 * * * *"
@@ -15,22 +14,12 @@ permissions:
   issues: write
 
 concurrency:
-  group: live-xguard-monitor
+  group: live-xguard-mainnet-monitor
   cancel-in-progress: true
 
 jobs:
   smoke:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: testnet
-            command: npm run smoke:live
-            description: Base Sepolia non-billable gateway
-          - target: mainnet
-            command: npm run smoke:mainnet
-            description: Base mainnet billable gateway
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -42,20 +31,18 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm ci --ignore-scripts
-      - name: Run live ${{ matrix.target }} smoke checks
+      - name: Run live mainnet smoke checks
         id: smoke
         continue-on-error: true
-        run: ${{ matrix.command }}
+        run: npm run smoke:mainnet
       - name: Record monitor state
         uses: actions/github-script@v8
         env:
-          MONITOR_TARGET: ${{ matrix.target }}
-          MONITOR_DESCRIPTION: ${{ matrix.description }}
           MONITOR_OUTCOME: ${{ steps.smoke.outcome }}
         with:
           script: |
-            const target = process.env.MONITOR_TARGET;
-            const title = `[monitor] XGuard live ${target} smoke failed`;
+            const target = "mainnet";
+            const title = "[monitor] XGuard live mainnet smoke failed";
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
@@ -70,13 +57,13 @@ jobs:
 
             if (failed) {
               const body = [
-                `The automated public ${target} smoke check failed.`,
+                "The automated public mainnet smoke check failed.",
                 "",
-                `Target: ${process.env.MONITOR_DESCRIPTION}`,
+                "Target: Base mainnet billable gateway",
                 `Workflow run: ${runUrl}`,
                 `Commit: ${context.sha}`,
                 "",
-                "The smoke check makes no payment. Mainnet checks liveness, readiness, the public Base/native-USDC/x402 contract, facilitator health, billing metadata, accounting counters, and reconciliation state. Merchant authentication remains fail-closed and is covered by CI billing tests without generating expected 401 traffic in production logs. Testnet checks its non-billable safety boundary.",
+                "The smoke check makes no payment. It verifies liveness, readiness, the public Base/native-USDC/x402 contract, facilitator health, discovery surfaces including Glama and MCP, billing metadata, accounting privacy, and reconciliation state. Merchant authentication remains fail-closed and is covered by CI billing tests without generating expected 401 traffic in production logs.",
               ].join("\n");
               if (existing) {
                 await github.rest.issues.createComment({
