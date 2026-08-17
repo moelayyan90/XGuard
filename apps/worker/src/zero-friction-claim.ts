@@ -1,14 +1,11 @@
-import {
-  createPublicClient,
-  http,
-  type Address,
-  type Hex,
-} from "viem";
+import { createPublicClient, http, type Address, type Hex } from "viem";
 import { base } from "viem/chains";
 import {
   activateZeroFrictionMerchant,
   normalizeZeroFrictionPayTo,
+  validateZeroFrictionPricingTerms,
   type ZeroFrictionAccount,
+  type ZeroFrictionPricingTerms,
 } from "./zero-friction-billing.js";
 
 const CLAIM_TTL_SECONDS = 5 * 60;
@@ -19,7 +16,7 @@ export interface ZeroFrictionClaimEnv {
   BASE_RPC_URL: string;
 }
 
-export interface ZeroFrictionClaimChallenge {
+export interface ZeroFrictionClaimChallenge extends ZeroFrictionPricingTerms {
   payTo: string;
   nonce: string;
   message: string;
@@ -29,8 +26,10 @@ export interface ZeroFrictionClaimChallenge {
 export async function createZeroFrictionClaimChallenge(
   env: ZeroFrictionClaimEnv,
   rawPayTo: string,
+  rawTerms: ZeroFrictionPricingTerms,
 ): Promise<ZeroFrictionClaimChallenge> {
   const payTo = normalizeZeroFrictionPayTo(rawPayTo);
+  const terms = validateZeroFrictionPricingTerms(rawTerms);
   const now = new Date();
   const expires = new Date(now.getTime() + CLAIM_TTL_SECONDS * 1_000);
   const nonce = randomHex(32);
@@ -40,16 +39,22 @@ export async function createZeroFrictionClaimChallenge(
     nonce,
     now.toISOString(),
     expires.toISOString(),
+    terms,
   );
 
   await env.DB.prepare(
     `INSERT INTO zero_friction_claim_challenges(
-      challenge_hash,pay_to,expires_at_epoch,consumed_at,created_at
-    ) VALUES(?,?,?,NULL,?)`,
+      challenge_hash,pay_to,pricing_version,fee_bps,fee_cap_micro_usd,
+      postpaid_limit_micro_usd,expires_at_epoch,consumed_at,created_at
+    ) VALUES(?,?,?,?,?,?,?,NULL,?)`,
   )
     .bind(
       challengeHash,
       payTo,
+      terms.pricingVersion,
+      terms.feeBps,
+      terms.feeCapMicroUsd,
+      terms.postpaidLimitMicroUsd,
       Math.floor(expires.getTime() / 1_000),
       now.toISOString(),
     )
@@ -60,6 +65,7 @@ export async function createZeroFrictionClaimChallenge(
     nonce,
     message,
     expiresAt: expires.toISOString(),
+    ...terms,
   };
 }
 
@@ -75,12 +81,17 @@ export async function claimZeroFrictionMerchant(
 
   const challengeHash = await sha256Hex(input.nonce.toLowerCase());
   const challenge = await env.DB.prepare(
-    `SELECT pay_to,expires_at_epoch,consumed_at,created_at
+    `SELECT pay_to,pricing_version,fee_bps,fee_cap_micro_usd,
+            postpaid_limit_micro_usd,expires_at_epoch,consumed_at,created_at
      FROM zero_friction_claim_challenges WHERE challenge_hash=?`,
   )
     .bind(challengeHash)
     .first<{
       pay_to: string;
+      pricing_version: string;
+      fee_bps: number;
+      fee_cap_micro_usd: number;
+      postpaid_limit_micro_usd: number;
       expires_at_epoch: number;
       consumed_at: string | null;
       created_at: string;
@@ -95,12 +106,19 @@ export async function claimZeroFrictionMerchant(
   if (challenge.expires_at_epoch < nowEpoch)
     throw new Error("zero_friction_claim_expired");
 
+  const terms = validateZeroFrictionPricingTerms({
+    pricingVersion: challenge.pricing_version,
+    feeBps: challenge.fee_bps,
+    feeCapMicroUsd: challenge.fee_cap_micro_usd,
+    postpaidLimitMicroUsd: challenge.postpaid_limit_micro_usd,
+  });
   const expiresAt = new Date(challenge.expires_at_epoch * 1_000).toISOString();
   const message = buildClaimMessage(
     payTo,
     input.nonce.toLowerCase(),
     challenge.created_at,
     expiresAt,
+    terms,
   );
   const client = createPublicClient({
     chain: base,
@@ -124,7 +142,7 @@ export async function claimZeroFrictionMerchant(
   if (consumed.meta.changes !== 1)
     throw new Error("zero_friction_claim_raced_or_expired");
 
-  return activateZeroFrictionMerchant(env.DB, payTo);
+  return activateZeroFrictionMerchant(env.DB, payTo, terms);
 }
 
 export async function pruneZeroFrictionClaimChallenges(
@@ -145,6 +163,7 @@ function buildClaimMessage(
   nonce: string,
   issuedAt: string,
   expiresAt: string,
+  terms: ZeroFrictionPricingTerms,
 ): string {
   return [
     "XGuard merchant activation",
@@ -152,11 +171,16 @@ function buildClaimMessage(
     `Domain: ${CLAIM_DOMAIN}`,
     "Network: Base (eip155:8453)",
     `PayTo: ${payTo}`,
+    `Pricing Version: ${terms.pricingVersion}`,
+    `Service Fee: ${terms.feeBps} basis points of each independently finalized settlement`,
+    `Fee Cap: ${terms.feeCapMicroUsd} micro-USD per settlement`,
+    `Postpaid Limit: ${terms.postpaidLimitMicroUsd} micro-USD`,
     `Nonce: ${nonce}`,
     `Issued At: ${issuedAt}`,
     `Expires At: ${expiresAt}`,
     "",
     "Purpose: activate a postpaid XGuard facilitator URL for this payTo address.",
+    "No fee is charged for verify, failed settlement, or idempotent retry.",
     "This signature does not authorize a token transfer or change payment recipients.",
   ].join("\n");
 }
