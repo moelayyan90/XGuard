@@ -4,9 +4,14 @@ import {
   listBazaarResources,
   searchBazaarResources,
 } from "./mainnet-bazaar.js";
+import {
+  paymentDecisionForMcp,
+  paymentDecisionOffer,
+  type PaymentDecisionEnv,
+} from "./payment-decision.js";
 
 export const MODERN_MCP_PROTOCOL = "2026-07-28";
-export const XGUARD_MCP_VERSION = "0.5.1";
+export const XGUARD_MCP_VERSION = "0.6.0";
 
 const LEGACY_MCP_PROTOCOLS = new Set([
   "2025-11-25",
@@ -19,7 +24,7 @@ const MAX_MCP_BODY_BYTES = 128 * 1024;
 const HSTS_VALUE = "max-age=31536000; includeSubDomains";
 const SERVER_INFO = { name: "xguard-mainnet", version: XGUARD_MCP_VERSION };
 
-type ModernMcpEnv = { DB: D1Database };
+type ModernMcpEnv = PaymentDecisionEnv;
 type StatusProvider = () => Promise<unknown>;
 
 export async function modernMcpRequest(
@@ -93,7 +98,7 @@ export async function modernMcpRequest(
       supportedVersions: SUPPORTED_PROTOCOLS,
       capabilities: { tools: { listChanged: false } },
       instructions:
-        "Use xguard_discover to find x402-paid HTTP APIs and MCP tools cataloged by XGuard; use xguard_resource_details for an exact resource and xguard_status for live gateway state.",
+        "When an agent is about to spend money, xguard_payment_offer is the free optional pre-payment offer and xguard_payment_decision is the paid decision/evidence action. Use xguard_discover for catalog search, xguard_resource_details for an exact catalog resource, and xguard_status for live gateway state.",
       ttlMs: CACHE_TTL_MS,
       cacheScope: "public",
       _meta: serverMeta(),
@@ -117,6 +122,15 @@ export async function modernMcpRequest(
     const name = typeof params.name === "string" ? params.name : "";
     const args = isRecord(params.arguments) ? params.arguments : {};
     try {
+      if (name === "xguard_payment_offer")
+        return mcpToolResult(id, paymentDecisionOffer(env));
+
+      if (name === "xguard_payment_decision")
+        return mcpToolResult(
+          id,
+          await paymentDecisionForMcp(request, env, args),
+        );
+
       if (name === "xguard_discover") {
         const query = typeof args.query === "string" ? args.query.trim() : "";
         const type =
@@ -146,7 +160,8 @@ export async function modernMcpRequest(
             ? {
                 status: "operational",
                 mode: "mainnet",
-                protocol: "x402-v2",
+                paymentDecision: "buyer-agent-side",
+                settlementAdapters: ["x402"],
                 network: "eip155:8453",
                 discovery: await bazaarStats(env.DB),
               }
@@ -223,6 +238,86 @@ export function xguardMcpTools() {
   };
 
   return [
+    {
+      name: "xguard_payment_offer",
+      title: "Offer XGuard before payment",
+      description:
+        "Free optional pre-payment offer. Use when a user or autonomous agent is about to spend money and should be given the choice to verify and document the transaction with XGuard. Calling this offer does not charge an XGuard fee and does not execute the underlying payment.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+      annotations: { ...safeReadAnnotations },
+    },
+    {
+      name: "xguard_payment_decision",
+      title: "Verify and document a payment",
+      description:
+        "Paid only when XGuard completes the requested ALLOW/REVIEW/BLOCK decision and durable evidence record. It never executes the underlying payment. Reusing the same requestId is idempotent and must not create a second fee.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          requestId: {
+            type: "string",
+            minLength: 8,
+            maxLength: 96,
+            description:
+              "Caller-generated idempotency identifier for this XGuard decision request.",
+          },
+          offerId: { type: "string", maxLength: 96 },
+          rail: {
+            type: "string",
+            minLength: 1,
+            maxLength: 64,
+            description:
+              "Payment rail such as card, stripe, paypal, x402, crypto_wallet, coinbase, bank_transfer, or another safe identifier.",
+          },
+          provider: {
+            type: "string",
+            minLength: 1,
+            maxLength: 64,
+            description: "Declared payment provider or generic_http.",
+          },
+          amount: {
+            type: "string",
+            description:
+              "Positive decimal amount as a string; never send card credentials.",
+          },
+          currency: { type: "string", minLength: 2, maxLength: 12 },
+          payee: { type: "string", minLength: 1, maxLength: 256 },
+          merchantOrigin: { type: "string", maxLength: 512 },
+          network: { type: "string", maxLength: 96 },
+          asset: { type: "string", maxLength: 96 },
+          expectedAmount: { type: "string", maxLength: 64 },
+          expectedPayee: { type: "string", maxLength: 256 },
+          expiresAt: { type: "string", maxLength: 64 },
+          paymentReference: { type: "string", maxLength: 160 },
+          metadata: {
+            type: "object",
+            maxProperties: 20,
+            additionalProperties: {
+              type: ["string", "number", "boolean"],
+            },
+          },
+        },
+        required: [
+          "requestId",
+          "rail",
+          "provider",
+          "amount",
+          "currency",
+          "payee",
+        ],
+        additionalProperties: false,
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
     {
       name: "xguard_discover",
       title: "Discover x402 resources",

@@ -38,12 +38,7 @@ function modernRequest(
       "Mcp-Method": method,
       ...headers,
     },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method,
-      params: bodyParams,
-    }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: bodyParams }),
   });
 }
 
@@ -60,9 +55,7 @@ describe("MCP 2026-07-28 mainnet surface", () => {
     expect(response.headers.get("Strict-Transport-Security")).toBe(
       "max-age=31536000; includeSubDomains",
     );
-    const body = (await response.json()) as {
-      result: Record<string, unknown>;
-    };
+    const body = (await response.json()) as { result: Record<string, unknown> };
     expect(body.result).toMatchObject({
       resultType: "complete",
       supportedVersions: [
@@ -77,7 +70,7 @@ describe("MCP 2026-07-28 mainnet surface", () => {
       _meta: {
         "io.modelcontextprotocol/serverInfo": {
           name: "xguard-mainnet",
-          version: "0.5.1",
+          version: "0.6.0",
         },
       },
     });
@@ -96,6 +89,8 @@ describe("MCP 2026-07-28 mainnet surface", () => {
     };
     expect(body.result.resultType).toBe("complete");
     expect(body.result.tools.map((tool) => tool.name)).toEqual([
+      "xguard_payment_offer",
+      "xguard_payment_decision",
       "xguard_discover",
       "xguard_resource_details",
       "xguard_status",
@@ -104,11 +99,36 @@ describe("MCP 2026-07-28 mainnet surface", () => {
     expect(body.result.cacheScope).toBe("public");
   });
 
-  it("declares every public MCP tool safe and agent-readable", () => {
+  it("declares free/read-only and paid/economic MCP tools truthfully", () => {
     const tools = xguardMcpTools();
-    expect(tools).toHaveLength(3);
-
-    for (const tool of tools) {
+    expect(tools).toHaveLength(5);
+    const offer = tools.find((tool) => tool.name === "xguard_payment_offer");
+    expect(offer?.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+    const decision = tools.find(
+      (tool) => tool.name === "xguard_payment_decision",
+    );
+    expect(decision?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    });
+    expect(decision?.description).toContain("Paid only when XGuard completes");
+    expect(decision?.description).toContain(
+      "never executes the underlying payment",
+    );
+    const readOnlyTools = tools.filter((tool) =>
+      ["xguard_discover", "xguard_resource_details", "xguard_status"].includes(
+        tool.name,
+      ),
+    );
+    expect(readOnlyTools).toHaveLength(3);
+    for (const tool of readOnlyTools) {
       expect(tool.description).toMatch(/Example:/);
       expect(tool.annotations).toMatchObject({
         readOnlyHint: true,
@@ -116,14 +136,12 @@ describe("MCP 2026-07-28 mainnet surface", () => {
         idempotentHint: true,
         openWorldHint: false,
       });
-
       const properties = tool.inputSchema.properties as Record<
         string,
         { description?: string }
       >;
-      for (const property of Object.values(properties)) {
+      for (const property of Object.values(properties))
         expect(property.description?.trim().length).toBeGreaterThan(0);
-      }
     }
   });
 
@@ -154,23 +172,16 @@ describe("MCP 2026-07-28 mainnet surface", () => {
       ENV,
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
-      error: { code: -32020 },
-    });
+    expect(await response.json()).toMatchObject({ error: { code: -32020 } });
   });
 
   it("requires Mcp-Name for modern tools/call", async () => {
     const response = await modernMcpRequest(
-      modernRequest("tools/call", {
-        name: "xguard_status",
-        arguments: {},
-      }),
+      modernRequest("tools/call", { name: "xguard_status", arguments: {} }),
       ENV,
     );
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
-      error: { code: -32020 },
-    });
+    expect(await response.json()).toMatchObject({ error: { code: -32020 } });
   });
 
   it("returns UnsupportedProtocolVersion for an unknown modern-era version", async () => {
@@ -192,9 +203,7 @@ describe("MCP 2026-07-28 mainnet surface", () => {
       ENV,
     );
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({
-      error: { code: -32601 },
-    });
+    expect(await response.json()).toMatchObject({ error: { code: -32601 } });
   });
 
   it("keeps 2025 protocol requests on the existing legacy implementation", () => {
