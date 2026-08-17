@@ -1,12 +1,12 @@
-export type WriteEndpointDescriptor = {
-  method: "POST";
+export type EndpointDescriptor = {
+  method: "GET" | "POST";
   auth: "none" | "api-key";
   contentType: "application/json";
   description: string;
   body?: Record<string, string>;
 };
 
-const WRITE_ENDPOINTS: Record<string, WriteEndpointDescriptor> = {
+const ENDPOINTS: Record<string, EndpointDescriptor> = {
   "/v1/register": {
     method: "POST",
     auth: "none",
@@ -45,6 +45,9 @@ const WRITE_ENDPOINTS: Record<string, WriteEndpointDescriptor> = {
   },
 };
 
+const TRUTH_PATH = /^\/v1\/settlements\/[0-9a-fA-F]{64}\/truth$/;
+const RESOLVE_PATH = /^\/v1\/settlements\/[0-9a-fA-F]{64}\/resolve$/;
+
 function jsonHeaders(extra: HeadersInit = {}): Headers {
   const headers = new Headers(extra);
   headers.set("Content-Type", "application/json; charset=utf-8");
@@ -61,16 +64,39 @@ function normalizedPathname(request: Request): string {
   return pathname;
 }
 
+function descriptorFor(pathname: string): EndpointDescriptor | undefined {
+  const staticDescriptor = ENDPOINTS[pathname];
+  if (staticDescriptor !== undefined) return staticDescriptor;
+  if (TRUTH_PATH.test(pathname))
+    return {
+      method: "GET",
+      auth: "api-key",
+      contentType: "application/json",
+      description:
+        "Read XGuard's independent settlement truth: FINALIZED, PENDING, PROVEN_FAILED, or CONFLICT.",
+    };
+  if (RESOLVE_PATH.test(pathname))
+    return {
+      method: "POST",
+      auth: "api-key",
+      contentType: "application/json",
+      description:
+        "Immediately re-check independent Base finality and ambiguous EIP-3009 recovery evidence.",
+    };
+  return undefined;
+}
+
 export function writeEndpointDiscoveryResponse(
   request: Request,
 ): Response | null {
   const pathname = normalizedPathname(request);
-  const descriptor = WRITE_ENDPOINTS[pathname];
+  const descriptor = descriptorFor(pathname);
   if (descriptor === undefined) return null;
 
   if (request.method === descriptor.method) return null;
 
-  const allow = `GET, HEAD, OPTIONS, ${descriptor.method}`;
+  const allowed = [...new Set(["GET", "HEAD", "OPTIONS", descriptor.method])];
+  const allow = allowed.join(", ");
   const commonHeaders = {
     Allow: allow,
     "X-XGuard-Discovery": "endpoint-introspection",
@@ -104,7 +130,7 @@ export function writeEndpointDiscoveryResponse(
     JSON.stringify({
       error: "method_not_allowed",
       endpoint: pathname,
-      allowed: ["GET", "HEAD", "OPTIONS", descriptor.method],
+      allowed,
     }),
     {
       status: 405,
