@@ -65,9 +65,11 @@ async function buyerPassCreationGuard(
   if (url.pathname !== "/v1/buyer-pass" || request.method !== "POST")
     return null;
 
-  const client = (request.headers.get("cf-connecting-ip") ??
+  const client = (
+    request.headers.get("cf-connecting-ip") ??
     request.headers.get("x-real-ip") ??
-    "unknown")
+    "unknown"
+  )
     .trim()
     .slice(0, 128);
 
