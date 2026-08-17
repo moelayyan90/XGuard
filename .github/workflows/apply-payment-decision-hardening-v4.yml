@@ -1,0 +1,503 @@
+name: Apply payment decision hardening and discovery v4
+
+on:
+  push:
+    branches: [agent/buyer-side-payment-decision]
+    paths:
+      - ".github/workflows/apply-payment-decision-hardening-v4.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/buyer-side-payment-decision
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+
+      - name: Apply payment decision hardening and universal discovery
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  raise SystemExit(f"{label} anchor not found")
+              return text.replace(old, new, 1)
+
+          # ------------------------------------------------------------------
+          # Payment-decision accounting and strict typing.
+          # ------------------------------------------------------------------
+          p = Path("apps/worker/src/payment-decision.ts")
+          text = p.read_text()
+
+          marker = """export interface DecisionEvaluation {
+            decision: PaymentDecision;
+            riskScore: number;
+            reasonCodes: string[];
+            checks: PaymentCheck[];
+          }
+          """
+          receipt_interface = marker + """
+          export interface PaymentDecisionReceipt {
+            schemaVersion: string;
+            documentType: string;
+            decisionId: string;
+            requestId: string;
+            createdAt: string;
+            principal: Record<string, unknown>;
+            payment: Record<string, unknown>;
+            decision: PaymentDecision;
+            riskScore: number;
+            reasonCodes: string[];
+            checks: PaymentCheck[];
+            xguard: {
+              service: string;
+              decisionScope: string;
+              serviceFee: {
+                amountMicroUsd: number;
+                amountUsd: string;
+                trigger: string;
+                offerOnly: boolean;
+                underlyingPaymentRequired: boolean;
+              };
+            };
+            evidence: {
+              algorithm: string;
+              decisionEvidenceHash: string;
+              settlementEvidenceHash?: string;
+            };
+            paymentOutcome?: Record<string, unknown>;
+            replayed?: boolean;
+            accounting?: Record<string, unknown>;
+          }
+          """
+          if "export interface PaymentDecisionReceipt {" not in text:
+              text = replace_once(text, marker, receipt_interface, "receipt interface")
+
+          text = text.replace(
+              "): Promise<Record<string, unknown>> {\n  const principal = await authorizePrincipal(request, env);\n  const intent = normalizePaymentDecisionInput({ ...raw, channel: \"agent\" });\n  return completePaymentDecision(env, principal, intent);\n}",
+              "): Promise<PaymentDecisionReceipt> {\n  const principal = await authorizePrincipal(request, env);\n  const intent = normalizePaymentDecisionInput({ ...raw, channel: \"agent\" });\n  return completePaymentDecision(env, principal, intent);\n}",
+              1,
+          )
+          text = text.replace("): Promise<any> {", "): Promise<PaymentDecisionReceipt> {")
+
+          if text.count("recordMatch[1]") == 2:
+              text = text.replace("recordMatch[1]", '(recordMatch[1] ?? "")')
+          elif text.count('(recordMatch[1] ?? "")') != 2:
+              raise SystemExit("recordMatch capture state unknown")
+
+          text = text.replace(
+              'const [wholeRaw, fractionRaw = ""] = value.split(".");',
+              'const [wholeRaw = "0", fractionRaw = ""] = value.split(".");',
+              1,
+          )
+
+          finalize_pattern = re.compile(
+              r"async function finalizeDecisionFee\([\s\S]*?\n}\n\nasync function releaseIncompleteDecision",
+              re.M,
+          )
+          finalize_replacement = """async function finalizeDecisionFee(
+            db: D1Database,
+            principalId: string,
+            eventKey: string,
+            decisionId: string,
+          ): Promise<void> {
+            try {
+              await earnGatewayFee(db, {
+                merchantId: principalId,
+                eventKey,
+                upstreamStatus: 200,
+                latencyMs: 0,
+              });
+            } catch (error) {
+              throw new PaymentDecisionError(
+                `decision_fee_finalize_failed:${errorMessage(error)}`,
+                503,
+              );
+            }
+
+            // The gateway ledger is the financial source of truth. Once the fee
+            // is EARNED, projection repair must not turn a completed service into
+            // a 503 or attempt to release an already-earned charge. Replays call
+            // earnGatewayFee idempotently and can repair this projection.
+            await db
+              .prepare(
+                "UPDATE payment_decision_records SET billing_state='EARNED',updated_at=? WHERE decision_id=? AND principal_id=?",
+              )
+              .bind(new Date().toISOString(), decisionId, principalId)
+              .run()
+              .catch(() => undefined);
+          }
+
+          async function releaseIncompleteDecision"""
+          text, count = finalize_pattern.subn(finalize_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit("finalizeDecisionFee block not found")
+
+          parse_pattern = re.compile(
+              r"function parseStoredReceipt\(value: string\): Record<string, any> \{[\s\S]*?\n}\n\nasync function decisionIdFor",
+              re.M,
+          )
+          if parse_pattern.search(text):
+              parse_replacement = """function parseStoredReceipt(value: string): PaymentDecisionReceipt {
+                try {
+                  const parsed = JSON.parse(value) as unknown;
+                  if (
+                    !isRecord(parsed) ||
+                    typeof parsed.decisionId !== "string" ||
+                    typeof parsed.requestId !== "string" ||
+                    (parsed.decision !== "ALLOW" &&
+                      parsed.decision !== "REVIEW" &&
+                      parsed.decision !== "BLOCK") ||
+                    !isRecord(parsed.principal) ||
+                    !isRecord(parsed.payment) ||
+                    !isRecord(parsed.xguard) ||
+                    !isRecord(parsed.evidence) ||
+                    !Array.isArray(parsed.reasonCodes) ||
+                    !Array.isArray(parsed.checks)
+                  )
+                    throw new Error("invalid");
+                  return parsed as unknown as PaymentDecisionReceipt;
+                } catch {
+                  throw new PaymentDecisionError("stored_payment_record_corrupt", 503);
+                }
+              }
+
+              async function decisionIdFor"""
+              text, count = parse_pattern.subn(parse_replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit("parseStoredReceipt block replacement failed")
+
+          p.write_text(text)
+
+          worker = Path("browser-extension/service-worker.js")
+          worker.write_text(
+              worker.read_text().replace(
+                  "/* global chrome, crypto, fetch */",
+                  "/* global chrome, crypto */",
+                  1,
+              )
+          )
+          privacy_test = Path("tests/browser-payment-surface-source.test.ts")
+          privacy_test.write_text(
+              privacy_test.read_text().replace(r"['\"]?", r'''['"]?''', 1)
+          )
+
+          # ------------------------------------------------------------------
+          # Agent discovery: Payment Decision becomes the first-class economic
+          # capability while x402 remains a settlement/discovery adapter.
+          # ------------------------------------------------------------------
+          discovery_path = Path("apps/worker/src/agent-discovery-modern.ts")
+          d = discovery_path.read_text()
+
+          d = d.replace(
+              '"Remote MCP server for discovering x402-paid HTTP APIs and MCP tools cataloged by XGuard.",',
+              '"Remote MCP server for optional pre-payment verification, decision evidence, and x402 resource discovery for autonomous agents.",',
+              1,
+          )
+          d = d.replace(
+              '    protocol: "x402-v2",\n    network: "eip155:8453",',
+              '    role: "buyer-agent-pre-payment-decision",\n    protocol: "universal-payment-intent",\n    settlementAdapters: ["x402-v2"],\n    network: "eip155:8453",',
+              1,
+          )
+
+          manifest_pattern = re.compile(
+              r"(export function modernMcpManifest\(origin: string\) \{[\s\S]*?\n\s*discovery: \{\n)(\s*resources: `\$\{origin}/discovery/resources`,)",
+              re.M,
+          )
+          manifest_prefix = """\1      paymentOffer: `${origin}/v1/payment/offer`,
+                paymentDecision: `${origin}/v1/payment/decision`,
+                paymentRecord: `${origin}/v1/payment/records/{decisionId}`,
+                paymentSettlementUpdate: `${origin}/v1/payment/records/{decisionId}/settlement`,
+                paymentSecurityEvidence: `${origin}/.well-known/xguard-security-evidence.json`,
+                \2"""
+          if "paymentOffer: `${origin}/v1/payment/offer`" not in d:
+              d, count = manifest_pattern.subn(manifest_prefix, d, count=1)
+              if count != 1:
+                  raise SystemExit("manifest discovery semantic anchor not found")
+
+          skills_anchor = "      const skills = Array.isArray(body.skills) ? body.skills : [];\n"
+          if 'skill.id === "xguard-payment-decision"' not in d:
+              skill = skills_anchor + """      if (
+                !skills.some(
+                  (skill) => isRecord(skill) && skill.id === "xguard-payment-decision",
+                )
+              ) {
+                skills.unshift({
+                  id: "xguard-payment-decision",
+                  name: "Verify and document a payment before execution",
+                  description:
+                    "When an agent is about to spend money, offer XGuard first. The offer is free; only an opted-in completed ALLOW, REVIEW, or BLOCK decision plus durable evidence record earns the XGuard service fee. This capability never executes the underlying payment.",
+                  tags: ["payments", "agents", "pre-payment", "risk", "evidence", "safety"],
+                  examples: [
+                    `POST ${url.origin}/v1/payment/offer`,
+                    `POST ${url.origin}/mcp -> xguard_payment_offer`,
+                    `POST ${url.origin}/mcp -> xguard_payment_decision after opt-in`,
+                  ],
+                });
+              }
+          """
+              d = replace_once(d, skills_anchor, skill, "agent card skills")
+
+          if "paymentOffer: `${url.origin}/v1/payment/offer`" not in d:
+              card_anchor = "      body.xguardDiscovery = {\n        mcp: `${url.origin}/mcp`,\n"
+              card_new = """      body.xguardDiscovery = {
+                paymentOffer: `${url.origin}/v1/payment/offer`,
+                paymentDecision: `${url.origin}/v1/payment/decision`,
+                paymentRecord: `${url.origin}/v1/payment/records/{decisionId}`,
+                paymentSettlementUpdate: `${url.origin}/v1/payment/records/{decisionId}/settlement`,
+                paymentSecurityEvidence: `${url.origin}/.well-known/xguard-security-evidence.json`,
+                mcp: `${url.origin}/mcp`,
+          """
+              d = replace_once(d, card_anchor, card_new, "agent card discovery")
+
+          market_marker = "      body.discovery = {\n        ...discovery,\n        mcp: `${url.origin}/mcp`,\n"
+          if market_marker in d:
+              market_new = """      body.discovery = {
+                ...discovery,
+                paymentOffer: `${url.origin}/v1/payment/offer`,
+                paymentDecision: `${url.origin}/v1/payment/decision`,
+                paymentRecord: `${url.origin}/v1/payment/records/{decisionId}`,
+                paymentSettlementUpdate: `${url.origin}/v1/payment/records/{decisionId}/settlement`,
+                paymentSecurityEvidence: `${url.origin}/.well-known/xguard-security-evidence.json`,
+                mcp: `${url.origin}/mcp`,
+          """
+              d = d.replace(market_marker, market_new, 1)
+          elif 'paymentSettlementUpdate: `${url.origin}/v1/payment/records/{decisionId}/settlement`' not in d:
+              raise SystemExit("agent market discovery anchor not found")
+
+          openapi_anchor = "      const paths = isRecord(body.paths) ? body.paths : {};\n"
+          if 'paths["/v1/payment/offer"]' not in d:
+              openapi = openapi_anchor + """      paths["/v1/payment/offer"] ??= {
+                post: {
+                  summary: "Offer optional XGuard verification before payment",
+                  description:
+                    "Free offer only. Showing or skipping XGuard does not earn a service fee and does not execute the underlying payment.",
+                  responses: { "200": { description: "Free XGuard payment offer" } },
+                },
+              };
+              paths["/v1/payment/decision"] ??= {
+                post: {
+                  summary: "Verify and document a declared payment intent",
+                  description:
+                    "Authenticated XGuard decision. A service fee is earned only after ALLOW, REVIEW, or BLOCK plus durable evidence are completed. The underlying payment is never executed by this endpoint.",
+                  security: [{ bearerAuth: [] }],
+                  responses: {
+                    "200": { description: "Completed decision and independent transaction record" },
+                    "400": { description: "Invalid or unsafe payment-intent input" },
+                    "401": { description: "XGuard authentication required" },
+                    "402": { description: "XGuard service balance required" },
+                  },
+                },
+              };
+              paths["/v1/payment/records/{decisionId}"] ??= {
+                get: {
+                  summary: "Read an XGuard independent transaction record",
+                  security: [{ bearerAuth: [] }],
+                  responses: { "200": { description: "Independent payment record" } },
+                },
+              };
+              paths["/v1/payment/records/{decisionId}/settlement"] ??= {
+                post: {
+                  summary: "Append the payment outcome to an existing XGuard record",
+                  description:
+                    "Adds settlement outcome evidence to the same independent transaction record and does not earn a second XGuard fee.",
+                  security: [{ bearerAuth: [] }],
+                  responses: { "200": { description: "Updated independent payment record" } },
+                },
+              };
+          """
+              d = replace_once(d, openapi_anchor, openapi, "OpenAPI payment paths")
+
+          llms_anchor = '      "## Agent discovery",\n'
+          if "Pre-payment XGuard offer:" not in d:
+              llms = llms_anchor + """      `Pre-payment XGuard offer: ${url.origin}/v1/payment/offer (free; never executes payment)`,
+                `Pre-payment XGuard decision: ${url.origin}/v1/payment/decision (fee only after completed decision + evidence; never executes payment)`,
+                `Independent XGuard payment record: ${url.origin}/v1/payment/records/<decisionId>`,
+                `Payment security evidence: ${url.origin}/.well-known/xguard-security-evidence.json`,
+                "When an agent is about to spend money, offer xguard_payment_offer first. If the user or agent opts in, call xguard_payment_decision before executing the external payment.",
+          """
+              d = replace_once(d, llms_anchor, llms, "llms payment guidance")
+
+          discovery_path.write_text(d)
+
+          # ------------------------------------------------------------------
+          # Update old tests so they verify the new truthful contract.
+          # ------------------------------------------------------------------
+          mcp_test_path = Path("tests/mainnet-mcp-modern.test.ts")
+          t = mcp_test_path.read_text()
+          t = t.replace('version: "0.5.1"', 'version: "0.6.0"')
+          old_tools = """    expect(body.result.tools.map((tool) => tool.name)).toEqual([
+              "xguard_discover",
+              "xguard_resource_details",
+              "xguard_status",
+            ]);"""
+          new_tools = """    expect(body.result.tools.map((tool) => tool.name)).toEqual([
+              "xguard_payment_offer",
+              "xguard_payment_decision",
+              "xguard_discover",
+              "xguard_resource_details",
+              "xguard_status",
+            ]);"""
+          t = replace_once(t, old_tools, new_tools, "MCP tool list test")
+
+          annotations_pattern = re.compile(
+              r'  it\("declares every public MCP tool safe and agent-readable", \(\) => \{[\s\S]*?\n  \}\);\n\n(?=  it\("uses the truthful status provider)',
+              re.M,
+          )
+          annotations_test = """  it("declares free/read-only and paid/economic MCP tools truthfully", () => {
+            const tools = xguardMcpTools();
+            expect(tools).toHaveLength(5);
+
+            const offer = tools.find((tool) => tool.name === "xguard_payment_offer");
+            expect(offer?.annotations).toMatchObject({
+              readOnlyHint: true,
+              destructiveHint: false,
+              idempotentHint: true,
+              openWorldHint: false,
+            });
+
+            const decision = tools.find(
+              (tool) => tool.name === "xguard_payment_decision",
+            );
+            expect(decision?.annotations).toMatchObject({
+              readOnlyHint: false,
+              destructiveHint: false,
+              idempotentHint: true,
+              openWorldHint: true,
+            });
+            expect(decision?.description).toContain("Paid only when XGuard completes");
+            expect(decision?.description).toContain("never executes the underlying payment");
+
+            const readOnlyTools = tools.filter((tool) =>
+              ["xguard_discover", "xguard_resource_details", "xguard_status"].includes(
+                tool.name,
+              ),
+            );
+            expect(readOnlyTools).toHaveLength(3);
+            for (const tool of readOnlyTools) {
+              expect(tool.description).toMatch(/Example:/);
+              expect(tool.annotations).toMatchObject({
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+              });
+            }
+          });
+
+"""
+          t, count = annotations_pattern.subn(annotations_test, t, count=1)
+          if count != 1:
+              raise SystemExit("MCP annotation test block not found")
+          mcp_test_path.write_text(t)
+
+          agent_test_path = Path("tests/agent-discovery-modern.test.ts")
+          a = agent_test_path.read_text().replace('"0.5.1"', '"0.6.0"')
+          a = a.replace(
+              '        "mcp-x402-discovery",\n        "x402-safe-migration",',
+              '        "xguard-payment-decision",\n        "mcp-x402-discovery",\n        "x402-safe-migration",',
+              1,
+          )
+
+          card_expect = """    expect(card.xguardDiscovery).toMatchObject({
+              mcp: `${ORIGIN}/mcp`,"""
+          card_expect_new = """    expect(card.xguardDiscovery).toMatchObject({
+              paymentOffer: `${ORIGIN}/v1/payment/offer`,
+              paymentDecision: `${ORIGIN}/v1/payment/decision`,
+              paymentRecord: `${ORIGIN}/v1/payment/records/{decisionId}`,
+              paymentSecurityEvidence: `${ORIGIN}/.well-known/xguard-security-evidence.json`,
+              mcp: `${ORIGIN}/mcp`,"""
+          a = replace_once(a, card_expect, card_expect_new, "agent card expectation")
+
+          market_expect = """    expect(market.discovery).toMatchObject({
+              mcp: `${ORIGIN}/mcp`,"""
+          market_expect_new = """    expect(market.discovery).toMatchObject({
+              paymentOffer: `${ORIGIN}/v1/payment/offer`,
+              paymentDecision: `${ORIGIN}/v1/payment/decision`,
+              paymentSecurityEvidence: `${ORIGIN}/.well-known/xguard-security-evidence.json`,
+              mcp: `${ORIGIN}/mcp`,"""
+          a = replace_once(a, market_expect, market_expect_new, "agent market expectation")
+
+          manifest_expect = """      discovery: {
+                migration: `${ORIGIN}/.well-known/xguard/migrate`,
+              },"""
+          manifest_expect_new = """      discovery: {
+                paymentOffer: `${ORIGIN}/v1/payment/offer`,
+                paymentDecision: `${ORIGIN}/v1/payment/decision`,
+                paymentSecurityEvidence: `${ORIGIN}/.well-known/xguard-security-evidence.json`,
+                migration: `${ORIGIN}/.well-known/xguard/migrate`,
+              },"""
+          a = replace_once(a, manifest_expect, manifest_expect_new, "manifest expectation")
+
+          openapi_expect = """    expect(document.paths).toHaveProperty(
+              "/v1/settlements/{logicalPaymentKey}/truth",
+            );"""
+          openapi_expect_new = """    expect(document.paths).toHaveProperty("/v1/payment/offer");
+            expect(document.paths).toHaveProperty("/v1/payment/decision");
+            expect(document.paths).toHaveProperty("/v1/payment/records/{decisionId}");
+            expect(document.paths).toHaveProperty(
+              "/v1/payment/records/{decisionId}/settlement",
+            );
+            expect(document.paths).toHaveProperty(
+              "/v1/settlements/{logicalPaymentKey}/truth",
+            );"""
+          a = replace_once(a, openapi_expect, openapi_expect_new, "OpenAPI expectation")
+
+          llms_expect = """    expect(text).toContain(
+              `${ORIGIN}/v1/settlements/<logicalPaymentKey>/truth`,
+            );"""
+          llms_expect_new = """    expect(text).toContain(`${ORIGIN}/v1/payment/offer`);
+            expect(text).toContain(`${ORIGIN}/v1/payment/decision`);
+            expect(text).toContain("offer xguard_payment_offer first");
+            expect(text).toContain(
+              `${ORIGIN}/v1/settlements/<logicalPaymentKey>/truth`,
+            );"""
+          a = replace_once(a, llms_expect, llms_expect_new, "llms expectation")
+          agent_test_path.write_text(a)
+          PY
+
+          npx prettier --write \
+            apps/worker/src/payment-decision.ts \
+            apps/worker/src/agent-discovery-modern.ts \
+            browser-extension/service-worker.js \
+            tests/browser-payment-surface-source.test.ts \
+            tests/mainnet-mcp-modern.test.ts \
+            tests/agent-discovery-modern.test.ts
+
+      - name: Run full release verification
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: npm run verify:release
+
+      - name: Publish only verified changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-payment-decision-hardening-v4.yml
+          git rm -f .github/workflows/apply-payment-decision-hardening-v3.yml || true
+          git rm -f .github/workflows/apply-payment-decision-hardening-v2.yml || true
+          git rm -f .github/workflows/patch-payment-decision.yml || true
+          git add \
+            apps/worker/src/payment-decision.ts \
+            apps/worker/src/agent-discovery-modern.ts \
+            browser-extension/service-worker.js \
+            tests/browser-payment-surface-source.test.ts \
+            tests/mainnet-mcp-modern.test.ts \
+            tests/agent-discovery-modern.test.ts
+          git commit -m "Complete buyer and agent payment decision discovery"
+          git push origin HEAD:agent/buyer-side-payment-decision
