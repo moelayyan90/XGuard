@@ -3,7 +3,14 @@ import type { FinalizedUsdcDeposit } from "./base-usdc.js";
 const ZERO_FRICTION_PREFIX = "zf_";
 const MAX_SAFE_MICRO_USD = Number.MAX_SAFE_INTEGER;
 
-export interface ZeroFrictionAccount {
+export interface ZeroFrictionPricingTerms {
+  pricingVersion: string;
+  feeBps: number;
+  feeCapMicroUsd: number;
+  postpaidLimitMicroUsd: number;
+}
+
+export interface ZeroFrictionAccount extends ZeroFrictionPricingTerms {
   merchantId: string;
   payTo: string;
   accruedMicroUsd: number;
@@ -21,6 +28,28 @@ export function normalizeZeroFrictionPayTo(value: string): string {
   if (!/^0x[0-9a-f]{40}$/.test(normalized))
     throw new Error("invalid_zero_friction_pay_to");
   return normalized;
+}
+
+export function validateZeroFrictionPricingTerms(
+  terms: ZeroFrictionPricingTerms,
+): ZeroFrictionPricingTerms {
+  if (!/^[a-z0-9._-]{1,64}$/i.test(terms.pricingVersion))
+    throw new Error("invalid_zero_friction_pricing_version");
+  if (!Number.isInteger(terms.feeBps) || terms.feeBps < 0 || terms.feeBps > 10_000)
+    throw new Error("invalid_zero_friction_fee_bps");
+  if (
+    !Number.isSafeInteger(terms.feeCapMicroUsd) ||
+    terms.feeCapMicroUsd < 0 ||
+    terms.feeCapMicroUsd > MAX_SAFE_MICRO_USD
+  )
+    throw new Error("invalid_zero_friction_fee_cap");
+  if (
+    !Number.isSafeInteger(terms.postpaidLimitMicroUsd) ||
+    terms.postpaidLimitMicroUsd < 1 ||
+    terms.postpaidLimitMicroUsd > MAX_SAFE_MICRO_USD
+  )
+    throw new Error("invalid_zero_friction_postpaid_limit");
+  return terms;
 }
 
 export function calculateZeroFrictionFeeMicroUsd(
@@ -41,9 +70,10 @@ export function calculateZeroFrictionFeeMicroUsd(
 
   const proportional =
     (BigInt(amountMicroUsd) * BigInt(feeBps)) / BigInt(10_000);
-  const capped = proportional < BigInt(feeCapMicroUsd)
-    ? proportional
-    : BigInt(feeCapMicroUsd);
+  const capped =
+    proportional < BigInt(feeCapMicroUsd)
+      ? proportional
+      : BigInt(feeCapMicroUsd);
   return Number(capped);
 }
 
@@ -55,13 +85,16 @@ export async function zeroFrictionMerchantId(rawPayTo: string): Promise<string> 
 
 /**
  * Creates the postpaid account only after the caller has independently proven
- * control of payTo. Never call this from /verify or /settle.
+ * control of payTo and signed the exact pricing terms. Never call this from
+ * /verify or /settle.
  */
 export async function activateZeroFrictionMerchant(
   db: D1Database,
   rawPayTo: string,
+  rawTerms: ZeroFrictionPricingTerms,
 ): Promise<ZeroFrictionAccount> {
   const payTo = normalizeZeroFrictionPayTo(rawPayTo);
+  const terms = validateZeroFrictionPricingTerms(rawTerms);
   const merchantId = await zeroFrictionMerchantId(payTo);
   const disabledCredentialHash = await sha256Hex(
     `zero-friction-disabled-credential:${payTo}`,
@@ -80,12 +113,29 @@ export async function activateZeroFrictionMerchant(
     db
       .prepare(
         `INSERT INTO zero_friction_accounts(
-          pay_to,merchant_id,accrued_micro_usd,paid_micro_usd,
+          pay_to,merchant_id,pricing_version,fee_bps,fee_cap_micro_usd,
+          postpaid_limit_micro_usd,accrued_micro_usd,paid_micro_usd,
           claimed_at,created_at,updated_at
-        ) VALUES(?,?,0,0,?,?,?)
-        ON CONFLICT(pay_to) DO UPDATE SET claimed_at=excluded.claimed_at,updated_at=excluded.updated_at`,
+        ) VALUES(?,?,?,?,?,?,0,0,?,?,?)
+        ON CONFLICT(pay_to) DO UPDATE SET
+          pricing_version=excluded.pricing_version,
+          fee_bps=excluded.fee_bps,
+          fee_cap_micro_usd=excluded.fee_cap_micro_usd,
+          postpaid_limit_micro_usd=excluded.postpaid_limit_micro_usd,
+          claimed_at=excluded.claimed_at,
+          updated_at=excluded.updated_at`,
       )
-      .bind(payTo, merchantId, now, now, now),
+      .bind(
+        payTo,
+        merchantId,
+        terms.pricingVersion,
+        terms.feeBps,
+        terms.feeCapMicroUsd,
+        terms.postpaidLimitMicroUsd,
+        now,
+        now,
+        now,
+      ),
   ]);
 
   return zeroFrictionAccount(db, payTo);
@@ -98,22 +148,34 @@ export async function zeroFrictionAccountOrNull(
   const payTo = normalizeZeroFrictionPayTo(rawPayTo);
   const row = await db
     .prepare(
-      `SELECT merchant_id,pay_to,accrued_micro_usd,paid_micro_usd
+      `SELECT merchant_id,pay_to,pricing_version,fee_bps,fee_cap_micro_usd,
+              postpaid_limit_micro_usd,accrued_micro_usd,paid_micro_usd
        FROM zero_friction_accounts WHERE pay_to=?`,
     )
     .bind(payTo)
     .first<{
       merchant_id: string;
       pay_to: string;
+      pricing_version: string;
+      fee_bps: number;
+      fee_cap_micro_usd: number;
+      postpaid_limit_micro_usd: number;
       accrued_micro_usd: number;
       paid_micro_usd: number;
     }>();
   if (row === null) return null;
   const accrued = safeMoney(row.accrued_micro_usd);
   const paid = safeMoney(row.paid_micro_usd);
+  const terms = validateZeroFrictionPricingTerms({
+    pricingVersion: row.pricing_version,
+    feeBps: row.fee_bps,
+    feeCapMicroUsd: row.fee_cap_micro_usd,
+    postpaidLimitMicroUsd: row.postpaid_limit_micro_usd,
+  });
   return {
     merchantId: row.merchant_id,
     payTo: row.pay_to,
+    ...terms,
     accruedMicroUsd: accrued,
     paidMicroUsd: paid,
     dueMicroUsd: Math.max(0, accrued - paid),
