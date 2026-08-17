@@ -192,11 +192,28 @@ export async function handleHardeningEndpoint(
         },
         400,
       );
-    const rotated = await rotateMerchantApiKey(
-      env.DB,
-      access.merchant.merchantId,
-      requestedScopes,
-    );
+    let rotated: { apiKey: string; scopes: MerchantScope[] };
+    try {
+      rotated = await rotateMerchantApiKey(
+        env.DB,
+        access.merchant.merchantId,
+        requestedScopes,
+      );
+    } catch (error) {
+      if (
+        errorCode(error) ===
+        "provider_vault_unlink_required_before_key_rotation"
+      )
+        return jsonResponse(
+          {
+            error: "provider_vault_unlink_required_before_key_rotation",
+            message:
+              "Unlink all provider credentials from /v1/gateway/vault before rotating the merchant API key, then relink them with the new key.",
+          },
+          409,
+        );
+      throw error;
+    }
     return jsonResponse(
       {
         apiKey: rotated.apiKey,
@@ -488,6 +505,8 @@ export async function rotateMerchantApiKey(
   merchantId: string,
   scopes: MerchantScope[],
 ): Promise<{ apiKey: string; scopes: MerchantScope[] }> {
+  if (await hasLinkedProviderCredentials(db, merchantId))
+    throw new Error("provider_vault_unlink_required_before_key_rotation");
   const normalized = normalizeScopes(scopes);
   if (!normalized.includes("billing"))
     throw new Error("billing_scope_required");
@@ -515,13 +534,33 @@ export async function revokeMerchantApiKey(
   const revokedHash = await sha256Hex(
     `revoked:${crypto.randomUUID()}:${randomToken(32)}`,
   );
-  const result = await db
+  const now = new Date().toISOString();
+  const results = await db.batch([
+    db
+      .prepare("DELETE FROM gateway_provider_credentials WHERE merchant_id=?")
+      .bind(merchantId),
+    db
+      .prepare(
+        "UPDATE merchants SET api_key_hash=?,api_key_scopes='',api_key_rotated_at=? WHERE merchant_id=? AND active=1",
+      )
+      .bind(revokedHash, now, merchantId),
+  ]);
+  const result = results[1];
+  if (result === undefined || (result.meta.changes ?? 0) !== 1)
+    throw new Error("merchant_not_found");
+}
+
+export async function hasLinkedProviderCredentials(
+  db: D1Database,
+  merchantId: string,
+): Promise<boolean> {
+  const row = await db
     .prepare(
-      "UPDATE merchants SET api_key_hash=?,api_key_scopes='',api_key_rotated_at=? WHERE merchant_id=? AND active=1",
+      "SELECT provider FROM gateway_provider_credentials WHERE merchant_id=? LIMIT 1",
     )
-    .bind(revokedHash, new Date().toISOString(), merchantId)
-    .run();
-  if ((result.meta.changes ?? 0) !== 1) throw new Error("merchant_not_found");
+    .bind(merchantId)
+    .first<{ provider: string }>();
+  return row !== null;
 }
 
 export async function scanAutomaticTopUps(
