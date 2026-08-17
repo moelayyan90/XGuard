@@ -44,7 +44,7 @@ jobs:
 
           CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" \
             | tr -d '\r\n' \
-            | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+            | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           export CLOUDFLARE_API_TOKEN
 
           if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
@@ -88,10 +88,8 @@ jobs:
 
           npx wrangler d1 migrations apply xguard-mainnet --remote --config "${CONFIG_PATH}"
 
-          # The custom domains already exist on xguard-mainnet. Uploading and
-          # promoting a Worker Version updates code/bindings without asking the
-          # GitHub token to mutate zone routes. Cloudflare documents route/domain
-          # changes as a separate `wrangler triggers deploy` operation.
+          # Existing custom domains remain attached to xguard-mainnet. Version
+          # upload/deploy updates code and bindings without mutating zone routes.
           VERSION_TAG="git-${GITHUB_SHA}"
           npx wrangler versions upload \
             --config "${CONFIG_PATH}" \
