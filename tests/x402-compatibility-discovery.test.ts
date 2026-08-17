@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { augmentCompatibilityDiscovery } from "../apps/worker/src/x402-compatibility-discovery.js";
 
 describe("x402 compatibility discovery", () => {
-  it("advertises V1 and V2 compatibility in facilitator discovery", async () => {
+  it("advertises V1/V2 compatibility and settlement truth in facilitator discovery", async () => {
     const response = await augmentCompatibilityDiscovery(
       new Response(
         JSON.stringify({
@@ -10,6 +10,7 @@ describe("x402 compatibility discovery", () => {
           facilitator: {
             baseUrl: "https://xguard-mainnet.maqamapp.workers.dev",
           },
+          safety: { replayProtection: true },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -21,6 +22,8 @@ describe("x402 compatibility discovery", () => {
     const facilitator = body.facilitator as Record<string, unknown>;
     const bridge = facilitator.compatibilityBridge as Record<string, unknown>;
     const compatibility = body.compatibility as Record<string, unknown>;
+    const safety = body.safety as Record<string, unknown>;
+    const truth = body.settlementTruth as Record<string, unknown>;
 
     expect(protocol.canonicalVersion).toBe(2);
     expect(protocol.supportedVersions).toEqual([1, 2]);
@@ -30,6 +33,25 @@ describe("x402 compatibility discovery", () => {
     ]);
     expect(bridge.canonicalizesTo).toBe("x402-v2 exact@eip155:8453");
     expect(compatibility.mode).toBe("transaction-compatibility-bridge");
+    expect(safety.replayProtection).toBe(true);
+    expect(safety.merchantFacingSettlementTruth).toBe(true);
+    expect(safety.activeAmbiguityResolution).toBe(true);
+    expect(safety.releaseSafeOnlyAfterIndependentFinality).toBe(true);
+    expect(safety.blindResubmissionAfterAmbiguity).toBe(false);
+    expect(truth.version).toBe("xguard-settlement-truth-v1");
+    expect(truth.states).toEqual([
+      "FINALIZED",
+      "PENDING",
+      "PROVEN_FAILED",
+      "CONFLICT",
+    ]);
+    expect(truth.releaseSafeState).toBe("FINALIZED");
+    expect(truth.truthEndpoint).toBe(
+      "/v1/settlements/{logicalPaymentKey}/truth",
+    );
+    expect(truth.resolveEndpoint).toBe(
+      "/v1/settlements/{logicalPaymentKey}/resolve",
+    );
     expect(response.headers.get("x-xguard-compatibility")).toBe("x402-v1-v2");
   });
 
