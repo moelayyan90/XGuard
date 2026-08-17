@@ -195,7 +195,10 @@ function normalizeText(value: string): string {
       "independently finalized successful settlement",
     )
     .replaceAll("merchant_prepaid_service_balance", "zero_signup_postpaid")
-    .replaceAll("merchant_prepaid_nonrefundable_attempt_fee", "zero_signup_postpaid");
+    .replaceAll(
+      "merchant_prepaid_nonrefundable_attempt_fee",
+      "zero_signup_postpaid",
+    );
 }
 
 function paymentPage(origin: string, env: PaymentEnv): string {
@@ -218,15 +221,18 @@ function microUsdToUsd(value: number): string {
 }
 
 function json(request: Request, value: unknown): Response {
-  return new Response(request.method === "HEAD" ? null : JSON.stringify(value), {
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=300",
-      "Content-Type": "application/json; charset=utf-8",
-      "X-Content-Type-Options": "nosniff",
-      "X-XGuard-Pricing-Contract": "postpaid-finality-v2",
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify(value),
+    {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=300",
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "X-XGuard-Pricing-Contract": "postpaid-finality-v2",
+      },
     },
-  });
+  );
 }
 
 function html(request: Request, value: string): Response {

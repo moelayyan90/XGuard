@@ -36,12 +36,7 @@ export async function ensureZeroFrictionMerchant(
           held_balance_micro_usd,active,created_at
         ) VALUES(?,?,?,0,0,1,?)`,
       )
-      .bind(
-        merchantId,
-        `zero-friction:${payTo}`,
-        disabledCredentialHash,
-        now,
-      ),
+      .bind(merchantId, `zero-friction:${payTo}`, disabledCredentialHash, now),
     db
       .prepare(
         `INSERT OR IGNORE INTO zero_friction_accounts(
@@ -123,13 +118,7 @@ export async function accrueZeroFrictionFee(
           logical_payment_key,merchant_id,pay_to,fee_micro_usd,created_at
         ) VALUES(?,?,?,?,?)`,
       )
-      .bind(
-        logicalPaymentKey,
-        merchantId,
-        account.payTo,
-        feeMicroUsd,
-        now,
-      ),
+      .bind(logicalPaymentKey, merchantId, account.payTo, feeMicroUsd, now),
     db
       .prepare(
         `INSERT OR IGNORE INTO usage_events(
@@ -208,11 +197,7 @@ function normalizeAddress(value: string): string {
 }
 
 function safeMoney(value: number): number {
-  if (
-    !Number.isSafeInteger(value) ||
-    value < 0 ||
-    value > MAX_SAFE_MICRO_USD
-  )
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_SAFE_MICRO_USD)
     throw new Error("invalid_zero_friction_money");
   return value;
 }

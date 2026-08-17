@@ -19,14 +19,16 @@ const ENDPOINTS: Record<string, EndpointDescriptor> = {
     method: "POST",
     auth: "api-key",
     contentType: "application/json",
-    description: "Legacy prepaid billing endpoint for existing API-key merchants.",
+    description:
+      "Legacy prepaid billing endpoint for existing API-key merchants.",
     body: { amountUsd: "string | number" },
   },
   "/v1/topups/claim": {
     method: "POST",
     auth: "api-key",
     contentType: "application/json",
-    description: "Legacy prepaid billing endpoint for existing API-key merchants.",
+    description:
+      "Legacy prepaid billing endpoint for existing API-key merchants.",
     body: {
       claimToken: "string",
       transactionHash: "0x-prefixed transaction hash",
@@ -79,7 +81,8 @@ function jsonHeaders(extra: HeadersInit = {}): Headers {
 
 function normalizedPathname(request: Request): string {
   const pathname = new URL(request.url).pathname;
-  if (pathname.length > 1 && pathname.endsWith("/")) return pathname.slice(0, -1);
+  if (pathname.length > 1 && pathname.endsWith("/"))
+    return pathname.slice(0, -1);
   return pathname;
 }
 
@@ -105,7 +108,9 @@ function descriptorFor(pathname: string): EndpointDescriptor | undefined {
   return undefined;
 }
 
-export function writeEndpointDiscoveryResponse(request: Request): Response | null {
+export function writeEndpointDiscoveryResponse(
+  request: Request,
+): Response | null {
   const pathname = normalizedPathname(request);
   const descriptor = descriptorFor(pathname);
   if (descriptor === undefined) return null;
@@ -113,24 +118,42 @@ export function writeEndpointDiscoveryResponse(request: Request): Response | nul
 
   const allowed = [...new Set(["GET", "HEAD", "OPTIONS", descriptor.method])];
   const allow = allowed.join(", ");
-  const commonHeaders = { Allow: allow, "X-XGuard-Discovery": "endpoint-introspection" };
+  const commonHeaders = {
+    Allow: allow,
+    "X-XGuard-Discovery": "endpoint-introspection",
+  };
 
   if (request.method === "OPTIONS")
     return new Response(null, {
       status: 204,
-      headers: { ...commonHeaders, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+      headers: {
+        ...commonHeaders,
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
 
   if (request.method === "GET" || request.method === "HEAD") {
-    const body = JSON.stringify({ service: "XGuard", endpoint: pathname, ...descriptor });
+    const body = JSON.stringify({
+      service: "XGuard",
+      endpoint: pathname,
+      ...descriptor,
+    });
     return new Response(request.method === "HEAD" ? null : body, {
       status: 200,
       headers: jsonHeaders(commonHeaders),
     });
   }
 
-  return new Response(JSON.stringify({ error: "method_not_allowed", endpoint: pathname, allowed }), {
-    status: 405,
-    headers: jsonHeaders(commonHeaders),
-  });
+  return new Response(
+    JSON.stringify({
+      error: "method_not_allowed",
+      endpoint: pathname,
+      allowed,
+    }),
+    {
+      status: 405,
+      headers: jsonHeaders(commonHeaders),
+    },
+  );
 }

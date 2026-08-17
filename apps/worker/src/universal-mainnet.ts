@@ -148,11 +148,7 @@ export default {
     const buyerPass = await buyerPassResponse(standardRequest, env);
     if (buyerPass !== null) return buyerPass;
 
-    const a2a = await a2aGatewayV1Response(
-      standardRequest,
-      env,
-      x402Fetch,
-    );
+    const a2a = await a2aGatewayV1Response(standardRequest, env, x402Fetch);
     if (a2a !== null) return a2a;
 
     const portal = buyerPortalResponse(standardRequest);

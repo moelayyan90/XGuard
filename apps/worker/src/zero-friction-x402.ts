@@ -25,7 +25,6 @@ import { settlementTruthResponse } from "./mainnet-settlement-truth.js";
 import {
   ensureZeroFrictionMerchant,
   recordZeroFrictionPayment,
-  zeroFrictionAccount,
   type ZeroFrictionAccount,
 } from "./zero-friction-billing.js";
 
@@ -368,7 +367,11 @@ async function claimFeePayment(
         "Fee payment must be sent from the same payTo address that uses XGuard",
         409,
       );
-    const updated = await recordZeroFrictionPayment(env.DB, account.payTo, deposit);
+    const updated = await recordZeroFrictionPayment(
+      env.DB,
+      account.payTo,
+      deposit,
+    );
     return json({ credited: true, ...feeBalanceBody(updated, env) });
   } catch (error) {
     return errorResponse(error);
@@ -713,7 +716,9 @@ function publicErrorMessage(error: unknown): string {
   return "XGuard could not safely complete the request";
 }
 
-function errorStatus(error: unknown): 400 | 401 | 402 | 409 | 415 | 429 | 500 | 503 {
+function errorStatus(
+  error: unknown,
+): 400 | 401 | 402 | 409 | 415 | 429 | 500 | 503 {
   if (error instanceof XGuardError) {
     const status = error.status;
     if ([400, 401, 402, 409, 415, 429, 500, 503].includes(status))
@@ -753,7 +758,10 @@ function jsonFromResponse(response: Response, value: unknown): Response {
 
 function secure(response: Response): Response {
   const headers = new Headers(response.headers);
-  headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  headers.set(
+    "Strict-Transport-Security",
+    "max-age=31536000; includeSubDomains",
+  );
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("X-Frame-Options", "DENY");
   headers.set("Referrer-Policy", "no-referrer");
