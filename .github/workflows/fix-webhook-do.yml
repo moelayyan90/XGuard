@@ -1,0 +1,48 @@
+name: Fix webhook durable object type
+
+on:
+  push:
+    branches:
+      - agent/payment-discovery-hardening-v2
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/payment-discovery-hardening-v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Align Durable Object class
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'apps/worker/src/resilient-webhook-ingress.ts';
+          let s = fs.readFileSync(path, 'utf8');
+          if (!s.includes('import { DurableObject } from "cloudflare:workers";')) {
+            s = 'import { DurableObject } from "cloudflare:workers";\n' + s;
+          }
+          s = s.replace(
+            /export class WebhookDeliveryQueue \{\n  constructor\(\n    private readonly state: DurableObjectState,\n    private readonly env: DeliveryEnv,\n  \) \{\}\n/,
+            'export class WebhookDeliveryQueue extends DurableObject<DeliveryEnv> {\n',
+          );
+          s = s.replaceAll('this.state.storage', 'this.ctx.storage');
+          fs.writeFileSync(path, s);
+          NODE
+          npx prettier --write apps/worker/src/resilient-webhook-ingress.ts
+      - name: Commit fix
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/resilient-webhook-ingress.ts
+          git commit -m "Align webhook queue with Cloudflare DurableObject"
+          git push origin HEAD:agent/payment-discovery-hardening-v2
