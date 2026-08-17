@@ -1,0 +1,77 @@
+{
+  "identifier": "moelayyan90-xguard",
+  "name": "XGuard",
+  "version": "0.4.0",
+  "author": "moelayyan90",
+  "homepage": "https://github.com/moelayyan90/XGuard",
+  "cloudEndpoint": "https://xguard-mainnet.maqamapp.workers.dev/mcp",
+  "description": "Remote MCP discovery server for XGuard's x402 catalog, with read-only tools to discover paid HTTP/MCP resources, inspect exact resource records, and check live XGuard mainnet status.",
+  "tags": [
+    "mcp",
+    "x402",
+    "payments",
+    "discovery",
+    "developer-tools",
+    "base",
+    "usdc"
+  ],
+  "tools": [
+    {
+      "name": "xguard_discover",
+      "title": "Discover x402 resources",
+      "description": "Search XGuard's x402 catalog or list recent entries. Returns matching HTTP or MCP resources.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search phrase; omit to list recent resources."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["http", "mcp"],
+            "description": "Optional resource kind: http or mcp."
+          },
+          "payTo": {
+            "type": "string",
+            "description": "Filter by exact payment-recipient address."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 10,
+            "description": "Maximum results to return (1-100; default 10)."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "xguard_resource_details",
+      "title": "Inspect x402 resource",
+      "description": "Look up one exact XGuard catalog resource by URL or key and return matching records.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "Exact resource URL or XGuard resource key."
+          }
+        },
+        "required": ["resource"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "xguard_status",
+      "title": "XGuard status",
+      "description": "Return live XGuard mainnet gateway health and discovery statistics.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
+  ]
+}
