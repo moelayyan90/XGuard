@@ -1,0 +1,35 @@
+name: Buyer Pass abuse hardening
+
+on:
+  push:
+    branches: [agent/buyer-pass]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/buyer-pass
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: python3 .github/scripts/harden-buyer-pass.py
+      - run: npx prettier --write apps/worker/src/buyer-pass.ts tests/buyer-pass.test.ts
+      - run: npm run verify:release
+      - name: Commit verified hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/buyer-pass.ts tests/buyer-pass.test.ts
+          if ! git diff --cached --quiet; then
+            git commit -m "Rate limit Buyer Pass onboarding and usage"
+            git push origin HEAD:agent/buyer-pass
+          fi
