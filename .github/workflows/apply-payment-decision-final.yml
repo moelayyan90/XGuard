@@ -39,12 +39,12 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm -f .github/workflows/apply-payment-decision-final.yml
-          git rm -f .github/workflows/apply-payment-decision-hardening-v4.yml
-          git rm -f .github/workflows/apply-payment-decision-hardening-v3.yml
-          git rm -f .github/workflows/apply-payment-decision-hardening-v2.yml
-          git rm -f .github/workflows/patch-payment-decision.yml
-          git rm -f .github/scripts/harden-payment-decision.py
+          git rm -f --ignore-unmatch .github/workflows/apply-payment-decision-final.yml
+          git rm -f --ignore-unmatch .github/workflows/apply-payment-decision-hardening-v4.yml
+          git rm -f --ignore-unmatch .github/workflows/apply-payment-decision-hardening-v3.yml
+          git rm -f --ignore-unmatch .github/workflows/apply-payment-decision-hardening-v2.yml
+          git rm -f --ignore-unmatch .github/workflows/patch-payment-decision.yml
+          git rm -f --ignore-unmatch .github/scripts/harden-payment-decision.py
           git add apps/worker/src/payment-decision.ts apps/worker/src/agent-discovery-modern.ts browser-extension/service-worker.js tests/browser-payment-surface-source.test.ts tests/mainnet-mcp-modern.test.ts tests/agent-discovery-modern.test.ts
           git commit -m "Complete buyer and agent payment decision layer"
           git push origin HEAD:agent/buyer-side-payment-decision
