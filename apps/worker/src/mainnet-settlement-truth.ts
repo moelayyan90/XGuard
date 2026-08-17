@@ -30,7 +30,7 @@ interface FinalityTruthRow {
   expected_payer: string;
   expected_pay_to: string;
   expected_amount_micro_usd: number;
-  state: "PENDING" | "CONFIRMED" | "FAILED";
+  state: "PENDING" | "CONFIRMED" | "FAILED" | "AMBIGUOUS";
   attempts: number;
   last_error_code: string | null;
   updated_at: string;
@@ -50,6 +50,12 @@ interface RecoveryTruthRow {
   updated_at: string;
   resolved_at: string | null;
 }
+
+type FinalityStateEvidence = Pick<
+  FinalityTruthRow,
+  "state" | "confirmed_at" | "last_error_code"
+>;
+type RecoveryStateEvidence = Pick<RecoveryTruthRow, "state">;
 
 export interface SettlementTruth {
   version: "xguard-settlement-truth-v1";
@@ -111,6 +117,7 @@ export async function settlementTruthResponse(
   return jsonResponse(
     {
       ...truth,
+      truthEndpoint: `/v1/settlements/${logicalPaymentKey}/truth`,
       resolveEndpoint: `/v1/settlements/${logicalPaymentKey}/resolve`,
     },
     truth.state === "PENDING" ? 202 : 200,
@@ -125,26 +132,8 @@ export async function settlementTruthForMerchant(
 ): Promise<SettlementTruth | null> {
   assertLogicalPaymentKey(logicalPaymentKey);
   const [finality, recovery] = await Promise.all([
-    db
-      .prepare(
-        `SELECT logical_payment_key,merchant_id,transaction_hash,network,asset,
-          expected_payer,expected_pay_to,expected_amount_micro_usd,state,attempts,
-          last_error_code,updated_at,confirmed_at
-         FROM settlement_finality_jobs
-         WHERE logical_payment_key=? AND merchant_id=?`,
-      )
-      .bind(logicalPaymentKey, merchantId)
-      .first<FinalityTruthRow>(),
-    db
-      .prepare(
-        `SELECT logical_payment_key,merchant_id,expected_payer,expected_pay_to,
-          expected_amount_micro_usd,state,transaction_hash,attempts,last_error_code,
-          updated_at,resolved_at
-         FROM settlement_recovery_jobs
-         WHERE logical_payment_key=? AND merchant_id=?`,
-      )
-      .bind(logicalPaymentKey, merchantId)
-      .first<RecoveryTruthRow>(),
+    loadFinalityTruth(db, logicalPaymentKey, merchantId),
+    loadRecoveryTruth(db, logicalPaymentKey, merchantId),
   ]);
 
   if (finality === null && recovery === null) return null;
@@ -190,20 +179,42 @@ export async function settlementTruthForMerchant(
   };
 }
 
+export async function settlementTruthStateForPayment(
+  db: D1Database,
+  logicalPaymentKey: string,
+): Promise<SettlementTruthState | null> {
+  assertLogicalPaymentKey(logicalPaymentKey);
+  const [finality, recovery] = await Promise.all([
+    db
+      .prepare(
+        `SELECT state,confirmed_at,last_error_code
+         FROM settlement_finality_jobs WHERE logical_payment_key=?`,
+      )
+      .bind(logicalPaymentKey)
+      .first<FinalityStateEvidence>(),
+    db
+      .prepare(
+        `SELECT state FROM settlement_recovery_jobs WHERE logical_payment_key=?`,
+      )
+      .bind(logicalPaymentKey)
+      .first<RecoveryStateEvidence>(),
+  ]);
+  if (finality === null && recovery === null) return null;
+  return classifySettlementTruth(finality, recovery);
+}
+
 export function classifySettlementTruth(
-  finality: Pick<
-    FinalityTruthRow,
-    "state" | "confirmed_at" | "last_error_code"
-  > | null,
-  recovery: Pick<RecoveryTruthRow, "state"> | null,
+  finality: FinalityStateEvidence | null,
+  recovery: RecoveryStateEvidence | null,
 ): SettlementTruthState {
   const finalitySuccess =
-    finality?.state === "CONFIRMED" || finality?.confirmed_at !== null;
+    finality !== null &&
+    (finality.state === "CONFIRMED" || finality.confirmed_at !== null);
   const finalityFailure =
-    finality?.state === "FAILED" ||
-    (finality?.last_error_code !== null &&
-      finality?.last_error_code !== undefined &&
-      PERMANENT_FINALITY_FAILURES.has(finality.last_error_code));
+    finality !== null &&
+    (finality.state === "FAILED" ||
+      (finality.last_error_code !== null &&
+        PERMANENT_FINALITY_FAILURES.has(finality.last_error_code)));
   const recoverySuccess = recovery?.state === "CONFIRMED";
   const recoveryFailure =
     recovery?.state === "CANCELED" ||
@@ -215,6 +226,40 @@ export function classifySettlementTruth(
   if (finalitySuccess || recoverySuccess) return "FINALIZED";
   if (finalityFailure || recoveryFailure) return "PROVEN_FAILED";
   return "PENDING";
+}
+
+async function loadFinalityTruth(
+  db: D1Database,
+  logicalPaymentKey: string,
+  merchantId: string,
+): Promise<FinalityTruthRow | null> {
+  return db
+    .prepare(
+      `SELECT logical_payment_key,merchant_id,transaction_hash,network,asset,
+        expected_payer,expected_pay_to,expected_amount_micro_usd,state,attempts,
+        last_error_code,updated_at,confirmed_at
+       FROM settlement_finality_jobs
+       WHERE logical_payment_key=? AND merchant_id=?`,
+    )
+    .bind(logicalPaymentKey, merchantId)
+    .first<FinalityTruthRow>();
+}
+
+async function loadRecoveryTruth(
+  db: D1Database,
+  logicalPaymentKey: string,
+  merchantId: string,
+): Promise<RecoveryTruthRow | null> {
+  return db
+    .prepare(
+      `SELECT logical_payment_key,merchant_id,expected_payer,expected_pay_to,
+        expected_amount_micro_usd,state,transaction_hash,attempts,last_error_code,
+        updated_at,resolved_at
+       FROM settlement_recovery_jobs
+       WHERE logical_payment_key=? AND merchant_id=?`,
+    )
+    .bind(logicalPaymentKey, merchantId)
+    .first<RecoveryTruthRow>();
 }
 
 async function prioritizeRecovery(
@@ -316,7 +361,6 @@ async function digestTruth(
     value.payTo.toLowerCase(),
     String(value.amountMicroUsd),
     value.transactionHash?.toLowerCase() ?? "",
-    value.observedAt,
   ].join("|");
   const hash = await crypto.subtle.digest(
     "SHA-256",
