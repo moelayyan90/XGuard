@@ -189,11 +189,11 @@ async function executeAutoInvoke(
       }),
     );
   } catch {
-    await releaseGatewayFee(
+    const accounting = await releaseAutoInvokeReservation(
       env.DB,
       access.merchant.merchantId,
       reservation.eventKey,
-    ).catch(() => undefined);
+    );
     return autoResponse(
       { error: "upstream_unavailable", provider: route.provider },
       502,
@@ -201,20 +201,28 @@ async function executeAutoInvoke(
       0,
       route.provider,
       0,
+      accounting,
     );
   }
 
   const latencyMs = Math.max(0, Date.now() - started);
   if (!isAutoInvokeBillableStatus(upstream.status)) {
-    await releaseGatewayFee(
+    const accounting = await releaseAutoInvokeReservation(
       env.DB,
       access.merchant.merchantId,
       reservation.eventKey,
-    ).catch(() => undefined);
-    return proxiedResponse(upstream, requestId, 0, route.provider, latencyMs);
+    );
+    return proxiedResponse(
+      upstream,
+      requestId,
+      0,
+      route.provider,
+      latencyMs,
+      accounting,
+    );
   }
 
-  await earnGatewayFee(env.DB, {
+  const accounting = await finalizeAutoInvokeSuccess(env.DB, {
     merchantId: access.merchant.merchantId,
     eventKey: reservation.eventKey,
     upstreamStatus: upstream.status,
@@ -225,14 +233,50 @@ async function executeAutoInvoke(
   return proxiedResponse(
     upstream,
     requestId,
-    feeMicroUsd,
+    accounting === "earned" ? feeMicroUsd : 0,
     route.provider,
     latencyMs,
+    accounting,
   );
 }
 
 export function isAutoInvokeBillableStatus(status: number): boolean {
   return Number.isInteger(status) && status >= 200 && status < 300;
+}
+
+export type AutoInvokeAccountingState =
+  "earned" | "released" | "pending-release";
+
+export async function finalizeAutoInvokeSuccess(
+  db: D1Database,
+  input: {
+    merchantId: string;
+    eventKey: string;
+    upstreamStatus: number;
+    latencyMs: number;
+    requestBytes?: number;
+    responseBytes?: number;
+  },
+): Promise<AutoInvokeAccountingState> {
+  try {
+    await earnGatewayFee(db, input);
+    return "earned";
+  } catch {
+    return releaseAutoInvokeReservation(db, input.merchantId, input.eventKey);
+  }
+}
+
+export async function releaseAutoInvokeReservation(
+  db: D1Database,
+  merchantId: string,
+  eventKey: string,
+): Promise<Exclude<AutoInvokeAccountingState, "earned">> {
+  try {
+    await releaseGatewayFee(db, merchantId, eventKey);
+    return "released";
+  } catch {
+    return "pending-release";
+  }
 }
 
 async function vaultResponse(
@@ -504,6 +548,7 @@ function proxiedResponse(
   feeMicroUsd: number,
   provider: ProviderId,
   latencyMs: number,
+  accounting: AutoInvokeAccountingState,
 ): Response {
   const headers = new Headers(upstream.headers);
   headers.delete("set-cookie");
@@ -512,6 +557,7 @@ function proxiedResponse(
   headers.set("X-XGuard-Fee-Micro-Usd", String(feeMicroUsd));
   headers.set("X-XGuard-Provider", provider);
   headers.set("X-XGuard-Upstream-Latency-Ms", String(latencyMs));
+  headers.set("X-XGuard-Accounting", accounting);
   headers.set("X-Content-Type-Options", "nosniff");
   return new Response(upstream.body, {
     status: upstream.status,
@@ -527,14 +573,17 @@ function autoResponse(
   feeMicroUsd: number,
   provider: ProviderId,
   latencyMs: number,
+  accounting?: AutoInvokeAccountingState,
 ): Response {
-  return jsonResponse(value, status, {
+  const headers: Record<string, string> = {
     "X-XGuard-Auto-Invoked": "true",
     "X-XGuard-Request-Id": requestId,
     "X-XGuard-Fee-Micro-Usd": String(feeMicroUsd),
     "X-XGuard-Provider": provider,
     "X-XGuard-Upstream-Latency-Ms": String(latencyMs),
-  });
+  };
+  if (accounting !== undefined) headers["X-XGuard-Accounting"] = accounting;
+  return jsonResponse(value, status, headers);
 }
 
 function requestWithMerchantAuthorization(
