@@ -11,9 +11,13 @@ describe("watchdog synthetic probe safety", () => {
   });
 
   it("does not let discovery-only failures open the global write breaker", () => {
-    expect(source).toContain('criticalForWrites: false');
+    expect(source).toContain("criticalForWrites: false");
     expect(source).toContain("if (probe.criticalForWrites)");
-    expect(source).toContain("highestCriticalFailures >= PROBE_FAILURE_THRESHOLD");
-    expect(source).toContain("if (allCriticalHealthy) await closeGlobalProbeBreaker");
+    expect(source).toContain(
+      "highestCriticalFailures >= PROBE_FAILURE_THRESHOLD",
+    );
+    expect(source).toContain(
+      "if (allCriticalHealthy) await closeGlobalProbeBreaker",
+    );
   });
 });
