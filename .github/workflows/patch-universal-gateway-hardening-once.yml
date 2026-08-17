@@ -1,0 +1,39 @@
+name: Patch universal gateway hardening once
+
+on:
+  push:
+    branches: [fix/universal-gateway-execution-finalization]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/universal-gateway-execution-finalization
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: node scripts/patch-universal-gateway-hardening.mjs
+      - run: npx prettier --write apps/worker/src/universal-gateway.ts tests/universal-gateway-hardening.test.ts tests/worker/universal-gateway-execution-finalization.test.ts
+      - run: npm run build
+      - run: npx vitest run tests/universal-gateway.test.ts tests/universal-gateway-hardening.test.ts
+      - run: npx vitest run --config vitest.worker.config.ts tests/worker/universal-gateway-execution-finalization.test.ts tests/worker/universal-gateway-billing.test.ts tests/worker/gateway-stale-held-recovery.test.ts tests/worker/auto-invoke-accounting.test.ts
+      - run: npm run typecheck
+      - name: Commit universal gateway hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/universal-gateway.ts tests/universal-gateway-hardening.test.ts tests/worker/universal-gateway-execution-finalization.test.ts
+          git commit -m "Preserve Universal Gateway execution success across accounting failures"
+          git push origin HEAD:fix/universal-gateway-execution-finalization
