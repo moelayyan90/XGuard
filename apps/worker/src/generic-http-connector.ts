@@ -8,6 +8,8 @@ import {
 const CONNECTOR_PATH = "/v1/gateway/http";
 const DEFAULT_TOOL_FEE_MICRO_USD = 200;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
+const MIN_UPSTREAM_CREDENTIAL_LENGTH = 8;
+const MAX_UPSTREAM_CREDENTIAL_LENGTH = 4096;
 const ALLOWED_METHODS = new Set([
   "GET",
   "HEAD",
@@ -94,12 +96,28 @@ export async function genericHttpConnectorResponse(
       400,
     );
 
-  const bodyLength = Number(request.headers.get("content-length") ?? "0");
-  if (Number.isFinite(bodyLength) && bodyLength > MAX_BODY_BYTES)
-    return jsonResponse({ error: "generic_connector_body_too_large" }, 413);
+  let upstreamHeaders: Headers;
+  let upstreamBody: ArrayBuffer | null;
+  let feeMicroUsd: number;
+  try {
+    upstreamHeaders = buildUpstreamHeaders(request.headers);
+    upstreamBody = await connectorBody(request);
+    feeMicroUsd = toolFee(env);
+  } catch (error) {
+    const code = errorCode(error);
+    return jsonResponse(
+      {
+        error: code,
+        message:
+          code === "upstream_credential_required"
+            ? "A separate upstream API credential is required. XGuard credentials are never forwarded to arbitrary upstream services."
+            : undefined,
+      },
+      code === "generic_connector_body_too_large" ? 413 : 400,
+    );
+  }
 
   const requestId = connectorRequestId(request);
-  const feeMicroUsd = toolFee(env);
   const operation = `${request.method}:${target.pathname}`.slice(0, 160);
   let reservation;
   try {
@@ -130,7 +148,6 @@ export async function genericHttpConnectorResponse(
     return jsonResponse({ error: code }, 400);
   }
 
-  const upstreamHeaders = buildUpstreamHeaders(request.headers);
   const started = Date.now();
   let upstream: Response;
   try {
@@ -138,10 +155,7 @@ export async function genericHttpConnectorResponse(
       new Request(target.toString(), {
         method: request.method,
         headers: upstreamHeaders,
-        body:
-          request.method === "GET" || request.method === "HEAD"
-            ? null
-            : request.body,
+        body: upstreamBody,
         redirect: "manual",
       }),
     );
@@ -207,7 +221,7 @@ export async function genericHttpConnectorResponse(
       eventKey: reservation.eventKey,
       upstreamStatus: upstream.status,
       latencyMs,
-      requestBytes: contentLength(request.headers),
+      requestBytes: upstreamBody?.byteLength ?? 0,
       responseBytes: contentLength(upstream.headers),
     });
   } catch {
@@ -247,7 +261,36 @@ export function safeGenericHttpsTarget(raw: string): URL | null {
   return url;
 }
 
+export function validGenericUpstreamCredential(raw: string | null): boolean {
+  const credential = raw?.trim() ?? "";
+  return (
+    credential.length >= MIN_UPSTREAM_CREDENTIAL_LENGTH &&
+    credential.length <= MAX_UPSTREAM_CREDENTIAL_LENGTH &&
+    !/[\r\n]/.test(credential)
+  );
+}
+
+async function connectorBody(request: Request): Promise<ArrayBuffer | null> {
+  if (request.method === "GET" || request.method === "HEAD") return null;
+
+  const declaredLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES)
+    throw new Error("generic_connector_body_too_large");
+
+  const body = await request.arrayBuffer();
+  if (body.byteLength > MAX_BODY_BYTES)
+    throw new Error("generic_connector_body_too_large");
+  return body;
+}
+
 function buildUpstreamHeaders(incoming: Headers): Headers {
+  const credential = incoming.get("x-xguard-upstream-key");
+  if (!validGenericUpstreamCredential(credential)) {
+    if ((credential?.trim() ?? "") === "")
+      throw new Error("upstream_credential_required");
+    throw new Error("invalid_upstream_credential");
+  }
+
   const outgoing = new Headers();
   for (const header of SAFE_FORWARD_HEADERS) {
     const value = incoming.get(header);
@@ -267,25 +310,20 @@ function buildUpstreamHeaders(incoming: Headers): Headers {
     if (value !== null && value.length <= 8192) outgoing.set(header, value);
   }
 
-  const credential = incoming.get("x-xguard-upstream-key")?.trim() ?? "";
-  if (credential !== "") {
-    if (credential.length > 4096)
-      throw new Error("upstream_credential_too_large");
-    const authHeader = (
-      incoming.get("x-xguard-upstream-auth-header")?.trim() || "authorization"
-    ).toLowerCase();
-    if (!safeAuthHeaderName(authHeader))
-      throw new Error("invalid_upstream_auth_header");
-    const scheme =
-      incoming.get("x-xguard-upstream-auth-scheme")?.trim().toLowerCase() ||
-      "bearer";
-    if (scheme !== "bearer" && scheme !== "raw")
-      throw new Error("invalid_upstream_auth_scheme");
-    outgoing.set(
-      authHeader,
-      scheme === "bearer" ? `Bearer ${credential}` : credential,
-    );
-  }
+  const authHeader = (
+    incoming.get("x-xguard-upstream-auth-header")?.trim() || "authorization"
+  ).toLowerCase();
+  if (!safeAuthHeaderName(authHeader))
+    throw new Error("invalid_upstream_auth_header");
+  const scheme =
+    incoming.get("x-xguard-upstream-auth-scheme")?.trim().toLowerCase() ||
+    "bearer";
+  if (scheme !== "bearer" && scheme !== "raw")
+    throw new Error("invalid_upstream_auth_scheme");
+  outgoing.set(
+    authHeader,
+    scheme === "bearer" ? `Bearer ${credential!.trim()}` : credential!.trim(),
+  );
 
   outgoing.set("user-agent", "XGuard-Universal-Connector/1.0");
   return outgoing;
