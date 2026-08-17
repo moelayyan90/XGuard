@@ -8,7 +8,14 @@ import {
 const CONNECTOR_PATH = "/v1/gateway/http";
 const DEFAULT_TOOL_FEE_MICRO_USD = 200;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const ALLOWED_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+const ALLOWED_METHODS = new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+]);
 const SAFE_FORWARD_HEADERS = new Set([
   "accept",
   "accept-language",
@@ -64,21 +71,25 @@ export async function genericHttpConnectorResponse(
   if (route.pathname !== CONNECTOR_PATH) return null;
 
   if (!ALLOWED_METHODS.has(request.method))
-    return jsonResponse({ error: "generic_connector_method_not_supported" }, 405, {
-      Allow: [...ALLOWED_METHODS].join(", "),
-    });
+    return jsonResponse(
+      { error: "generic_connector_method_not_supported" },
+      405,
+      {
+        Allow: [...ALLOWED_METHODS].join(", "),
+      },
+    );
 
   const access = await authorizeMerchantScope(request, env, "billing");
   if (!access.ok) return access.response;
 
-  const targetHeader = request.headers.get("x-xguard-upstream-url")?.trim() ?? "";
+  const targetHeader =
+    request.headers.get("x-xguard-upstream-url")?.trim() ?? "";
   const target = safeGenericHttpsTarget(targetHeader);
   if (target === null)
     return jsonResponse(
       {
         error: "unsafe_or_invalid_upstream_url",
-        rule:
-          "Use a public HTTPS hostname on port 443. IP literals, localhost/private naming, URL credentials, and non-HTTPS targets are rejected.",
+        rule: "Use a public HTTPS hostname on port 443. IP literals, localhost/private naming, URL credentials, and non-HTTPS targets are rejected.",
       },
       400,
     );
@@ -243,12 +254,13 @@ function buildUpstreamHeaders(incoming: Headers): Headers {
     if (value !== null) outgoing.set(header, value);
   }
 
-  const requested = incoming
-    .get("x-xguard-forward-headers")
-    ?.split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean)
-    .slice(0, 24) ?? [];
+  const requested =
+    incoming
+      .get("x-xguard-forward-headers")
+      ?.split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 24) ?? [];
   for (const header of requested) {
     if (!safeCustomHeaderName(header)) continue;
     const value = incoming.get(header);
@@ -257,19 +269,22 @@ function buildUpstreamHeaders(incoming: Headers): Headers {
 
   const credential = incoming.get("x-xguard-upstream-key")?.trim() ?? "";
   if (credential !== "") {
-    if (credential.length > 4096) throw new Error("upstream_credential_too_large");
+    if (credential.length > 4096)
+      throw new Error("upstream_credential_too_large");
     const authHeader = (
       incoming.get("x-xguard-upstream-auth-header")?.trim() || "authorization"
     ).toLowerCase();
     if (!safeAuthHeaderName(authHeader))
       throw new Error("invalid_upstream_auth_header");
-    const scheme = (
+    const scheme =
       incoming.get("x-xguard-upstream-auth-scheme")?.trim().toLowerCase() ||
-      "bearer"
-    );
+      "bearer";
     if (scheme !== "bearer" && scheme !== "raw")
       throw new Error("invalid_upstream_auth_scheme");
-    outgoing.set(authHeader, scheme === "bearer" ? `Bearer ${credential}` : credential);
+    outgoing.set(
+      authHeader,
+      scheme === "bearer" ? `Bearer ${credential}` : credential,
+    );
   }
 
   outgoing.set("user-agent", "XGuard-Universal-Connector/1.0");
@@ -303,7 +318,8 @@ function isIpLiteral(hostname: string): boolean {
 function connectorRequestId(request: Request): string {
   for (const name of ["x-request-id", "idempotency-key", "x-idempotency-key"]) {
     const value = request.headers.get(name)?.trim();
-    if (value !== undefined && /^[A-Za-z0-9._:-]{8,96}$/.test(value)) return value;
+    if (value !== undefined && /^[A-Za-z0-9._:-]{8,96}$/.test(value))
+      return value;
   }
   return crypto.randomUUID();
 }

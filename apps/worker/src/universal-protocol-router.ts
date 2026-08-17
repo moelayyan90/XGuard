@@ -178,7 +178,9 @@ export async function universalProtocolResponse(
     request.method === "GET" &&
     url.pathname.startsWith(`${PROTOCOLS_PATH}/`)
   ) {
-    const id = normalizeProtocolId(url.pathname.slice(PROTOCOLS_PATH.length + 1));
+    const id = normalizeProtocolId(
+      url.pathname.slice(PROTOCOLS_PATH.length + 1),
+    );
     if (id === null)
       return jsonResponse({ error: "unsupported_xguard_protocol" }, 404);
     return jsonResponse(ADAPTER_BY_ID.get(id));
@@ -212,7 +214,11 @@ export async function universalProtocolResponse(
   }
 
   if (action === "verify") {
-    const structural = structuralVerification(envelope.protocol, envelope.payload, request);
+    const structural = structuralVerification(
+      envelope.protocol,
+      envelope.payload,
+      request,
+    );
     if (!structural.ok)
       return jsonResponse(
         {
@@ -316,7 +322,9 @@ async function parseEnvelope(request: Request): Promise<ParsedEnvelope> {
   const bodyProtocol =
     typeof parsed.protocol === "string" ? parsed.protocol : undefined;
   const inferred = inferProtocol(parsed);
-  const protocol = normalizeProtocolId(headerProtocol ?? bodyProtocol ?? inferred);
+  const protocol = normalizeProtocolId(
+    headerProtocol ?? bodyProtocol ?? inferred,
+  );
   if (protocol === null) throw new Error("xguard_protocol_required");
 
   const payload = isRecord(parsed.payload)
@@ -512,7 +520,7 @@ function normalizeProtocolId(value: unknown): XGuardProtocolId | null {
     mcp: "mcp",
     "model-context-protocol": "mcp",
     a2a: "a2a",
-    "agent2agent": "a2a",
+    agent2agent: "a2a",
     http: "http",
     https: "http",
     openapi: "openapi",

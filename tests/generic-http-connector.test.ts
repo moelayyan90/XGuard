@@ -4,15 +4,20 @@ import { safeGenericHttpsTarget } from "../apps/worker/src/generic-http-connecto
 describe("XGuard generic HTTPS connector target safety", () => {
   it("accepts public HTTPS API targets", () => {
     expect(
-      safeGenericHttpsTarget("https://api.example.com/v1/orders?limit=10")?.toString(),
+      safeGenericHttpsTarget(
+        "https://api.example.com/v1/orders?limit=10",
+      )?.toString(),
     ).toBe("https://api.example.com/v1/orders?limit=10");
     expect(
-      safeGenericHttpsTarget("https://api.stripe.com:443/v1/payment_intents")?.hostname,
+      safeGenericHttpsTarget("https://api.stripe.com:443/v1/payment_intents")
+        ?.hostname,
     ).toBe("api.stripe.com");
   });
 
   it("rejects non-HTTPS targets", () => {
-    expect(safeGenericHttpsTarget("http://api.example.com/v1/orders")).toBeNull();
+    expect(
+      safeGenericHttpsTarget("http://api.example.com/v1/orders"),
+    ).toBeNull();
     expect(safeGenericHttpsTarget("ftp://api.example.com/file")).toBeNull();
   });
 

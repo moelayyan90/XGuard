@@ -26,7 +26,8 @@ type MainnetScheduled = (
 ) => Promise<void>;
 
 const mainnetFetch = monetizedMainnet.fetch as unknown as MainnetFetch;
-const mainnetScheduled = monetizedMainnet.scheduled as unknown as MainnetScheduled;
+const mainnetScheduled =
+  monetizedMainnet.scheduled as unknown as MainnetScheduled;
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
@@ -38,7 +39,10 @@ export default {
     });
     if (protocolResponse !== null) return protocolResponse;
 
-    const genericHttp = await genericHttpConnectorResponse(standardRequest, env);
+    const genericHttp = await genericHttpConnectorResponse(
+      standardRequest,
+      env,
+    );
     if (genericHttp !== null) return genericHttp;
 
     return mainnetFetch(standardRequest, env, ctx);

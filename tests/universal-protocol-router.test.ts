@@ -8,17 +8,19 @@ const ORIGIN = "https://xguardgate.com";
 
 function delegates() {
   return {
-    verifyX402: vi.fn(async () =>
-      new Response(JSON.stringify({ isValid: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    verifyX402: vi.fn(
+      async () =>
+        new Response(JSON.stringify({ isValid: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
     ),
-    settleX402: vi.fn(async () =>
-      new Response(JSON.stringify({ success: true, transaction: "0xabc" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    settleX402: vi.fn(
+      async () =>
+        new Response(JSON.stringify({ success: true, transaction: "0xabc" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
     ),
   };
 }
