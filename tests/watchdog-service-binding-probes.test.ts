@@ -17,8 +17,12 @@ describe("watchdog mainnet service binding probes", () => {
   });
 
   it("keeps health and readiness as the only critical write-safety probes", () => {
-    expect(source).toContain('{ key: "healthz", path: "/healthz", criticalForWrites: true }');
-    expect(source).toContain('{ key: "readyz", path: "/readyz", criticalForWrites: true }');
+    expect(source).toContain(
+      '{ key: "healthz", path: "/healthz", criticalForWrites: true }',
+    );
+    expect(source).toContain(
+      '{ key: "readyz", path: "/readyz", criticalForWrites: true }',
+    );
     expect(source).toContain('key: "x402-discovery"');
     expect(source).toContain('key: "mcp-discovery"');
     expect(source).toContain("criticalForWrites: false");
