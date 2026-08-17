@@ -12,6 +12,7 @@ on:
       - "apps/worker/src/mainnet-mcp-modern.ts"
       - "apps/worker/src/mainnet-modern.ts"
       - "apps/worker/src/mcpub-discovery.ts"
+      - ".github/workflows/publish-mcp-directories.yml"
 
 permissions:
   contents: read
@@ -50,6 +51,48 @@ jobs:
               process.exit(1);
             });
           '
+
+  mcpub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Refresh XGuard in mcpub
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://xguardgate.com'
+
+          manifest="$(curl -fsS --max-time 20 "${BASE}/.well-known/mcp.json")"
+          printf '%s' "${manifest}" | node -e '
+            let s="";
+            process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const x=JSON.parse(s);
+              if (x.name !== "XGuard" || x.mcp !== "https://xguardgate.com/mcp" || x.registryName !== "io.github.moelayyan90/xguard") process.exit(1);
+            });
+          '
+
+          submit="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+            -X POST 'https://mcpub.dev/mcp' \
+            -H 'Content-Type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"submit","arguments":{"url":"https://xguardgate.com","description":"XGuard paid MCP execution gateway for AI tools, security checks, analysis, and x402 settlement."}}}')"
+          submit_code="${submit##*$'\n'}"
+          submit_body="${submit%$'\n'*}"
+          printf '%s\n' "${submit_body}"
+          if [[ ! "${submit_code}" =~ ^2[0-9][0-9]$ ]]; then
+            echo "mcpub submission returned HTTP ${submit_code}." >&2
+            exit 1
+          fi
+
+          lookup="$(curl --fail-with-body -sS --max-time 30 \
+            -X POST 'https://mcpub.dev/mcp' \
+            -H 'Content-Type: application/json' \
+            --data '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get","arguments":{"url":"https://xguardgate.com"}}}')"
+          printf '%s\n' "${lookup}"
+          if ! printf '%s' "${lookup}" | grep -Fq 'xguardgate.com'; then
+            echo "mcpub did not return the canonical XGuard endpoint after refresh." >&2
+            exit 1
+          fi
+          echo "XGuard mcpub refresh verified."
 
   a2aregistry:
     runs-on: ubuntu-latest
