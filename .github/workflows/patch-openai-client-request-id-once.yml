@@ -1,0 +1,66 @@
+name: Patch OpenAI client request ID fallback once
+
+on:
+  push:
+    branches: [fix/openai-client-request-id-fallback]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/openai-client-request-id-fallback
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Patch request ID resolution and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const sourcePath = 'apps/worker/src/auto-invoke.ts';
+          let source = fs.readFileSync(sourcePath, 'utf8');
+          const oldFn = `function autoRequestId(request: Request): string {\n  const supplied = request.headers.get("x-request-id")?.trim();\n  if (supplied && /^[A-Za-z0-9._:-]{8,96}$/.test(supplied)) return supplied;\n  return crypto.randomUUID();\n}`;
+          const newFn = `export function autoRequestId(request: Request): string {\n  for (const header of ["x-request-id", "x-client-request-id"]) {\n    const supplied = request.headers.get(header)?.trim();\n    if (supplied && /^[A-Za-z0-9._:-]{8,96}$/.test(supplied)) return supplied;\n  }\n  return crypto.randomUUID();\n}`;
+          if (source.includes(oldFn)) source = source.replace(oldFn, newFn);
+          else if (!source.includes(newFn)) throw new Error('autoRequestId block not found');
+          fs.writeFileSync(sourcePath, source);
+
+          const testPath = 'tests/auto-invoke.test.ts';
+          let test = fs.readFileSync(testPath, 'utf8');
+          const importOld = `  autoInvokeResponse,\n  classifyAutoInvokeRoute,`;
+          const importNew = `  autoInvokeResponse,\n  autoRequestId,\n  classifyAutoInvokeRoute,`;
+          if (test.includes(importOld)) test = test.replace(importOld, importNew);
+          else if (!test.includes('autoRequestId,')) throw new Error('test import marker not found');
+
+          const marker = `\n  it("infers OpenAI from standard OpenAI-compatible requests", async () => {`;
+          const block = `\n  it("uses OpenAI X-Client-Request-Id as a fallback without overriding X-Request-Id", () => {\n    const preferred = autoRequestId(\n      new Request(ORIGIN, {\n        headers: {\n          "X-Request-Id": "xguard-primary-1234",\n          "X-Client-Request-Id": "openai-client-5678",\n        },\n      }),\n    );\n    expect(preferred).toBe("xguard-primary-1234");\n\n    const fallback = autoRequestId(\n      new Request(ORIGIN, {\n        headers: { "X-Client-Request-Id": "openai-client-5678" },\n      }),\n    );\n    expect(fallback).toBe("openai-client-5678");\n  });\n\n  it("ignores malformed client request IDs and generates a UUID", () => {\n    const generated = autoRequestId(\n      new Request(ORIGIN, {\n        headers: { "X-Client-Request-Id": "bad id" },\n      }),\n    );\n    expect(generated).not.toBe("bad id");\n    expect(generated).toMatch(\n      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,\n    );\n  });\n`;
+          if (!test.includes('uses OpenAI X-Client-Request-Id as a fallback')) {
+            if (!test.includes(marker)) throw new Error('test insertion marker not found');
+            test = test.replace(marker, block + marker);
+          }
+          fs.writeFileSync(testPath, test);
+          NODE
+      - run: npx prettier --write apps/worker/src/auto-invoke.ts tests/auto-invoke.test.ts
+      - run: npm run build
+      - run: npx vitest run tests/auto-invoke.test.ts
+      - run: npm run typecheck
+      - name: Commit request ID fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/auto-invoke.ts tests/auto-invoke.test.ts
+          git commit -m "Honor OpenAI client request IDs in auto-invoke replay keys"
+          git push origin HEAD:fix/openai-client-request-id-fallback
