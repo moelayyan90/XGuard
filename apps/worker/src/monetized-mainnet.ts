@@ -91,6 +91,23 @@ async function billVerify(
   env: MonetizedMainnetEnv,
   ctx: ExecutionContext,
 ): Promise<Response> {
+  // Authentication is deliberately first. Compatibility parsing can reject
+  // malformed or unsupported legacy envelopes, so running it before this
+  // boundary leaks protocol behavior to anonymous traffic and lets malformed
+  // requests bypass the prepaid merchant access contract.
+  const access = await authorizeMerchantScope(request, env, "verify");
+  if (!access.ok) {
+    logEconomicTraffic({
+      request,
+      operation: "verify",
+      trafficClass: "anonymous_or_unregistered",
+      outcome: "blocked_before_execution",
+      billable: false,
+      feeMicroUsd: 0,
+    });
+    return access.response;
+  }
+
   let compatibility: CompatibilityRequest | null = null;
   let effectiveRequest = request;
 
@@ -98,14 +115,20 @@ async function billVerify(
     compatibility = await normalizeX402CompatibilityRequest(request);
     if (compatibility !== null) effectiveRequest = compatibility.request;
   } catch {
-    // Reuse the canonical mainnet compatibility rejection boundary. Invalid
-    // legacy traffic must never reserve or earn a monetization fee.
+    // The caller is authenticated, so it is now safe to reuse the canonical
+    // compatibility rejection boundary. Invalid legacy traffic never reserves
+    // or earns a monetization fee.
+    logEconomicTraffic({
+      request,
+      operation: "verify",
+      trafficClass: "authenticated_merchant",
+      outcome: "compatibility_rejected",
+      billable: false,
+      feeMicroUsd: 0,
+      merchantId: access.merchant.merchantId,
+    });
     return delegateFetch(request, env, ctx);
   }
-
-  const access = await authorizeMerchantScope(effectiveRequest, env, "verify");
-  if (!access.ok)
-    return adaptCompatibilityResponse(access.response, compatibility);
 
   return billExecution({
     request: effectiveRequest,
@@ -137,7 +160,17 @@ async function billDirectDiscovery(
   operation: string,
 ): Promise<Response> {
   const access = await authorizeMerchantScope(request, env, "billing");
-  if (!access.ok) return access.response;
+  if (!access.ok) {
+    logEconomicTraffic({
+      request,
+      operation,
+      trafficClass: "anonymous_or_unregistered",
+      outcome: "blocked_before_execution",
+      billable: false,
+      feeMicroUsd: 0,
+    });
+    return access.response;
+  }
 
   return billExecution({
     request,
@@ -161,7 +194,17 @@ async function billMcpToolCall(
   descriptor: McpBillingDescriptor,
 ): Promise<Response> {
   const access = await authorizeMerchantScope(request, env, "billing");
-  if (!access.ok) return access.response;
+  if (!access.ok) {
+    logEconomicTraffic({
+      request,
+      operation: descriptor.operation,
+      trafficClass: "anonymous_or_unregistered",
+      outcome: "blocked_before_execution",
+      billable: false,
+      feeMicroUsd: 0,
+    });
+    return access.response;
+  }
 
   const amountMicroUsd = feeForMcpKind(env, descriptor.kind);
   return billExecution({
@@ -207,6 +250,16 @@ async function billExecution(input: {
         input.env.DB,
         input.merchantId,
       ).catch(() => null);
+      logEconomicTraffic({
+        request: input.request,
+        operation: input.operation,
+        trafficClass: "authenticated_merchant",
+        outcome: "insufficient_prepaid_balance",
+        billable: false,
+        feeMicroUsd: 0,
+        merchantId: input.merchantId,
+        requestIdValue: input.requestId,
+      });
       return jsonResponse(
         {
           error: "xguard_service_balance_required",
@@ -225,10 +278,42 @@ async function billExecution(input: {
     if (
       code === "gateway_event_already_earned" ||
       code === "gateway_event_in_progress"
-    )
+    ) {
+      logEconomicTraffic({
+        request: input.request,
+        operation: input.operation,
+        trafficClass: "authenticated_merchant",
+        outcome: code,
+        billable: false,
+        feeMicroUsd: 0,
+        merchantId: input.merchantId,
+        requestIdValue: input.requestId,
+      });
       return jsonResponse({ error: code }, 409, input.requestId, 0, "conflict");
+    }
+    logEconomicTraffic({
+      request: input.request,
+      operation: input.operation,
+      trafficClass: "authenticated_merchant",
+      outcome: `reservation_rejected:${code}`,
+      billable: false,
+      feeMicroUsd: 0,
+      merchantId: input.merchantId,
+      requestIdValue: input.requestId,
+    });
     return jsonResponse({ error: code }, 400, input.requestId, 0, "rejected");
   }
+
+  logEconomicTraffic({
+    request: input.request,
+    operation: input.operation,
+    trafficClass: "authenticated_merchant",
+    outcome: "fee_reserved",
+    billable: false,
+    feeMicroUsd: 0,
+    merchantId: input.merchantId,
+    requestIdValue: input.requestId,
+  });
 
   const started = Date.now();
   let response: Response;
@@ -240,6 +325,16 @@ async function billExecution(input: {
       input.merchantId,
       reserved.eventKey,
     );
+    logEconomicTraffic({
+      request: input.request,
+      operation: input.operation,
+      trafficClass: "authenticated_merchant",
+      outcome: `execution_unavailable:${errorCode(error)}`,
+      billable: false,
+      feeMicroUsd: 0,
+      merchantId: input.merchantId,
+      requestIdValue: input.requestId,
+    });
     return jsonResponse(
       { error: "execution_unavailable", detail: errorCode(error) },
       503,
@@ -266,10 +361,24 @@ async function billExecution(input: {
         reserved.eventKey,
       );
 
+  const earnedFeeMicroUsd = accounting === "earned" ? input.amountMicroUsd : 0;
+  logEconomicTraffic({
+    request: input.request,
+    operation: input.operation,
+    trafficClass: "authenticated_merchant",
+    outcome: accounting,
+    billable: accounting === "earned",
+    feeMicroUsd: earnedFeeMicroUsd,
+    merchantId: input.merchantId,
+    requestIdValue: input.requestId,
+    upstreamStatus: response.status,
+    latencyMs,
+  });
+
   return withBillingHeaders(
     response,
     input.requestId,
-    accounting === "earned" ? input.amountMicroUsd : 0,
+    earnedFeeMicroUsd,
     accounting,
   );
 }
@@ -310,6 +419,43 @@ async function successfulMcpToolResponse(response: Response): Promise<boolean> {
   if (!isRecord(payload) || payload.error !== undefined) return false;
   if (!isRecord(payload.result)) return false;
   return payload.result.isError !== true;
+}
+
+function logEconomicTraffic(input: {
+  request: Request;
+  operation: string;
+  trafficClass: "anonymous_or_unregistered" | "authenticated_merchant";
+  outcome: string;
+  billable: boolean;
+  feeMicroUsd: number;
+  merchantId?: string;
+  requestIdValue?: string;
+  upstreamStatus?: number;
+  latencyMs?: number;
+}): void {
+  const url = new URL(input.request.url);
+  console.log(
+    JSON.stringify({
+      event: "economic_traffic",
+      path: url.pathname,
+      method: input.request.method,
+      operation: input.operation,
+      trafficClass: input.trafficClass,
+      outcome: input.outcome,
+      billable: input.billable,
+      feeMicroUsd: input.feeMicroUsd,
+      ...(input.merchantId === undefined
+        ? {}
+        : { merchantId: input.merchantId }),
+      ...(input.requestIdValue === undefined
+        ? {}
+        : { requestId: input.requestIdValue }),
+      ...(input.upstreamStatus === undefined
+        ? {}
+        : { upstreamStatus: input.upstreamStatus }),
+      ...(input.latencyMs === undefined ? {} : { latencyMs: input.latencyMs }),
+    }),
+  );
 }
 
 function requestId(request: Request): string {

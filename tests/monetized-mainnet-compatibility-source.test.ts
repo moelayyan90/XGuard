@@ -15,28 +15,34 @@ function billVerifySource() {
 }
 
 describe("monetized mainnet x402 compatibility boundary", () => {
-  it("normalizes verify traffic before merchant authorization", () => {
+  it("authenticates verify traffic before compatibility parsing", () => {
     const verify = billVerifySource();
+    const authorize = verify.indexOf("authorizeMerchantScope(");
     const normalize = verify.indexOf(
       "normalizeX402CompatibilityRequest(request)",
     );
-    const authorize = verify.indexOf("authorizeMerchantScope(");
 
-    expect(normalize).toBeGreaterThanOrEqual(0);
-    expect(authorize).toBeGreaterThan(normalize);
+    expect(authorize).toBeGreaterThanOrEqual(0);
+    expect(normalize).toBeGreaterThan(authorize);
   });
 
-  it("preserves compatibility headers on both auth failures and execution responses", () => {
+  it("does not leak compatibility adaptation on authentication failures", () => {
     const verify = billVerifySource();
-
-    expect(verify).toContain(
-      "adaptCompatibilityResponse(access.response, compatibility)",
+    const authorize = verify.indexOf("authorizeMerchantScope(");
+    const authFailure = verify.indexOf("if (!access.ok)", authorize);
+    const normalize = verify.indexOf(
+      "normalizeX402CompatibilityRequest(request)",
     );
+    const authFailureBlock = verify.slice(authFailure, normalize);
+
+    expect(authFailure).toBeGreaterThan(authorize);
+    expect(authFailureBlock).toContain("return access.response;");
+    expect(authFailureBlock).not.toContain("adaptCompatibilityResponse(");
     expect(verify).toContain("await delegateFetch(effectiveRequest, env, ctx)");
     expect(verify).toContain("compatibility,");
   });
 
-  it("delegates invalid legacy traffic without reserving a monetization fee", () => {
+  it("delegates invalid authenticated legacy traffic without reserving a monetization fee", () => {
     const verify = billVerifySource();
     const catchIndex = verify.indexOf("catch {");
     const delegateIndex = verify.indexOf(
