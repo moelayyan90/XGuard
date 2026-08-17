@@ -1,0 +1,49 @@
+name: Live readiness diagnostic
+on:
+  push:
+    branches: [diag/live-readiness-contract]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe live contracts
+        shell: bash
+        run: |
+          set -u
+          BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
+          probe() {
+            local name="$1"
+            shift
+            local headers body code
+            headers="$(mktemp)"
+            body="$(mktemp)"
+            code="$(curl -sS --max-time 15 -D "$headers" -o "$body" -w '%{http_code}' "$@" || true)"
+            echo "===== ${name} ====="
+            echo "HTTP ${code}"
+            tr -d '\r' < "$headers" | sed -n '1,25p'
+            echo "--- body ---"
+            head -c 4000 "$body" || true
+            echo
+            rm -f "$headers" "$body"
+          }
+
+          probe agent-card "${BASE_URL}/.well-known/agent-card.json?diag=${GITHUB_SHA}"
+          probe healthz "${BASE_URL}/healthz"
+          probe root-post -X POST "${BASE_URL}/"
+          probe register-get "${BASE_URL}/v1/register"
+          probe facilitator "${BASE_URL}/.well-known/x402/facilitator.json?diag=${GITHUB_SHA}"
+          probe x402 "${BASE_URL}/.well-known/x402?diag=${GITHUB_SHA}"
+          probe monetization "${BASE_URL}/.well-known/monetization?diag=${GITHUB_SHA}"
+          probe mcp-manifest "${BASE_URL}/.well-known/mcp/server.json?diag=${GITHUB_SHA}"
+          probe openapi "${BASE_URL}/openapi.json?diag=${GITHUB_SHA}"
+          probe llms "${BASE_URL}/llms.txt?diag=${GITHUB_SHA}"
+          probe llms-full "${BASE_URL}/llms-full.txt?diag=${GITHUB_SHA}"
+          probe robots "${BASE_URL}/robots.txt?diag=${GITHUB_SHA}"
+          probe readyz "${BASE_URL}/readyz"
+          probe supported "${BASE_URL}/supported"
+          probe status "${BASE_URL}/status?diag=${GITHUB_SHA}"
