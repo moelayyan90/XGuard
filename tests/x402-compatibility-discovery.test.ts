@@ -49,4 +49,25 @@ describe("x402 compatibility discovery", () => {
     expect(body.capabilities.x402CompatibilityBridge).toBe(true);
     expect(body.compatibility.mode).toBe("transaction-compatibility-bridge");
   });
+
+  it("keeps the canonical agent-market protocol while advertising compatibility separately", async () => {
+    const response = await augmentCompatibilityDiscovery(
+      new Response(
+        JSON.stringify({
+          name: "XGuard",
+          protocol: "x402-v2",
+          network: "eip155:8453",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+      "/.well-known/agent-market.json",
+    );
+
+    const body = (await response.json()) as {
+      protocol: string;
+      compatibility: Record<string, unknown>;
+    };
+    expect(body.protocol).toBe("x402-v2");
+    expect(body.compatibility.mode).toBe("transaction-compatibility-bridge");
+  });
 });
