@@ -39,10 +39,7 @@ describe("buyer browser surface source invariants", () => {
 
   it("limits network host permission to XGuard while detecting checkout locally", async () => {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    expect(manifest.host_permissions).toEqual([
-      "https://xguardgate.com/*",
-      "https://www.xguardgate.com/*",
-    ]);
+    expect(manifest.host_permissions).toEqual(["https://xguardgate.com/*"]);
     expect(manifest.content_scripts[0].all_frames).toBe(false);
   });
 
