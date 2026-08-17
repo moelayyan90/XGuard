@@ -18,6 +18,33 @@ describe("mainnet discovery compatibility", () => {
     expect(await alias?.json()).toEqual(await canonical?.json());
   });
 
+  it("serves Glama remote connector ownership metadata", async () => {
+    const response = await compatibilityDiscoveryResponse(
+      new Request(`${ORIGIN}/.well-known/glama.json`),
+    );
+    expect(response?.status).toBe(200);
+    expect(response?.headers.get("content-type")).toContain("application/json");
+    expect(await response?.json()).toEqual({
+      $schema: "https://glama.ai/mcp/schemas/connector.json",
+      maintainers: [{ email: "mo.elayyan2023@gmail.com" }],
+    });
+
+    const head = await compatibilityDiscoveryResponse(
+      new Request(`${ORIGIN}/.well-known/glama.json`, { method: "HEAD" }),
+    );
+    expect(head?.status).toBe(200);
+    expect(await head?.text()).toBe("");
+
+    const etag = head?.headers.get("etag");
+    expect(etag).toBeTruthy();
+    const cached = await compatibilityDiscoveryResponse(
+      new Request(`${ORIGIN}/.well-known/glama.json`, {
+        headers: { "If-None-Match": etag ?? "" },
+      }),
+    );
+    expect(cached?.status).toBe(304);
+  });
+
   it("serves monetization metadata", async () => {
     const response = await compatibilityDiscoveryResponse(
       new Request(`${ORIGIN}/.well-known/monetization`),
@@ -82,6 +109,11 @@ describe("mainnet discovery compatibility", () => {
     expect(
       await compatibilityDiscoveryResponse(
         new Request(`${ORIGIN}/.well-known/x402`, { method: "POST" }),
+      ),
+    ).toBeNull();
+    expect(
+      await compatibilityDiscoveryResponse(
+        new Request(`${ORIGIN}/.well-known/glama.json`, { method: "POST" }),
       ),
     ).toBeNull();
   });
