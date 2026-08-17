@@ -235,7 +235,7 @@ async function billProviderProxy(
   }
 
   const latencyMs = Math.max(0, Date.now() - started);
-  if (upstream.status < 200 || upstream.status >= 400) {
+  if (!isBillableGatewayStatus(upstream.status)) {
     await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
       () => undefined,
     );
@@ -524,6 +524,10 @@ function analyzeCandidates(
     ranked,
     weights: { quality: 0.4, reliability: 0.3, latency: 0.15, cost: 0.15 },
   };
+}
+
+export function isBillableGatewayStatus(status: number): boolean {
+  return Number.isInteger(status) && status >= 200 && status < 300;
 }
 
 function upstreamUrl(baseUrl: string, suffix: string, search: string): string {

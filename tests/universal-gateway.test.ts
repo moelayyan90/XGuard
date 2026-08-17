@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { universalGatewayResponse } from "../apps/worker/src/universal-gateway.js";
+import {
+  isBillableGatewayStatus,
+  universalGatewayResponse,
+} from "../apps/worker/src/universal-gateway.js";
 
 const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
 const env = {
@@ -108,6 +111,14 @@ describe("XGuard universal gateway", () => {
     );
     expect(response?.status).toBe(401);
     expect(await response?.json()).toMatchObject({ error: "unauthorized" });
+  });
+
+  it("treats only 2xx provider responses as billable success", () => {
+    for (const status of [200, 201, 204, 206, 299])
+      expect(isBillableGatewayStatus(status)).toBe(true);
+
+    for (const status of [199, 300, 301, 302, 307, 308, 399, 400, 429, 500])
+      expect(isBillableGatewayStatus(status)).toBe(false);
   });
 
   it("does not intercept non-gateway routes", async () => {
