@@ -45,8 +45,16 @@ jobs:
           retry_json "${BASE_URL}/supported" \
             'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||!x.kinds.some(k=>k&&k.x402Version===2&&k.network==="eip155:8453"&&k.scheme==="exact")||!Array.isArray(x.extensions)||!x.extensions.includes("bazaar"))process.exit(1)})'
 
-          retry_json "${BASE_URL}/discovery/resources?limit=1" \
-            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items)||!x.pagination||typeof x.pagination.total!=="number")process.exit(1)})'
+          retry_json "${BASE_URL}/.well-known/x402/facilitator.json" \
+            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.discovery||x.discovery.bazaarResources!=="https://xguardgate.com/discovery/resources"||x.discovery.bazaarSearch!=="https://xguardgate.com/discovery/search")process.exit(1)})'
+
+          bazaar_code="$(curl -sS --max-time 15 -o /tmp/xguard-bazaar.json -w '%{http_code}' "${BASE_URL}/discovery/resources?limit=1")"
+          if [[ "${bazaar_code}" != "401" ]]; then
+            echo "::error::Unauthenticated Bazaar catalog access returned HTTP ${bazaar_code}; expected 401"
+            cat /tmp/xguard-bazaar.json || true
+            exit 1
+          fi
+          printf '%s' "$(cat /tmp/xguard-bazaar.json)" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.error!=="unauthorized")process.exit(1)})'
 
           retry_json "${BASE_URL}/.well-known/mcp/server.json" \
             'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="io.github.moelayyan90/xguard"||x.protocol!=="x402-v2"||!Array.isArray(x.remotes)||!x.remotes.some(r=>r&&r.type==="streamable-http"&&String(r.url||"").endsWith("/mcp")))process.exit(1)})'
