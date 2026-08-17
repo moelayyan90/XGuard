@@ -7,6 +7,8 @@ on:
       - "scripts/adoption-targets.mjs"
       - "scripts/conversion-engine.mjs"
       - "scripts/migration-engine.mjs"
+      - "scripts/code-switch-engine.mjs"
+      - "scripts/revenue-funnel.mjs"
       - ".github/workflows/adoption-engine.yml"
       - "package.json"
   push:
@@ -16,15 +18,18 @@ on:
       - "scripts/adoption-targets.mjs"
       - "scripts/conversion-engine.mjs"
       - "scripts/migration-engine.mjs"
+      - "scripts/code-switch-engine.mjs"
+      - "scripts/revenue-funnel.mjs"
       - ".github/workflows/adoption-engine.yml"
       - "package.json"
   schedule:
     - cron: "17 */6 * * *"
   workflow_dispatch:
 
-# Public metadata discovery, conversion planning, and repository/file-level
-# migration analysis only; never executes payments, synthetic settlements,
-# third-party configuration changes, pull requests, or bulk outreach.
+# Public metadata discovery, conversion planning, repository/file-level
+# migration/code analysis, and revenue-funnel measurement only; never executes
+# payments, synthetic settlements, third-party configuration changes,
+# pull requests, or bulk outreach.
 permissions:
   contents: read
   issues: write
@@ -47,10 +52,10 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Self-test adoption, conversion, and migration engines
+      - name: Self-test adoption, conversion, migration, code-switch, and revenue engines
         run: npm run adoption:self-test
 
-      - name: Discover, verify, rank, and build x402 migration packets
+      - name: Discover, verify, rank, and build x402 conversion funnel
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -61,11 +66,13 @@ jobs:
           XGUARD_CONVERSION_QUEUE_LIMIT: "50"
           XGUARD_MIGRATION_TARGET_LIMIT: "16"
           XGUARD_MIGRATION_REPOS_PER_TARGET: "3"
-          XGUARD_MIGRATION_FILES_PER_REPO: "12"
+          XGUARD_MIGRATION_FILES_PER_REPO: "24"
+          XGUARD_CODE_SWITCH_REPO_LIMIT: "24"
+          XGUARD_CODE_SWITCH_FILES_PER_REPO: "30"
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
-            rm -f adoption-report.json adoption-report.md adoption-targets.json adoption-targets.md conversion-queue.json conversion-queue.md migration-queue.json migration-queue.md adoption-scan.log
+            rm -f adoption-report.json adoption-report.md adoption-targets.json adoption-targets.md conversion-queue.json conversion-queue.md migration-queue.json migration-queue.md code-switch-queue.json code-switch-queue.md revenue-funnel.json revenue-funnel.md adoption-scan.log
             set +e
             npm run adoption:scan 2>&1 | tee adoption-scan.log
             scan_status=${PIPESTATUS[0]}
@@ -75,19 +82,21 @@ jobs:
               && grep -Fq '"event":"adoption_source_scanned","source":"cdp-bazaar"' adoption-scan.log \
               && grep -Fq '"event":"adoption_source_scanned","source":"payai-bazaar"' adoption-scan.log \
               && grep -Fq '"event":"conversion_queue_ready"' adoption-scan.log \
-              && grep -Fq '"event":"migration_queue_ready"' adoption-scan.log; then
-              echo "Primary adoption catalogs and migration queue completed on attempt ${attempt}."
+              && grep -Fq '"event":"migration_queue_ready"' adoption-scan.log \
+              && grep -Fq '"event":"code_switch_queue_ready"' adoption-scan.log \
+              && grep -Fq '"event":"revenue_funnel_ready"' adoption-scan.log; then
+              echo "Primary adoption catalogs and revenue conversion funnel completed on attempt ${attempt}."
               exit 0
             fi
 
             if [[ "$attempt" -lt 3 ]]; then
               delay=$((attempt * 5))
-              echo "Primary adoption/migration coverage incomplete on attempt ${attempt}; retrying in ${delay}s."
+              echo "Primary adoption/conversion coverage incomplete on attempt ${attempt}; retrying in ${delay}s."
               sleep "$delay"
             fi
           done
 
-          echo "Primary adoption/migration coverage remained incomplete; keeping the previous canonical queue unchanged."
+          echo "Primary adoption/conversion coverage remained incomplete; keeping the previous canonical queue unchanged."
           exit 1
 
       - uses: actions/upload-artifact@v4
@@ -102,10 +111,14 @@ jobs:
             conversion-queue.md
             migration-queue.json
             migration-queue.md
+            code-switch-queue.json
+            code-switch-queue.md
+            revenue-funnel.json
+            revenue-funnel.md
           if-no-files-found: error
           retention-days: 14
 
-      - name: Update canonical adoption, conversion, and migration issue
+      - name: Update canonical adoption, conversion, migration, and revenue issue
         if: github.event_name != 'pull_request'
         uses: actions/github-script@v8
         with:
@@ -115,10 +128,20 @@ jobs:
             const targets = fs.readFileSync("adoption-targets.md", "utf8");
             const conversion = fs.readFileSync("conversion-queue.md", "utf8");
             const migration = fs.readFileSync("migration-queue.md", "utf8");
+            const codeSwitch = fs.readFileSync("code-switch-queue.md", "utf8");
+            const revenue = fs.readFileSync("revenue-funnel.md", "utf8");
             const body = [
-              "This issue is maintained automatically by the XGuard adoption, conversion, and migration engine.",
+              "This issue is maintained automatically by the XGuard adoption, conversion, migration, code-switch, and revenue-funnel engine.",
               "",
-              "It ranks distinct public x402 merchant/service targets and produces repository/file-level, side-effect-free switch packets. The workflow never pays endpoints, changes third-party infrastructure, fabricates settlements, opens third-party pull requests, or sends bulk outreach.",
+              "It ranks distinct public x402 merchant/service targets, scans public repository trees to locate real facilitator-client switch points without depending on the tight GitHub code-search quota, measures the path from observed paid traffic to patch-ready migration, and produces repository/file-level side-effect-free switch packets. Public 402 observations are opportunities, never reported as earned XGuard revenue.",
+              "",
+              revenue,
+              "",
+              "---",
+              "",
+              codeSwitch,
+              "",
+              "---",
               "",
               migration,
               "",
