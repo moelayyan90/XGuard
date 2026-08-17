@@ -74,7 +74,7 @@ function rootMetadata(origin: string): Record<string, unknown> {
 }
 
 function landingPage(origin: string): string {
-  const title = "XGuard — The Economic Firewall for x402";
+  const title = "XGuard — x402 Economic Firewall";
   const description =
     "Hosted x402 v2 settlement-safety gateway for Base mainnet USDC with replay protection, finality verification, settlement truth and machine discovery.";
   const jsonLd = JSON.stringify({
