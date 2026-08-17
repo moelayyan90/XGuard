@@ -1,0 +1,37 @@
+name: Patch auto invoke key rotation once
+
+on:
+  push:
+    branches: [agent/zero-study-auto-invoke-v2]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/zero-study-auto-invoke-v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: node scripts/patch-auto-invoke-key-rotation.mjs
+      - run: npx prettier --write apps/worker/src/mainnet-revenue-hardening.ts tests/worker/auto-invoke-vault-rotation.test.ts
+      - run: npx vitest run --config vitest.worker.config.ts tests/worker/auto-invoke-vault-rotation.test.ts
+      - run: npm run typecheck
+      - name: Commit key rotation hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/mainnet-revenue-hardening.ts tests/worker/auto-invoke-vault-rotation.test.ts
+          git commit -m "Protect provider vault across merchant key lifecycle"
+          git push origin HEAD:agent/zero-study-auto-invoke-v2
