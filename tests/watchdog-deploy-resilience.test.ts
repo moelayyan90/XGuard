@@ -12,8 +12,9 @@ describe("watchdog-aware deployment verification", () => {
     expect(smokeRunner).toContain("waitForWatchdogQuiescence");
     expect(smokeRunner).toContain("openBreakers === 0");
     expect(smokeRunner).toContain("WATCHDOG_QUIET_ATTEMPTS = 40");
-    expect(smokeRunner.indexOf("await waitForWatchdogQuiescence()"))
-      .toBeLessThan(smokeRunner.indexOf("for (const check of checks)"));
+    expect(
+      smokeRunner.indexOf("await waitForWatchdogQuiescence()"),
+    ).toBeLessThan(smokeRunner.indexOf("for (const check of checks)"));
   });
 
   it("falls back to direct smokes if watchdog health is completely unavailable", () => {
@@ -24,9 +25,7 @@ describe("watchdog-aware deployment verification", () => {
   });
 
   it("proves real mainnet invocations arrive in watchdog logs after successful deploys", () => {
-    expect(tailWorkflow).toContain(
-      'workflows: ["Deploy XGuard mainnet"]',
-    );
+    expect(tailWorkflow).toContain('workflows: ["Deploy XGuard mainnet"]');
     expect(tailWorkflow).toContain("wrangler tail xguard-watchdog");
     expect(tailWorkflow).toContain("--search watchdog_invocation");
     expect(tailWorkflow).toContain("/healthz?tailVerify=");
