@@ -30,7 +30,11 @@ describe("buyer/agent payment decision", () => {
       expectedAmount: "129",
       expectedPayee: "ACME.EXAMPLE",
     });
-    const result = evaluatePaymentIntent(intent, false, Date.parse("2026-08-17T16:00:00Z"));
+    const result = evaluatePaymentIntent(
+      intent,
+      false,
+      Date.parse("2026-08-17T16:00:00Z"),
+    );
     expect(result.decision).toBe("ALLOW");
     expect(result.riskScore).toBe(0);
     expect(result.checks.every((check) => check.status === "PASS")).toBe(true);
@@ -66,7 +70,11 @@ describe("buyer/agent payment decision", () => {
       merchantOrigin: "http://merchant.example",
       expiresAt: "2026-08-17T10:00:00Z",
     });
-    const result = evaluatePaymentIntent(intent, false, Date.parse("2026-08-17T16:00:00Z"));
+    const result = evaluatePaymentIntent(
+      intent,
+      false,
+      Date.parse("2026-08-17T16:00:00Z"),
+    );
     expect(result.decision).toBe("BLOCK");
     expect(result.reasonCodes).toContain("insecure_payment_origin");
     expect(result.reasonCodes).toContain("payment_intent_expired");

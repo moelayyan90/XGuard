@@ -10,7 +10,8 @@ export function buyerPortalResponse(request: Request): Response | null {
   }
   if (url.pathname === "/payment" || url.pathname === "/payment-decision")
     return html(request, paymentPage(url.origin));
-  if (url.pathname === "/security") return html(request, securityPage(url.origin));
+  if (url.pathname === "/security")
+    return html(request, securityPage(url.origin));
   return null;
 }
 
@@ -102,5 +103,11 @@ function styles(): string {
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        character
+      ] ?? character,
+  );
 }

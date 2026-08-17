@@ -2,14 +2,24 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const contentPath = new URL("../browser-extension/content.js", import.meta.url);
-const workerPath = new URL("../browser-extension/service-worker.js", import.meta.url);
-const manifestPath = new URL("../browser-extension/manifest.json", import.meta.url);
+const workerPath = new URL(
+  "../browser-extension/service-worker.js",
+  import.meta.url,
+);
+const manifestPath = new URL(
+  "../browser-extension/manifest.json",
+  import.meta.url,
+);
 
 describe("buyer browser surface source invariants", () => {
   it("does not read common sensitive payment input values", async () => {
     const source = await readFile(contentPath, "utf8");
-    expect(source).not.toMatch(/input\s*\[\s*name\s*[*^$|~]?=\s*['\"]?(?:card|cc|cvv|cvc|pan)/i);
-    expect(source).not.toMatch(/querySelectorAll\([^)]*(?:password|cc-number|card-number|cvv|cvc)/i);
+    expect(source).not.toMatch(
+      /input\s*\[\s*name\s*[*^$|~]?=\s*['\"]?(?:card|cc|cvv|cvc|pan)/i,
+    );
+    expect(source).not.toMatch(
+      /querySelectorAll\([^)]*(?:password|cc-number|card-number|cvv|cvc)/i,
+    );
     expect(source).toContain("Use XGuard");
     expect(source).toContain("Continue without XGuard");
   });
@@ -17,10 +27,14 @@ describe("buyer browser surface source invariants", () => {
   it("sends payment context only from the explicit Use XGuard click path", async () => {
     const source = await readFile(contentPath, "utf8");
     const sendIndex = source.indexOf("chrome.runtime.sendMessage");
-    const clickIndex = source.indexOf('shadow.querySelector(".use").addEventListener("click"');
+    const clickIndex = source.indexOf(
+      'shadow.querySelector(".use").addEventListener("click"',
+    );
     expect(clickIndex).toBeGreaterThan(-1);
     expect(sendIndex).toBeGreaterThan(clickIndex);
-    expect(source.slice(0, clickIndex)).not.toContain("chrome.runtime.sendMessage");
+    expect(source.slice(0, clickIndex)).not.toContain(
+      "chrome.runtime.sendMessage",
+    );
   });
 
   it("limits network host permission to XGuard while detecting checkout locally", async () => {

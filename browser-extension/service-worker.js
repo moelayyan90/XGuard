@@ -11,7 +11,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 async function runDecision(intent) {
   const { xguardAccessKey } = await chrome.storage.local.get("xguardAccessKey");
-  if (typeof xguardAccessKey !== "string" || xguardAccessKey.trim().length < 8) {
+  if (
+    typeof xguardAccessKey !== "string" ||
+    xguardAccessKey.trim().length < 8
+  ) {
     await chrome.runtime.openOptionsPage();
     throw new Error(
       "Connect XGuard once in the extension settings, then request the check again.",

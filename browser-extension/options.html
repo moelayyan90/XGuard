@@ -1,1 +1,101 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>XGuard settings</title><style>html{font-family:Inter,ui-sans-serif,system-ui;background:#111214;color:#f5f1e8}body{max-width:680px;margin:70px auto;padding:0 24px}h1{font-size:42px;letter-spacing:-.04em;margin-bottom:10px}p{color:#aaa9a4;line-height:1.6}.card{margin-top:30px;padding:24px;border:1px solid #303137;border-radius:12px;background:#181a1e}label{display:block;font-weight:700;font-size:13px;margin-bottom:9px}input{width:100%;box-sizing:border-box;background:#0f1012;color:#fff;border:1px solid #3a3b41;border-radius:8px;padding:12px;font:inherit}button{margin-top:12px;border:0;border-radius:8px;background:#ff2731;color:#fff;padding:11px 16px;font-weight:750;cursor:pointer}.status{margin-top:12px;font-size:13px;color:#aaa9a4}.note{margin-top:28px;padding-top:22px;border-top:1px solid #303137;font-size:13px}</style></head><body><div>XGUARD / BUYER SIDE</div><h1>Connect XGuard once.</h1><p>The extension only sends a payment intent after you choose <b>Use XGuard</b>. Showing the offer or choosing “Continue without XGuard” does not call the paid decision endpoint.</p><div class="card"><label for="key">XGuard access key</label><input id="key" type="password" autocomplete="off" placeholder="Paste your XGuard access key"><button id="save">Save locally</button><div id="status" class="status">The key is stored in Chrome extension local storage and is sent only to xguardgate.com.</div></div><p class="note">Do not enter card numbers, CVV/CVC, PINs, private keys, seed phrases or wallet mnemonics into XGuard. The Payment Decision API rejects credential-shaped fields.</p><script src="options.js"></script></body></html>
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>XGuard settings</title>
+    <style>
+      html {
+        font-family: Inter, ui-sans-serif, system-ui;
+        background: #111214;
+        color: #f5f1e8;
+      }
+      body {
+        max-width: 680px;
+        margin: 70px auto;
+        padding: 0 24px;
+      }
+      h1 {
+        font-size: 42px;
+        letter-spacing: -0.04em;
+        margin-bottom: 10px;
+      }
+      p {
+        color: #aaa9a4;
+        line-height: 1.6;
+      }
+      .card {
+        margin-top: 30px;
+        padding: 24px;
+        border: 1px solid #303137;
+        border-radius: 12px;
+        background: #181a1e;
+      }
+      label {
+        display: block;
+        font-weight: 700;
+        font-size: 13px;
+        margin-bottom: 9px;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        background: #0f1012;
+        color: #fff;
+        border: 1px solid #3a3b41;
+        border-radius: 8px;
+        padding: 12px;
+        font: inherit;
+      }
+      button {
+        margin-top: 12px;
+        border: 0;
+        border-radius: 8px;
+        background: #ff2731;
+        color: #fff;
+        padding: 11px 16px;
+        font-weight: 750;
+        cursor: pointer;
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 13px;
+        color: #aaa9a4;
+      }
+      .note {
+        margin-top: 28px;
+        padding-top: 22px;
+        border-top: 1px solid #303137;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div>XGUARD / BUYER SIDE</div>
+    <h1>Connect XGuard once.</h1>
+    <p>
+      The extension only sends a payment intent after you choose
+      <b>Use XGuard</b>. Showing the offer or choosing “Continue without XGuard”
+      does not call the paid decision endpoint.
+    </p>
+    <div class="card">
+      <label for="key">XGuard access key</label
+      ><input
+        id="key"
+        type="password"
+        autocomplete="off"
+        placeholder="Paste your XGuard access key"
+      /><button id="save">Save locally</button>
+      <div id="status" class="status">
+        The key is stored in Chrome extension local storage and is sent only to
+        xguardgate.com.
+      </div>
+    </div>
+    <p class="note">
+      Do not enter card numbers, CVV/CVC, PINs, private keys, seed phrases or
+      wallet mnemonics into XGuard. The Payment Decision API rejects
+      credential-shaped fields.
+    </p>
+    <script src="options.js"></script>
+  </body>
+</html>

@@ -1,9 +1,12 @@
 /* global chrome, document, MutationObserver, HTMLInputElement, location, sessionStorage, setTimeout, clearTimeout */
 (() => {
   const OFFER_COOLDOWN_MS = 5 * 60 * 1000;
-  const PAYMENT_WORDS = /\b(pay(?:ment)?|pay now|buy now|place order|complete order|complete purchase|confirm payment|checkout|subscribe|purchase)\b/i;
-  const CHECKOUT_PATH = /(checkout|payment|pay|order\/confirm|subscribe|purchase)/i;
-  const AMOUNT = /(?:\$|USD\s?|EUR\s?|GBP\s?|JOD\s?|AED\s?|SAR\s?)([0-9]{1,9}(?:[,.][0-9]{1,2})?)/i;
+  const PAYMENT_WORDS =
+    /\b(pay(?:ment)?|pay now|buy now|place order|complete order|complete purchase|confirm payment|checkout|subscribe|purchase)\b/i;
+  const CHECKOUT_PATH =
+    /(checkout|payment|pay|order\/confirm|subscribe|purchase)/i;
+  const AMOUNT =
+    /(?:\$|USD\s?|EUR\s?|GBP\s?|JOD\s?|AED\s?|SAR\s?)([0-9]{1,9}(?:[,.][0-9]{1,2})?)/i;
   const PROVIDERS = [
     ["stripe", /stripe/i],
     ["paypal", /paypal/i],
@@ -35,7 +38,9 @@
   function detectPaymentIntent() {
     let confidence = CHECKOUT_PATH.test(location.pathname) ? 2 : 0;
     const candidates = Array.from(
-      document.querySelectorAll("button, [role='button'], input[type='submit'], a[href]"),
+      document.querySelectorAll(
+        "button, [role='button'], input[type='submit'], a[href]",
+      ),
     ).slice(0, 250);
     let trigger = null;
     for (const element of candidates) {
@@ -48,7 +53,10 @@
     }
 
     const forms = Array.from(document.forms).slice(0, 50);
-    const actions = forms.map((form) => form.action).filter(Boolean).join(" ");
+    const actions = forms
+      .map((form) => form.action)
+      .filter(Boolean)
+      .join(" ");
     const scripts = Array.from(document.scripts)
       .slice(0, 150)
       .map((script) => script.src)
@@ -194,7 +202,12 @@
   }
 
   const observer = new MutationObserver(scheduleScan);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  document.addEventListener("visibilitychange", scheduleScan, { passive: true });
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
+  document.addEventListener("visibilitychange", scheduleScan, {
+    passive: true,
+  });
   scheduleScan();
 })();

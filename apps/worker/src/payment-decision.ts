@@ -9,14 +9,16 @@ const OFFER_PATH = "/v1/payment/offer";
 const DECISION_PATH = "/v1/payment/decision";
 const DISCOVERY_PATH = "/.well-known/xguard-payment.json";
 const SECURITY_EVIDENCE_PATH = "/.well-known/xguard-security-evidence.json";
-const RECORD_PATH = /^\/v1\/payment\/records\/(pd_[0-9a-f]{32})(\/settlement)?$/;
+const RECORD_PATH =
+  /^\/v1\/payment\/records\/(pd_[0-9a-f]{32})(\/settlement)?$/;
 const MAX_JSON_BODY_BYTES = 64 * 1024;
 const MAX_METADATA_KEYS = 20;
 const REQUEST_ID = /^[A-Za-z0-9._:-]{8,96}$/;
 const SAFE_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const CURRENCY = /^[A-Z0-9][A-Z0-9._-]{1,11}$/;
 const DECIMAL = /^(?:0|[1-9][0-9]{0,29})(?:\.[0-9]{1,18})?$/;
-const SENSITIVE_KEYS = /(card.?number|pan|cvv|cvc|security.?code|track.?data|pin|private.?key|seed.?phrase|mnemonic)/i;
+const SENSITIVE_KEYS =
+  /(card.?number|pan|cvv|cvc|security.?code|track.?data|pin|private.?key|seed.?phrase|mnemonic)/i;
 const KNOWN_RAILS = new Set([
   "card",
   "stripe",
@@ -138,23 +140,35 @@ export async function paymentDecisionResponse(
       return privateJson(result, 200, {
         "X-XGuard-Decision": result.decision,
         "X-XGuard-Decision-ID": result.decisionId,
-        "X-XGuard-Fee-Micro-USD": String(result.xguard.serviceFee.amountMicroUsd),
+        "X-XGuard-Fee-Micro-USD": String(
+          result.xguard.serviceFee.amountMicroUsd,
+        ),
       });
     } catch (error) {
       return errorResponse(error);
     }
   }
 
-  if (recordMatch !== null && recordMatch[2] === undefined && request.method === "GET") {
+  if (
+    recordMatch !== null &&
+    recordMatch[2] === undefined &&
+    request.method === "GET"
+  ) {
     try {
       const principal = await authorizePrincipal(request, env);
-      return privateJson(await getDecisionRecord(env.DB, principal.principalId, recordMatch[1]));
+      return privateJson(
+        await getDecisionRecord(env.DB, principal.principalId, recordMatch[1]),
+      );
     } catch (error) {
       return errorResponse(error);
     }
   }
 
-  if (recordMatch !== null && recordMatch[2] !== undefined && request.method === "POST") {
+  if (
+    recordMatch !== null &&
+    recordMatch[2] !== undefined &&
+    request.method === "POST"
+  ) {
     try {
       const principal = await authorizePrincipal(request, env);
       const raw = await readJsonObject(request);
@@ -241,7 +255,11 @@ export function normalizePaymentDecisionInput(
     throw new PaymentDecisionError("invalid_request_id", 400);
 
   const channelRaw = optionalString(raw.channel, "channel", 16) ?? "api";
-  if (channelRaw !== "browser" && channelRaw !== "agent" && channelRaw !== "api")
+  if (
+    channelRaw !== "browser" &&
+    channelRaw !== "agent" &&
+    channelRaw !== "api"
+  )
     throw new PaymentDecisionError("invalid_channel", 400);
 
   const rail = requiredString(raw.rail, "rail", 64).toLowerCase();
@@ -258,10 +276,18 @@ export function normalizePaymentDecisionInput(
     throw new PaymentDecisionError("invalid_currency", 400);
   const payee = requiredString(raw.payee, "payee", 256);
 
-  const merchantOrigin = optionalString(raw.merchantOrigin, "merchantOrigin", 512);
+  const merchantOrigin = optionalString(
+    raw.merchantOrigin,
+    "merchantOrigin",
+    512,
+  );
   if (merchantOrigin !== null) validateOriginSyntax(merchantOrigin);
 
-  const expectedAmountRaw = optionalString(raw.expectedAmount, "expectedAmount", 64);
+  const expectedAmountRaw = optionalString(
+    raw.expectedAmount,
+    "expectedAmount",
+    64,
+  );
   const expectedAmount =
     expectedAmountRaw === null ? null : canonicalDecimal(expectedAmountRaw);
   const expectedPayee = optionalString(raw.expectedPayee, "expectedPayee", 256);
@@ -284,7 +310,11 @@ export function normalizePaymentDecisionInput(
     expectedAmount,
     expectedPayee,
     expiresAt,
-    paymentReference: optionalString(raw.paymentReference, "paymentReference", 160),
+    paymentReference: optionalString(
+      raw.paymentReference,
+      "paymentReference",
+      160,
+    ),
     metadata: metadataObject(raw.metadata),
   };
 }
@@ -295,13 +325,32 @@ export function evaluatePaymentIntent(
   nowMs = Date.now(),
 ): DecisionEvaluation {
   const checks: PaymentCheck[] = [];
-  checks.push(check("amount_positive", "PASS", "amount_positive", `Observed ${input.amount} ${input.currency}`));
-  checks.push(check("payee_present", "PASS", "payee_present", `Observed payee ${input.payee}`));
+  checks.push(
+    check(
+      "amount_positive",
+      "PASS",
+      "amount_positive",
+      `Observed ${input.amount} ${input.currency}`,
+    ),
+  );
+  checks.push(
+    check(
+      "payee_present",
+      "PASS",
+      "payee_present",
+      `Observed payee ${input.payee}`,
+    ),
+  );
 
   if (input.expectedAmount !== null) {
     checks.push(
       input.expectedAmount === input.amount
-        ? check("amount_integrity", "PASS", "expected_amount_matches", `Expected and observed amount are ${input.amount}`)
+        ? check(
+            "amount_integrity",
+            "PASS",
+            "expected_amount_matches",
+            `Expected and observed amount are ${input.amount}`,
+          )
         : check(
             "amount_integrity",
             "FAIL",
@@ -313,8 +362,14 @@ export function evaluatePaymentIntent(
 
   if (input.expectedPayee !== null) {
     checks.push(
-      normalizedIdentity(input.expectedPayee) === normalizedIdentity(input.payee)
-        ? check("destination_integrity", "PASS", "expected_payee_matches", "Expected and observed payee match")
+      normalizedIdentity(input.expectedPayee) ===
+        normalizedIdentity(input.payee)
+        ? check(
+            "destination_integrity",
+            "PASS",
+            "expected_payee_matches",
+            "Expected and observed payee match",
+          )
         : check(
             "destination_integrity",
             "FAIL",
@@ -329,15 +384,30 @@ export function evaluatePaymentIntent(
     checks.push(
       origin.protocol === "https:"
         ? check("transport_security", "PASS", "https_origin", origin.origin)
-        : check("transport_security", "FAIL", "insecure_payment_origin", origin.origin),
+        : check(
+            "transport_security",
+            "FAIL",
+            "insecure_payment_origin",
+            origin.origin,
+          ),
     );
   }
 
   if (input.expiresAt !== null) {
     checks.push(
       Date.parse(input.expiresAt) > nowMs
-        ? check("intent_freshness", "PASS", "intent_not_expired", input.expiresAt)
-        : check("intent_freshness", "FAIL", "payment_intent_expired", input.expiresAt),
+        ? check(
+            "intent_freshness",
+            "PASS",
+            "intent_not_expired",
+            input.expiresAt,
+          )
+        : check(
+            "intent_freshness",
+            "FAIL",
+            "payment_intent_expired",
+            input.expiresAt,
+          ),
     );
   }
 
@@ -350,9 +420,17 @@ export function evaluatePaymentIntent(
         `Rail ${input.rail} is analyzed generically; no rail-specific guarantee is claimed`,
       ),
     );
-  else checks.push(check("rail_coverage", "PASS", "known_payment_rail", input.rail));
+  else
+    checks.push(
+      check("rail_coverage", "PASS", "known_payment_rail", input.rail),
+    );
 
-  if ((input.rail === "x402" || input.rail === "crypto_wallet" || input.rail === "coinbase") && input.network === null)
+  if (
+    (input.rail === "x402" ||
+      input.rail === "crypto_wallet" ||
+      input.rail === "coinbase") &&
+    input.network === null
+  )
     checks.push(
       check(
         "network_binding",
@@ -383,7 +461,8 @@ export function evaluatePaymentIntent(
 
   const fails = checks.filter((item) => item.status === "FAIL").length;
   const warnings = checks.filter((item) => item.status === "WARN").length;
-  const decision: PaymentDecision = fails > 0 ? "BLOCK" : warnings > 0 ? "REVIEW" : "ALLOW";
+  const decision: PaymentDecision =
+    fails > 0 ? "BLOCK" : warnings > 0 ? "REVIEW" : "ALLOW";
   const riskScore = Math.min(100, fails * 40 + warnings * 15);
   return {
     decision,
@@ -405,7 +484,8 @@ async function completePaymentDecision(
     principal.principalId,
     intent.requestId,
   );
-  if (existing !== null) return replayDecisionRecord(env.DB, principal.principalId, existing);
+  if (existing !== null)
+    return replayDecisionRecord(env.DB, principal.principalId, existing);
 
   const feeMicroUsd = decisionFee(env);
   let reservation;
@@ -429,7 +509,10 @@ async function completePaymentDecision(
       intent.paymentReference,
     );
     const evaluation = evaluatePaymentIntent(intent, duplicateSettledReference);
-    const decisionId = await decisionIdFor(principal.principalId, intent.requestId);
+    const decisionId = await decisionIdFor(
+      principal.principalId,
+      intent.requestId,
+    );
     const createdAt = new Date().toISOString();
     const receiptBase = {
       schemaVersion: "1.0",
@@ -517,7 +600,12 @@ async function completePaymentDecision(
       )
       .run();
 
-    await finalizeDecisionFee(env.DB, principal.principalId, reservation.eventKey, decisionId);
+    await finalizeDecisionFee(
+      env.DB,
+      principal.principalId,
+      reservation.eventKey,
+      decisionId,
+    );
     return { ...receipt, replayed: false };
   } catch (error) {
     await releaseIncompleteDecision(
@@ -562,7 +650,10 @@ async function finalizeDecisionFee(
       .bind(new Date().toISOString(), decisionId, principalId)
       .run();
   } catch (error) {
-    throw new PaymentDecisionError(`decision_fee_finalize_failed:${errorMessage(error)}`, 503);
+    throw new PaymentDecisionError(
+      `decision_fee_finalize_failed:${errorMessage(error)}`,
+      503,
+    );
   }
 }
 
@@ -607,7 +698,8 @@ async function getDecisionRecord(
     )
     .bind(decisionId, principalId)
     .first<DecisionRecordRow>();
-  if (row === null) throw new PaymentDecisionError("payment_record_not_found", 404);
+  if (row === null)
+    throw new PaymentDecisionError("payment_record_not_found", 404);
   return {
     ...parseStoredReceipt(row.receipt_json),
     accounting: { feeState: row.billing_state },
@@ -621,7 +713,12 @@ async function updateSettlementRecord(
   raw: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   assertNoSensitiveKeys(raw, 0);
-  assertOnlyKeys(raw, ["status", "providerTransactionId", "settledAmount", "settledAt"]);
+  assertOnlyKeys(raw, [
+    "status",
+    "providerTransactionId",
+    "settledAmount",
+    "settledAt",
+  ]);
   const status = requiredString(raw.status, "status", 16).toUpperCase();
   if (!new Set(["SETTLED", "FAILED", "CANCELLED", "UNKNOWN"]).has(status))
     throw new PaymentDecisionError("invalid_settlement_status", 400);
@@ -632,10 +729,15 @@ async function updateSettlementRecord(
   );
   if (status === "SETTLED" && providerTransactionId === null)
     throw new PaymentDecisionError("provider_transaction_id_required", 400);
-  const settledAmountRaw = optionalString(raw.settledAmount, "settledAmount", 64);
+  const settledAmountRaw = optionalString(
+    raw.settledAmount,
+    "settledAmount",
+    64,
+  );
   const settledAmount =
     settledAmountRaw === null ? null : canonicalDecimal(settledAmountRaw);
-  const settledAt = optionalString(raw.settledAt, "settledAt", 64) ?? new Date().toISOString();
+  const settledAt =
+    optionalString(raw.settledAt, "settledAt", 64) ?? new Date().toISOString();
   if (!Number.isFinite(Date.parse(settledAt)))
     throw new PaymentDecisionError("invalid_settled_at", 400);
 
@@ -648,7 +750,8 @@ async function updateSettlementRecord(
     )
     .bind(decisionId, principalId)
     .first<DecisionRecordRow>();
-  if (row === null) throw new PaymentDecisionError("payment_record_not_found", 404);
+  if (row === null)
+    throw new PaymentDecisionError("payment_record_not_found", 404);
   if (row.billing_state !== "EARNED")
     throw new PaymentDecisionError("payment_record_not_finalized", 409);
 
@@ -660,7 +763,10 @@ async function updateSettlementRecord(
     settledAt,
   };
   const settlementEvidenceHash = await sha256Hex(
-    stableStringify({ decisionEvidenceHash: row.decision_evidence_hash, outcome }),
+    stableStringify({
+      decisionEvidenceHash: row.decision_evidence_hash,
+      outcome,
+    }),
   );
   const updated = {
     ...original,
@@ -693,7 +799,10 @@ async function updateSettlementRecord(
       principalId,
     )
     .run();
-  return { ...updated, accounting: { feeState: "EARNED", additionalFeeMicroUsd: 0 } };
+  return {
+    ...updated,
+    accounting: { feeState: "EARNED", additionalFeeMicroUsd: 0 },
+  };
 }
 
 async function decisionRecordByRequest(
@@ -739,7 +848,10 @@ async function authorizePrincipal(
       throw new PaymentDecisionError("xguard_access_key_required", 401);
     if (access.response.status === 403)
       throw new PaymentDecisionError("xguard_billing_scope_required", 403);
-    throw new PaymentDecisionError("xguard_identity_unavailable", access.response.status);
+    throw new PaymentDecisionError(
+      "xguard_identity_unavailable",
+      access.response.status,
+    );
   }
   return {
     principalId: access.merchant.merchantId,
@@ -774,12 +886,14 @@ function paymentDiscovery(origin: string, env: PaymentDecisionEnv) {
 function securityEvidence(origin: string) {
   return {
     evidenceVersion: "1.0",
-    policy: "No security PASS claim is published without a commit-bound machine-generated test result.",
+    policy:
+      "No security PASS claim is published without a commit-bound machine-generated test result.",
     publicSources: {
       workflow:
         "https://github.com/moelayyan90/XGuard/actions/workflows/payment-security-evidence.yml",
       source: "https://github.com/moelayyan90/XGuard",
-      threatModel: "https://github.com/moelayyan90/XGuard/blob/main/THREAT_MODEL.md",
+      threatModel:
+        "https://github.com/moelayyan90/XGuard/blob/main/THREAT_MODEL.md",
     },
     measurableGates: [
       "TypeScript typecheck",
@@ -836,7 +950,8 @@ function check(
 }
 
 function canonicalDecimal(value: string): string {
-  if (!DECIMAL.test(value)) throw new PaymentDecisionError("invalid_amount", 400);
+  if (!DECIMAL.test(value))
+    throw new PaymentDecisionError("invalid_amount", 400);
   const [wholeRaw, fractionRaw = ""] = value.split(".");
   const whole = wholeRaw.replace(/^0+(?=\d)/, "");
   const fraction = fractionRaw.replace(/0+$/, "");
@@ -864,9 +979,12 @@ function validateOriginSyntax(value: string): void {
     throw new PaymentDecisionError("invalid_merchant_origin", 400);
 }
 
-function metadataObject(value: unknown): Record<string, string | number | boolean> {
+function metadataObject(
+  value: unknown,
+): Record<string, string | number | boolean> {
   if (value === undefined || value === null) return {};
-  if (!isRecord(value)) throw new PaymentDecisionError("metadata_must_be_object", 400);
+  if (!isRecord(value))
+    throw new PaymentDecisionError("metadata_must_be_object", 400);
   const entries = Object.entries(value);
   if (entries.length > MAX_METADATA_KEYS)
     throw new PaymentDecisionError("metadata_too_large", 400);
@@ -903,10 +1021,14 @@ function assertNoSensitiveKeys(value: unknown, depth: number): void {
   }
 }
 
-function assertOnlyKeys(value: Record<string, unknown>, allowed: string[]): void {
+function assertOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: string[],
+): void {
   const set = new Set(allowed);
   for (const key of Object.keys(value))
-    if (!set.has(key)) throw new PaymentDecisionError(`unexpected_field:${key}`, 400);
+    if (!set.has(key))
+      throw new PaymentDecisionError(`unexpected_field:${key}`, 400);
 }
 
 function requiredString(value: unknown, field: string, max: number): string {
@@ -918,7 +1040,11 @@ function requiredString(value: unknown, field: string, max: number): string {
   return result;
 }
 
-function optionalString(value: unknown, field: string, max: number): string | null {
+function optionalString(
+  value: unknown,
+  field: string,
+  max: number,
+): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string")
     throw new PaymentDecisionError(`invalid_${field}`, 400);
@@ -928,13 +1054,17 @@ function optionalString(value: unknown, field: string, max: number): string | nu
   return result;
 }
 
-async function readOptionalJsonObject(request: Request): Promise<Record<string, unknown>> {
+async function readOptionalJsonObject(
+  request: Request,
+): Promise<Record<string, unknown>> {
   const length = request.headers.get("content-length");
   if (length === null || Number(length) === 0) return {};
   return readJsonObject(request);
 }
 
-async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
+async function readJsonObject(
+  request: Request,
+): Promise<Record<string, unknown>> {
   const declared = request.headers.get("content-length");
   if (declared !== null && Number(declared) > MAX_JSON_BODY_BYTES)
     throw new PaymentDecisionError("request_body_too_large", 413);
@@ -947,7 +1077,8 @@ async function readJsonObject(request: Request): Promise<Record<string, unknown>
   } catch {
     throw new PaymentDecisionError("invalid_json", 400);
   }
-  if (!isRecord(parsed)) throw new PaymentDecisionError("json_object_required", 400);
+  if (!isRecord(parsed))
+    throw new PaymentDecisionError("json_object_required", 400);
   return parsed;
 }
 
@@ -961,19 +1092,28 @@ function parseStoredReceipt(value: string): Record<string, any> {
   }
 }
 
-async function decisionIdFor(principalId: string, requestId: string): Promise<string> {
+async function decisionIdFor(
+  principalId: string,
+  requestId: string,
+): Promise<string> {
   const digest = await sha256Hex(`${principalId}:${requestId}`);
   return `pd_${digest.slice(0, 32)}`;
 }
 
 async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  if (Array.isArray(value))
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record)
     .sort()
@@ -983,7 +1123,9 @@ function stableStringify(value: unknown): string {
 
 function microUsdToUsd(value: number): string {
   const whole = Math.trunc(value / 1_000_000);
-  const fraction = String(value % 1_000_000).padStart(6, "0").replace(/0+$/, "");
+  const fraction = String(value % 1_000_000)
+    .padStart(6, "0")
+    .replace(/0+$/, "");
   return fraction === "" ? `${whole}` : `${whole}.${fraction}`;
 }
 
@@ -1028,7 +1170,10 @@ function corsResponse(response: Response): Response {
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-XGuard-Request-ID");
+  headers.set(
+    "Access-Control-Allow-Headers",
+    "Authorization, Content-Type, X-XGuard-Request-ID",
+  );
   headers.set(
     "Access-Control-Expose-Headers",
     "X-XGuard-Decision, X-XGuard-Decision-ID, X-XGuard-Fee-Micro-USD",
@@ -1047,5 +1192,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message !== "" ? error.message : "payment_decision_failed";
+  return error instanceof Error && error.message !== ""
+    ? error.message
+    : "payment_decision_failed";
 }

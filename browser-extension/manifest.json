@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "description": "Optional buyer-side pre-payment verification and transaction evidence. No fee for showing or skipping XGuard.",
   "permissions": ["storage"],
-  "host_permissions": ["https://xguardgate.com/*", "https://www.xguardgate.com/*"],
+  "host_permissions": [
+    "https://xguardgate.com/*",
+    "https://www.xguardgate.com/*"
+  ],
   "background": {
     "service_worker": "service-worker.js",
     "type": "module"

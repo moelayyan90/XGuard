@@ -126,7 +126,10 @@ export async function modernMcpRequest(
         return mcpToolResult(id, paymentDecisionOffer(env));
 
       if (name === "xguard_payment_decision")
-        return mcpToolResult(id, await paymentDecisionForMcp(request, env, args));
+        return mcpToolResult(
+          id,
+          await paymentDecisionForMcp(request, env, args),
+        );
 
       if (name === "xguard_discover") {
         const query = typeof args.query === "string" ? args.query.trim() : "";
@@ -259,14 +262,16 @@ export function xguardMcpTools() {
             type: "string",
             minLength: 8,
             maxLength: 96,
-            description: "Caller-generated idempotency identifier for this XGuard decision request.",
+            description:
+              "Caller-generated idempotency identifier for this XGuard decision request.",
           },
           offerId: { type: "string", maxLength: 96 },
           rail: {
             type: "string",
             minLength: 1,
             maxLength: 64,
-            description: "Payment rail such as card, stripe, paypal, x402, crypto_wallet, coinbase, bank_transfer, or another safe identifier.",
+            description:
+              "Payment rail such as card, stripe, paypal, x402, crypto_wallet, coinbase, bank_transfer, or another safe identifier.",
           },
           provider: {
             type: "string",
@@ -276,7 +281,8 @@ export function xguardMcpTools() {
           },
           amount: {
             type: "string",
-            description: "Positive decimal amount as a string; never send card credentials.",
+            description:
+              "Positive decimal amount as a string; never send card credentials.",
           },
           currency: { type: "string", minLength: 2, maxLength: 12 },
           payee: { type: "string", minLength: 1, maxLength: 256 },
@@ -295,7 +301,14 @@ export function xguardMcpTools() {
             },
           },
         },
-        required: ["requestId", "rail", "provider", "amount", "currency", "payee"],
+        required: [
+          "requestId",
+          "rail",
+          "provider",
+          "amount",
+          "currency",
+          "payee",
+        ],
         additionalProperties: false,
       },
       annotations: {
