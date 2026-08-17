@@ -111,7 +111,11 @@ jobs:
             cd "${OUT}"
             zip -X -r "${GITHUB_WORKSPACE}/dist/browser-extension/xguard-payment-decision-${VERSION}.zip" .
           )
-          sha256sum "dist/browser-extension/xguard-payment-decision-${VERSION}.zip" > dist/browser-extension/SHA256SUMS.txt
+          (
+            cd dist/browser-extension
+            sha256sum "xguard-payment-decision-${VERSION}.zip" > SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+          )
 
       - name: Verify ZIP root and forbidden files
         shell: bash
@@ -121,6 +125,10 @@ jobs:
           unzip -Z1 "${ZIP}" | grep -qx 'manifest.json'
           ! unzip -Z1 "${ZIP}" | grep -E '(^|/)(PRIVACY|STORE_SUBMISSION|README).*\.md$'
           ! unzip -Z1 "${ZIP}" | grep -E '\.(map|pem|key|env)$'
+          (
+            cd dist/browser-extension
+            sha256sum -c SHA256SUMS.txt
+          )
 
       - name: Build store submission kit
         shell: bash
