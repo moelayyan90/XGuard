@@ -20,6 +20,20 @@ jobs:
           package-manager-cache: false
       - run: npm ci --ignore-scripts
       - run: node scripts/patch-auto-invoke-production-hardening.mjs
+      - name: Make bounded clone cancellation non-blocking
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = 'apps/worker/src/auto-invoke.ts';
+          let source = fs.readFileSync(path, 'utf8');
+          const oldValue = '        await reader.cancel().catch(() => undefined);';
+          const newValue = '        void reader.cancel().catch(() => undefined);';
+          if (!source.includes(oldValue) && !source.includes(newValue)) {
+            throw new Error('bounded reader cancellation block not found');
+          }
+          source = source.replace(oldValue, newValue);
+          fs.writeFileSync(path, source);
+          NODE
       - run: node scripts/patch-auto-invoke-production-tests.mjs
       - run: npx prettier --write apps/worker/src/auto-invoke.ts tests/auto-invoke.test.ts tests/worker/auto-invoke-accounting.test.ts
       - run: npm run build
