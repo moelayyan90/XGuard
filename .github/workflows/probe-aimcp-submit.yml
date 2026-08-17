@@ -1,4 +1,4 @@
-name: Probe MCP Hub public submission flow
+name: Submit XGuard to MCP Hub
 
 on:
   push:
@@ -9,26 +9,82 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  submit:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect inline MCP Hub submit contract
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Install browser automation locally
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium >/dev/null
+      - name: Submit through the normal public form
         shell: bash
         run: |
-          python - <<'PY'
-          import re
-          import urllib.request
+          node <<'JS'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage();
+            await page.goto('https://www.aimcp.info/en/submit', { waitUntil: 'networkidle', timeout: 60000 });
 
-          page = "https://www.aimcp.info/en/submit"
-          req = urllib.request.Request(page, headers={"User-Agent":"Mozilla/5.0 XGuard-registry-check"})
-          with urllib.request.urlopen(req, timeout=30) as r:
-              html = r.read().decode("utf-8", "replace")
-          print("HTML_LENGTH", len(html))
-          for needle in ["githubUrl", "contactEmail", "status:\"pending\"", "status:'pending'", "projectId", "apiKey", "firebase", "mcpSubmissions", "submissions", "addDoc", "collection(", "createdAt"]:
-              matches=list(re.finditer(re.escape(needle), html, re.I))
-              print("COUNT", needle, len(matches))
-              for m in matches[:20]:
-                  a=max(0,m.start()-2500); b=min(len(html),m.end()+4500)
-                  print("---",needle,"AT",m.start(),"---")
-                  print(html[a:b].replace("\n"," "))
-          PY
+            const bodyText = await page.locator('body').innerText();
+            if (/captcha|turnstile|sign in|log in|login required/i.test(bodyText)) {
+              throw new Error('Submission page now requires human verification or login; refusing automated submission.');
+            }
+
+            const allText = bodyText.toLowerCase();
+            if (!allText.includes('submit your mcp') && !allText.includes('submit mcp')) {
+              throw new Error('Could not verify normal public MCP submission form.');
+            }
+
+            const repo = 'https://github.com/moelayyan90/XGuard';
+            const desc = 'XGuard exposes a public read-only Streamable HTTP MCP discovery server for x402 infrastructure on Base mainnet. Its tools discover x402-paid HTTP APIs and MCP tools, inspect resource details, and report XGuard service status. XGuard also provides separate facilitator-compatible x402 v2 safety and routing APIs with replay and duplicate-settlement protection, durable settlement coordination, health-aware routing, independent USDC finality verification, accounting, and reconciliation.';
+
+            const fields = {
+              github: page.getByLabel(/GitHub Repository URL/i),
+              name: page.getByLabel(/MCP Name/i),
+              author: page.getByLabel(/Author\/Organization Name/i),
+              email: page.getByLabel(/Contact Email/i),
+              description: page.getByLabel(/Description/i),
+            };
+
+            if (await fields.github.count() !== 1 || await fields.name.count() !== 1 || await fields.author.count() !== 1 || await fields.description.count() !== 1) {
+              console.log('INPUTS', await page.locator('input, textarea, button').evaluateAll(els => els.map(e => ({tag:e.tagName, name:e.getAttribute('name'), placeholder:e.getAttribute('placeholder'), type:e.getAttribute('type'), text:e.textContent}))));
+              throw new Error('Expected public submission fields were not found uniquely.');
+            }
+
+            await fields.github.fill(repo);
+            await fields.name.fill('XGuard');
+            await fields.author.fill('moelayyan90');
+            if (await fields.email.count() === 1) await fields.email.fill('');
+            await fields.description.fill(desc);
+
+            const subscribe = page.getByLabel(/Subscribe to updates/i);
+            if (await subscribe.count() === 1 && await subscribe.isChecked()) await subscribe.uncheck();
+
+            const submit = page.getByRole('button', { name: /^Submit MCP$/i });
+            if (await submit.count() !== 1) throw new Error('Submit MCP button not found uniquely.');
+
+            await Promise.all([
+              page.waitForTimeout(1000),
+              submit.click(),
+            ]);
+            await page.waitForTimeout(4000);
+
+            const after = await page.locator('body').innerText();
+            console.log('FINAL_URL', page.url());
+            console.log('RESULT_TEXT', after.slice(-6000));
+
+            if (/already submitted|already exists|duplicate/i.test(after)) {
+              console.log('RESULT=ALREADY_SUBMITTED');
+            } else if (/thank|success|submitted|review|pending/i.test(after)) {
+              console.log('RESULT=SUBMITTED_FOR_REVIEW');
+            } else {
+              throw new Error('No clear submission success/review confirmation was visible.');
+            }
+            await browser.close();
+          })().catch(err => { console.error(err); process.exit(1); });
+          JS
