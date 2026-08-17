@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect mcpservers.org submission implementation
+      - name: Inspect mcpservers.org client submission code
         shell: bash
         run: |
           set -euo pipefail
@@ -24,41 +24,41 @@ jobs:
 
           base='https://mcpservers.org/submit'
           headers={'User-Agent':'Mozilla/5.0 XGuard directory submission probe'}
-          req=urllib.request.Request(base, headers=headers)
-          with urllib.request.urlopen(req, timeout=20) as r:
+          with urllib.request.urlopen(urllib.request.Request(base,headers=headers),timeout=20) as r:
               page=r.read().decode('utf-8','replace')
-              print('PAGE_HTTP', r.status, 'BYTES', len(page))
+          scripts=[urllib.parse.urljoin(base,htmllib.unescape(x)) for x in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']',page,re.I)]
+          print('SCRIPT_URLS')
+          for s in scripts: print(s)
 
-          forms=re.findall(r'<form\b[^>]*>.*?</form>', page, re.I|re.S)
-          for block in forms:
-              if 'submit_mcp_server' not in block:
-                  continue
-              print('FORM_BEGIN')
-              print(re.sub(r'\s+',' ',re.search(r'<form\b[^>]*>',block,re.I|re.S).group(0)))
-              for tag in re.findall(r'<(?:input|select|option|textarea|button)\b[^>]*>(?:[^<]*)?',block,re.I|re.S):
-                  print('FIELD', re.sub(r'\s+',' ',htmllib.unescape(tag))[:1500])
-              print('FORM_END')
-
-          scripts=[]
-          for src in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']',page,re.I):
-              scripts.append(urllib.parse.urljoin(base,htmllib.unescape(src)))
-          print('SCRIPTS',len(scripts))
-          needles=('submit_mcp_server','/api/submit','api/submit','plan','server-submission','submit-server')
+          needles=(
+              'toolautosubmit','toolname','submit_mcp_server','Submit a new MCP server',
+              'FormData','fetch(','XMLHttpRequest','serverAction','action=','/submit',
+              'contact_email','category','One sentence about your server'
+          )
           for src in scripts:
               try:
-                  req=urllib.request.Request(src,headers=headers)
-                  with urllib.request.urlopen(req,timeout=20) as r:
+                  with urllib.request.urlopen(urllib.request.Request(src,headers=headers),timeout=20) as r:
                       js=r.read().decode('utf-8','replace')
               except Exception as e:
                   print('SCRIPT_ERROR',src,repr(e)); continue
-              if any(n in js for n in needles):
-                  print('MATCH_SCRIPT',src,'BYTES',len(js))
-                  for needle in needles:
-                      start=0
-                      count=0
-                      while True:
-                          i=js.find(needle,start)
-                          if i<0 or count>=5: break
-                          print('CONTEXT',needle,re.sub(r'\s+',' ',js[max(0,i-800):i+1600]))
-                          start=i+len(needle); count+=1
+              print('SCRIPT',src,'BYTES',len(js))
+              found=False
+              for needle in needles:
+                  pos=[]; start=0
+                  while len(pos)<8:
+                      i=js.find(needle,start)
+                      if i<0: break
+                      pos.append(i); start=i+len(needle)
+                  if pos:
+                      found=True
+                      print('NEEDLE',needle,'POSITIONS',pos)
+                      for i in pos[:3]:
+                          print('CONTEXT',re.sub(r'\s+',' ',js[max(0,i-1200):i+2400]))
+              if not found:
+                  print('NO_MATCH')
+
+          print('PAGE_MARKERS')
+          for needle in ('toolautosubmit','toolname','__next_f.push','submit_mcp_server','serverAction','action'):
+              for m in list(re.finditer(re.escape(needle),page,re.I))[:5]:
+                  i=m.start(); print(needle,re.sub(r'\s+',' ',page[max(0,i-1200):i+2400]))
           PY
