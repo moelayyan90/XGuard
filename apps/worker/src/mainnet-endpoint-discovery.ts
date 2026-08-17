@@ -7,12 +7,32 @@ export type EndpointDescriptor = {
 };
 
 const ENDPOINTS: Record<string, EndpointDescriptor> = {
+  "/v1/activate/challenge": {
+    method: "POST",
+    auth: "none",
+    contentType: "application/json",
+    description:
+      "Create a short-lived message containing the exact XGuard pricing terms for one-time merchant-wallet activation.",
+    body: { payTo: "0x-prefixed merchant EVM address" },
+  },
+  "/v1/activate": {
+    method: "POST",
+    auth: "none",
+    contentType: "application/json",
+    description:
+      "Activate a merchant payTo address with one wallet signature. No account, password, API key, or prepayment is created.",
+    body: {
+      payTo: "0x-prefixed merchant EVM address",
+      nonce: "challenge nonce",
+      signature: "wallet signature over the returned activation message",
+    },
+  },
   "/v1/register": {
     method: "POST",
     auth: "none",
     contentType: "application/json",
     description:
-      "Legacy optional merchant registration; it is not required for XGuard's zero-friction x402 path.",
+      "Legacy optional merchant registration; it is not used by XGuard's keyless x402 path.",
     body: { name: "string" },
   },
   "/v1/topups/intents": {
@@ -39,16 +59,16 @@ const ENDPOINTS: Record<string, EndpointDescriptor> = {
     auth: "none",
     contentType: "application/json",
     description:
-      "Read the postpaid XGuard service-fee balance for a payTo address using ?payTo=0x....",
+      "Read the postpaid XGuard service-fee balance for an activated payTo address using ?payTo=0x....",
   },
   "/v1/fees/claim": {
     method: "POST",
     auth: "none",
     contentType: "application/json",
     description:
-      "Credit a finalized Base USDC service-fee payment sent from the same payTo address.",
+      "Credit a finalized Base USDC service-fee payment to an activated merchant account.",
     body: {
-      payTo: "0x-prefixed EVM address",
+      payTo: "0x-prefixed merchant EVM address",
       transactionHash: "0x-prefixed transaction hash",
     },
   },
@@ -57,14 +77,14 @@ const ENDPOINTS: Record<string, EndpointDescriptor> = {
     auth: "none",
     contentType: "application/json",
     description:
-      "Verify an x402 payment through XGuard. No signup, API key, or prepaid balance is required.",
+      "Verify x402 through XGuard after one-time payTo activation. No API key or prepaid balance is required.",
   },
   "/settle": {
     method: "POST",
     auth: "none",
     contentType: "application/json",
     description:
-      "Settle an x402 payment through XGuard. Fees accrue only after independent finality confirms success.",
+      "Settle x402 through XGuard after one-time payTo activation. The service share accrues only after independent finality confirms success.",
   },
 };
 
