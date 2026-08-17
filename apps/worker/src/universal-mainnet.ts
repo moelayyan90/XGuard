@@ -20,6 +20,10 @@ import {
 import { universalProtocolResponse } from "./universal-protocol-router.js";
 import { universalSecurityGuardResponse } from "./universal-security-guard.js";
 import { universalWebhookResponse } from "./universal-webhook-ingress.js";
+import {
+  zeroFrictionX402Response,
+  type ZeroFrictionEnv,
+} from "./zero-friction-x402.js";
 
 export {
   MainnetPaymentCoordinator,
@@ -28,7 +32,7 @@ export {
   XPayGlobalRateGate,
 };
 
-interface UniversalMainnetEnv {
+interface UniversalMainnetEnv extends ZeroFrictionEnv {
   DB: D1Database;
   BASE_RPC_URL: string;
   XGUARD_TREASURY_USDC_ADDRESS: string;
@@ -117,6 +121,24 @@ export default {
     const securityBlock = universalSecurityGuardResponse(standardRequest);
     if (securityBlock !== null) return securityBlock;
 
+    const x402Fetch = async (x402Request: Request): Promise<Response> => {
+      const zeroFriction = await zeroFrictionX402Response(
+        x402Request,
+        env,
+        ctx,
+        (internalRequest) => mainnetFetch(internalRequest, env, ctx),
+      );
+      return zeroFriction ?? mainnetFetch(x402Request, env, ctx);
+    };
+
+    const zeroFriction = await zeroFrictionX402Response(
+      standardRequest,
+      env,
+      ctx,
+      (internalRequest) => mainnetFetch(internalRequest, env, ctx),
+    );
+    if (zeroFriction !== null) return zeroFriction;
+
     const buyerPassCreateBlock = await buyerPassCreationGuard(
       standardRequest,
       env,
@@ -129,7 +151,7 @@ export default {
     const a2a = await a2aGatewayV1Response(
       standardRequest,
       env,
-      (internalRequest) => mainnetFetch(internalRequest, env, ctx),
+      x402Fetch,
     );
     if (a2a !== null) return a2a;
 
@@ -146,8 +168,8 @@ export default {
     if (resilientWebhook !== null) return resilientWebhook;
 
     const protocolResponse = await universalProtocolResponse(standardRequest, {
-      verifyX402: (x402Request) => mainnetFetch(x402Request, env, ctx),
-      settleX402: (x402Request) => mainnetFetch(x402Request, env, ctx),
+      verifyX402: x402Fetch,
+      settleX402: x402Fetch,
     });
     if (protocolResponse !== null) return protocolResponse;
 
