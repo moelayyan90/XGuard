@@ -4,28 +4,20 @@
   "version": "0.1.0",
   "description": "Optional buyer-side payment verification and transaction evidence before checkout. Showing or skipping XGuard is free.",
   "homepage_url": "https://xguardgate.com/",
-  "permissions": [
-    "storage"
-  ],
-  "host_permissions": [
-    "https://xguardgate.com/*"
-  ],
+  "permissions": ["storage"],
+  "host_permissions": ["https://xguardgate.com/*"],
   "background": {
     "service_worker": "service-worker.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://*/*"
-      ],
+      "matches": ["https://*/*"],
       "exclude_matches": [
         "https://xguardgate.com/*",
         "https://www.xguardgate.com/*"
       ],
-      "js": [
-        "content.js"
-      ],
+      "js": ["content.js"],
       "run_at": "document_idle",
       "all_frames": false
     }
