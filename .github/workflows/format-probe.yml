@@ -1,0 +1,23 @@
+name: Format Probe
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  prettier-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Print exact Prettier diff
+        run: |
+          npx prettier --write apps/worker/src/mainnet-settlement-truth.ts
+          git diff --no-ext-diff -- apps/worker/src/mainnet-settlement-truth.ts
