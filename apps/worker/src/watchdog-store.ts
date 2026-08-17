@@ -29,6 +29,12 @@ interface ProbeRow {
   consecutive_successes: number;
 }
 
+export interface ActiveWatchdogBreaker {
+  route: string;
+  category: string;
+  expiresAt: string | null;
+}
+
 export async function recordWatchdogSignal(
   db: D1Database,
   signal: WatchdogSignal,
@@ -279,9 +285,10 @@ export async function recordProbeResult(
 export async function watchdogStatus(db: D1Database): Promise<{
   openBreakers: number;
   openIncidents: number;
+  activeBreakers: ActiveWatchdogBreaker[];
 }> {
   const now = new Date().toISOString();
-  const [breakers, incidents] = await Promise.all([
+  const [breakers, incidents, active] = await Promise.all([
     db
       .prepare(
         `SELECT COUNT(*) AS count FROM watchdog_breakers
@@ -294,11 +301,33 @@ export async function watchdogStatus(db: D1Database): Promise<{
         `SELECT COUNT(*) AS count FROM watchdog_incidents WHERE status='OPEN'`,
       )
       .first<{ count: number }>(),
+    db
+      .prepare(
+        `SELECT route_key,reason,expires_at FROM watchdog_breakers
+         WHERE state='OPEN' AND expires_at>?
+         ORDER BY expires_at ASC
+         LIMIT 8`,
+      )
+      .bind(now)
+      .all<Pick<BreakerRow, "route_key" | "reason" | "expires_at">>(),
   ]);
+  const activeBreakers = (active.results ?? []).map((row) => ({
+    route: row.route_key,
+    category: sanitizeBreakerCategory(row.reason),
+    expiresAt: row.expires_at,
+  }));
   return {
     openBreakers: breakers?.count ?? 0,
     openIncidents: incidents?.count ?? 0,
+    activeBreakers,
   };
+}
+
+function sanitizeBreakerCategory(reason: string): string {
+  if (reason.startsWith("probe:")) return "synthetic_probe";
+  const separator = reason.indexOf(":");
+  const category = separator >= 0 ? reason.slice(0, separator) : reason;
+  return category.slice(0, 48).replace(/[^a-zA-Z0-9_.-]/g, "_");
 }
 
 async function upsertOpenBreaker(
