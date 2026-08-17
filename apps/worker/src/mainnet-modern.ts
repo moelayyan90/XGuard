@@ -16,6 +16,7 @@ import {
 } from "./mainnet-settlement-truth.js";
 import { universalGatewayResponse } from "./universal-gateway.js";
 import { releaseStaleGatewayHolds } from "./universal-gateway-billing.js";
+import { watchdogGuardResponse } from "./watchdog-store.js";
 import {
   adaptCompatibilityResponse,
   augmentSupportedCompatibility,
@@ -68,6 +69,17 @@ export default {
 
     const endpointDiscovery = writeEndpointDiscoveryResponse(standardRequest);
     if (endpointDiscovery !== null) return secureResponse(endpointDiscovery);
+
+    const watchdog = await watchdogGuardResponse(standardRequest, env.DB);
+    if (watchdog !== null) {
+      console.warn(
+        JSON.stringify({
+          event: "watchdog_circuit_open",
+          route: watchdog.headers.get("X-XGuard-Watchdog-Route"),
+        }),
+      );
+      return secureResponse(watchdog);
+    }
 
     const truthResponse = await routeSettlementTruth(standardRequest, env);
     if (truthResponse !== null) return secureResponse(truthResponse);
