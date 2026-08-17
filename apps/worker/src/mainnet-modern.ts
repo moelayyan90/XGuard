@@ -23,11 +23,13 @@ import {
   type CompatibilityRequest,
 } from "./x402-compatibility-bridge.js";
 import { augmentCompatibilityDiscovery } from "./x402-compatibility-discovery.js";
+import { x402HttpCompatibilityResponse } from "./x402-http-compatibility-bridge.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
 interface MainnetModernEnv extends SettlementTruthEnv {
   DB: D1Database;
+  REQUEST_RATE_LIMITER: RateLimit;
   BASE_RPC_URL: string;
   XGUARD_FEE_MICRO_USD: string;
   XPAY_DOWNSTREAM_COST_MICRO_USD?: string;
@@ -69,6 +71,12 @@ export default {
 
     const truthResponse = await routeSettlementTruth(standardRequest, env);
     if (truthResponse !== null) return secureResponse(truthResponse);
+
+    const httpCompatibility = await x402HttpCompatibilityResponse(
+      standardRequest,
+      env,
+    );
+    if (httpCompatibility !== null) return secureResponse(httpCompatibility);
 
     if (standardUrl.pathname === "/" && standardRequest.method === "POST") {
       const discoveryRequest = new Request(standardRequest.url, {
