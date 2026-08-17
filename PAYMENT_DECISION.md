@@ -8,6 +8,14 @@ XGuard Payment Decision is an optional pre-payment verification, decision, and i
 
 XGuard cannot appear inside an arbitrary checkout from the public website alone. Automatic buyer-side surfacing is provided by a browser-side client with user-granted site access. Automatic agent-side surfacing is provided through the XGuard MCP tool catalog. Neither path requires the merchant to adopt an XGuard SDK merely to let the buyer/agent request a decision.
 
+## Buyer Pass
+
+A human buyer or autonomous agent does not need to become an XGuard merchant merely to request a payment decision. `POST /v1/buyer-pass` creates a dedicated Buyer Pass backed by the same audited prepaid ledger used by XGuard billing. The plaintext `xg_pass_...` token is returned once; XGuard stores only its SHA-256 hash.
+
+The browser extension creates and stores its Buyer Pass locally when XGuard is first used. A Buyer Pass can read its service balance and create/claim prepaid top-ups without exposing a merchant API key. Existing merchant credentials remain accepted for backwards compatibility and B2B integrations.
+
+Current Buyer Pass top-ups use native USDC on Base through the existing finalized-deposit verification path. The minimum top-up is $0.01. Additional funding rails can be added without changing the Payment Decision fee invariant.
+
 ## Economic invariant
 
 The following are non-billable:
@@ -15,6 +23,7 @@ The following are non-billable:
 - detecting a possible payment locally;
 - `POST /v1/payment/offer`;
 - MCP `xguard_payment_offer`;
+- creating or reading a Buyer Pass;
 - choosing `Continue without XGuard`;
 - a failed XGuard decision request that does not produce a durable result;
 - appending the final payment outcome to an already-paid XGuard record.
@@ -33,7 +42,10 @@ free XGuard offer ----------------------> continue without XGuard
           |                                      |
           | opt in                               +--> original payment untouched
           v
-fee coverage reserved
+Buyer Pass created/reused locally
+          |
+          v
+fee coverage reserved from XGuard balance
           |
           v
 validate declared intent
@@ -68,13 +80,35 @@ optional settlement outcome appended to the same record (no second fee)
 
 `POST /v1/payment/offer`
 
-The response contains the current decision fee and the explicit `Use XGuard` / `Continue without XGuard` actions. The offer itself is never billable.
+The response contains the current decision fee and the explicit `Use XGuard` / `Continue without XGuard` actions. The offer itself is never billable. It also advertises the Buyer Pass endpoint so a new buyer can connect without a merchant credential.
+
+### Buyer Pass
+
+`POST /v1/buyer-pass`
+
+Creates a buyer/agent credential and returns the plaintext Buyer Pass once.
+
+`GET /v1/buyer-pass`
+
+Returns the authenticated Buyer Pass identity and current prepaid service balance.
+
+`POST /v1/buyer-pass/topups/intents`
+
+Creates an exact-amount Base USDC top-up instruction using the existing XGuard treasury and top-up ledger.
+
+`POST /v1/buyer-pass/topups/claim`
+
+Verifies the finalized Base USDC transfer and credits the Buyer Pass service balance.
+
+`POST /v1/buyer-pass/rotate`
+
+Rotates the Buyer Pass. The previous token becomes invalid immediately.
 
 ### Paid decision
 
 `POST /v1/payment/decision`
 
-Requires an XGuard access credential with billing scope and a funded XGuard service balance.
+Accepts either an XGuard Buyer Pass or an existing XGuard merchant credential. The authenticated principal must have enough prepaid XGuard service balance to reserve the current decision fee.
 
 Required fields:
 
@@ -108,7 +142,7 @@ The modern MCP server exposes:
 - `xguard_payment_offer`: free, optional offer for an agent that is about to spend money;
 - `xguard_payment_decision`: paid only on completed decision/evidence; idempotent by `requestId` and never executes the underlying payment.
 
-Tool annotations intentionally mark the decision as non-read-only because earning the service fee is an economic side effect.
+Agents may use a Buyer Pass as the authorization credential for `xguard_payment_decision`, so they do not need a merchant identity merely to purchase the XGuard check. Tool annotations intentionally mark the decision as non-read-only because earning the service fee is an economic side effect.
 
 ## Decision semantics
 
@@ -123,6 +157,8 @@ The response includes the exact checks and reason codes so the result is auditab
 ## Browser privacy boundary
 
 The browser surface detects likely checkout contexts locally. It does not send checkout facts to XGuard merely because the offer appeared. Data is sent only after the user chooses `Use XGuard`. The content script does not intentionally read payment-input values and does not inspect cross-origin payment iframes.
+
+The Buyer Pass is stored in extension-local storage and sent only to XGuard endpoints as an authorization credential. It is not inserted into merchant pages or checkout forms.
 
 ## Security evidence
 

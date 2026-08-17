@@ -1,3 +1,4 @@
+import { authenticateBuyerPass } from "./buyer-pass.js";
 import { authorizeMerchantScope } from "./mainnet-revenue-hardening.js";
 import {
   earnGatewayFee,
@@ -232,6 +233,11 @@ export function paymentDecisionOffer(env: PaymentDecisionEnv) {
     billable: false,
     feeMicroUsd,
     feeUsd: microUsdToUsd(feeMicroUsd),
+    access: {
+      buyerPassEndpoint: "/v1/buyer-pass",
+      buyerPassTopUpEndpoint: "/v1/buyer-pass/topups/intents",
+      merchantApiKeyAlsoAccepted: true,
+    },
     message: "Verify and document this payment with XGuard before paying?",
     actions: [
       {
@@ -885,6 +891,13 @@ async function authorizePrincipal(
   request: Request,
   env: PaymentDecisionEnv,
 ): Promise<{ principalId: string; principalName: string }> {
+  const buyerPass = await authenticateBuyerPass(request, env);
+  if (buyerPass !== null)
+    return {
+      principalId: buyerPass.principalId,
+      principalName: buyerPass.principalName,
+    };
+
   const access = await authorizeMerchantScope(request, env, "billing");
   if (!access.ok) {
     if (access.response.status === 401)
@@ -913,6 +926,8 @@ function paymentDiscovery(origin: string, env: PaymentDecisionEnv) {
     surfaces: ["browser", "agent", "api"],
     endpoints: {
       offer: `${origin}${OFFER_PATH}`,
+      buyerPass: `${origin}/v1/buyer-pass`,
+      buyerPassTopUp: `${origin}/v1/buyer-pass/topups/intents`,
       decision: `${origin}${DECISION_PATH}`,
       record: `${origin}/v1/payment/records/{decisionId}`,
       settlementUpdate: `${origin}/v1/payment/records/{decisionId}/settlement`,

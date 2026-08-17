@@ -55,6 +55,11 @@
       "namespace_id": "2003",
       "simple": { "limit": 600, "period": 60 },
     },
+    {
+      "name": "BUYER_PASS_CREATE_RATE_LIMITER",
+      "namespace_id": "2004",
+      "simple": { "limit": 5, "period": 60 },
+    },
   ],
   "durable_objects": {
     "bindings": [
