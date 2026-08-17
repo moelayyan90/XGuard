@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { writeEndpointDiscoveryResponse } from "../apps/worker/src/mainnet-endpoint-discovery.js";
 
 const BASE = "https://xguard-mainnet.maqamapp.workers.dev";
+const PAYMENT_KEY = "a".repeat(64);
 
 function request(path: string, method: string) {
   return new Request(new URL(path, BASE), { method });
@@ -82,6 +83,27 @@ describe("mainnet write endpoint discovery", () => {
     });
     expect(await topup?.json()).toMatchObject({
       endpoint: "/v1/topups/intents",
+      method: "POST",
+      auth: "api-key",
+    });
+  });
+
+  it("advertises settlement truth without intercepting its real GET", async () => {
+    const path = `/v1/settlements/${PAYMENT_KEY}/truth`;
+    expect(writeEndpointDiscoveryResponse(request(path, "GET"))).toBe(null);
+
+    const options = writeEndpointDiscoveryResponse(request(path, "OPTIONS"));
+    expect(options?.status).toBe(204);
+    expect(options?.headers.get("allow")).toBe("GET, HEAD, OPTIONS");
+  });
+
+  it("makes the active settlement resolver discoverable", async () => {
+    const path = `/v1/settlements/${PAYMENT_KEY}/resolve`;
+    expect(writeEndpointDiscoveryResponse(request(path, "POST"))).toBe(null);
+
+    const discovery = writeEndpointDiscoveryResponse(request(path, "GET"));
+    expect(await discovery?.json()).toMatchObject({
+      endpoint: path,
       method: "POST",
       auth: "api-key",
     });
