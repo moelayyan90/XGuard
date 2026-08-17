@@ -2,13 +2,13 @@
 
 Minimal drop-in x402 v2 facilitator client for XGuard.
 
-Production XGuard runs on Base mainnet at `https://xguard-mainnet.maqamapp.workers.dev`.
+Production XGuard runs on Base mainnet at `https://xguardgate.com`.
 
 ```ts
 import { createXGuardFacilitator } from "@xguard/sdk";
 
 const facilitator = createXGuardFacilitator({
-  url: process.env.XGUARD_URL ?? "https://xguard-mainnet.maqamapp.workers.dev",
+  url: process.env.XGUARD_URL ?? "https://xguardgate.com",
   apiKey: process.env.XGUARD_API_KEY,
 });
 ```

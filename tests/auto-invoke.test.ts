@@ -10,7 +10,7 @@ import {
   rewrapProviderCredentialRecord,
 } from "../apps/worker/src/auto-invoke.js";
 
-const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const ORIGIN = "https://xguardgate.com";
 
 describe("XGuard zero-study auto invoke", () => {
   it("publishes machine-readable configure-once discovery", async () => {

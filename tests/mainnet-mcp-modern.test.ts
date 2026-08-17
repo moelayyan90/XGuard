@@ -6,7 +6,7 @@ import {
   xguardMcpTools,
 } from "../apps/worker/src/mainnet-mcp-modern.js";
 
-const URL = "https://xguard-mainnet.maqamapp.workers.dev/mcp";
+const URL = "https://xguardgate.com/mcp";
 const ENV = { DB: {} as D1Database };
 
 function modernRequest(

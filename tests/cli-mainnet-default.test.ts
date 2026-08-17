@@ -7,7 +7,7 @@ import {
 describe("CLI production gateway default", () => {
   it("defaults migrations to xguard-mainnet", () => {
     expect(XGUARD_PRODUCTION_GATEWAY_URL).toBe(
-      "https://xguard-mainnet.maqamapp.workers.dev",
+      "https://xguardgate.com",
     );
     expect(resolveXGuardGatewayUrl()).toBe(XGUARD_PRODUCTION_GATEWAY_URL);
   });

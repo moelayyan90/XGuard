@@ -5,7 +5,7 @@ import {
   modernMcpManifest,
 } from "../apps/worker/src/agent-discovery-modern.js";
 
-const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const ORIGIN = "https://xguardgate.com";
 
 function expectSettlementTruthDiscovery(value: Record<string, unknown>) {
   expect(value).toMatchObject({

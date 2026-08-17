@@ -44,7 +44,7 @@ for (const link of [
     throw new Error(`README link is missing: ${link}`);
 }
 for (const marker of [
-  "https://xguard-mainnet.maqamapp.workers.dev",
+  "https://xguardgate.com",
   "$0.002",
   "XGUARD_API_KEY",
   "Merchant top-ups are customer prepayments, not revenue",

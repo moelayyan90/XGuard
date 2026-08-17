@@ -2,7 +2,7 @@
 
 ## Adoption surfaces
 
-- `xguard init`: local AST-based migration with backup, changed-file/hash manifest, test execution, automatic failure rollback, and a production default of `https://xguard-mainnet.maqamapp.workers.dev` unless an explicit gateway override is supplied.
+- `xguard init`: local AST-based migration with backup, changed-file/hash manifest, test execution, automatic failure rollback, and a production default of `https://xguardgate.com` unless an explicit gateway override is supplied.
 - `xguard rollback`: hash-safe restoration that refuses to overwrite later user edits.
 - `xguard doctor`: repository and public-endpoint diagnostics for x402 v2, facilitator configuration, Payment Identifier, duplicate risk, Bazaar metadata, reachability, security, and latency.
 - `@xguard/sdk`: a minimal `FacilitatorClient`-compatible wrapper for resource servers.
@@ -39,7 +39,7 @@ The public repository is [`moelayyan90/XGuard`](https://github.com/moelayyan90/X
 4. Require live `/healthz`, `/readyz`, `/supported`, `/status`, provider/Glama discovery, Bazaar/OpenAPI, and remote MCP smoke checks after deployment.
 5. Rebuild and publicly verify the GitHub prerelease package tarballs when package surfaces change.
 6. Bind authorized npm trusted publishing before any npm prerelease/stable publication; do not claim npm availability before the registry proves it.
-7. Keep official/third-party MCP and agent directory metadata pointed at `https://xguard-mainnet.maqamapp.workers.dev/mcp` and record acceptance only after evidence exists.
+7. Keep official/third-party MCP and agent directory metadata pointed at `https://xguardgate.com/mcp` and record acceptance only after evidence exists.
 8. Submit XGuard to relevant x402 ecosystem/facilitator listings only with accurate capabilities, pricing, networks, and operational URLs.
 
 Current directory/listing evidence is tracked in `.github/xguard-directory-status.json`. A queued, submitted, or locally prepared listing is not called “listed” until its evidence supports that status.

@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const XGUARD_ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const XGUARD_ORIGIN = "https://xguardgate.com";
 const BASE_MAINNET = "eip155:8453";
 
 function envInt(name, fallback, min, max) {

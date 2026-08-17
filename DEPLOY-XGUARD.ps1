@@ -18,7 +18,7 @@ Set-Location -LiteralPath $PSScriptRoot
 
 $TemplateConfigPath = "apps/worker/wrangler.mainnet.jsonc"
 $ResolvedConfigPath = Join-Path ([System.IO.Path]::GetTempPath()) ("xguard-mainnet-wrangler-" + [guid]::NewGuid().ToString("N") + ".jsonc")
-$ExpectedBaseUrl = "https://xguard-mainnet.maqamapp.workers.dev"
+$ExpectedBaseUrl = "https://xguardgate.com"
 $PromptedForToken = $false
 $BSTR = [IntPtr]::Zero
 

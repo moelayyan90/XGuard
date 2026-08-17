@@ -8,7 +8,7 @@ describe("x402 compatibility discovery", () => {
         JSON.stringify({
           protocol: { name: "x402", version: 2 },
           facilitator: {
-            baseUrl: "https://xguard-mainnet.maqamapp.workers.dev",
+            baseUrl: "https://xguardgate.com",
           },
           safety: { replayProtection: true },
         }),

@@ -1,6 +1,6 @@
 # XGuard HTTP API
 
-**Production base URL:** `https://xguard-mainnet.maqamapp.workers.dev`  
+**Production base URL:** `https://xguardgate.com`  
 **Production network:** Base mainnet native USDC, x402 v2 `exact`, EIP-3009 authorization
 
 A separate Base Sepolia testnet exists only for explicit non-billable integration testing. It is isolated from the production merchant billing path and is not the default API environment.

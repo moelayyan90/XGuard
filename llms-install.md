@@ -5,7 +5,7 @@ XGuard exposes a public remote Model Context Protocol server over Streamable HTT
 ## Endpoint
 
 ```text
-https://xguard-mainnet.maqamapp.workers.dev/mcp
+https://xguardgate.com/mcp
 ```
 
 ## Generic remote MCP configuration
@@ -29,5 +29,5 @@ The MCP surface is read-only discovery. x402 settlement APIs are separate and re
 - Repository: https://github.com/moelayyan90/XGuard
 - MCP Registry name: `io.github.moelayyan90/xguard`
 - MCP transport: `streamable-http`
-- MCP endpoint: https://xguard-mainnet.maqamapp.workers.dev/mcp
+- MCP endpoint: https://xguardgate.com/mcp
 - License: Apache-2.0

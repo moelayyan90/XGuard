@@ -4,7 +4,7 @@
   "version": "0.4.0",
   "author": "moelayyan90",
   "homepage": "https://github.com/moelayyan90/XGuard",
-  "cloudEndpoint": "https://xguard-mainnet.maqamapp.workers.dev/mcp",
+  "cloudEndpoint": "https://xguardgate.com/mcp",
   "description": "Remote MCP discovery server for XGuard's x402 catalog, with read-only tools to discover paid HTTP/MCP resources, inspect exact resource records, and check live XGuard mainnet status.",
   "tags": [
     "mcp",

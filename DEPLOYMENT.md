@@ -2,7 +2,7 @@
 
 XGuard production runs at:
 
-- **Production mainnet:** `https://xguard-mainnet.maqamapp.workers.dev`
+- **Production mainnet:** `https://xguardgate.com`
 - **Network:** Base mainnet (`eip155:8453`)
 - **Asset:** native Base USDC
 

@@ -6,7 +6,7 @@ import {
   translateV1FacilitatorEnvelope,
 } from "../apps/worker/src/x402-compatibility-bridge.js";
 
-const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const ORIGIN = "https://xguardgate.com";
 const PAY_TO = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C";
 const PAYER = "0x857b06519E91e3A54538791bDbb0E22373e36b66";
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";

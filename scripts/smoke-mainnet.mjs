@@ -1,6 +1,6 @@
 const baseUrl = new URL(
   process.env.XGUARD_MAINNET_URL ??
-    "https://xguard-mainnet.maqamapp.workers.dev",
+    "https://xguardgate.com",
 );
 
 const BASE_MAINNET = "eip155:8453";

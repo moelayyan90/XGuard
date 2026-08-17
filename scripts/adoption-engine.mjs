@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const BASE_MAINNET = "eip155:8453";
-const XGUARD_ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const XGUARD_ORIGIN = "https://xguardgate.com";
 const DEFAULT_SOURCES = [
   {
     id: "cdp-bazaar",
@@ -160,8 +160,8 @@ function scoreCandidate(candidate) {
 
 function recipeFor(candidate) {
   const steps = [
-    "Register the service with POST https://xguard-mainnet.maqamapp.workers.dev/v1/register and retain the returned API key.",
-    "Point the standard x402 HTTPFacilitatorClient base URL at https://xguard-mainnet.maqamapp.workers.dev and attach the API key to verify/settle/supported/bazaar requests.",
+    "Register the service with POST https://xguardgate.com/v1/register and retain the returned API key.",
+    "Point the standard x402 HTTPFacilitatorClient base URL at https://xguardgate.com and attach the API key to verify/settle/supported/bazaar requests.",
     "Run the existing x402 paid endpoint unchanged; XGuard remains protocol-compatible and does not require an XGuard runtime package.",
     "Confirm /verify and /settle succeed, then verify the resource appears in XGuard /discovery/resources after a successful Bazaar-bearing settlement.",
   ];

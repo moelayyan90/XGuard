@@ -7,7 +7,7 @@ import { createXGuardFacilitator } from "@xguard/sdk";
 import { z } from "zod";
 
 const MAINNET_NETWORK = "eip155:8453";
-const XGUARD_MAINNET_URL = "https://xguard-mainnet.maqamapp.workers.dev";
+const XGUARD_MAINNET_URL = "https://xguardgate.com";
 const xguardUrl = process.env.XGUARD_URL ?? XGUARD_MAINNET_URL;
 const apiKey = process.env.XGUARD_API_KEY;
 if (apiKey === undefined || apiKey === "") {

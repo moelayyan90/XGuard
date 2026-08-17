@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { xguardMigrationResponse } from "../apps/worker/src/migration-kit.js";
 
-const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const ORIGIN = "https://xguardgate.com";
 
 interface MigrationStep {
   id?: string;

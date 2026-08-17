@@ -4,7 +4,7 @@ import {
   universalGatewayResponse,
 } from "../apps/worker/src/universal-gateway.js";
 
-const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const ORIGIN = "https://xguardgate.com";
 const env = {
   DB: {} as D1Database,
   XGUARD_MODEL_FEE_MICRO_USD: "10",

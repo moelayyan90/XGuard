@@ -3,11 +3,11 @@ name: xguard
 version: 0.1.0
 license: Apache-2.0
 description: Configure, migrate, and diagnose x402 v2 resource servers that use the hosted XGuard facilitator gateway on Base mainnet. Use when an agent needs to route x402 verification/settlement through XGuard, enable Bazaar discovery, inspect XGuard capabilities, or validate a resource-server integration.
-compatibility: Requires network access to https://xguard-mainnet.maqamapp.workers.dev. Resource-server integration currently targets x402 v2 exact payments on Base mainnet USDC.
+compatibility: Requires network access to https://xguardgate.com. Resource-server integration currently targets x402 v2 exact payments on Base mainnet USDC.
 metadata:
   author: moelayyan90
   homepage: https://github.com/moelayyan90/XGuard
-  provider: https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json
+  provider: https://xguardgate.com/.well-known/x402/facilitator.json
 ---
 
 # XGuard
@@ -16,8 +16,8 @@ Use XGuard as the merchant-facing x402 v2 facilitator-compatible gateway for Bas
 
 ## Read-only discovery first
 
-1. Fetch `https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json`.
-2. Fetch `https://xguard-mainnet.maqamapp.workers.dev/supported` and confirm x402 v2, `exact`, and `eip155:8453` are currently supported.
+1. Fetch `https://xguardgate.com/.well-known/x402/facilitator.json`.
+2. Fetch `https://xguardgate.com/supported` and confirm x402 v2, `exact`, and `eip155:8453` are currently supported.
 3. Fetch `/readyz`; do not migrate production traffic unless it reports ready.
 4. Use `/discovery/resources` or the Remote MCP endpoint `/mcp` when the task is to discover paid resources cataloged by XGuard.
 
@@ -33,7 +33,7 @@ const headers = {
 };
 
 const facilitator = new HTTPFacilitatorClient({
-  url: "https://xguard-mainnet.maqamapp.workers.dev",
+  url: "https://xguardgate.com",
   createAuthHeaders: async () => ({
     verify: headers,
     settle: headers,

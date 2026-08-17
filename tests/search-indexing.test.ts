@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { searchIndexResponse } from "../apps/worker/src/search-indexing.js";
 
-const ORIGIN = "https://xguard-mainnet.maqamapp.workers.dev";
+const ORIGIN = "https://xguardgate.com";
 
 describe("public search indexing", () => {
   it("serves current root JSON metadata", async () => {

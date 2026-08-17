@@ -2,12 +2,12 @@
 
 Safe migration and diagnostics for x402 v2 projects using the XGuard production gateway.
 
-Production XGuard runs at `https://xguard-mainnet.maqamapp.workers.dev` on Base mainnet.
+Production XGuard runs at `https://xguardgate.com` on Base mainnet.
 
 After installing the verified CLI prerelease tarball from the XGuard GitHub release:
 
 ```bash
-xguard init --gateway https://xguard-mainnet.maqamapp.workers.dev
+xguard init --gateway https://xguardgate.com
 xguard doctor --endpoint https://your-production-resource.example/paid
 xguard rollback
 ```
