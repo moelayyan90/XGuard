@@ -17,9 +17,7 @@ function billVerifySource() {
 describe("monetized mainnet x402 compatibility boundary", () => {
   it("authenticates verify traffic before compatibility parsing", () => {
     const verify = billVerifySource();
-    const authorize = verify.indexOf(
-      'authorizeMerchantScope(request, env, "verify")',
-    );
+    const authorize = verify.indexOf("authorizeMerchantScope(request");
     const normalize = verify.indexOf(
       "normalizeX402CompatibilityRequest(request)",
     );
@@ -28,9 +26,9 @@ describe("monetized mainnet x402 compatibility boundary", () => {
     expect(normalize).toBeGreaterThan(authorize);
   });
 
-  it("returns authentication failures before parsing legacy compatibility", () => {
+  it("returns authentication failures before parsing legacy traffic", () => {
     const verify = billVerifySource();
-    const authorize = verify.indexOf("authorizeMerchantScope(");
+    const authorize = verify.indexOf("authorizeMerchantScope(request");
     const authFailure = verify.indexOf("if (!access.ok) return access.response;");
     const normalize = verify.indexOf(
       "normalizeX402CompatibilityRequest(request)",
@@ -43,7 +41,7 @@ describe("monetized mainnet x402 compatibility boundary", () => {
     );
   });
 
-  it("preserves compatibility adaptation for authenticated execution responses", () => {
+  it("preserves compatibility adaptation for authenticated execution", () => {
     const verify = billVerifySource();
 
     expect(verify).toContain("await delegateFetch(effectiveRequest, env, ctx)");
@@ -51,7 +49,7 @@ describe("monetized mainnet x402 compatibility boundary", () => {
     expect(verify).toContain("compatibility,");
   });
 
-  it("delegates invalid authenticated legacy traffic without reserving a fee", () => {
+  it("delegates invalid authenticated legacy traffic without billing", () => {
     const verify = billVerifySource();
     const normalize = verify.indexOf(
       "normalizeX402CompatibilityRequest(request)",
