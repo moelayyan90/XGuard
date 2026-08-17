@@ -1,9 +1,12 @@
 # XGuard quickstart
 
-XGuard has two live gateways:
+XGuard production runs on Base mainnet at:
 
-- Base mainnet: `https://xguard-mainnet.maqamapp.workers.dev`
-- Base Sepolia testnet: `https://xguard-testnet.maqamapp.workers.dev`
+- **Production gateway:** `https://xguard-mainnet.maqamapp.workers.dev`
+- **Network:** Base mainnet (`eip155:8453`)
+- **Asset:** Native USDC
+
+A separate Base Sepolia testnet remains available only for explicit non-billable integration testing. It is not the production default.
 
 Mainnet charges `$0.002` only for a successful billable settlement after independent Base finality. Testnet is non-billable.
 
@@ -132,16 +135,16 @@ For each eligible mainnet settlement:
 
 Duplicate retries of the same logical payment do not create another billable fee.
 
-## Testnet path
+## Optional testnet path
 
-The Base Sepolia gateway remains available for non-billable integration testing:
+The Base Sepolia gateway remains available only for explicit, non-billable integration testing:
 
 ```bash
 curl https://xguard-testnet.maqamapp.workers.dev/readyz
 curl https://xguard-testnet.maqamapp.workers.dev/supported
 ```
 
-The repository CLI can perform conservative testnet URL migration and rollback directly from GitHub:
+The repository CLI can perform conservative testnet URL migration and rollback when the testnet gateway is passed explicitly:
 
 ```bash
 npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard doctor
@@ -149,6 +152,6 @@ npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#ma
 npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard rollback
 ```
 
-`xguard init` is intentionally URL-only and refuses provider-specific authentication. Use the authenticated client configuration above for mainnet.
+`xguard init` now defaults to the production mainnet gateway. Testnet is selected only when its URL is passed explicitly. `xguard init` remains URL-only and refuses provider-specific authentication; use the authenticated client configuration above for mainnet.
 
 See [API.md](docs/API.md) and [openapi.yaml](docs/openapi.yaml) for the HTTP contract.
