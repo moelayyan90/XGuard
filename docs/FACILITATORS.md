@@ -2,65 +2,73 @@
 
 ## Live mainnet route
 
-XGuard production currently uses one Base-compatible downstream route:
+XGuard production currently uses one Base-compatible downstream settlement route:
 
-- `xpay`
-  - origin: `https://facilitator.xpay.sh`
-  - protocol: x402 v2
-  - scheme: `exact`
-  - network: `eip155:8453` (Base mainnet)
-  - asset: native Base USDC
-  - authorization mechanism: EIP-3009
-  - provider authentication: none required by the public xpay facilitator
-  - xpay protocol fee: `0`
-  - XGuard service fee: `2,000` micro-USD (`$0.002`)
+- provider: `xpay`
+- origin: `https://facilitator.xpay.sh`
+- protocol: x402 v2
+- scheme: `exact`
+- network: `eip155:8453` (Base mainnet)
+- asset: native Base USDC
+- authorization mechanism: EIP-3009
+- provider authentication: none on the current public xpay route
+- configured downstream protocol-cost floor: `0` micro-USD
 
-The production Worker refreshes xpay health on scheduled maintenance and refuses stale or incompatible routing. `/readyz` is not considered ready unless the mainnet route is fresh and operational.
+XGuard is the merchant-facing gateway/safety layer; xpay is the current downstream transaction submitter. XGuard must not claim ownership of the downstream xpay signer.
 
-Official xpay documentation identifies `https://facilitator.xpay.sh` as its public facilitator, supports Base mainnet and Base Sepolia, and advertises zero protocol fees with sponsored gas. See [xpay facilitator documentation](https://docs.xpay.sh/en/x402-protocol/facilitator) and the [xpay facilitator announcement](https://www.xpay.sh/blog/article/xpay-x402-facilitator/).
+## XGuard merchant fee
 
-### Downstream-cost and quota policy
+For the recommended zero-friction x402 seller path, the current default XGuard terms are:
 
-The checked-in mainnet configuration currently sets the xpay downstream protocol-cost floor to `0` micro-USD, matching xpay's published zero-fee facilitator terms. This is not a guarantee that all future provider, infrastructure, gas-sponsorship, account, tax, or operating costs remain zero.
+- 0.5% of an independently finalized successful merchant settlement;
+- maximum $0.001 XGuard fee per settlement;
+- verify, failure and unresolved ambiguity are free;
+- no prepaid balance before first use;
+- one signed merchant-wallet activation followed by keyless `/verify` and `/settle`.
 
-Runtime/observed downstream cost can override the configured floor. XGuard uses the maximum of configured, runtime, and recent observed downstream cost when evaluating unit economics. A route becomes ineligible if protected gross-margin requirements are not satisfied.
+The merchant's signed activation terms, not a later silent configuration change, determine the fee for that activated `payTo`.
 
-xpay currently publishes facilitator rate limits of 100 verify requests/minute and 50 settle requests/minute. XGuard deliberately uses lower global upstream guards of 90 verify/minute and 45 settle/minute so it can fail locally before saturating the published provider limit.
+## Route health
 
-Provider plan changes and actual operating expenses remain separate accounting facts. A configured route-cost value must never be described as the owner's final profit.
+The production Worker refreshes downstream health on scheduled maintenance and refuses stale or incompatible routing. `/readyz` is not considered ready unless the mainnet route is fresh and operational.
 
-Some historical internal identifiers still contain `payai` wording for compatibility with existing persisted state. Those identifiers do **not** change the live production origin or external provider attribution: the current downstream is xpay at `facilitator.xpay.sh`.
-
-## Optional testnet candidates
-
-The separate Base Sepolia Worker is manual-only and non-billable. Its test configuration may use compatible Base Sepolia facilitators for explicit integration testing. Testnet state remains isolated from mainnet merchant balances and earned revenue and is not part of automatic production monitoring.
+Published provider terms are evidence for configured downstream cost, not a guarantee of XGuard profit. Runtime/observed cost, infrastructure, gas sponsorship, provider plan changes, taxes and other operating costs remain separate accounting facts.
 
 ## Transport boundary
 
 - origins are operator configuration, never request-controlled URLs;
 - only HTTPS is accepted outside localhost development;
-- redirects use `manual` handling and are rejected;
-- response status, media type, byte length, JSON structure, and settlement identity are validated;
-- provider credentials, when a future provider requires them, belong only in encrypted deployment secrets;
-- private keys are not accepted from merchants and are not stored by XGuard.
+- redirects are rejected;
+- response status, media type, byte length, JSON structure and settlement identity are validated;
+- provider credentials, if a future route requires them, belong only in encrypted deployment secrets;
+- merchant private keys are never accepted or stored;
+- the one-time merchant activation verifies a wallet signature but does not authorize a token transfer.
 
 ## Routing and failover
 
-Verification may use a different compatible route only where that operation submits no value. Settlement selects exactly one route before the outbound boundary. Once submission starts, XGuard never sends the same authorization to a second facilitator. Unknown outcome becomes `AMBIGUOUS` and requires independent finality/reconciliation.
+Verification may use another compatible route only where that operation submits no value.
 
-Normal billable routing requires a current attributable downstream-cost value and positive protected unit economics after the `$0.002` XGuard fee. A route with unknown or excessive cost is ineligible.
+Settlement selects exactly one route before the outbound boundary. Once submission starts, XGuard never sends the same authorization to a second facilitator. Unknown outcome becomes ambiguous and requires independent finality/recovery evidence.
 
-## Adding or replacing a mainnet route
+## Economic eligibility
 
-A new route is not enabled merely because it responds. It must have:
+A downstream route must not be enabled merely because it responds. Before production use it needs:
 
-1. an attributable provider endpoint and current terms/pricing;
-2. scoped credentials in encrypted secrets if authentication is required;
-3. measured `/supported` compatibility for the exact mainnet network/mechanism;
+1. attributable provider identity and endpoint;
+2. current protocol terms and cost evidence;
+3. measured `/supported` compatibility;
 4. bounded transport and strict response validation;
-5. a current downstream-cost value with positive unit economics;
-6. explicit non-production verification plus real authorized mainnet settlement, duplicate/replay, timeout, ambiguity, and reconciliation evidence before production promotion;
-7. independent chain-finality verification before a successful settlement can earn an XGuard fee;
-8. recurring operational monitoring, rollback, and incident ownership.
+5. unit economics compatible with the XGuard signed merchant terms;
+6. authorized mainnet settlement evidence, including duplicate/replay and timeout behavior;
+7. independent chain-finality verification before XGuard can earn a seller fee;
+8. recurring operational monitoring and rollback ownership.
 
-Adding a second mainnet route must preserve the one-outbound-owner rule: failover must never create duplicate settlement submission after the first route has crossed the outbound boundary.
+If downstream cost rises above the protected economic threshold, the route should fail closed or pricing must be changed through a **new disclosed/signed merchant pricing version**. Existing signed merchant terms are not silently rewritten.
+
+## Optional testnet
+
+The separate Base Sepolia Worker is manual-only and non-billable. Testnet state remains isolated from mainnet merchant activation, service-fee balances and earned revenue.
+
+## Legacy identifiers
+
+Some historical internal identifiers may retain older provider or prepaid terminology for persistence compatibility. They do not change the live external route, the zero-friction x402 seller contract, or signer attribution.
