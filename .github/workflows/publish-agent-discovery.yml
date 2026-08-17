@@ -1,0 +1,108 @@
+name: Publish XGuard to broader agent discovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-agent-discovery.yml"
+      - "apps/worker/src/a2a-agent.ts"
+      - "apps/worker/src/a2a-discovery.ts"
+      - "apps/worker/src/agent-discovery-modern.ts"
+      - "apps/worker/src/mainnet-mcp-modern.ts"
+      - "apps/worker/src/universal-mainnet.ts"
+      - "apps/worker/src/payment-decision.ts"
+      - "README.md"
+      - "docs/ECOSYSTEM.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-xguard-agent-discovery
+  cancel-in-progress: true
+
+jobs:
+  not-human-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit and verify XGuard in Not Human Search
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://xguardgate.com'
+          API='https://nothumansearch.ai/api/v1'
+
+          # Refuse to publish a dead or non-machine-readable site.
+          curl -fsS --max-time 20 "${BASE}/healthz" >/dev/null
+          curl -fsS --max-time 20 "${BASE}/llms.txt" >/dev/null
+          curl -fsS --max-time 20 "${BASE}/openapi.json" >/dev/null
+          curl -fsS --max-time 20 "${BASE}/.well-known/mcp/server.json" >/dev/null
+
+          response="$(curl --fail-with-body -sS --max-time 45 \
+            -X POST "${API}/submit" \
+            -H 'Content-Type: application/json' \
+            --data '{"url":"https://xguardgate.com"}')"
+          printf '%s\n' "${response}"
+
+          found=0
+          for attempt in 1 2 3 4 5 6; do
+            detail="$(curl -sS --max-time 30 -w $'\n%{http_code}' "${API}/site/xguardgate.com")"
+            code="${detail##*$'\n'}"
+            body="${detail%$'\n'*}"
+            if [[ "${code}" == "200" ]] && printf '%s' "${body}" | grep -Eqi 'xguard|xguardgate'; then
+              printf '%s\n' "${body}"
+              found=1
+              break
+            fi
+            sleep 10
+          done
+
+          if [[ "${found}" != "1" ]]; then
+            echo 'Not Human Search accepted the submission but XGuard was not yet readable from the site endpoint.' >&2
+            exit 1
+          fi
+
+          echo 'XGuard Not Human Search publication verified.'
+
+  agenthermes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Scan and verify XGuard in AgentHermes discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://xguardgate.com'
+          API='https://agenthermes.ai/api/v1'
+
+          # AgentHermes documents POST /scan as a public no-signup endpoint and
+          # indexes domains with an Agent Card through its discovery scanner.
+          curl -fsS --max-time 20 "${BASE}/.well-known/agent-card.json" >/dev/null
+          curl -fsS --max-time 20 "${BASE}/.well-known/mcp/server.json" >/dev/null
+          curl -fsS --max-time 20 "${BASE}/openapi.json" >/dev/null
+
+          scan="$(curl --fail-with-body -sS --max-time 60 \
+            -X POST "${API}/scan" \
+            -H 'Content-Type: application/json' \
+            --data '{"url":"xguardgate.com"}')"
+          printf '%s\n' "${scan}"
+
+          found=0
+          for attempt in 1 2 3 4 5 6; do
+            results="$(curl -fsS --max-time 30 "${API}/discover?q=XGuard" || true)"
+            if printf '%s' "${results}" | grep -Eqi 'xguardgate\.com|"name"[[:space:]]*:[[:space:]]*"XGuard"'; then
+              printf '%s\n' "${results}"
+              found=1
+              break
+            fi
+            sleep 10
+          done
+
+          if [[ "${found}" != "1" ]]; then
+            echo 'AgentHermes scan completed but XGuard is not yet present in public discovery.' >&2
+            exit 1
+          fi
+
+          echo 'XGuard AgentHermes discovery publication verified.'
