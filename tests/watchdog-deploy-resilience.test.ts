@@ -54,11 +54,14 @@ describe("watchdog-aware deployment verification", () => {
     expect(watchdogWorkflow).toContain('x.policyVersion!=="2026-08-17-v2"');
   });
 
-  it("proves real mainnet invocations arrive in watchdog logs after successful deploys", () => {
+  it("verifies canonical mainnet health after successful deploys", () => {
     expect(tailWorkflow).toContain('workflows: ["Deploy XGuard mainnet"]');
-    expect(tailWorkflow).toContain("wrangler tail xguard-watchdog");
-    expect(tailWorkflow).toContain("--search watchdog_invocation");
-    expect(tailWorkflow).toContain("/healthz?tailVerify=");
-    expect(tailWorkflow).toContain("grep -Fq 'xguard-mainnet'");
+    expect(tailWorkflow).toContain('BASE_URL="https://xguardgate.com"');
+    expect(tailWorkflow).toContain('${BASE_URL}/healthz');
+    expect(tailWorkflow).toContain('${BASE_URL}/status');
+    expect(tailWorkflow).toContain('${BASE_URL}/.well-known/agent-card.json');
+    expect(tailWorkflow).toContain('i.protocolVersion==="1.0"');
+    expect(tailWorkflow).not.toContain("wrangler tail xguard-watchdog");
+    expect(tailWorkflow).not.toContain("maqamapp.workers.dev");
   });
 });
