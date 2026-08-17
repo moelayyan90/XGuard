@@ -1,10 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const entrypoint = readFileSync(
-  "apps/worker/src/universal-mainnet.ts",
-  "utf8",
-);
+const entrypoint = readFileSync("apps/worker/src/universal-mainnet.ts", "utf8");
 const ingress = readFileSync(
   "apps/worker/src/universal-webhook-ingress.ts",
   "utf8",
@@ -38,8 +35,12 @@ describe("universal webhook production wiring", () => {
   });
 
   it("creates immutable event evidence tables separate from x402 settlement tables", () => {
-    expect(migration).toContain("CREATE TABLE IF NOT EXISTS universal_webhook_routes");
-    expect(migration).toContain("CREATE TABLE IF NOT EXISTS universal_webhook_events");
+    expect(migration).toContain(
+      "CREATE TABLE IF NOT EXISTS universal_webhook_routes",
+    );
+    expect(migration).toContain(
+      "CREATE TABLE IF NOT EXISTS universal_webhook_events",
+    );
     expect(migration).toContain("body_sha256 TEXT NOT NULL");
     expect(migration).toContain("signature_evidence_sha256 TEXT");
   });

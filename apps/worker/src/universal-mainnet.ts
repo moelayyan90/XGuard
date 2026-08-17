@@ -40,7 +40,10 @@ export default {
     });
     if (protocolResponse !== null) return protocolResponse;
 
-    const webhookResponse = await universalWebhookResponse(standardRequest, env);
+    const webhookResponse = await universalWebhookResponse(
+      standardRequest,
+      env,
+    );
     if (webhookResponse !== null) return webhookResponse;
 
     const genericHttp = await genericHttpConnectorResponse(

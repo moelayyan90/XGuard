@@ -90,8 +90,11 @@ export async function universalWebhookResponse(
   }
 
   if (url.pathname.startsWith(`${ROUTES_PATH}/`)) {
-    const routeId = decodePathSegment(url.pathname.slice(ROUTES_PATH.length + 1));
-    if (routeId === null) return jsonResponse({ error: "invalid_route_id" }, 400);
+    const routeId = decodePathSegment(
+      url.pathname.slice(ROUTES_PATH.length + 1),
+    );
+    if (routeId === null)
+      return jsonResponse({ error: "invalid_route_id" }, 400);
     if (request.method === "DELETE")
       return deactivateWebhookRoute(request, env, routeId);
     return jsonResponse({ error: "method_not_allowed" }, 405, {
@@ -101,8 +104,10 @@ export async function universalWebhookResponse(
 
   if (url.pathname.startsWith(EVENTS_PATH)) {
     const eventId = decodePathSegment(url.pathname.slice(EVENTS_PATH.length));
-    if (eventId === null) return jsonResponse({ error: "invalid_event_id" }, 400);
-    if (request.method === "GET") return readWebhookEvent(request, env, eventId);
+    if (eventId === null)
+      return jsonResponse({ error: "invalid_event_id" }, 400);
+    if (request.method === "GET")
+      return readWebhookEvent(request, env, eventId);
     return jsonResponse({ error: "method_not_allowed" }, 405, { Allow: "GET" });
   }
 
@@ -250,7 +255,8 @@ async function readWebhookEvent(
     .bind(eventId, access.merchant.merchantId)
     .first<WebhookEventRow>();
 
-  if (row === null) return jsonResponse({ error: "webhook_event_not_found" }, 404);
+  if (row === null)
+    return jsonResponse({ error: "webhook_event_not_found" }, 404);
 
   return jsonResponse({
     eventId: row.event_id,
@@ -306,7 +312,8 @@ async function ingestWebhook(
   const bodySha256 = await sha256Hex(new Uint8Array(body));
   const signatureEvidence = await signatureEvidenceFor(request.headers);
   const eventId = `whe_${crypto.randomUUID()}`;
-  const contentType = request.headers.get("content-type")?.slice(0, 256) ?? null;
+  const contentType =
+    request.headers.get("content-type")?.slice(0, 256) ?? null;
 
   await env.DB.prepare(
     `INSERT INTO universal_webhook_events(
@@ -356,7 +363,13 @@ async function ingestWebhook(
       }),
     );
   } catch {
-    await updateDeliveryState(env.DB, eventId, "DELIVERY_FAILED", null, Date.now() - started);
+    await updateDeliveryState(
+      env.DB,
+      eventId,
+      "DELIVERY_FAILED",
+      null,
+      Date.now() - started,
+    );
     return jsonResponse(
       {
         error: "webhook_destination_unavailable",
@@ -372,7 +385,13 @@ async function ingestWebhook(
   await destinationResponse.body?.cancel().catch(() => undefined);
 
   if (status < 200 || status >= 300) {
-    await updateDeliveryState(env.DB, eventId, "DELIVERY_FAILED", status, latencyMs);
+    await updateDeliveryState(
+      env.DB,
+      eventId,
+      "DELIVERY_FAILED",
+      status,
+      latencyMs,
+    );
     return jsonResponse(
       {
         error: "webhook_destination_rejected",
@@ -413,7 +432,10 @@ async function updateDeliveryState(
     .run();
 }
 
-async function deactivateBrokenRoute(db: D1Database, routeId: string): Promise<void> {
+async function deactivateBrokenRoute(
+  db: D1Database,
+  routeId: string,
+): Promise<void> {
   const now = new Date().toISOString();
   await db
     .prepare(
@@ -460,7 +482,10 @@ function randomIngressToken(): string {
   crypto.getRandomValues(bytes);
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
 async function boundedJsonObject(

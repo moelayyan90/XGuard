@@ -24,7 +24,7 @@ describe("universal webhook ingress", () => {
   });
 
   it("rejects malformed provider identifiers", () => {
-    expect(normalizeProvider("")) .toBeNull();
+    expect(normalizeProvider("")).toBeNull();
     expect(normalizeProvider("../stripe")).toBeNull();
     expect(normalizeProvider("stripe/payments")).toBeNull();
     expect(normalizeProvider("a".repeat(65))).toBeNull();
@@ -46,7 +46,9 @@ describe("universal webhook ingress", () => {
     const forwarded = forwardHeaders(input);
     expect(forwarded.get("content-type")).toBe("application/json");
     expect(forwarded.get("stripe-signature")).toBe("t=1,v1=signature");
-    expect(forwarded.get("authorization")).toBe("Bearer provider-webhook-token");
+    expect(forwarded.get("authorization")).toBe(
+      "Bearer provider-webhook-token",
+    );
     expect(forwarded.get("x-shopify-hmac-sha256")).toBe("shopify-signature");
     expect(forwarded.get("x-xguard-provider")).toBeNull();
     expect(forwarded.get("cf-ray")).toBeNull();
