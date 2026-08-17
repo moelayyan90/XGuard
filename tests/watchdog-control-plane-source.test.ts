@@ -57,6 +57,16 @@ describe("watchdog control plane source", () => {
     );
   });
 
+  it("preserves the latest x402 HTTP compatibility and rate-limit wiring", () => {
+    expect(mainnetWorker).toContain(
+      'import { x402HttpCompatibilityResponse } from "./x402-http-compatibility-bridge.js";',
+    );
+    expect(mainnetWorker).toContain("REQUEST_RATE_LIMITER: RateLimit");
+    expect(mainnetWorker).toContain(
+      "x402HttpCompatibilityResponse(\n      standardRequest,\n      env,\n    )",
+    );
+  });
+
   it("persists incidents, breakers and probe streaks in D1", () => {
     expect(migration).toContain(
       "CREATE TABLE IF NOT EXISTS watchdog_incidents",
