@@ -12,10 +12,7 @@ const PERMANENT_FINALITY_FAILURES = new Set([
 ]);
 
 export type SettlementTruthState =
-  | "FINALIZED"
-  | "PENDING"
-  | "PROVEN_FAILED"
-  | "CONFLICT";
+  "FINALIZED" | "PENDING" | "PROVEN_FAILED" | "CONFLICT";
 
 export interface SettlementTruthEnv extends MainnetRecoveryEnv {
   DB: D1Database;
@@ -375,11 +372,9 @@ async function digestTruth(
 }
 
 function methodNotAllowed(method: string): Response {
-  return jsonResponse(
-    { error: "method_not_allowed", allowed: [method] },
-    405,
-    { Allow: method },
-  );
+  return jsonResponse({ error: "method_not_allowed", allowed: [method] }, 405, {
+    Allow: method,
+  });
 }
 
 function jsonResponse(
