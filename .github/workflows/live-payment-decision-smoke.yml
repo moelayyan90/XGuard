@@ -1,0 +1,130 @@
+name: Live payment decision smoke
+
+on:
+  push:
+    branches:
+      - agent/live-payment-decision-smoke
+    paths:
+      - .github/workflows/live-payment-decision-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Probe live XGuard payment surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://xguardgate.com"
+          mkdir -p live-evidence
+
+          curl -fsSL "$BASE/.well-known/xguard-payment.json" -o live-evidence/payment-manifest.json
+          python - <<'PY'
+          import json
+          p=json.load(open('live-evidence/payment-manifest.json'))
+          assert p['role']=='optional buyer-and-agent pre-payment decision and evidence layer'
+          assert p['universalIntent'] is True
+          assert p['x402Role']=='adapter'
+          assert p['feePolicy']['showingOfferChargesFee'] is False
+          assert p['feePolicy']['skippingChargesFee'] is False
+          assert p['feePolicy']['failedXGuardServiceChargesFee'] is False
+          assert p['feePolicy']['completedAllowReviewOrBlockChargesFee'] is True
+          assert p['endpoints']['decision'].endswith('/v1/payment/decision')
+          PY
+
+          curl -fsSL "$BASE/.well-known/xguard-security-evidence.json" -o live-evidence/security-evidence.json
+          python - <<'PY'
+          import json
+          p=json.load(open('live-evidence/security-evidence.json'))
+          assert p['runtimeProperties']['offerIsFree'] is True
+          assert p['runtimeProperties']['skipIsFree'] is True
+          assert p['runtimeProperties']['settlementUpdateAddsFee'] is False
+          assert p['runtimeProperties']['rawCardCredentialsAccepted'] is False
+          assert p['runtimeProperties']['feeTrigger']=='completed decision + durable evidence record'
+          PY
+
+          curl -fsSL "$BASE/payment" -o live-evidence/payment-page.html
+          grep -Fq "A free offer. A paid result only when XGuard completes the job." live-evidence/payment-page.html
+          grep -Fq "Fee earned" live-evidence/payment-page.html
+          grep -Fq "Pay or cancel" live-evidence/payment-page.html
+
+          curl -fsSL "$BASE/.well-known/agent-card.json" -o live-evidence/agent-card.json
+          python - <<'PY'
+          import json
+          p=json.load(open('live-evidence/agent-card.json'))
+          ids=[s.get('id') for s in p.get('skills',[])]
+          assert 'xguard-payment-decision' in ids
+          d=p['xguardDiscovery']
+          assert d['paymentOffer'].endswith('/v1/payment/offer')
+          assert d['paymentDecision'].endswith('/v1/payment/decision')
+          assert d['paymentSecurityEvidence'].endswith('/.well-known/xguard-security-evidence.json')
+          PY
+
+          curl -fsSL "$BASE/.well-known/mcp/server.json" -o live-evidence/mcp-manifest.json
+          python - <<'PY'
+          import json
+          p=json.load(open('live-evidence/mcp-manifest.json'))
+          assert p['role']=='buyer-agent-pre-payment-decision'
+          assert p['protocol']=='universal-payment-intent'
+          assert 'x402-v2' in p['settlementAdapters']
+          assert p['discovery']['paymentOffer'].endswith('/v1/payment/offer')
+          assert p['discovery']['paymentDecision'].endswith('/v1/payment/decision')
+          PY
+
+          curl -fsSL -X POST "$BASE/v1/payment/offer" -H 'Content-Type: application/json' --data '{}' -o live-evidence/offer.json
+          python - <<'PY'
+          import json
+          p=json.load(open('live-evidence/offer.json'))
+          assert p['billable'] is False
+          actions={a['id']:a for a in p['actions']}
+          assert actions['use_xguard']['billableWhen']=='decision_and_evidence_completed'
+          assert actions['continue_without_xguard']['billable'] is False
+          assert p['guarantees']['showingOfferChargesFee'] is False
+          assert p['guarantees']['skippingChargesFee'] is False
+          PY
+
+          decision_status=$(curl -sS -o live-evidence/decision-noauth.json -w '%{http_code}' -X POST "$BASE/v1/payment/decision" -H 'Content-Type: application/json' --data '{"requestId":"smoke:noauth:12345","rail":"stripe","provider":"stripe","amount":"1.00","currency":"USD","payee":"example.com"}')
+          test "$decision_status" = "401"
+          python - <<'PY'
+          import json
+          p=json.load(open('live-evidence/decision-noauth.json'))
+          assert p['error']=='xguard_access_key_required'
+          PY
+
+          cat > live-evidence/mcp-request.json <<'JSON'
+          {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"xguard-live-smoke","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
+          JSON
+          curl -fsSL -X POST "$BASE/mcp" \
+            -H 'Accept: application/json, text/event-stream' \
+            -H 'Content-Type: application/json' \
+            -H 'MCP-Protocol-Version: 2026-07-28' \
+            -H 'Mcp-Method: tools/list' \
+            --data-binary @live-evidence/mcp-request.json \
+            -o live-evidence/mcp-tools.json
+          python - <<'PY'
+          import json
+          p=json.load(open('live-evidence/mcp-tools.json'))
+          names=[t['name'] for t in p['result']['tools']]
+          assert 'xguard_payment_offer' in names
+          assert 'xguard_payment_decision' in names
+          decision=next(t for t in p['result']['tools'] if t['name']=='xguard_payment_decision')
+          assert decision['annotations']['readOnlyHint'] is False
+          assert decision['annotations']['idempotentHint'] is True
+          PY
+
+          printf '%s\n' "${GITHUB_SHA}" > live-evidence/probe-commit.txt
+          (cd live-evidence && sha256sum payment-manifest.json security-evidence.json payment-page.html agent-card.json mcp-manifest.json offer.json decision-noauth.json mcp-tools.json > SHA256SUMS)
+
+      - name: Upload live evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: xguard-live-payment-decision-smoke-${{ github.sha }}
+          path: live-evidence/
+          retention-days: 30
+          if-no-files-found: error
