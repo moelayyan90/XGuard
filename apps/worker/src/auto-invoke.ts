@@ -202,7 +202,7 @@ async function executeAutoInvoke(
   }
 
   const latencyMs = Math.max(0, Date.now() - started);
-  if (upstream.status < 200 || upstream.status >= 400) {
+  if (!isAutoInvokeBillableStatus(upstream.status)) {
     await releaseGatewayFee(
       env.DB,
       access.merchant.merchantId,
@@ -226,6 +226,10 @@ async function executeAutoInvoke(
     route.provider,
     latencyMs,
   );
+}
+
+export function isAutoInvokeBillableStatus(status: number): boolean {
+  return Number.isInteger(status) && status >= 200 && status < 300;
 }
 
 async function vaultResponse(
