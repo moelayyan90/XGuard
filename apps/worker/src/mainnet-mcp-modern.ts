@@ -6,7 +6,7 @@ import {
 } from "./mainnet-bazaar.js";
 
 export const MODERN_MCP_PROTOCOL = "2026-07-28";
-export const XGUARD_MCP_VERSION = "0.4.0";
+export const XGUARD_MCP_VERSION = "0.5.1";
 
 const LEGACY_MCP_PROTOCOLS = new Set([
   "2025-11-25",

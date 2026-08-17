@@ -25,7 +25,7 @@ describe("modern agent discovery overlay", () => {
       skills: Array<{ id: string }>;
       xguardDiscovery: Record<string, unknown>;
     };
-    expect(card.version).toBe("0.4.0");
+    expect(card.version).toBe("0.5.1");
     expect(card.skills.map((skill) => skill.id)).toEqual(
       expect.arrayContaining([
         "mcp-x402-discovery",
@@ -53,7 +53,7 @@ describe("modern agent discovery overlay", () => {
       version: string;
       discovery: Record<string, unknown>;
     };
-    expect(market.version).toBe("0.4.0");
+    expect(market.version).toBe("0.5.1");
     expect(market.discovery).toMatchObject({
       mcp: `${ORIGIN}/mcp`,
       resources: `${ORIGIN}/discovery/resources`,
@@ -67,7 +67,7 @@ describe("modern agent discovery overlay", () => {
     const manifest = modernMcpManifest(ORIGIN);
     expect(manifest).toMatchObject({
       name: "io.github.moelayyan90/xguard",
-      version: "0.4.0",
+      version: "0.5.1",
       mcp: {
         preferredProtocolVersion: "2026-07-28",
         stateless: true,
