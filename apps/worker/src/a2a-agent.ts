@@ -5,7 +5,22 @@ export async function a2aAgentResponse(
   request: Request,
 ): Promise<Response | null> {
   const url = new URL(request.url);
-  if (url.pathname !== A2A_PATH || request.method !== "POST") return null;
+  if (url.pathname !== A2A_PATH) return null;
+
+  if (request.method === "GET" || request.method === "HEAD") {
+    return a2aProbeResponse(request, url.origin);
+  }
+
+  if (request.method !== "POST") {
+    return new Response(null, {
+      status: 405,
+      headers: {
+        Allow: "GET, HEAD, POST",
+        "Cache-Control": CACHE_CONTROL,
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
 
   let body: unknown;
   try {
@@ -37,6 +52,29 @@ export async function a2aAgentResponse(
       contextId,
       role: "agent",
       parts: [{ kind: "text", text: responseText }],
+    },
+  });
+}
+
+function a2aProbeResponse(request: Request, origin: string): Response {
+  const body = JSON.stringify({
+    name: "XGuard A2A",
+    status: "ok",
+    protocol: "A2A",
+    protocolVersion: "0.3.0",
+    transport: "JSONRPC",
+    endpoint: `${origin}/a2a`,
+    agentCard: `${origin}/.well-known/agent-card.json`,
+    methods: ["message/send"],
+  });
+
+  return new Response(request.method === "HEAD" ? null : body, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=300",
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }
