@@ -1,4 +1,4 @@
-name: Probe MCPFly public submit endpoint
+name: Submit XGuard to MCPFly
 
 on:
   push:
@@ -9,30 +9,67 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  submit:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect MCPFly submit client request shape
+      - name: Check duplicate and submit through documented public API
         shell: bash
         run: |
           python - <<'PY'
-          import re
+          import json
+          import urllib.parse
+          import urllib.error
           import urllib.request
 
-          url = "https://mcpserver.so/_next/static/chunks/app/submit/page-307d78cf73fd5812.js"
-          req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 XGuard-registry-check"})
-          with urllib.request.urlopen(req, timeout=30) as r:
-              js = r.read().decode("utf-8", "replace")
+          base = "https://mcpserver.so"
+          repo = "https://github.com/moelayyan90/XGuard"
+          headers = {
+              "User-Agent": "Mozilla/5.0 XGuard-registry-submit",
+              "Content-Type": "application/json",
+          }
 
-          print("length", len(js))
-          for needle in ["/api/v1", "submit", "github", "serverConfig", "server_config", "fetch(", "axios", "method:", "POST"]:
-              print("===", needle, "===")
-              count = 0
-              for m in re.finditer(re.escape(needle), js, re.I):
-                  a = max(0, m.start() - 700)
-                  b = min(len(js), m.end() + 1200)
-                  print(js[a:b].replace("\\n", " "))
-                  count += 1
-                  if count >= 8:
-                      break
+          query = urllib.parse.urlencode({
+              "keyword": "XGuard",
+              "page": 1,
+              "limit": 20,
+              "type": "server",
+          })
+          search_req = urllib.request.Request(base + "/api/v1/search?" + query, headers={"User-Agent": headers["User-Agent"]})
+          with urllib.request.urlopen(search_req, timeout=30) as r:
+              search_body = r.read().decode("utf-8", "replace")
+          print("SEARCH_STATUS=200")
+          print("SEARCH_BODY=" + search_body[:8000])
+
+          if repo.lower() in search_body.lower() or "moelayyan90/xguard" in search_body.lower():
+              print("RESULT=ALREADY_LISTED_OR_SUBMITTED")
+              raise SystemExit(0)
+
+          server_config = json.dumps({
+              "endpoint": "https://xguard-mainnet.maqamapp.workers.dev/mcp",
+              "transport": "streamable-http",
+          }, separators=(",", ":"))
+          payload = json.dumps({
+              "type": "server",
+              "url": repo,
+              "serverConfig": server_config,
+          }).encode("utf-8")
+          submit_req = urllib.request.Request(base + "/api/v1/submit", data=payload, headers=headers, method="POST")
+          try:
+              with urllib.request.urlopen(submit_req, timeout=45) as r:
+                  body = r.read().decode("utf-8", "replace")
+                  print("SUBMIT_STATUS=" + str(r.status))
+                  print("SUBMIT_BODY=" + body)
+                  data = json.loads(body)
+                  if r.status == 200 and data.get("success") is True:
+                      print("RESULT=SUBMITTED")
+                  else:
+                      raise SystemExit("Unexpected submit response")
+          except urllib.error.HTTPError as exc:
+              body = exc.read().decode("utf-8", "replace")
+              print("SUBMIT_STATUS=" + str(exc.code))
+              print("SUBMIT_BODY=" + body)
+              if exc.code == 409:
+                  print("RESULT=ALREADY_LISTED_OR_SUBMITTED")
+                  raise SystemExit(0)
+              raise
           PY
