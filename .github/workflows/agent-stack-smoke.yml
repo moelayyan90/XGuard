@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
+          BASE_URL="https://xguardgate.com"
 
           retry_json() {
             local url="$1"
