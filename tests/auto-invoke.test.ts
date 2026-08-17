@@ -3,6 +3,7 @@ import {
   autoInvokeResponse,
   classifyAutoInvokeRoute,
   isAutoInvokeBillableStatus,
+  isAutoInvokeRedirectStatus,
   decryptProviderCredential,
   encryptProviderCredential,
 } from "../apps/worker/src/auto-invoke.js";
@@ -133,6 +134,14 @@ describe("XGuard zero-study auto invoke", () => {
 
     for (const status of [199, 300, 301, 302, 307, 308, 399, 400, 429, 500])
       expect(isAutoInvokeBillableStatus(status)).toBe(false);
+  });
+
+  it("classifies provider redirects separately from billable success", () => {
+    for (const status of [300, 301, 302, 303, 307, 308, 399])
+      expect(isAutoInvokeRedirectStatus(status)).toBe(true);
+
+    for (const status of [200, 204, 299, 400, 500])
+      expect(isAutoInvokeRedirectStatus(status)).toBe(false);
   });
 
   it("does not intercept unrelated XGuard routes", async () => {

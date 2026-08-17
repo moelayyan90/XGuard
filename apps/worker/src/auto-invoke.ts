@@ -206,6 +206,27 @@ async function executeAutoInvoke(
   }
 
   const latencyMs = Math.max(0, Date.now() - started);
+  if (isAutoInvokeRedirectStatus(upstream.status)) {
+    const accounting = await releaseAutoInvokeReservation(
+      env.DB,
+      access.merchant.merchantId,
+      reservation.eventKey,
+    );
+    return autoResponse(
+      {
+        error: "upstream_redirect_rejected",
+        provider: route.provider,
+        upstreamStatus: upstream.status,
+      },
+      502,
+      requestId,
+      0,
+      route.provider,
+      latencyMs,
+      accounting,
+    );
+  }
+
   if (!isAutoInvokeBillableStatus(upstream.status)) {
     const accounting = await releaseAutoInvokeReservation(
       env.DB,
@@ -242,6 +263,10 @@ async function executeAutoInvoke(
 
 export function isAutoInvokeBillableStatus(status: number): boolean {
   return Number.isInteger(status) && status >= 200 && status < 300;
+}
+
+export function isAutoInvokeRedirectStatus(status: number): boolean {
+  return Number.isInteger(status) && status >= 300 && status < 400;
 }
 
 export type AutoInvokeAccountingState =
