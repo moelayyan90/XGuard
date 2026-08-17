@@ -74,14 +74,17 @@ function v1Payment(amount = "10000") {
 }
 
 function bridgeRequest(headers: Record<string, string> = {}): Request {
-  return new Request(`${ORIGIN}/v1/x402/bridge?url=${encodeURIComponent(TARGET)}`, {
-    method: "GET",
-    headers: {
-      "CF-Connecting-IP": "203.0.113.10",
-      Accept: "application/json",
-      ...headers,
+  return new Request(
+    `${ORIGIN}/v1/x402/bridge?url=${encodeURIComponent(TARGET)}`,
+    {
+      method: "GET",
+      headers: {
+        "CF-Connecting-IP": "203.0.113.10",
+        Accept: "application/json",
+        ...headers,
+      },
     },
-  });
+  );
 }
 
 function challengeResponse(challenge = v2Challenge()): Response {
@@ -223,7 +226,9 @@ describe("x402 HTTP compatibility bridge", () => {
     expect(response.status).toBe(409);
     const body = (await response.json()) as Record<string, unknown>;
     expect(body.error).toBe("target_is_not_x402_v2");
-    expect(await response.clone().text()).not.toContain("private upstream content");
+    expect(await response.clone().text()).not.toContain(
+      "private upstream content",
+    );
   });
 
   it("rejects local and private targets before any outbound request", async () => {

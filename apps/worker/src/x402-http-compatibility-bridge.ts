@@ -305,7 +305,10 @@ async function publicBridgeGuard(
 function parseCompatibleV2Challenge(response: Response): CompatibleV2Challenge {
   const encoded = response.headers.get("payment-required")?.trim() ?? "";
   if (encoded === "") throw new Error("payment_required_header_missing");
-  const raw = decodeBase64JsonRecord(encoded, "invalid_payment_required_header");
+  const raw = decodeBase64JsonRecord(
+    encoded,
+    "invalid_payment_required_header",
+  );
   if (raw.x402Version !== 2)
     throw new Error("payment_required_must_be_x402_v2");
   const resource = asRecord(raw.resource);
@@ -334,7 +337,10 @@ function parseCompatibleRequirement(
     return null;
   const amount = atomicAmount(raw.amount, "requirement_amount");
   const payTo = evmAddress(raw.payTo, "requirement_pay_to");
-  if (!Number.isSafeInteger(raw.maxTimeoutSeconds) || raw.maxTimeoutSeconds <= 0)
+  if (
+    !Number.isSafeInteger(raw.maxTimeoutSeconds) ||
+    raw.maxTimeoutSeconds <= 0
+  )
     throw new Error("invalid_requirement_max_timeout_seconds");
   const extra = raw.extra === undefined ? undefined : asRecord(raw.extra);
   return {
@@ -357,7 +363,9 @@ function legacyChallengeResponse(challenge: CompatibleV2Challenge): Response {
   });
 }
 
-async function adaptPaidResourceResponse(upstream: Response): Promise<Response> {
+async function adaptPaidResourceResponse(
+  upstream: Response,
+): Promise<Response> {
   const headers = sanitizedUpstreamResponseHeaders(upstream.headers);
   headers.set("X-XGuard-Compatibility", "x402-v1-client-to-v2-resource");
   headers.set("X-XGuard-Canonical-Network", BASE_V2);
