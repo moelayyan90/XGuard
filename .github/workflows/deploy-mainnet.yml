@@ -98,27 +98,31 @@ jobs:
 
           propagated=0
           for attempt in {1..18}; do
-            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/.well-known/agent-card.json?deploy=${VERIFY_TOKEN}&attempt=${attempt}" || true)"
+            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/.well-known/xguard/protocols.json?deploy=${VERIFY_TOKEN}&attempt=${attempt}" || true)"
             code="${response##*$'\n'}"
             body="${response%$'\n'*}"
             if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
-              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||!x.xguardDiscovery)process.exit(1)})'; then
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const ids=new Set((x.adapters||[]).map(a=>a.id));for(const id of ["x402","ap2","acp","visa-trusted-agent","mcp","a2a","http","openapi","graphql","json-rpc","webhook"]){if(!ids.has(id))process.exit(1)}if(x.protocolAgnostic!==true)process.exit(1)})'; then
               propagated=1
               break
             fi
             sleep 5
           done
           if [[ "${propagated}" -ne 1 ]]; then
-            echo "::error::The deployed XGuard discovery surface did not propagate."
+            echo "::error::The universal XGuard protocol registry did not propagate."
             exit 1
           fi
 
-          curl -fsS --max-time 15 "${BASE_URL}/healthz" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'
+          health_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/healthz?deploy=${VERIFY_TOKEN}")"
+          if ! printf '%s' "${health_body}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'; then
+            echo "::error::Unexpected /healthz response: ${health_body}"
+            exit 1
+          fi
 
           ready=0
           for attempt in {1..18}; do
-            response="$(curl -sS --max-time 15 -w $'\n%{http_code}' "${BASE_URL}/readyz" || true)"
+            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/readyz?deploy=${VERIFY_TOKEN}&attempt=${attempt}" || true)"
             code="${response##*$'\n'}"
             body="${response%$'\n'*}"
             if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
@@ -133,11 +137,8 @@ jobs:
             exit 1
           fi
 
-          curl -fsS --max-time 15 "${BASE_URL}/v1/gateway/capabilities" \
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/v1/gateway/capabilities?deploy=${VERIFY_TOKEN}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const b=x.billing||{};if(b.modelMicroUsd!==100||b.toolMicroUsd!==200||b.sourceMicroUsd!==1000||b.analysisMicroUsd!==2000||b.securityMicroUsd!==1000||b.chargingModel!=="prepaid-per-successful-gateway-event")process.exit(1)})'
-
-          curl -fsS --max-time 15 "${BASE_URL}/.well-known/xguard/protocols.json?deploy=${VERIFY_TOKEN}" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const ids=new Set((x.adapters||[]).map(a=>a.id));for(const id of ["x402","ap2","acp","visa-trusted-agent","mcp","a2a","http","openapi","graphql","json-rpc","webhook"]){if(!ids.has(id))process.exit(1)}if(x.protocolAgnostic!==true)process.exit(1)})'
 
           for path in '/discovery/resources?limit=1' '/discovery/search?query=weather'; do
             code="$(curl -sS -o /tmp/xguard-paywall.json -w '%{http_code}' --max-time 15 "${BASE_URL}${path}")"

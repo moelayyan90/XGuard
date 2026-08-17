@@ -35,6 +35,21 @@ describe("mainnet release gate", () => {
     );
   });
 
+  it("waits for the new universal registry before probing the rest of the live release", () => {
+    const registryProbe = deployWorkflow.indexOf(
+      "${BASE_URL}/.well-known/xguard/protocols.json?deploy=${VERIFY_TOKEN}&attempt=${attempt}",
+    );
+    const healthProbe = deployWorkflow.indexOf(
+      "${BASE_URL}/healthz?deploy=${VERIFY_TOKEN}",
+    );
+
+    expect(registryProbe).toBeGreaterThan(-1);
+    expect(healthProbe).toBeGreaterThan(registryProbe);
+    expect(deployWorkflow).toContain(
+      "The universal XGuard protocol registry did not propagate.",
+    );
+  });
+
   it("does not dry-run non-production Worker targets from the mainnet gate", () => {
     const script = packageJson.scripts?.["verify:mainnet-release"] ?? "";
 
