@@ -1,8 +1,6 @@
-name: Deploy live testnet
+name: Deploy live testnet (manual only)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -47,8 +45,8 @@ jobs:
             exit 0
           fi
 
-          # Keep the resolved config beside the Worker source so Wrangler resolves
-          # relative entrypoint and migrations paths against apps/worker.
+          # Testnet is intentionally manual-only. Production changes deploy to
+          # xguard-mainnet through deploy-mainnet.yml.
           CONFIG_PATH="${GITHUB_WORKSPACE}/apps/worker/wrangler.testnet.resolved.jsonc"
           node scripts/resolve-cloudflare-config.mjs \
             --template apps/worker/wrangler.jsonc \
