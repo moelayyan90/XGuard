@@ -268,7 +268,12 @@ async function vaultResponse(
     } catch (error) {
       return jsonResponse({ error: errorCode(error) }, 400);
     }
-    const provider = parseProvider(body.provider);
+    let provider: ProviderId;
+    try {
+      provider = parseProvider(body.provider);
+    } catch (error) {
+      return jsonResponse({ error: errorCode(error) }, 400);
+    }
     const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
     if (apiKey.length < 8 || apiKey.length > MAX_PROVIDER_KEY_LENGTH)
       return jsonResponse({ error: "invalid_provider_api_key" }, 400);
@@ -315,9 +320,14 @@ async function vaultResponse(
     url.pathname.startsWith(`${VAULT_PATH}/`) &&
     request.method === "DELETE"
   ) {
-    const provider = parseProvider(
-      decodeURIComponent(url.pathname.slice(`${VAULT_PATH}/`.length)),
-    );
+    let provider: ProviderId;
+    try {
+      provider = parseProvider(
+        decodeURIComponent(url.pathname.slice(`${VAULT_PATH}/`.length)),
+      );
+    } catch (error) {
+      return jsonResponse({ error: errorCode(error) }, 400);
+    }
     await env.DB.prepare(
       "DELETE FROM gateway_provider_credentials WHERE merchant_id=? AND provider=?",
     )
@@ -366,11 +376,11 @@ export async function encryptProviderCredential(
   const ciphertext = await crypto.subtle.encrypt(
     {
       name: "AES-GCM",
-      iv,
-      additionalData: vaultAad(merchantId, provider),
+      iv: exactArrayBuffer(iv),
+      additionalData: exactArrayBuffer(vaultAad(merchantId, provider)),
     },
     key,
-    new TextEncoder().encode(plaintext),
+    exactArrayBuffer(new TextEncoder().encode(plaintext)),
   );
   return {
     ciphertext: base64Url(new Uint8Array(ciphertext)),
@@ -389,11 +399,11 @@ export async function decryptProviderCredential(
   const plaintext = await crypto.subtle.decrypt(
     {
       name: "AES-GCM",
-      iv: fromBase64Url(iv),
-      additionalData: vaultAad(merchantId, provider),
+      iv: exactArrayBuffer(fromBase64Url(iv)),
+      additionalData: exactArrayBuffer(vaultAad(merchantId, provider)),
     },
     key,
-    fromBase64Url(ciphertext),
+    exactArrayBuffer(fromBase64Url(ciphertext)),
   );
   return new TextDecoder().decode(plaintext);
 }
@@ -644,6 +654,12 @@ function fromBase64Url(value: string): Uint8Array {
   for (let index = 0; index < binary.length; index += 1)
     bytes[index] = binary.charCodeAt(index);
   return bytes;
+}
+
+function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
 }
 
 function contentLength(headers: Headers): number {
