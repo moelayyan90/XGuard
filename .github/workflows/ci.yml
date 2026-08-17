@@ -22,11 +22,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Print canonical Prettier diff
-        run: |
-          npx prettier --write apps/worker/src/mainnet-entry.ts tests/mainnet-endpoint-discovery.test.ts
-          git diff -- apps/worker/src/mainnet-entry.ts tests/mainnet-endpoint-discovery.test.ts
-          exit 1
       - run: npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
