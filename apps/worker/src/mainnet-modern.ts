@@ -16,6 +16,7 @@ import {
 } from "./mainnet-settlement-truth.js";
 import { universalGatewayResponse } from "./universal-gateway.js";
 import { releaseStaleGatewayHolds } from "./universal-gateway-billing.js";
+import { watchdogGuardResponse } from "./watchdog-store.js";
 import {
   adaptCompatibilityResponse,
   augmentSupportedCompatibility,
@@ -23,13 +24,11 @@ import {
   type CompatibilityRequest,
 } from "./x402-compatibility-bridge.js";
 import { augmentCompatibilityDiscovery } from "./x402-compatibility-discovery.js";
-import { x402HttpCompatibilityResponse } from "./x402-http-compatibility-bridge.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
 interface MainnetModernEnv extends SettlementTruthEnv {
   DB: D1Database;
-  REQUEST_RATE_LIMITER: RateLimit;
   BASE_RPC_URL: string;
   XGUARD_FEE_MICRO_USD: string;
   XPAY_DOWNSTREAM_COST_MICRO_USD?: string;
@@ -69,14 +68,19 @@ export default {
     const endpointDiscovery = writeEndpointDiscoveryResponse(standardRequest);
     if (endpointDiscovery !== null) return secureResponse(endpointDiscovery);
 
+    const watchdog = await watchdogGuardResponse(standardRequest, env.DB);
+    if (watchdog !== null) {
+      console.warn(
+        JSON.stringify({
+          event: "watchdog_circuit_open",
+          route: watchdog.headers.get("X-XGuard-Watchdog-Route"),
+        }),
+      );
+      return secureResponse(watchdog);
+    }
+
     const truthResponse = await routeSettlementTruth(standardRequest, env);
     if (truthResponse !== null) return secureResponse(truthResponse);
-
-    const httpCompatibility = await x402HttpCompatibilityResponse(
-      standardRequest,
-      env,
-    );
-    if (httpCompatibility !== null) return secureResponse(httpCompatibility);
 
     if (standardUrl.pathname === "/" && standardRequest.method === "POST") {
       const discoveryRequest = new Request(standardRequest.url, {
