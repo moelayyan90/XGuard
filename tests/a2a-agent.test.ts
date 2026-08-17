@@ -45,6 +45,36 @@ describe("XGuard A2A compatibility", () => {
     expect(card.defaultOutputModes).toContain("text/plain");
   });
 
+  it("responds to crawler reachability probes on GET and HEAD /a2a", async () => {
+    const getResponse = await a2aAgentResponse(new Request(`${ORIGIN}/a2a`));
+    expect(getResponse?.status).toBe(200);
+    expect(getResponse?.headers.get("cache-control")).toBe("public, max-age=300");
+    const descriptor = (await getResponse?.json()) as {
+      status: string;
+      protocol: string;
+      protocolVersion: string;
+      transport: string;
+      endpoint: string;
+      agentCard: string;
+      methods: string[];
+    };
+    expect(descriptor).toMatchObject({
+      status: "ok",
+      protocol: "A2A",
+      protocolVersion: "0.3.0",
+      transport: "JSONRPC",
+      endpoint: `${ORIGIN}/a2a`,
+      agentCard: `${ORIGIN}/.well-known/agent-card.json`,
+    });
+    expect(descriptor.methods).toContain("message/send");
+
+    const headResponse = await a2aAgentResponse(
+      new Request(`${ORIGIN}/a2a`, { method: "HEAD" }),
+    );
+    expect(headResponse?.status).toBe(200);
+    expect(await headResponse?.text()).toBe("");
+  });
+
   it("responds to A2A message/send JSON-RPC", async () => {
     const response = await a2aAgentResponse(
       new Request(`${ORIGIN}/a2a`, {
@@ -117,6 +147,14 @@ describe("XGuard A2A compatibility", () => {
       id: 2,
       error: { code: -32601 },
     });
+  });
+
+  it("returns 405 for unsupported HTTP methods on /a2a", async () => {
+    const response = await a2aAgentResponse(
+      new Request(`${ORIGIN}/a2a`, { method: "PUT" }),
+    );
+    expect(response?.status).toBe(405);
+    expect(response?.headers.get("allow")).toBe("GET, HEAD, POST");
   });
 
   it("does not intercept unrelated paths", async () => {
