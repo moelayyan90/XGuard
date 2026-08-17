@@ -17,7 +17,9 @@ function billVerifySource() {
 describe("monetized mainnet x402 compatibility boundary", () => {
   it("normalizes verify traffic before merchant authorization", () => {
     const verify = billVerifySource();
-    const normalize = verify.indexOf("normalizeX402CompatibilityRequest(request)");
+    const normalize = verify.indexOf(
+      "normalizeX402CompatibilityRequest(request)",
+    );
     const authorize = verify.indexOf("authorizeMerchantScope(");
 
     expect(normalize).toBeGreaterThanOrEqual(0);
@@ -37,7 +39,9 @@ describe("monetized mainnet x402 compatibility boundary", () => {
   it("delegates invalid legacy traffic without reserving a monetization fee", () => {
     const verify = billVerifySource();
     const catchIndex = verify.indexOf("catch {");
-    const delegateIndex = verify.indexOf("return delegateFetch(request, env, ctx);");
+    const delegateIndex = verify.indexOf(
+      "return delegateFetch(request, env, ctx);",
+    );
     const billIndex = verify.indexOf("return billExecution({");
 
     expect(catchIndex).toBeGreaterThanOrEqual(0);
