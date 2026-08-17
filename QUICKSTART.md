@@ -1,48 +1,47 @@
 # XGuard quickstart
 
-XGuard production runs on Base mainnet at:
+XGuard production runs at:
 
-- **Production gateway:** `https://xguardgate.com`
-- **Network:** Base mainnet (`eip155:8453`)
-- **Asset:** Native USDC
+- **Gateway:** `https://xguardgate.com`
+- **Billing:** prepaid Base mainnet native USDC
+- **Model:** pay per successful execution
 
-A separate Base Sepolia testnet remains available only for explicit non-billable integration testing. It is not the production default.
+XGuard is not limited to x402. The production gateway can meter model calls, tool calls, source discovery, analysis, security inspection, x402 verification, and finalized x402 settlement.
 
-Mainnet charges `$0.002` only for a successful billable settlement after independent Base finality. Testnet is non-billable.
+## 1. Free readiness and discovery
 
-## 1. Verify mainnet readiness
+These calls are free:
 
 ```bash
+curl https://xguardgate.com/
 curl https://xguardgate.com/healthz
 curl https://xguardgate.com/readyz
 curl https://xguardgate.com/supported
 curl https://xguardgate.com/status
 ```
 
-A ready mainnet gateway reports `mode: "mainnet"`, `mainnet: true`, a healthy facilitator, and an x402 v2 `exact` capability for `eip155:8453`.
+MCP `server/discover`, `tools/list`, `ping`, and `xguard_status` are also free. Execution and value-producing MCP tools are billable.
 
 ## 2. Register a merchant
-
-Registration creates a merchant identifier and a high-entropy API key. The API key is returned in the response and should be stored as a secret.
 
 ```bash
 curl -sS -X POST https://xguardgate.com/v1/register \
   -H 'Content-Type: application/json' \
-  --data '{"name":"my-x402-service"}'
+  --data '{"name":"my-service"}'
 ```
 
-Save the returned key:
+Save the returned API key:
 
 ```bash
 export XGUARD_URL=https://xguardgate.com
 export XGUARD_API_KEY='xg_live_...'
 ```
 
-Do not commit `XGUARD_API_KEY`.
+Do not commit the key.
 
-## 3. Create a prepaid top-up intent
+## 3. Fund the prepaid service balance
 
-Mainnet XGuard service fees are deducted from a merchant service balance. Request a one-time deposit intent:
+Create a top-up intent:
 
 ```bash
 curl -sS -X POST "$XGUARD_URL/v1/topups/intents" \
@@ -51,21 +50,7 @@ curl -sS -X POST "$XGUARD_URL/v1/topups/intents" \
   --data '{"amountUsd":"1.00"}'
 ```
 
-The response contains:
-
-- `claimToken` — one-time secret used to claim the deposit;
-- `treasuryAddress` — the configured Base USDC treasury destination;
-- `exactDepositUsdc` — the exact USDC amount to send;
-- `network` — `eip155:8453`;
-- `asset` — native Base USDC.
-
-Send **exactly** `exactDepositUsdc` native USDC on Base to `treasuryAddress`. Do not send another token, bridged `USDC.e`, or use another network.
-
-Merchant top-ups are prepaid customer service balances. They are not XGuard earned revenue when deposited.
-
-## 4. Claim the finalized deposit
-
-After the Base transaction is finalized, claim it using the one-time token and transaction hash:
+Send exactly the returned native Base USDC amount to the returned treasury address, then claim it:
 
 ```bash
 curl -sS -X POST "$XGUARD_URL/v1/topups/claim" \
@@ -74,16 +59,84 @@ curl -sS -X POST "$XGUARD_URL/v1/topups/claim" \
   --data '{"claimToken":"YOUR_CLAIM_TOKEN","transactionHash":"0xYOUR_TX_HASH"}'
 ```
 
-Check the credited service balance:
+Check the balance:
 
 ```bash
 curl -sS "$XGUARD_URL/v1/balance" \
   -H "Authorization: Bearer $XGUARD_API_KEY"
 ```
 
-## 5. Point an x402 v2 resource server at XGuard
+Top-ups are prepaid service liabilities, not earned XGuard revenue.
 
-Production does not require an XGuard npm package. Existing TypeScript projects that already use the official x402 HTTP client can configure it directly:
+## 4. Use the Universal Gateway
+
+### Model execution
+
+XGuard supports BYOK proxy execution. The caller supplies its upstream provider key and XGuard meters the successful gateway event separately.
+
+Example OpenAI proxy shape:
+
+```bash
+curl -sS -X POST "$XGUARD_URL/v1/gateway/proxy/openai/v1/responses" \
+  -H "Authorization: Bearer $XGUARD_API_KEY" \
+  -H "X-XGuard-Upstream-Key: $OPENAI_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"model":"gpt-5","input":"hello"}'
+```
+
+Equivalent provider routes exist for the providers exposed by `/v1/gateway/capabilities`.
+
+### Source discovery
+
+```bash
+curl -sS -X POST "$XGUARD_URL/v1/gateway/sources/search" \
+  -H "Authorization: Bearer $XGUARD_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"query":"weather API"}'
+```
+
+### Analysis
+
+```bash
+curl -sS -X POST "$XGUARD_URL/v1/gateway/analyze" \
+  -H "Authorization: Bearer $XGUARD_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"candidates":[{"provider":"a","latencyMs":100,"costMicroUsd":1000,"errorRateBps":50,"qualityBps":9000},{"provider":"b","latencyMs":80,"costMicroUsd":1200,"errorRateBps":100,"qualityBps":9300}]}'
+```
+
+### Security inspection
+
+```bash
+curl -sS -X POST "$XGUARD_URL/v1/gateway/security/inspect" \
+  -H "Authorization: Bearer $XGUARD_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"targetUrl":"https://example.com","method":"POST","headerNames":["authorization"]}'
+```
+
+Successful calls return `X-XGuard-Fee-Micro-Usd` and `X-XGuard-Accounting` response headers.
+
+## 5. MCP billing boundary
+
+The remote MCP server remains discoverable without payment, but execution is not free.
+
+Free:
+
+- `server/discover`
+- `tools/list`
+- `ping`
+- `xguard_status`
+
+Billable:
+
+- `xguard_discover`
+- `xguard_resource_details`
+- future execution tools unless explicitly marked free
+
+Billable MCP `tools/call` requests require the merchant bearer credential and sufficient prepaid service balance. Source-oriented MCP tools use the configured SOURCE fee.
+
+## 6. x402 remains one gateway, not the business dependency
+
+Existing x402 v2 resource servers can still point their facilitator client at XGuard:
 
 ```ts
 import { HTTPFacilitatorClient } from "@x402/core/http";
@@ -106,52 +159,18 @@ const facilitatorClient = new HTTPFacilitatorClient({
 });
 ```
 
-The resource server continues using the official x402 v2 `FacilitatorClient` interface. XGuard currently accepts Base mainnet native USDC, `exact`, EIP-3009 authorization payments.
+Mainnet x402 verification is a separately metered successful execution. A successful finalized settlement is also billed at the settlement fee. Settlement revenue is recognized only after independent Base USDC finality.
 
-The workspace SDK implements the same flow:
+## Current production prices
 
-```ts
-import { createXGuardFacilitator } from "@xguard/sdk";
+| Event | Fee |
+| --- | ---: |
+| Model proxy | $0.0001 |
+| Tool proxy | $0.0002 |
+| x402 verify | $0.0002 |
+| Source search / MCP source tool | $0.0010 |
+| Security inspect | $0.0010 |
+| Analysis | $0.0020 |
+| Finalized x402 settlement | $0.0020 |
 
-const facilitatorClient = createXGuardFacilitator({
-  url: process.env.XGUARD_URL!,
-  apiKey: process.env.XGUARD_API_KEY,
-});
-```
-
-The repository does not claim an npm release until publishing is activated, so the direct official-client configuration above is the zero-registry-dependency production path.
-
-## 6. Understand the billing boundary
-
-For each eligible mainnet settlement:
-
-1. XGuard reserves `$0.002` from the merchant service balance.
-2. It verifies and submits at most one settlement route.
-3. A downstream success is not enough to earn the fee.
-4. XGuard independently checks finalized Base USDC settlement state.
-5. Only then does the reservation become earned XGuard revenue.
-6. A definitive finality failure releases the reserved fee.
-7. An ambiguous result is held and quarantined for reconciliation instead of being blindly resubmitted.
-
-Duplicate retries of the same logical payment do not create another billable fee.
-
-## Optional testnet path
-
-The Base Sepolia gateway remains available only for explicit, non-billable integration testing:
-
-```bash
-curl https://xguard-testnet.maqamapp.workers.dev/readyz
-curl https://xguard-testnet.maqamapp.workers.dev/supported
-```
-
-The repository CLI can perform conservative testnet URL migration and rollback when the testnet gateway is passed explicitly:
-
-```bash
-npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard doctor
-npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard init --gateway https://xguard-testnet.maqamapp.workers.dev
-npm exec --yes --package=typescript@5.9.3 --package=github:moelayyan90/XGuard#main -- xguard rollback
-```
-
-`xguard init` now defaults to the production mainnet gateway. Testnet is selected only when its URL is passed explicitly. `xguard init` remains URL-only and refuses provider-specific authentication; use the authenticated client configuration above for mainnet.
-
-See [API.md](docs/API.md) and [openapi.yaml](docs/openapi.yaml) for the HTTP contract.
+See `BILLING.md` for accounting invariants and failure semantics.
