@@ -231,7 +231,7 @@ export class WebhookDeliveryQueue extends DurableObject<DeliveryEnv> {
     await this.ctx.storage.setAlarm(Date.now() + 10);
   }
 
-  async alarm(): Promise<void> {
+  override async alarm(): Promise<void> {
     const meta = await this.ctx.storage.get<QueueMeta>("meta");
     if (meta === undefined) return;
 
