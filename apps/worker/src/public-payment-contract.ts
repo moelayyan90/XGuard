@@ -117,11 +117,14 @@ export async function normalizePublicPaymentContract(
       const value = normalizeJson(await response.clone().json());
       headers.set("content-type", "application/json; charset=utf-8");
       headers.set("cache-control", "public, max-age=300");
-      return new Response(request.method === "HEAD" ? null : JSON.stringify(value), {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
+      return new Response(
+        request.method === "HEAD" ? null : JSON.stringify(value),
+        {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        },
+      );
     } catch {
       return response;
     }
@@ -143,10 +146,9 @@ function normalizeJson(value: unknown, key = ""): unknown {
   if (Array.isArray(value)) return value.map((item) => normalizeJson(item));
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([childKey, child]) => [
-        childKey,
-        normalizeJson(child, childKey),
-      ]),
+      Object.entries(value as Record<string, unknown>).map(
+        ([childKey, child]) => [childKey, normalizeJson(child, childKey)],
+      ),
     );
   }
   if (typeof value === "string") {
@@ -183,15 +185,18 @@ function paymentPage(origin: string): string {
 }
 
 function json(request: Request, value: unknown): Response {
-  return new Response(request.method === "HEAD" ? null : JSON.stringify(value), {
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=300",
-      "Content-Type": "application/json; charset=utf-8",
-      "X-Content-Type-Options": "nosniff",
-      "X-XGuard-Pricing-Contract": "attempt-v1",
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify(value),
+    {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=300",
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "X-XGuard-Pricing-Contract": "attempt-v1",
+      },
     },
-  });
+  );
 }
 
 function html(request: Request, value: string): Response {

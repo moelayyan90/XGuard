@@ -50,7 +50,9 @@ export async function a2aGatewayV1Response(
 
   const params = isRecord(rpc.params) ? rpc.params : {};
   const message = isRecord(params.message) ? params.message : {};
-  const parts = Array.isArray(message.parts) ? message.parts.filter(isRecord) : [];
+  const parts = Array.isArray(message.parts)
+    ? message.parts.filter(isRecord)
+    : [];
   const contextId =
     typeof message.contextId === "string"
       ? message.contextId
@@ -140,7 +142,11 @@ async function executeAction(
 ): Promise<Record<string, unknown>> {
   const name = typeof action.action === "string" ? action.action : "";
   if (name === "payment-manifest")
-    return { ok: true, action: name, result: buildPaymentManifest(origin, env) };
+    return {
+      ok: true,
+      action: name,
+      result: buildPaymentManifest(origin, env),
+    };
   if (name === "status")
     return delegated(delegate, makeRequest(incoming, "/status", "GET"), name);
   if (name === "capabilities")
@@ -311,14 +317,17 @@ function json(value: unknown, status = 200): Response {
 }
 
 function publicJson(request: Request, value: unknown): Response {
-  return new Response(request.method === "HEAD" ? null : JSON.stringify(value), {
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=300",
-      "Content-Type": "application/json; charset=utf-8",
-      "X-Content-Type-Options": "nosniff",
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify(value),
+    {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=300",
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      },
     },
-  });
+  );
 }
 
 function readId(value: Record<string, unknown>): string | number | null {

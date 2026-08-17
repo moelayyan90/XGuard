@@ -20,15 +20,16 @@ const BLOCKED_SUFFIXES = [
   ".onion",
 ];
 
-export function universalSecurityGuardResponse(request: Request): Response | null {
+export function universalSecurityGuardResponse(
+  request: Request,
+): Response | null {
   if (new URL(request.url).pathname !== CONNECTOR_PATH) return null;
   const target = request.headers.get("x-xguard-upstream-url")?.trim() ?? "";
   if (strictPublicHttpsTarget(target) !== null) return null;
   return new Response(
     JSON.stringify({
       error: "unsafe_or_invalid_upstream_url",
-      rule:
-        "Use a canonical public HTTPS hostname on port 443. XGuard blocks IP literals, local/private names, credentials in URLs, fragments and XGuard self-targets.",
+      rule: "Use a canonical public HTTPS hostname on port 443. XGuard blocks IP literals, local/private names, credentials in URLs, fragments and XGuard self-targets.",
     }),
     {
       status: 400,
@@ -60,7 +61,12 @@ export function strictPublicHttpsTarget(raw: string): URL | null {
   if (BLOCKED_SUFFIXES.some((suffix) => host.endsWith(suffix))) return null;
   if (isIpLiteral(host)) return null;
   for (const label of host.split(".")) {
-    if (!label || label.length > 63 || label.startsWith("-") || label.endsWith("-"))
+    if (
+      !label ||
+      label.length > 63 ||
+      label.startsWith("-") ||
+      label.endsWith("-")
+    )
       return null;
   }
   return url;

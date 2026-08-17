@@ -169,7 +169,11 @@ export async function resilientWebhookIngressResponse(
   } catch {
     await markFailed(env.DB, eventId, null, null).catch(() => undefined);
     return json(
-      { error: "webhook_delivery_queue_unavailable", eventId, acceptedByXGuard: true },
+      {
+        error: "webhook_delivery_queue_unavailable",
+        eventId,
+        acceptedByXGuard: true,
+      },
       503,
       { "Retry-After": "5" },
     );
@@ -209,7 +213,9 @@ export class WebhookDeliveryQueue {
       const start = index * CHUNK_BYTES;
       await this.state.storage.put(
         `body:${index}`,
-        exactBuffer(bytes.slice(start, Math.min(bytes.byteLength, start + CHUNK_BYTES))),
+        exactBuffer(
+          bytes.slice(start, Math.min(bytes.byteLength, start + CHUNK_BYTES)),
+        ),
       );
     }
     const meta: QueueMeta = {
@@ -281,7 +287,12 @@ export class WebhookDeliveryQueue {
       meta.deliveredLatencyMs = latency;
       await this.state.storage.put("meta", meta);
       try {
-        await markDelivered(this.env.DB, meta.eventId, response.status, latency);
+        await markDelivered(
+          this.env.DB,
+          meta.eventId,
+          response.status,
+          latency,
+        );
         await this.cleanup(meta);
       } catch {
         await this.state.storage.setAlarm(Date.now() + 5_000);
@@ -301,9 +312,8 @@ export class WebhookDeliveryQueue {
       return;
     }
     const delay =
-      RETRY_DELAYS_MS[
-        Math.min(meta.attempt - 1, RETRY_DELAYS_MS.length - 1)
-      ] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]!;
+      RETRY_DELAYS_MS[Math.min(meta.attempt - 1, RETRY_DELAYS_MS.length - 1)] ??
+      RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]!;
     await this.state.storage.setAlarm(Date.now() + delay);
   }
 

@@ -81,7 +81,7 @@
       { "name": "XPAY_RATE_GATE", "class_name": "XPayGlobalRateGate" },
       {
         "name": "WEBHOOK_DELIVERY_QUEUE",
-        "class_name": "WebhookDeliveryQueue"
+        "class_name": "WebhookDeliveryQueue",
       },
     ],
   },
@@ -96,7 +96,7 @@
     },
     {
       "tag": "v3",
-      "new_sqlite_classes": ["WebhookDeliveryQueue"]
+      "new_sqlite_classes": ["WebhookDeliveryQueue"],
     },
   ],
   "d1_databases": [
