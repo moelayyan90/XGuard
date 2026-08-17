@@ -41,9 +41,9 @@ try {
     & npm ci --ignore-scripts
     if ($LASTEXITCODE -ne 0) { throw "npm ci failed." }
 
-    Write-Host "Validating the complete release candidate..." -ForegroundColor Cyan
-    & npm run verify:release
-    if ($LASTEXITCODE -ne 0) { throw "verify:release failed; mainnet was not changed." }
+    Write-Host "Validating the mainnet release candidate..." -ForegroundColor Cyan
+    & npm run verify:mainnet-release
+    if ($LASTEXITCODE -ne 0) { throw "verify:mainnet-release failed; mainnet was not changed." }
 
     $HasApiToken = -not [string]::IsNullOrWhiteSpace($env:CLOUDFLARE_API_TOKEN)
     if (-not $HasApiToken) {
@@ -72,8 +72,8 @@ try {
     if ($ResolvedConfig -notmatch '"name"\s*:\s*"xguard-mainnet"') {
         throw "Refusing deployment: Worker target is not xguard-mainnet."
     }
-    if ($ResolvedConfig -notmatch '"main"\s*:\s*"src/mainnet-modern\.ts"') {
-        throw "Refusing deployment: entrypoint is not src/mainnet-modern.ts."
+    if ($ResolvedConfig -notmatch '"main"\s*:\s*"src/universal-mainnet\.ts"') {
+        throw "Refusing deployment: entrypoint is not src/universal-mainnet.ts."
     }
     if ($ResolvedConfig -notmatch '"database_name"\s*:\s*"xguard-mainnet"') {
         throw "Refusing deployment: D1 target is not xguard-mainnet."
@@ -98,10 +98,10 @@ try {
 
     $Joined = ($DeployLines | Out-String)
     if ($Joined -notmatch [regex]::Escape($ExpectedBaseUrl)) {
-        throw "Deployment output did not confirm the expected xguard-mainnet workers.dev URL."
+        throw "Deployment output did not confirm the expected xguard-mainnet URL."
     }
 
-    foreach ($Path in @('/healthz','/readyz','/supported','/status')) {
+    foreach ($Path in @('/healthz','/readyz','/supported','/status','/.well-known/xguard/protocols.json')) {
         try {
             $Response = Invoke-WebRequest -Uri ($ExpectedBaseUrl + $Path) -Method GET -UseBasicParsing -TimeoutSec 30
             Write-Host ("PASS {0} -> HTTP {1}" -f $Path, $Response.StatusCode) -ForegroundColor Green
