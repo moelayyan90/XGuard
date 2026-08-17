@@ -37,7 +37,7 @@ describe("mainnet release gate", () => {
 
   it("keeps discovery compatibility behind the monetized production entrypoint", () => {
     expect(mainnetConfig).toContain('"main": "src/monetized-mainnet.ts"');
-    expect(monetizedMainnetEntrypoint).toContain('import mainnetModern, {');
+    expect(monetizedMainnetEntrypoint).toContain("import mainnetModern, {");
     expect(monetizedMainnetEntrypoint).toContain(
       "return delegateFetch(request, env, ctx)",
     );
