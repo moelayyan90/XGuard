@@ -8,7 +8,7 @@ XGuard production runs at:
 
 XGuard is not limited to x402. The production gateway can meter model calls, tool calls, source discovery, analysis, security inspection, x402 verification, and finalized x402 settlement.
 
-## 1. Free readiness and discovery
+## 1. Free readiness and protocol discovery
 
 These calls are free:
 
@@ -20,7 +20,7 @@ curl https://xguardgate.com/supported
 curl https://xguardgate.com/status
 ```
 
-MCP `server/discover`, `tools/list`, `ping`, and `xguard_status` are also free. Execution and value-producing MCP tools are billable.
+Well-known manifests and MCP `server/discover`, `tools/list`, `ping`, and `xguard_status` are also free. Catalog results, searches, and execution are billable.
 
 ## 2. Register a merchant
 
@@ -74,8 +74,6 @@ Top-ups are prepaid service liabilities, not earned XGuard revenue.
 
 XGuard supports BYOK proxy execution. The caller supplies its upstream provider key and XGuard meters the successful gateway event separately.
 
-Example OpenAI proxy shape:
-
 ```bash
 curl -sS -X POST "$XGUARD_URL/v1/gateway/proxy/openai/v1/responses" \
   -H "Authorization: Bearer $XGUARD_API_KEY" \
@@ -88,11 +86,23 @@ Equivalent provider routes exist for the providers exposed by `/v1/gateway/capab
 
 ### Source discovery
 
+Preferred search endpoint:
+
 ```bash
 curl -sS -X POST "$XGUARD_URL/v1/gateway/sources/search" \
   -H "Authorization: Bearer $XGUARD_API_KEY" \
   -H 'Content-Type: application/json' \
   --data '{"query":"weather API"}'
+```
+
+The native Bazaar HTTP views are also authenticated and SOURCE-billed; they are not free bypasses:
+
+```bash
+curl -sS "$XGUARD_URL/discovery/resources?limit=10" \
+  -H "Authorization: Bearer $XGUARD_API_KEY"
+
+curl -sS "$XGUARD_URL/discovery/search?query=weather" \
+  -H "Authorization: Bearer $XGUARD_API_KEY"
 ```
 
 ### Analysis
@@ -117,7 +127,7 @@ Successful calls return `X-XGuard-Fee-Micro-Usd` and `X-XGuard-Accounting` respo
 
 ## 5. MCP billing boundary
 
-The remote MCP server remains discoverable without payment, but execution is not free.
+The remote MCP server remains discoverable without payment, but value-producing execution is not free.
 
 Free:
 
@@ -132,7 +142,7 @@ Billable:
 - `xguard_resource_details`
 - future execution tools unless explicitly marked free
 
-Billable MCP `tools/call` requests require the merchant bearer credential and sufficient prepaid service balance. Source-oriented MCP tools use the configured SOURCE fee.
+Billable MCP `tools/call` requests require the merchant bearer credential and sufficient prepaid service balance. Source-oriented MCP tools use the configured SOURCE fee, matching the equivalent direct HTTP catalog endpoints.
 
 ## 6. x402 remains one gateway, not the business dependency
 
