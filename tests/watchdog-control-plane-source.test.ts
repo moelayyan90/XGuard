@@ -90,12 +90,14 @@ describe("watchdog control plane source", () => {
     );
   });
 
-  it("has an automated deployment and live health verification workflow", () => {
+  it("deploys watchdog independently and verifies its policy version", () => {
     expect(deployWorkflow).toContain("Deploy XGuard watchdog");
-    expect(deployWorkflow).toContain("group: xguard-mainnet-deploy");
+    expect(deployWorkflow).toContain("group: xguard-watchdog-deploy");
+    expect(deployWorkflow).toContain("cancel-in-progress: true");
     expect(deployWorkflow).toContain("wrangler deploy --config");
     expect(deployWorkflow).toContain("xguard-watchdog.maqamapp.workers.dev");
     expect(deployWorkflow).toContain("/healthz");
+    expect(deployWorkflow).toContain('policyVersion!=="2026-08-17-v2"');
   });
 
   it("only auto-rolls back after deployment succeeded and live verification failed", () => {
