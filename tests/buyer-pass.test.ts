@@ -19,7 +19,9 @@ describe("Buyer Pass", () => {
   });
 
   it("rejects sub-cent, over-precision, and scientific notation top-ups", () => {
-    expect(() => parseBuyerTopUpAmountUsd("0.001")).toThrow("invalid_amountUsd");
+    expect(() => parseBuyerTopUpAmountUsd("0.001")).toThrow(
+      "invalid_amountUsd",
+    );
     expect(() => parseBuyerTopUpAmountUsd("1.0000001")).toThrow(
       "invalid_amountUsd",
     );
@@ -27,7 +29,10 @@ describe("Buyer Pass", () => {
   });
 
   it("removes the merchant API-key setup from the browser flow", async () => {
-    const worker = await readFile("browser-extension/service-worker.js", "utf8");
+    const worker = await readFile(
+      "browser-extension/service-worker.js",
+      "utf8",
+    );
     const options = await readFile("browser-extension/options.js", "utf8");
     expect(worker).toContain("/v1/buyer-pass");
     expect(worker).toContain("xguardBuyerPass");

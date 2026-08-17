@@ -77,7 +77,9 @@ async function getOrCreateBuyerPass() {
 }
 
 function isBuyerPass(value) {
-  return typeof value === "string" && /^xg_pass_[A-Za-z0-9_-]{40,64}$/.test(value);
+  return (
+    typeof value === "string" && /^xg_pass_[A-Za-z0-9_-]{40,64}$/.test(value)
+  );
 }
 
 function sanitizeIntent(value) {

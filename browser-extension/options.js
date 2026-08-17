@@ -57,7 +57,8 @@ async function refreshBalance() {
   balance.textContent = "Checking…";
   const response = await authorizedFetch("/v1/buyer-pass", { method: "GET" });
   const body = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(body?.error ?? "Could not read XGuard balance.");
+  if (!response.ok)
+    throw new Error(body?.error ?? "Could not read XGuard balance.");
   balance.textContent = `$${body.availableUsd ?? "0"} available`;
 }
 
@@ -119,7 +120,9 @@ async function authorizedFetch(path, options) {
 }
 
 function isBuyerPass(value) {
-  return typeof value === "string" && /^xg_pass_[A-Za-z0-9_-]{40,64}$/.test(value);
+  return (
+    typeof value === "string" && /^xg_pass_[A-Za-z0-9_-]{40,64}$/.test(value)
+  );
 }
 
 function safeError(error) {

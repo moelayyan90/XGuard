@@ -48,7 +48,8 @@ export async function buyerPassResponse(
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/v1/buyer-pass")) return null;
 
-  if (request.method === "OPTIONS") return cors(new Response(null, { status: 204 }));
+  if (request.method === "OPTIONS")
+    return cors(new Response(null, { status: 204 }));
 
   try {
     if (url.pathname === "/v1/buyer-pass" && request.method === "POST") {
@@ -160,10 +161,7 @@ export async function buyerPassResponse(
       });
     }
 
-    if (
-      url.pathname === "/v1/buyer-pass/rotate" &&
-      request.method === "POST"
-    ) {
+    if (url.pathname === "/v1/buyer-pass/rotate" && request.method === "POST") {
       const token = createBuyerPassToken();
       const tokenHash = await sha256Hex(token);
       const result = await env.DB.prepare(
@@ -199,7 +197,8 @@ export async function authenticateBuyerPass(
   env: Pick<BuyerPassEnv, "DB">,
 ): Promise<BuyerPassPrincipal | null> {
   const authorization = request.headers.get("authorization");
-  if (authorization === null || !authorization.startsWith("Bearer ")) return null;
+  if (authorization === null || !authorization.startsWith("Bearer "))
+    return null;
   const token = authorization.slice("Bearer ".length).trim();
   if (!isBuyerPassToken(token)) return null;
   return authenticateBuyerPassToken(env.DB, token);
@@ -285,7 +284,15 @@ async function createBuyerPass(
       .prepare(
         "INSERT INTO buyer_passes(pass_id,merchant_id,token_hash,label,channel,active,created_at,last_used_at) VALUES(?,?,?,?,?,1,?,?)",
       )
-      .bind(passId, merchantId, tokenHash, label, channel, createdAt, createdAt),
+      .bind(
+        passId,
+        merchantId,
+        tokenHash,
+        label,
+        channel,
+        createdAt,
+        createdAt,
+      ),
   ]);
 
   return { passId, principalId: merchantId, label, channel, token };
@@ -311,7 +318,8 @@ function parseLabel(
   value: unknown,
   channel: BuyerPassPrincipal["channel"],
 ): string {
-  const fallback = channel === "agent" ? "Agent" : channel === "api" ? "API" : "Browser";
+  const fallback =
+    channel === "agent" ? "Agent" : channel === "api" ? "API" : "Browser";
   if (value === undefined || value === null || value === "") return fallback;
   if (typeof value !== "string") throw new BuyerPassError("invalid_label", 400);
   const label = value.trim().replace(/\s+/g, " ");
@@ -343,7 +351,8 @@ async function jsonObject(request: Request): Promise<Record<string, unknown>> {
 }
 
 function requiredString(value: unknown, field: string, max: number): string {
-  if (typeof value !== "string") throw new BuyerPassError(`${field}_required`, 400);
+  if (typeof value !== "string")
+    throw new BuyerPassError(`${field}_required`, 400);
   const normalized = value.trim();
   if (normalized.length === 0 || normalized.length > max)
     throw new BuyerPassError(`invalid_${field}`, 400);
@@ -359,13 +368,18 @@ function randomToken(bytes: number): string {
   crypto.getRandomValues(value);
   let binary = "";
   for (const byte of value) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
 function randomHex(bytes: number): string {
   const value = new Uint8Array(bytes);
   crypto.getRandomValues(value);
-  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -380,7 +394,9 @@ async function sha256Hex(value: string): Promise<string> {
 
 function microUsdToUsd(value: number): string {
   const whole = Math.floor(value / 1_000_000);
-  const fraction = String(value % 1_000_000).padStart(6, "0").replace(/0+$/g, "");
+  const fraction = String(value % 1_000_000)
+    .padStart(6, "0")
+    .replace(/0+$/g, "");
   return fraction.length === 0 ? String(whole) : `${whole}.${fraction}`;
 }
 
@@ -426,7 +442,10 @@ function cors(response: Response): Response {
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
-  headers.set("Access-Control-Expose-Headers", "X-XGuard-Decision, X-XGuard-Fee-Micro-USD");
+  headers.set(
+    "Access-Control-Expose-Headers",
+    "X-XGuard-Decision, X-XGuard-Fee-Micro-USD",
+  );
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
