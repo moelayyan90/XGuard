@@ -57,10 +57,10 @@ describe("watchdog-aware deployment verification", () => {
   it("verifies canonical mainnet health after successful deploys", () => {
     expect(tailWorkflow).toContain('workflows: ["Deploy XGuard mainnet"]');
     expect(tailWorkflow).toContain('BASE_URL="https://xguardgate.com"');
-    expect(tailWorkflow).toContain('${BASE_URL}/healthz');
-    expect(tailWorkflow).toContain('${BASE_URL}/status');
+    expect(tailWorkflow).toContain("${BASE_URL}/healthz");
+    expect(tailWorkflow).toContain("${BASE_URL}/status");
     expect(tailWorkflow).toContain(
-      '${BASE_URL}/.well-known/agent-card.json',
+      "${BASE_URL}/.well-known/agent-card.json",
     );
     expect(tailWorkflow).toContain('i.protocolVersion==="1.0"');
     expect(tailWorkflow).not.toContain("wrangler tail xguard-watchdog");
