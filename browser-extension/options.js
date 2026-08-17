@@ -1,4 +1,4 @@
-/* global chrome, document */
+/* global chrome, document, Headers */
 const API_ORIGIN = "https://xguardgate.com";
 const PASS_KEY = "xguardBuyerPass";
 
