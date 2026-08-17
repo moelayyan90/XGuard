@@ -40,7 +40,7 @@ jobs:
           }
           if (!Array.isArray(server.remotes) || !server.remotes.some((remote) =>
             remote && remote.type === 'streamable-http' &&
-            remote.url === 'https://xguard-mainnet.maqamapp.workers.dev/mcp')) {
+            remote.url === 'https://xguardgate.com/mcp')) {
             throw new Error('server.json must advertise the production XGuard Streamable HTTP MCP endpoint');
           }
           NODE
@@ -73,7 +73,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          body="$(curl -fsS --max-time 15 https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json)"
+          body="$(curl -fsS --max-time 15 https://xguardgate.com/.well-known/mcp/server.json)"
           printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="io.github.moelayyan90/xguard"||!Array.isArray(x.remotes)||!x.remotes.some(r=>r&&r.type==="streamable-http"&&String(r.url||"").endsWith("/mcp")))process.exit(1)})'
 
       - name: Check existing MCP Registry version
