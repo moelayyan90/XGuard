@@ -90,9 +90,9 @@ describe("x402 compatibility bridge", () => {
     expect(normalized?.request.headers.get("authorization")).toBe(
       `Bearer xg_live_${"a".repeat(48)}`,
     );
-    expect(normalized?.request.headers.get("x-xguard-compatibility-input")).toBe(
-      "x402-v1",
-    );
+    expect(
+      normalized?.request.headers.get("x-xguard-compatibility-input"),
+    ).toBe("x402-v1");
     expect((await normalized?.request.json()).x402Version).toBe(2);
   });
 
@@ -118,9 +118,7 @@ describe("x402 compatibility bridge", () => {
     const response = await augmentSupportedCompatibility(
       new Response(
         JSON.stringify({
-          kinds: [
-            { x402Version: 2, scheme: "exact", network: "eip155:8453" },
-          ],
+          kinds: [{ x402Version: 2, scheme: "exact", network: "eip155:8453" }],
           extensions: ["bazaar"],
           signers: {},
         }),

@@ -1,7 +1,4 @@
-import {
-  parseJsonStrict,
-  readHttpBodyTextCapped,
-} from "@xguard/core/edge";
+import { parseJsonStrict, readHttpBodyTextCapped } from "@xguard/core/edge";
 
 const MAX_COMPAT_BODY_BYTES = 64 * 1024;
 const BASE_V1 = "base";

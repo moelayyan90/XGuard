@@ -59,7 +59,9 @@ export default {
     } catch (error) {
       return secureResponse(
         compatibilityErrorResponse(
-          error instanceof Error ? error.message : "compatibility_bridge_failed",
+          error instanceof Error
+            ? error.message
+            : "compatibility_bridge_failed",
         ),
       );
     }

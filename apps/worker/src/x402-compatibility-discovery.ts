@@ -30,7 +30,11 @@ export async function augmentCompatibilityDiscovery(
       ],
       invariant:
         "The EIP-3009 authorization payload and signature are preserved verbatim; only the x402 protocol envelope is normalized.",
-      endpoints: { verify: "/verify", settle: "/settle", supported: "/supported" },
+      endpoints: {
+        verify: "/verify",
+        settle: "/settle",
+        supported: "/supported",
+      },
     };
 
     parsed.compatibility = compatibility;
@@ -43,7 +47,9 @@ export async function augmentCompatibilityDiscovery(
         canonicalVersion: 2,
         supportedVersions: [1, 2],
       };
-      const facilitator = isRecord(parsed.facilitator) ? parsed.facilitator : {};
+      const facilitator = isRecord(parsed.facilitator)
+        ? parsed.facilitator
+        : {};
       parsed.facilitator = {
         ...facilitator,
         compatibilityBridge: {
@@ -56,8 +62,13 @@ export async function augmentCompatibilityDiscovery(
     if (path === "/.well-known/agent-market.json")
       parsed.protocol = "x402-v1-v2-compatibility-bridge";
 
-    if (path === "/.well-known/agent-card.json" || path === "/.well-known/agent.json") {
-      const capabilities = isRecord(parsed.capabilities) ? parsed.capabilities : {};
+    if (
+      path === "/.well-known/agent-card.json" ||
+      path === "/.well-known/agent.json"
+    ) {
+      const capabilities = isRecord(parsed.capabilities)
+        ? parsed.capabilities
+        : {};
       parsed.capabilities = {
         ...capabilities,
         x402CompatibilityBridge: true,
