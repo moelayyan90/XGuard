@@ -3,6 +3,7 @@ import mainnetHandler, {
   MainnetRequestGate,
 } from "./mainnet.js";
 import { discoveryResponse } from "./discovery.js";
+import { writeEndpointDiscoveryResponse } from "./mainnet-endpoint-discovery.js";
 import { searchIndexResponse } from "./search-indexing.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
@@ -79,6 +80,9 @@ const handler: ExportedHandler<PublicMainnetEnv> = {
   async fetch(request, env, executionCtx): Promise<Response> {
     const ownership = verifyMcpOwnersResponse(request);
     if (ownership !== null) return ownership;
+
+    const writeEndpointDiscovery = writeEndpointDiscoveryResponse(request);
+    if (writeEndpointDiscovery !== null) return writeEndpointDiscovery;
 
     const searchIndex = searchIndexResponse(request);
     if (searchIndex !== null) return searchIndex;
