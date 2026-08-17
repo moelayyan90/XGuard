@@ -2,10 +2,16 @@ import { discoveryResponse } from "./discovery.js";
 
 const X402_ALIAS = "/.well-known/x402";
 const MONETIZATION_PATH = "/.well-known/monetization";
+const GLAMA_PATH = "/.well-known/glama.json";
 const PROVIDER_PATH = "/.well-known/x402/facilitator.json";
 const DISCOVERY_CACHE_CONTROL =
   "public, max-age=3600, stale-while-revalidate=86400";
 const MONETIZATION_ETAG = '"xguard-monetization-v1"';
+const GLAMA_ETAG = '"xguard-glama-v2"';
+const GLAMA_METADATA = {
+  $schema: "https://glama.ai/mcp/schemas/connector.json",
+  maintainers: [{ email: "mo.elayyan2023@gmail.com" }],
+} as const;
 
 export async function compatibilityDiscoveryResponse(
   request: Request,
@@ -15,6 +21,7 @@ export async function compatibilityDiscoveryResponse(
   const url = new URL(request.url);
   if (url.pathname === X402_ALIAS) return x402AliasResponse(request);
   if (url.pathname === MONETIZATION_PATH) return monetizationResponse(request);
+  if (url.pathname === GLAMA_PATH) return glamaResponse(request);
   return null;
 }
 
@@ -30,6 +37,16 @@ function x402AliasResponse(request: Request): Response | null {
       headers,
     }),
   );
+}
+
+function glamaResponse(request: Request): Response {
+  if (request.headers.get("if-none-match") === GLAMA_ETAG)
+    return new Response(null, {
+      status: 304,
+      headers: discoveryHeaders({ ETag: GLAMA_ETAG }),
+    });
+
+  return jsonResponse(request, GLAMA_METADATA, 200, { ETag: GLAMA_ETAG });
 }
 
 async function monetizationResponse(request: Request): Promise<Response> {
