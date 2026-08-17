@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-17T05:12:32Z",
+  "updatedAt": "2026-08-17T05:58:33Z",
   "entries": {
     "officialMcpRegistry": {
       "status": "listed",
@@ -47,12 +47,32 @@
     "x402scan": {
       "status": "pending_maintainer_review",
       "issue": "https://github.com/Merit-Systems/x402scan/issues/1077",
-      "evidence": "routed-gateway patch model is documented in the issue; XGuard deliberately preserves xpay signer attribution and requested review from an active facilitators-registry contributor"
+      "evidence": "issue remains open with the routed-gateway model documented; XGuard deliberately preserves xpay signer attribution rather than claiming the downstream signer"
     },
     "x402Foundation": {
       "status": "pending_maintainer_review",
       "target": "docs/dev-tools/facilitators.md",
       "evidence": "production-provider listing request sent to info@x402.org; GitHub App writes to the foundation repository are not authorized"
+    },
+    "x402List": {
+      "status": "blocked_custom_domain_required",
+      "checkedAt": "2026-08-17T05:58:33Z",
+      "evidence": "x402-list accepts free first submissions for services/facilitators but explicitly rejects workers.dev and other free-hosting/dev-tunnel domains; XGuard's current public mainnet URL is on workers.dev"
+    },
+    "x402Watch": {
+      "status": "account_required",
+      "checkedAt": "2026-08-17T05:58:33Z",
+      "evidence": "x402.watch exposes an Add facilitator flow but redirects to operator login/registration; no existing x402.watch credential is available"
+    },
+    "aiAgentMarketplace": {
+      "status": "access_key_required",
+      "checkedAt": "2026-08-17T05:58:33Z",
+      "evidence": "AI Agent Marketplace/aiagenta2z allows public registration but its CLI/API submission path requires an AI_AGENT_MARKETPLACE_ACCESS_KEY from an account; no such credential is available"
+    },
+    "paySkills": {
+      "status": "not_applicable_currently",
+      "checkedAt": "2026-08-17T05:58:33Z",
+      "evidence": "the public pay-skills catalog currently requires paid endpoints to return valid Solana-mainnet 402 challenges accepting USDC or USDT; XGuard's public facilitator gateway is Base mainnet and is not a paid provider endpoint for this catalog"
     },
     "x402Scout": {
       "status": "not_applicable",
