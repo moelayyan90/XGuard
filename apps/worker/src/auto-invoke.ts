@@ -35,7 +35,10 @@ export async function autoInvokeResponse(
 ): Promise<Response | null> {
   const url = new URL(request.url);
 
-  if (url.pathname === DISCOVERY_PATH && (request.method === "GET" || request.method === "HEAD"))
+  if (
+    url.pathname === DISCOVERY_PATH &&
+    (request.method === "GET" || request.method === "HEAD")
+  )
     return discoveryResponse(request, url.origin);
 
   if (url.pathname === VAULT_PATH || url.pathname.startsWith(`${VAULT_PATH}/`))
@@ -159,7 +162,10 @@ async function executeAutoInvoke(
         },
         402,
       );
-    if (code === "gateway_event_already_earned" || code === "gateway_event_in_progress")
+    if (
+      code === "gateway_event_already_earned" ||
+      code === "gateway_event_in_progress"
+    )
       return jsonResponse({ error: code }, 409);
     return jsonResponse({ error: code }, 400);
   }
@@ -172,7 +178,10 @@ async function executeAutoInvoke(
       new Request(route.upstreamUrl, {
         method: request.method,
         headers,
-        body: request.method === "GET" || request.method === "HEAD" ? null : request.body,
+        body:
+          request.method === "GET" || request.method === "HEAD"
+            ? null
+            : request.body,
         redirect: "manual",
       }),
     );
@@ -298,7 +307,10 @@ async function vaultResponse(
     );
   }
 
-  if (url.pathname.startsWith(`${VAULT_PATH}/`) && request.method === "DELETE") {
+  if (
+    url.pathname.startsWith(`${VAULT_PATH}/`) &&
+    request.method === "DELETE"
+  ) {
     const provider = parseProvider(
       decodeURIComponent(url.pathname.slice(`${VAULT_PATH}/`.length)),
     );
@@ -321,13 +333,15 @@ async function loadProviderCredential(
   provider: ProviderId,
   token: string,
 ): Promise<string | null> {
-  const row = await db.prepare(
-    "SELECT ciphertext,iv,key_version FROM gateway_provider_credentials WHERE merchant_id=? AND provider=?",
-  )
+  const row = await db
+    .prepare(
+      "SELECT ciphertext,iv,key_version FROM gateway_provider_credentials WHERE merchant_id=? AND provider=?",
+    )
     .bind(merchantId, provider)
     .first<CredentialRow>();
   if (row === null) return null;
-  if (row.key_version !== "v1") throw new Error("unsupported_vault_key_version");
+  if (row.key_version !== "v1")
+    throw new Error("unsupported_vault_key_version");
   return decryptProviderCredential(
     row.ciphertext,
     row.iv,
@@ -419,15 +433,18 @@ function discoveryResponse(request: Request, origin: string): Response {
     ],
     xguardSpecificHeaderRequiredPerRequest: false,
   };
-  return new Response(request.method === "HEAD" ? null : JSON.stringify(body, null, 2), {
-    status: 200,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=300",
-      "Content-Type": "application/json; charset=utf-8",
-      "X-Content-Type-Options": "nosniff",
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify(body, null, 2),
+    {
+      status: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=300",
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      },
     },
-  });
+  );
 }
 
 function upstreamHeaders(
@@ -503,7 +520,10 @@ function autoResponse(
   });
 }
 
-function requestWithMerchantAuthorization(request: Request, token: string): Request {
+function requestWithMerchantAuthorization(
+  request: Request,
+  token: string,
+): Request {
   const headers = new Headers(request.headers);
   headers.set("Authorization", `Bearer ${token}`);
   return new Request(request, { headers });
@@ -606,7 +626,10 @@ function vaultAad(merchantId: string, provider: ProviderId): Uint8Array {
 function base64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
 function fromBase64Url(value: string): Uint8Array {
