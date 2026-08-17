@@ -8,9 +8,7 @@ describe("zero-friction capped revenue share", () => {
   });
 
   it("caps the service share at $0.001", () => {
-    expect(calculateZeroFrictionFeeMicroUsd(1_000_000, 50, 1_000)).toBe(
-      1_000,
-    );
+    expect(calculateZeroFrictionFeeMicroUsd(1_000_000, 50, 1_000)).toBe(1_000);
     expect(calculateZeroFrictionFeeMicroUsd(100_000_000, 50, 1_000)).toBe(
       1_000,
     );
@@ -23,7 +21,9 @@ describe("zero-friction capped revenue share", () => {
   it("rejects invalid pricing inputs", () => {
     expect(() => calculateZeroFrictionFeeMicroUsd(-1, 50, 1_000)).toThrow();
     expect(() => calculateZeroFrictionFeeMicroUsd(1_000, -1, 1_000)).toThrow();
-    expect(() => calculateZeroFrictionFeeMicroUsd(1_000, 10_001, 1_000)).toThrow();
+    expect(() =>
+      calculateZeroFrictionFeeMicroUsd(1_000, 10_001, 1_000),
+    ).toThrow();
     expect(() => calculateZeroFrictionFeeMicroUsd(1_000, 50, -1)).toThrow();
   });
 });

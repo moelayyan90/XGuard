@@ -4,8 +4,7 @@ export const XGUARD_FINALIZED_FEE_MICRO_USD = 1_000;
 /** @deprecated Compatibility alias: this is the maximum finality fee, not an attempt fee. */
 export const XGUARD_ATTEMPT_FEE_USD = XGUARD_FINALIZED_FEE_USD;
 /** @deprecated Compatibility alias: this is the maximum finality fee, not an attempt fee. */
-export const XGUARD_ATTEMPT_FEE_MICRO_USD =
-  XGUARD_FINALIZED_FEE_MICRO_USD;
+export const XGUARD_ATTEMPT_FEE_MICRO_USD = XGUARD_FINALIZED_FEE_MICRO_USD;
 
 const MACHINE_PATHS = new Set([
   "/.well-known/payment-manifest",
@@ -266,15 +265,18 @@ function microUsdToUsd(value: number): string {
 }
 
 function json(request: Request, value: unknown): Response {
-  return new Response(request.method === "HEAD" ? null : JSON.stringify(value), {
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=300",
-      "Content-Type": "application/json; charset=utf-8",
-      "X-Content-Type-Options": "nosniff",
-      "X-XGuard-Pricing-Contract": "capped-share-finality-v3",
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify(value),
+    {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=300",
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "X-XGuard-Pricing-Contract": "capped-share-finality-v3",
+      },
     },
-  });
+  );
 }
 
 function html(request: Request, value: string): Response {

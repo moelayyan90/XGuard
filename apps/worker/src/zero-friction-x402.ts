@@ -510,10 +510,7 @@ function dueBlock(
   );
 }
 
-function feeBalanceBody(
-  account: ZeroFrictionAccount,
-  env: ZeroFrictionEnv,
-) {
+function feeBalanceBody(account: ZeroFrictionAccount, env: ZeroFrictionEnv) {
   return {
     payTo: account.payTo,
     billingModel: "postpaid_capped_revenue_share",
