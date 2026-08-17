@@ -158,14 +158,23 @@ async function runSyntheticProbes(
     "",
   );
   const probes = [
-    { key: "healthz", path: "/healthz" },
-    { key: "readyz", path: "/readyz" },
-    { key: "register-discovery", path: "/v1/register" },
-    { key: "x402-discovery", path: "/.well-known/x402/facilitator.json" },
+    { key: "healthz", path: "/healthz", criticalForWrites: true },
+    { key: "readyz", path: "/readyz", criticalForWrites: true },
+    {
+      key: "x402-discovery",
+      path: "/.well-known/x402/facilitator.json",
+      criticalForWrites: false,
+    },
+    {
+      key: "mcp-discovery",
+      path: "/.well-known/mcp/server.json",
+      criticalForWrites: false,
+    },
   ];
 
   let allHealthy = true;
-  let highestFailures = 0;
+  let allCriticalHealthy = true;
+  let highestCriticalFailures = 0;
   const failures: string[] = [];
 
   for (const probe of probes) {
@@ -179,7 +188,13 @@ async function runSyntheticProbes(
     });
     if (!result.ok) {
       allHealthy = false;
-      highestFailures = Math.max(highestFailures, state.consecutiveFailures);
+      if (probe.criticalForWrites) {
+        allCriticalHealthy = false;
+        highestCriticalFailures = Math.max(
+          highestCriticalFailures,
+          state.consecutiveFailures,
+        );
+      }
       failures.push(
         `${probe.key}:${result.errorCode ?? result.status ?? "failed"}`,
       );
@@ -188,15 +203,16 @@ async function runSyntheticProbes(
 
   await closeExpiredBreakers(env.DB, scheduledTime);
 
+  if (allCriticalHealthy) await closeGlobalProbeBreaker(env.DB, scheduledTime);
+
   if (allHealthy) {
-    await closeGlobalProbeBreaker(env.DB, scheduledTime);
     console.log(
       JSON.stringify({ event: "watchdog_probe_cycle", status: "healthy" }),
     );
     return;
   }
 
-  if (highestFailures >= PROBE_FAILURE_THRESHOLD) {
+  if (highestCriticalFailures >= PROBE_FAILURE_THRESHOLD) {
     await openGlobalWriteBreaker(
       env.DB,
       `probe:${failures.join(",").slice(0, 220)}`,
@@ -208,7 +224,7 @@ async function runSyntheticProbes(
     JSON.stringify({
       event: "watchdog_probe_cycle",
       status: "degraded",
-      highestFailures,
+      highestCriticalFailures,
       threshold: PROBE_FAILURE_THRESHOLD,
       failures,
     }),
