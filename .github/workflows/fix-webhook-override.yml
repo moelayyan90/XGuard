@@ -1,0 +1,34 @@
+name: Fix webhook alarm override
+
+on:
+  push:
+    branches:
+      - agent/payment-discovery-hardening-v2
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/payment-discovery-hardening-v2
+      - run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('apps/worker/src/resilient-webhook-ingress.ts')
+          s = p.read_text()
+          s = s.replace('  async alarm(): Promise<void> {', '  override async alarm(): Promise<void> {')
+          p.write_text(s)
+          PY
+      - name: Commit fix
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/resilient-webhook-ingress.ts
+          git commit -m "Mark webhook alarm override"
+          git push origin HEAD:agent/payment-discovery-hardening-v2
