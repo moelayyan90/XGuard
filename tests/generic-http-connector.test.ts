@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { safeGenericHttpsTarget } from "../apps/worker/src/generic-http-connector.js";
+import {
+  safeGenericHttpsTarget,
+  validGenericUpstreamCredential,
+} from "../apps/worker/src/generic-http-connector.js";
 
 describe("XGuard generic HTTPS connector target safety", () => {
   it("accepts public HTTPS API targets", () => {
@@ -49,5 +52,13 @@ describe("XGuard generic HTTPS connector target safety", () => {
     expect(
       safeGenericHttpsTarget("https://api.example.com/v1/orders#private"),
     ).toBeNull();
+  });
+
+  it("requires a separate, bounded upstream credential", () => {
+    expect(validGenericUpstreamCredential(null)).toBe(false);
+    expect(validGenericUpstreamCredential("short")).toBe(false);
+    expect(validGenericUpstreamCredential("real-api-key-123")).toBe(true);
+    expect(validGenericUpstreamCredential("line1\nline2")).toBe(false);
+    expect(validGenericUpstreamCredential("x".repeat(4097))).toBe(false);
   });
 });
