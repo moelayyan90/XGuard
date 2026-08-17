@@ -149,9 +149,20 @@ export async function earnGatewayFee(
       .prepare(
         `UPDATE gateway_fee_reservations
          SET state='EARNED',operation_id=?,updated_at=?
-         WHERE event_key=? AND merchant_id=? AND state='HELD'`,
+         WHERE event_key=? AND merchant_id=? AND state='HELD'
+           AND EXISTS(
+             SELECT 1 FROM merchants
+             WHERE merchant_id=? AND held_balance_micro_usd>=?
+           )`,
       )
-      .bind(operationId, now, row.event_key, row.merchant_id),
+      .bind(
+        operationId,
+        now,
+        row.event_key,
+        row.merchant_id,
+        row.merchant_id,
+        row.amount_micro_usd,
+      ),
     db
       .prepare(
         `UPDATE merchants
@@ -253,9 +264,20 @@ export async function releaseGatewayFee(
       .prepare(
         `UPDATE gateway_fee_reservations
          SET state='RELEASED',operation_id=?,updated_at=?
-         WHERE event_key=? AND merchant_id=? AND state='HELD'`,
+         WHERE event_key=? AND merchant_id=? AND state='HELD'
+           AND EXISTS(
+             SELECT 1 FROM merchants
+             WHERE merchant_id=? AND held_balance_micro_usd>=?
+           )`,
       )
-      .bind(operationId, now, eventKey, merchantId),
+      .bind(
+        operationId,
+        now,
+        eventKey,
+        merchantId,
+        merchantId,
+        row.amount_micro_usd,
+      ),
     db
       .prepare(
         `UPDATE merchants
