@@ -85,15 +85,21 @@ describe("x402 compatibility bridge", () => {
       body: JSON.stringify(v1Envelope()),
     });
     const normalized = await normalizeX402CompatibilityRequest(request);
-    expect(normalized?.clientVersion).toBe(1);
-    expect(normalized?.operation).toBe("/verify");
-    expect(normalized?.request.headers.get("authorization")).toBe(
+    expect(normalized).not.toBeNull();
+    if (normalized === null) throw new Error("expected_compatibility_request");
+    expect(normalized.clientVersion).toBe(1);
+    expect(normalized.operation).toBe("/verify");
+    expect(normalized.request.headers.get("authorization")).toBe(
       `Bearer xg_live_${"a".repeat(48)}`,
     );
     expect(
-      normalized?.request.headers.get("x-xguard-compatibility-input"),
+      normalized.request.headers.get("x-xguard-compatibility-input"),
     ).toBe("x402-v1");
-    expect((await normalized?.request.json()).x402Version).toBe(2);
+    const normalizedBody = (await normalized.request.json()) as Record<
+      string,
+      unknown
+    >;
+    expect(normalizedBody.x402Version).toBe(2);
   });
 
   it("fails closed for legacy networks outside Base mainnet", () => {
@@ -118,7 +124,9 @@ describe("x402 compatibility bridge", () => {
     const response = await augmentSupportedCompatibility(
       new Response(
         JSON.stringify({
-          kinds: [{ x402Version: 2, scheme: "exact", network: "eip155:8453" }],
+          kinds: [
+            { x402Version: 2, scheme: "exact", network: "eip155:8453" },
+          ],
           extensions: ["bazaar"],
           signers: {},
         }),
