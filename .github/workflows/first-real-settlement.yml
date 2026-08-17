@@ -6,7 +6,7 @@ on:
     workflows: ["Deploy XGuard mainnet"]
     types: [completed]
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: read
@@ -21,58 +21,101 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - name: Read authoritative mainnet status
-        id: status
+      - name: Read private settlement truth from production D1
+        id: truth
         shell: bash
         run: |
           set -euo pipefail
-          BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
-          STATUS_JSON="$(curl --fail --show-error --silent --retry 3 --retry-all-errors --max-time 20 \
-            -H 'Cache-Control: no-cache' "${BASE_URL}/status?settlement-truth=${GITHUB_RUN_ID}")"
 
-          printf '%s\n' "$STATUS_JSON" | jq -e '
-            .gateway == "operational" and
-            .mode == "mainnet" and
-            (.successfulBillableSettlements | type == "number") and
-            (.successfulBillableSettlements >= 0) and
-            (.earnedMicroUsd | type == "number") and
-            (.earnedMicroUsd >= 0) and
-            (.pendingFinality | type == "number") and
-            (.pendingFinality >= 0)
-          ' >/dev/null
+          TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" \
+            | tr -d '\r\n' \
+            | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          ACCOUNT="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n[:space:]')"
 
-          COUNT="$(printf '%s\n' "$STATUS_JSON" | jq -r '.successfulBillableSettlements')"
-          EARNED="$(printf '%s\n' "$STATUS_JSON" | jq -r '.earnedMicroUsd')"
-          PENDING="$(printf '%s\n' "$STATUS_JSON" | jq -r '.pendingFinality')"
-          MEASURED_AT="$(printf '%s\n' "$STATUS_JSON" | jq -r '.measuredAt // "unknown"')"
+          if [[ -z "$TOKEN" || -z "$ACCOUNT" ]]; then
+            echo "::error::Cloudflare credentials required for private settlement accounting are unavailable."
+            exit 1
+          fi
 
-          echo "settlement_truth count=${COUNT} earned_micro_usd=${EARNED} pending_finality=${PENDING} measured_at=${MEASURED_AT}"
+          DATABASES_JSON="$(curl --fail-with-body --silent --show-error --retry 3 --retry-all-errors --max-time 20 \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H 'Accept: application/json' \
+            "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/d1/database?name=xguard-mainnet&per_page=10")"
 
+          DB_ID="$(printf '%s' "$DATABASES_JSON" | jq -r '
+            if .success == true then
+              ([.result[] | select(.name == "xguard-mainnet") | .uuid][0] // empty)
+            else empty end
+          ')"
+          if [[ -z "$DB_ID" ]]; then
+            echo "::error::Production D1 database xguard-mainnet could not be resolved."
+            exit 1
+          fi
+
+          SQL="SELECT
+            COUNT(*) AS successful_billable_settlements,
+            COALESCE(SUM(fee_micro_usd), 0) AS earned_micro_usd,
+            (SELECT COUNT(*) FROM settlement_finality_jobs WHERE state='PENDING') AS pending_finality,
+            (SELECT COUNT(*) FROM settlement_recovery_jobs WHERE state='PENDING') AS pending_recovery
+          FROM usage_events
+          WHERE kind='SUCCESSFUL_BILLABLE_SETTLEMENT';"
+          BODY="$(jq -cn --arg sql "$SQL" '{sql:$sql}')"
+
+          QUERY_JSON="$(curl --fail-with-body --silent --show-error --retry 3 --retry-all-errors --max-time 20 \
+            -X POST \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data-binary "$BODY" \
+            "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/d1/database/${DB_ID}/query")"
+
+          ROW="$(printf '%s' "$QUERY_JSON" | jq -cer '
+            if .success == true and (.result | type == "array") and (.result | length > 0)
+              and (.result[0].success == true) and (.result[0].results | type == "array")
+              and (.result[0].results | length > 0)
+            then .result[0].results[0]
+            else error("invalid_d1_query_response") end
+          ')"
+
+          COUNT="$(printf '%s' "$ROW" | jq -r '.successful_billable_settlements')"
+          EARNED="$(printf '%s' "$ROW" | jq -r '.earned_micro_usd')"
+          PENDING_FINALITY="$(printf '%s' "$ROW" | jq -r '.pending_finality')"
+          PENDING_RECOVERY="$(printf '%s' "$ROW" | jq -r '.pending_recovery')"
+
+          for value in "$COUNT" "$EARNED" "$PENDING_FINALITY" "$PENDING_RECOVERY"; do
+            if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+              echo "::error::Production D1 returned an invalid settlement-accounting value."
+              exit 1
+            fi
+          done
+
+          DETECTED=false
+          if (( COUNT > 0 && EARNED > 0 )); then
+            DETECTED=true
+            echo "FIRST_REAL_SETTLEMENT_DETECTED"
+          else
+            echo "NO_REAL_SETTLEMENT_YET"
+          fi
+
+          echo "detected=${DETECTED}" >> "$GITHUB_OUTPUT"
           {
-            echo "count=$COUNT"
-            echo "earned_micro_usd=$EARNED"
-            echo "pending_finality=$PENDING"
-            echo "measured_at=$MEASURED_AT"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "## XGuard settlement truth"
+            echo "## XGuard private settlement truth"
             echo
-            echo "- Finalized billable settlements: **$COUNT**"
-            echo "- Earned fee: **$EARNED micro-USD**"
-            echo "- Pending finality: **$PENDING**"
-            echo "- Measured at: **$MEASURED_AT**"
+            if [[ "$DETECTED" == "true" ]]; then
+              echo "**FIRST_REAL_SETTLEMENT_DETECTED**"
+            else
+              echo "**NO_REAL_SETTLEMENT_YET**"
+            fi
+            echo
+            echo "Financial counters remain private; this workflow exposes only the existence signal."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create one-time first-settlement evidence issue
-        if: ${{ steps.status.outputs.count != '0' && steps.status.outputs.earned_micro_usd != '0' }}
+        if: ${{ steps.truth.outputs.detected == 'true' }}
         uses: actions/github-script@v8
-        env:
-          SETTLEMENT_COUNT: ${{ steps.status.outputs.count }}
-          EARNED_MICRO_USD: ${{ steps.status.outputs.earned_micro_usd }}
-          PENDING_FINALITY: ${{ steps.status.outputs.pending_finality }}
-          MEASURED_AT: ${{ steps.status.outputs.measured_at }}
         with:
           script: |
             const owner = context.repo.owner;
@@ -91,24 +134,16 @@ jobs:
               return;
             }
 
-            const count = process.env.SETTLEMENT_COUNT;
-            const earned = process.env.EARNED_MICRO_USD;
-            const pending = process.env.PENDING_FINALITY;
-            const measuredAt = process.env.MEASURED_AT;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-
             const body = [
               "# First real XGuard mainnet settlement detected",
               "",
-              "The production `/status` accounting source has reported at least one finalized, billable settlement.",
+              "The private production D1 accounting source has recorded at least one `SUCCESSFUL_BILLABLE_SETTLEMENT` with earned XGuard revenue.",
               "",
-              `- successfulBillableSettlements: **${count}**`,
-              `- earnedMicroUsd: **${earned}**`,
-              `- pendingFinality: **${pending}**`,
-              `- measuredAt: **${measuredAt}**`,
               `- workflow evidence: ${runUrl}`,
+              "- financial counters: intentionally private",
               "",
-              "This issue is intentionally created only once. XGuard settlement accounting records `SUCCESSFUL_BILLABLE_SETTLEMENT` only after the settlement fee reaches the EARNED state; generic model/tool/source gateway revenue is recorded separately.",
+              "This issue is created once and does not expose merchant, payer, transaction, balance, or revenue values.",
             ].join("\n");
 
             await github.rest.issues.create({ owner, repo, title, body });
