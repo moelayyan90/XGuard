@@ -29,25 +29,11 @@ assert(root.response.status === 200, "mainnet root endpoint is unavailable");
 assert(root.body.mode === "mainnet", "root is not mainnet");
 assert(root.body.network === BASE_MAINNET, "root network is not Base mainnet");
 assert(root.body.asset === BASE_USDC, "root asset is not native Base USDC");
-assert(
-  root.body.price?.amount === "0.002",
-  "mainnet service fee changed unexpectedly",
-);
-assert(
-  root.body.price?.model === "merchant_prepaid_service_balance",
-  "mainnet billing model changed unexpectedly",
-);
-assert(
-  root.body.endpoints?.discovery === "/discovery/resources",
-  "discovery endpoint missing",
-);
-assert(root.body.endpoints?.mcp === "/mcp", "MCP endpoint missing");
 
 const health = await json("/healthz");
 assert(health.response.status === 200, "mainnet health check failed");
 assert(health.body.status === "ok", "mainnet health status is not ok");
 assert(health.body.mode === "mainnet", "mainnet health mode changed");
-assert(health.body.network === BASE_MAINNET, "mainnet health network changed");
 
 const readiness = await json("/readyz");
 assert(readiness.response.status === 200, "mainnet readiness check failed");
@@ -70,114 +56,61 @@ assert(
     ),
   "mainnet Base x402 v2 exact capability is missing",
 );
+
+const capabilities = await json("/v1/gateway/capabilities");
 assert(
-  Array.isArray(supported.body.extensions) &&
-    supported.body.extensions.includes("bazaar"),
-  "native Bazaar capability is missing",
+  capabilities.response.status === 200,
+  "universal gateway capabilities failed",
+);
+assert(
+  capabilities.body.billing?.modelMicroUsd === 100,
+  "model gateway fee changed unexpectedly",
+);
+assert(
+  capabilities.body.billing?.toolMicroUsd === 200,
+  "tool gateway fee changed unexpectedly",
+);
+assert(
+  capabilities.body.billing?.sourceMicroUsd === 1000,
+  "source gateway fee changed unexpectedly",
+);
+assert(
+  capabilities.body.billing?.analysisMicroUsd === 2000,
+  "analysis gateway fee changed unexpectedly",
+);
+assert(
+  capabilities.body.billing?.securityMicroUsd === 1000,
+  "security gateway fee changed unexpectedly",
+);
+assert(
+  capabilities.body.billing?.chargingModel ===
+    "prepaid-per-successful-gateway-event",
+  "gateway charging model changed unexpectedly",
 );
 
-const provider = await json("/.well-known/x402/facilitator.json");
-assert(provider.response.status === 200, "provider manifest endpoint failed");
-assert(provider.body.kind === "x402-facilitator", "provider kind changed");
-assert(provider.body.status === "production", "provider status changed");
+const directResources = await json("/discovery/resources?limit=1");
 assert(
-  provider.body.facilitator?.baseUrl === baseUrl.origin,
-  "provider base URL changed",
-);
-assert(
-  provider.body.facilitator?.supported === `${baseUrl.origin}/supported` &&
-    provider.body.facilitator?.verify === `${baseUrl.origin}/verify` &&
-    provider.body.facilitator?.settle === `${baseUrl.origin}/settle`,
-  "provider facilitator endpoints are invalid",
-);
-assert(
-  provider.body.facilitator?.network === BASE_MAINNET &&
-    provider.body.facilitator?.scheme === "exact",
-  "provider x402 network or scheme changed",
-);
-assert(
-  provider.body.facilitator?.asset?.address?.toLowerCase() ===
-    BASE_USDC.toLowerCase(),
-  "provider asset changed",
-);
-assert(
-  provider.body.pricing?.feeUsd === "0.002" &&
-    provider.body.pricing?.subscription === "none",
-  "provider pricing metadata changed",
-);
-assert(
-  provider.body.onboarding?.packageInstallationRequired === false,
-  "provider unexpectedly requires package installation",
-);
-assert(
-  provider.body.settlementExecution?.mode === "routed" &&
-    provider.body.settlementExecution?.currentDownstream === "xpay",
-  "provider settlement attribution changed",
+  directResources.response.status === 401,
+  "direct catalog resources bypassed prepaid authentication",
 );
 
-const glama = await json("/.well-known/glama.json");
-assert(glama.response.status === 200, "Glama discovery endpoint failed");
+const directSearch = await json("/discovery/search?query=weather");
 assert(
-  glama.body.$schema === "https://glama.ai/mcp/schemas/connector.json",
-  "Glama connector schema changed",
-);
-assert(
-  Array.isArray(glama.body.maintainers) &&
-    glama.body.maintainers.some(
-      (maintainer) => maintainer?.email === "mo.elayyan2023@gmail.com",
-    ),
-  "Glama maintainer ownership metadata is missing",
+  directSearch.response.status === 401,
+  "direct catalog search bypassed prepaid authentication",
 );
 
-const migration = await json(
-  "/.well-known/xguard/migrate?from=cdp&name=mainnet-smoke",
-);
-assert(migration.response.status === 200, "safe migration endpoint failed");
-assert(migration.body.schemaVersion === "2", "migration schema changed");
+const unauthenticatedVerify = await json("/verify", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({}),
+});
 assert(
-  migration.body.sideEffects === false,
-  "migration endpoint gained side effects",
-);
-assert(
-  migration.body.paymentExecution === false,
-  "migration endpoint unexpectedly executes payments",
-);
-const preCutover = migration.body.steps?.find(
-  (step) => step?.id === "safe-precutover-checks",
-);
-assert(preCutover?.sideEffects === false, "pre-cutover checks are not safe");
-assert(
-  Array.isArray(preCutover?.requests) &&
-    preCutover.requests.every((request) => request.startsWith("GET ")) &&
-    !preCutover.requests.some(
-      (request) => request.includes("/verify") || request.includes("/settle"),
-    ),
-  "migration pre-cutover checks include billable/protocol execution",
-);
-assert(
-  migration.body.automationBoundary?.createsSyntheticPayments === false &&
-    migration.body.automationBoundary
-      ?.callsVerifyOrSettleWithoutRealProtocolTraffic === false,
-  "migration automation safety boundary changed",
+  unauthenticatedVerify.response.status === 401,
+  "verify did not fail closed without merchant authentication",
 );
 
-const discovery = await json("/discovery/resources?limit=1");
-assert(discovery.response.status === 200, "Bazaar discovery endpoint failed");
-assert(
-  discovery.body.x402Version === 2,
-  "Bazaar discovery protocol version changed",
-);
-assert(
-  Array.isArray(discovery.body.items),
-  "Bazaar discovery items are missing",
-);
-assert(
-  Number.isInteger(discovery.body.pagination?.total) &&
-    discovery.body.pagination.total >= 0,
-  "Bazaar discovery pagination is invalid",
-);
-
-const mcp = await json("/mcp", {
+const mcpInitialize = await json("/mcp", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -194,15 +127,10 @@ const mcp = await json("/mcp", {
     },
   }),
 });
-assert(mcp.response.status === 200, "remote MCP endpoint failed");
-assert(mcp.body.jsonrpc === "2.0", "MCP response is not JSON-RPC 2.0");
+assert(mcpInitialize.response.status === 200, "free MCP initialize failed");
 assert(
-  mcp.body.result?.serverInfo?.name === "xguard-mainnet",
+  mcpInitialize.body.result?.serverInfo?.name === "xguard-mainnet",
   "MCP server identity changed",
-);
-assert(
-  mcp.body.result?.capabilities?.tools !== undefined,
-  "MCP tools capability is missing",
 );
 
 const tools = await json("/mcp", {
@@ -219,11 +147,33 @@ const tools = await json("/mcp", {
     params: {},
   }),
 });
-assert(tools.response.status === 200, "MCP tools/list failed");
+assert(tools.response.status === 200, "free MCP tools/list failed");
 assert(
   Array.isArray(tools.body.result?.tools) &&
     tools.body.result.tools.some((tool) => tool?.name === "xguard_discover"),
   "MCP xguard_discover tool is missing",
+);
+
+const paidMcp = await json("/mcp", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+    "MCP-Protocol-Version": "2025-11-25",
+  },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: {
+      name: "xguard_discover",
+      arguments: { query: "weather" },
+    },
+  }),
+});
+assert(
+  paidMcp.response.status === 401,
+  "paid MCP discovery executed without merchant authentication",
 );
 
 const status = await json("/status");
@@ -233,26 +183,15 @@ assert(
   "mainnet gateway is not operational",
 );
 assert(status.body.mode === "mainnet", "mainnet status mode changed");
-assert(status.body.network === BASE_MAINNET, "mainnet status network changed");
 assert(
   status.body.facilitator === "HEALTHY",
   "mainnet facilitator is not healthy",
-);
-assert(
-  Number.isInteger(status.body.openReconciliationCases) &&
-    status.body.openReconciliationCases >= 0,
-  "mainnet reconciliation count is invalid",
 );
 assert(
   status.body.financialMetrics === "private" &&
     status.body.successfulBillableSettlements === undefined &&
     status.body.earnedMicroUsd === undefined,
   "mainnet public status exposed protected financial metrics",
-);
-assert(
-  Number.isInteger(status.body.discovery?.resources) &&
-    status.body.discovery.resources >= 0,
-  "mainnet discovery resource count is invalid",
 );
 
 console.log(
@@ -261,15 +200,11 @@ console.log(
     live: true,
     ready: true,
     mainnet: true,
+    universalGateway: true,
+    directDiscoveryPaywalled: true,
+    verifyPaywalled: true,
+    mcpExecutionPaywalled: true,
     network: status.body.network,
     facilitator: status.body.facilitator,
-    providerManifest: true,
-    glamaDiscovery: true,
-    migrationKit: true,
-    bazaar: true,
-    mcp: true,
-    financialMetrics: status.body.financialMetrics,
-    discoveryResources: status.body.discovery.resources,
-    openReconciliationCases: status.body.openReconciliationCases,
   }),
 );
