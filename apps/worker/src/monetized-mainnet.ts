@@ -19,6 +19,11 @@ import {
   finalizeGatewayExecutionSuccess,
   releaseGatewayExecutionReservation,
 } from "./universal-gateway.js";
+import {
+  adaptCompatibilityResponse,
+  normalizeX402CompatibilityRequest,
+  type CompatibilityRequest,
+} from "./x402-compatibility-bridge.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -86,14 +91,27 @@ async function billVerify(
   env: MonetizedMainnetEnv,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  const access = await authorizeMerchantScope(request, env, "verify");
-  if (!access.ok) return access.response;
+  let compatibility: CompatibilityRequest | null = null;
+  let effectiveRequest = request;
+
+  try {
+    compatibility = await normalizeX402CompatibilityRequest(request);
+    if (compatibility !== null) effectiveRequest = compatibility.request;
+  } catch {
+    // Reuse the canonical mainnet compatibility rejection boundary. Invalid
+    // legacy traffic must never reserve or earn a monetization fee.
+    return delegateFetch(request, env, ctx);
+  }
+
+  const access = await authorizeMerchantScope(effectiveRequest, env, "verify");
+  if (!access.ok)
+    return adaptCompatibilityResponse(access.response, compatibility);
 
   return billExecution({
-    request,
+    request: effectiveRequest,
     env,
     merchantId: access.merchant.merchantId,
-    requestId: requestId(request),
+    requestId: requestId(effectiveRequest),
     kind: "TOOL",
     provider: "x402",
     operation: "verify",
@@ -102,7 +120,11 @@ async function billVerify(
       200,
       "XGUARD_VERIFY_FEE_MICRO_USD",
     ),
-    execute: () => delegateFetch(request, env, ctx),
+    execute: async () =>
+      adaptCompatibilityResponse(
+        await delegateFetch(effectiveRequest, env, ctx),
+        compatibility,
+      ),
     isEarned: async (response) =>
       response.status >= 200 && response.status < 300,
   });
