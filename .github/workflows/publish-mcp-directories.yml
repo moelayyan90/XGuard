@@ -11,6 +11,8 @@ on:
       - "apps/worker/src/agent-discovery-modern.ts"
       - "apps/worker/src/mainnet-mcp-modern.ts"
       - "apps/worker/src/mainnet-modern.ts"
+      - "apps/worker/src/universal-mainnet.ts"
+      - "apps/worker/src/payment-decision.ts"
       - "apps/worker/src/mcpub-discovery.ts"
       - ".github/workflows/publish-mcp-directories.yml"
 
@@ -74,7 +76,7 @@ jobs:
           submit="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
             -X POST 'https://mcpub.dev/mcp' \
             -H 'Content-Type: application/json' \
-            --data '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"submit","arguments":{"url":"https://xguardgate.com","description":"XGuard paid MCP execution gateway for AI tools, security checks, analysis, and x402 settlement."}}}')"
+            --data '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"submit","arguments":{"url":"https://xguardgate.com","description":"XGuard universal transaction safety and evidence gateway for buyer/agent pre-payment decisions, MCP tools, API and webhook execution, and independent x402 settlement truth."}}}')"
           submit_code="${submit##*$'\n'}"
           submit_body="${submit%$'\n'*}"
           printf '%s\n' "${submit_body}"
