@@ -1,0 +1,53 @@
+name: Probe Agentery public MCP submission endpoint
+
+on:
+  push:
+    branches:
+      - chore/distribution-watch-status-20260817
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect public MCP submission endpoint
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.error
+          import urllib.request
+
+          url = "https://agentery.com/api/mcpsubmit"
+          ua = "Mozilla/5.0 XGuard-registry-check"
+
+          for method, data, headers in [
+              ("GET", None, {"User-Agent": ua, "Accept": "application/json, text/event-stream"}),
+              ("POST", json.dumps({
+                  "jsonrpc":"2.0",
+                  "id":1,
+                  "method":"initialize",
+                  "params":{
+                      "protocolVersion":"2025-06-18",
+                      "capabilities":{},
+                      "clientInfo":{"name":"xguard-registry-check","version":"1.0"}
+                  }
+              }).encode(), {"User-Agent":ua,"Content-Type":"application/json","Accept":"application/json, text/event-stream"}),
+          ]:
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      body = r.read().decode("utf-8", "replace")
+                      print(method, "STATUS", r.status)
+                      print(method, "HEADERS", dict(r.headers))
+                      print(method, "BODY", body[:12000])
+              except urllib.error.HTTPError as exc:
+                  body = exc.read().decode("utf-8", "replace")
+                  print(method, "STATUS", exc.code)
+                  print(method, "HEADERS", dict(exc.headers))
+                  print(method, "BODY", body[:12000])
+              except Exception as exc:
+                  print(method, "ERROR", type(exc).__name__, str(exc))
+          PY
