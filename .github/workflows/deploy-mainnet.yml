@@ -68,7 +68,7 @@ jobs:
           const source = fs.readFileSync(path, "utf8");
           const required = [
             [/"name"\s*:\s*"xguard-mainnet"/, "Worker target"],
-            [/"main"\s*:\s*"src\/monetized-mainnet\.ts"/, "monetized mainnet entrypoint"],
+            [/"main"\s*:\s*"src\/universal-mainnet\.ts"/, "universal mainnet entrypoint"],
             [/"database_name"\s*:\s*"xguard-mainnet"/, "D1 target"],
             [/"XGUARD_VERIFY_FEE_MICRO_USD"\s*:\s*"200"/, "verify fee"],
             [/"XGUARD_MODEL_FEE_MICRO_USD"\s*:\s*"100"/, "model fee"],
@@ -135,6 +135,9 @@ jobs:
 
           curl -fsS --max-time 15 "${BASE_URL}/v1/gateway/capabilities" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const b=x.billing||{};if(b.modelMicroUsd!==100||b.toolMicroUsd!==200||b.sourceMicroUsd!==1000||b.analysisMicroUsd!==2000||b.securityMicroUsd!==1000||b.chargingModel!=="prepaid-per-successful-gateway-event")process.exit(1)})'
+
+          curl -fsS --max-time 15 "${BASE_URL}/.well-known/xguard/protocols.json?deploy=${VERIFY_TOKEN}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const ids=new Set((x.adapters||[]).map(a=>a.id));for(const id of ["x402","ap2","acp","visa-trusted-agent","mcp","a2a","http","openapi","graphql","json-rpc","webhook"]){if(!ids.has(id))process.exit(1)}if(x.protocolAgnostic!==true)process.exit(1)})'
 
           for path in '/discovery/resources?limit=1' '/discovery/search?query=weather'; do
             code="$(curl -sS -o /tmp/xguard-paywall.json -w '%{http_code}' --max-time 15 "${BASE_URL}${path}")"

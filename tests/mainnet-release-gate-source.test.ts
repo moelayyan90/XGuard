@@ -12,6 +12,10 @@ const mainnetConfig = readFileSync(
   "apps/worker/wrangler.mainnet.jsonc",
   "utf8",
 );
+const universalMainnetEntrypoint = readFileSync(
+  "apps/worker/src/universal-mainnet.ts",
+  "utf8",
+);
 const monetizedMainnetEntrypoint = readFileSync(
   "apps/worker/src/monetized-mainnet.ts",
   "utf8",
@@ -25,7 +29,10 @@ describe("mainnet release gate", () => {
   it("uses the mainnet-specific gate in the production deploy workflow", () => {
     expect(deployWorkflow).toContain("npm run verify:mainnet-release");
     expect(deployWorkflow).not.toContain("npm run verify:release\n");
-    expect(deployWorkflow).toContain("src\\/monetized-mainnet\\.ts");
+    expect(deployWorkflow).toContain("src\\/universal-mainnet\\.ts");
+    expect(deployWorkflow).toContain(
+      "${BASE_URL}/.well-known/xguard/protocols.json",
+    );
   });
 
   it("does not dry-run non-production Worker targets from the mainnet gate", () => {
@@ -36,8 +43,26 @@ describe("mainnet release gate", () => {
     expect(script).not.toContain("build:economic-preview");
   });
 
-  it("keeps discovery compatibility behind the monetized production entrypoint", () => {
-    expect(mainnetConfig).toContain('"main": "src/monetized-mainnet.ts"');
+  it("puts the universal router ahead of the monetized production entrypoint", () => {
+    expect(mainnetConfig).toContain('"main": "src/universal-mainnet.ts"');
+    expect(universalMainnetEntrypoint).toContain(
+      'import { genericHttpConnectorResponse } from "./generic-http-connector.js";',
+    );
+    expect(universalMainnetEntrypoint).toContain(
+      'import { universalProtocolResponse } from "./universal-protocol-router.js";',
+    );
+    expect(universalMainnetEntrypoint).toContain(
+      "const protocolResponse = await universalProtocolResponse(",
+    );
+    expect(universalMainnetEntrypoint).toContain(
+      "const genericHttp = await genericHttpConnectorResponse(",
+    );
+    expect(universalMainnetEntrypoint).toContain(
+      "return mainnetFetch(standardRequest, env, ctx);",
+    );
+  });
+
+  it("keeps discovery compatibility and billing behind the universal production edge", () => {
     expect(monetizedMainnetEntrypoint).toContain("import mainnetModern, {");
     expect(monetizedMainnetEntrypoint).toContain(
       '["/discovery/search", "discovery.search"]',
