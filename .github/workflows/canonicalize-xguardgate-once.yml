@@ -15,10 +15,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - name: Replace legacy production host with custom domain
+      - name: Replace legacy production host outside workflows
         shell: bash
         run: |
           set -euo pipefail
@@ -31,12 +28,11 @@ jobs:
           helper = ".github/workflows/canonicalize-xguardgate-once.yml"
           changed = []
           for rel in subprocess.check_output(["git", "ls-files"], text=True).splitlines():
-              if rel == helper:
+              if rel == helper or rel.startswith(".github/workflows/"):
                   continue
               path = Path(rel)
               try:
-                  raw = path.read_bytes()
-                  text = raw.decode("utf-8")
+                  text = path.read_text(encoding="utf-8")
               except (UnicodeDecodeError, OSError):
                   continue
               if old not in text:
@@ -47,16 +43,10 @@ jobs:
           for rel in changed:
               print(rel)
           if not changed:
-              raise SystemExit("no production URL references found to canonicalize")
+              raise SystemExit("no non-workflow production URL references found")
           PY
-          npm ci --ignore-scripts
-          npx prettier --write .
           git config user.name moelayyan90
           git config user.email mo.elayyan2023@gmail.com
-          git add -A ':!.github/workflows/canonicalize-xguardgate-once.yml'
-          if git diff --cached --quiet; then
-            echo "No canonical URL changes to commit"
-            exit 1
-          fi
+          git add -A ':!.github/workflows/**'
           git commit -m "Make xguardgate.com the canonical production endpoint"
           git push origin HEAD:feat/xguardgate-canonical
