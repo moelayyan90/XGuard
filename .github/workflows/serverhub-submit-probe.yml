@@ -1,0 +1,47 @@
+name: Inspect ServerHub submission route
+
+on:
+  push:
+    branches: [chore/serverhub-submit-probe]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect submit page and scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import html as htmllib
+          import re
+          import urllib.parse
+          import urllib.request
+
+          base='https://www.serverhub.digital/submit'
+          headers={'User-Agent':'Mozilla/5.0 XGuard ServerHub submission probe'}
+          with urllib.request.urlopen(urllib.request.Request(base,headers=headers),timeout=20) as r:
+              page=r.read().decode('utf-8','replace')
+              print('PAGE',r.status,r.geturl(),'BYTES',len(page))
+          for form in re.findall(r'<form\b[^>]*>.*?</form>',page,re.I|re.S):
+              print('FORM',re.sub(r'\s+',' ',htmllib.unescape(form))[:10000])
+          scripts=[urllib.parse.urljoin(base,htmllib.unescape(x)) for x in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']',page,re.I)]
+          print('SCRIPTS',scripts)
+          needles=('fetch(','/api/','submit','github','repository','repoUrl','githubUrl','FormData','POST','server')
+          for src in scripts:
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(src,headers=headers),timeout=20) as r:
+                      js=r.read().decode('utf-8','replace')
+              except Exception as e:
+                  print('SCRIPT_ERROR',src,repr(e)); continue
+              found=False
+              for needle in needles:
+                  for m in list(re.finditer(re.escape(needle),js,re.I))[:8]:
+                      if not found:
+                          print('SCRIPT',src,'BYTES',len(js)); found=True
+                      i=m.start(); print('CTX',needle,re.sub(r'\s+',' ',js[max(0,i-1200):i+2600]))
+          PY
