@@ -221,7 +221,10 @@ export function classifySettlementTruth(
     recovery?.state === "EXPIRED" ||
     recovery?.state === "FAILED";
 
-  if ((finalitySuccess || recoverySuccess) && (finalityFailure || recoveryFailure))
+  if (
+    (finalitySuccess || recoverySuccess) &&
+    (finalityFailure || recoveryFailure)
+  )
     return "CONFLICT";
   if (finalitySuccess || recoverySuccess) return "FINALIZED";
   if (finalityFailure || recoveryFailure) return "PROVEN_FAILED";
