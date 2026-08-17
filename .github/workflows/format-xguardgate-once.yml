@@ -1,0 +1,33 @@
+name: Format xguardgate.com once
+
+on:
+  push:
+    branches:
+      - feat/xguardgate-canonical
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - name: Format canonical URL changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx prettier --write \
+            packages/cli/src/defaults.ts \
+            scripts/smoke-compatibility-mainnet.mjs \
+            scripts/smoke-mainnet.mjs \
+            tests/cli-mainnet-default.test.ts
+          git config user.name moelayyan90
+          git config user.email mo.elayyan2023@gmail.com
+          git add packages/cli/src/defaults.ts scripts/smoke-compatibility-mainnet.mjs scripts/smoke-mainnet.mjs tests/cli-mainnet-default.test.ts
+          git commit -m "Format xguardgate.com canonical references"
+          git push origin HEAD:feat/xguardgate-canonical
