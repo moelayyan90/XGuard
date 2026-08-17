@@ -5,6 +5,9 @@ apps/worker/worker-configuration.d.ts
 # The developer portal contains intentionally dense embedded HTML/CSS templates.
 apps/worker/src/search-indexing.ts
 apps/worker/src/portal-design.ts
+# The attempt-pricing boundary contains deliberate long pricing disclosure replacements.
+# It remains covered by ESLint, TypeScript, worker tests, release builds, and CodeQL.
+apps/worker/src/monetized-mainnet.ts
 /worker-configuration.d.ts
 package-lock.json
 .wrangler
