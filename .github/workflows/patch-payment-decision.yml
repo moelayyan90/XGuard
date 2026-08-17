@@ -23,7 +23,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Apply accounting and type hardening
+      - name: Apply accounting, type and lint hardening
         shell: bash
         run: |
           python - <<'PY'
@@ -159,10 +159,28 @@ jobs:
           text, count = parse_pattern.subn(parse_replacement, text, count=1)
           if count != 1:
               raise SystemExit('parseStoredReceipt block not found')
-
           path.write_text(text)
+
+          worker = Path('browser-extension/service-worker.js')
+          worker_text = worker.read_text().replace(
+              '/* global chrome, crypto, fetch */',
+              '/* global chrome, crypto */',
+              1,
+          )
+          worker.write_text(worker_text)
+
+          test = Path('tests/browser-payment-surface-source.test.ts')
+          test_text = test.read_text().replace(
+              r"['\"]?",
+              r'''['"]?''',
+              1,
+          )
+          test.write_text(test_text)
           PY
-          npx prettier --write apps/worker/src/payment-decision.ts
+          npx prettier --write \
+            apps/worker/src/payment-decision.ts \
+            browser-extension/service-worker.js \
+            tests/browser-payment-surface-source.test.ts
 
       - name: Verify complete release gate before publishing patch
         env:
@@ -176,6 +194,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/patch-payment-decision.yml
-          git add apps/worker/src/payment-decision.ts
+          git add \
+            apps/worker/src/payment-decision.ts \
+            browser-extension/service-worker.js \
+            tests/browser-payment-surface-source.test.ts
           git commit -m "Harden payment decision accounting"
           git push origin HEAD:agent/buyer-side-payment-decision
