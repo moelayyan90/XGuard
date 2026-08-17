@@ -59,9 +59,6 @@ export async function augmentCompatibilityDiscovery(
       };
     }
 
-    if (path === "/.well-known/agent-market.json")
-      parsed.protocol = "x402-v1-v2-compatibility-bridge";
-
     if (
       path === "/.well-known/agent-card.json" ||
       path === "/.well-known/agent.json"
