@@ -2,47 +2,38 @@
 
 ## Live mainnet route
 
-XGuard mainnet currently uses one Base-compatible downstream route:
+XGuard production currently uses one Base-compatible downstream route:
 
-- `payai-mainnet`
-  - origin: `https://facilitator.payai.network`
+- `xpay`
+  - origin: `https://facilitator.xpay.sh`
   - protocol: x402 v2
   - scheme: `exact`
   - network: `eip155:8453` (Base mainnet)
   - asset: native Base USDC
   - authorization mechanism: EIP-3009
+  - provider authentication: none required by the public xpay facilitator
+  - xpay protocol fee: `0`
   - XGuard service fee: `2,000` micro-USD (`$0.002`)
 
-The production Worker refreshes facilitator health on its scheduled maintenance cycle and refuses stale or incompatible routing. `/readyz` is not considered ready unless the mainnet route is fresh and operational.
+The production Worker refreshes xpay health on scheduled maintenance and refuses stale or incompatible routing. `/readyz` is not considered ready unless the mainnet route is fresh and operational.
 
-### Downstream-cost policy
+Official xpay documentation identifies `https://facilitator.xpay.sh` as its public facilitator, supports Base mainnet and Base Sepolia, and advertises zero protocol fees with sponsored gas. See [xpay facilitator documentation](https://docs.xpay.sh/en/x402-protocol/facilitator) and the [xpay facilitator announcement](https://www.xpay.sh/blog/article/xpay-x402-facilitator/).
 
-PayAI publicly advertises a free tier and a paid usage tier. As of 2026-08-15, its public facilitator pricing page advertises 10,000 settlements/month free and `$0.001` per settlement on pay-as-you-go. Source: `https://facilitator.payai.network/`.
+### Downstream-cost and quota policy
 
-XGuard must not assume the free tier is permanent or unlimited. Production routing therefore uses a conservative paid-tier downstream cost of `1,000` micro-USD when evaluating unit economics. With a `$0.002` XGuard fee, the configured contribution before other infrastructure/operating expenses is `1,000` micro-USD per successful billable settlement.
+The checked-in mainnet configuration currently sets the xpay downstream protocol-cost floor to `0` micro-USD, matching xpay's published zero-fee facilitator terms. This is not a guarantee that all future provider, infrastructure, gas-sponsorship, account, tax, or operating costs remain zero.
 
-Provider invoices, credits, plan changes, taxes, chain/provider charges, and other actual operating expenses remain separate accounting facts. A configured route-cost estimate must never be described as the owner's final profit.
+Runtime/observed downstream cost can override the configured floor. XGuard uses the maximum of configured, runtime, and recent observed downstream cost when evaluating unit economics. A route becomes ineligible if protected gross-margin requirements are not satisfied.
 
-PayAI documentation states that scaling beyond the free tier requires a merchant account, credits, and API credentials. XGuard supports `PAYAI_API_KEY_ID` and `PAYAI_API_KEY_SECRET` as encrypted deployment secrets when those credentials are activated. Source: `https://docs.payai.network/x402/facilitators/introduction`.
+xpay currently publishes facilitator rate limits of 100 verify requests/minute and 50 settle requests/minute. XGuard deliberately uses lower global upstream guards of 90 verify/minute and 45 settle/minute so it can fail locally before saturating the published provider limit.
 
-## Live testnet candidates
+Provider plan changes and actual operating expenses remain separate accounting facts. A configured route-cost value must never be described as the owner's final profit.
 
-The separate Base Sepolia Worker contains two non-billable candidates:
+Some historical internal identifiers still contain `payai` wording for compatibility with existing persisted state. Those identifiers do **not** change the live production origin or external provider attribution: the current downstream is xpay at `facilitator.xpay.sh`.
 
-- `x402-org-testnet`
-  - origin: `https://x402.org/facilitator`
-  - protocol: x402 v2
-  - scheme: `exact`
-  - network: `eip155:84532` (Base Sepolia)
-  - authorization mechanisms: EIP-3009 and Permit2
-- `payai-testnet`
-  - origin: `https://facilitator.payai.network`
-  - protocol: x402 v2
-  - scheme: `exact`
-  - network: `eip155:84532` (Base Sepolia)
-  - authorization mechanism: EIP-3009
+## Optional testnet candidates
 
-Testnet is non-billable and remains isolated from mainnet merchant balances and earned revenue.
+The separate Base Sepolia Worker is manual-only and non-billable. Its test configuration may use compatible Base Sepolia facilitators for explicit integration testing. Testnet state remains isolated from mainnet merchant balances and earned revenue and is not part of automatic production monitoring.
 
 ## Transport boundary
 
@@ -50,14 +41,14 @@ Testnet is non-billable and remains isolated from mainnet merchant balances and 
 - only HTTPS is accepted outside localhost development;
 - redirects use `manual` handling and are rejected;
 - response status, media type, byte length, JSON structure, and settlement identity are validated;
-- provider credentials belong only in encrypted deployment secrets;
+- provider credentials, when a future provider requires them, belong only in encrypted deployment secrets;
 - private keys are not accepted from merchants and are not stored by XGuard.
 
 ## Routing and failover
 
 Verification may use a different compatible route only where that operation submits no value. Settlement selects exactly one route before the outbound boundary. Once submission starts, XGuard never sends the same authorization to a second facilitator. Unknown outcome becomes `AMBIGUOUS` and requires independent finality/reconciliation.
 
-Normal billable routing requires a current attributable downstream-cost estimate and positive contribution after the `$0.002` XGuard fee. A route with unknown or excessive cost is ineligible.
+Normal billable routing requires a current attributable downstream-cost value and positive protected unit economics after the `$0.002` XGuard fee. A route with unknown or excessive cost is ineligible.
 
 ## Adding or replacing a mainnet route
 
@@ -68,7 +59,7 @@ A new route is not enabled merely because it responds. It must have:
 3. measured `/supported` compatibility for the exact mainnet network/mechanism;
 4. bounded transport and strict response validation;
 5. a current downstream-cost value with positive unit economics;
-6. testnet verification, real settlement, duplicate/replay, timeout, ambiguity, and reconciliation evidence;
+6. explicit non-production verification plus real authorized mainnet settlement, duplicate/replay, timeout, ambiguity, and reconciliation evidence before production promotion;
 7. independent chain-finality verification before a successful settlement can earn an XGuard fee;
 8. recurring operational monitoring, rollback, and incident ownership.
 
