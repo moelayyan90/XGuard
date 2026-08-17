@@ -12,6 +12,10 @@ const mainnetConfig = readFileSync(
   "apps/worker/wrangler.mainnet.jsonc",
   "utf8",
 );
+const monetizedMainnetEntrypoint = readFileSync(
+  "apps/worker/src/monetized-mainnet.ts",
+  "utf8",
+);
 const liveMainnetEntrypoint = readFileSync(
   "apps/worker/src/mainnet-modern.ts",
   "utf8",
@@ -31,8 +35,14 @@ describe("mainnet release gate", () => {
     expect(script).not.toContain("build:economic-preview");
   });
 
-  it("keeps discovery compatibility wired into the production entrypoint", () => {
-    expect(mainnetConfig).toContain('"main": "src/mainnet-modern.ts"');
+  it("keeps discovery compatibility behind the monetized production entrypoint", () => {
+    expect(mainnetConfig).toContain('"main": "src/monetized-mainnet.ts"');
+    expect(monetizedMainnetEntrypoint).toContain(
+      'import mainnetModern, {',
+    );
+    expect(monetizedMainnetEntrypoint).toContain(
+      "return delegateFetch(request, env, ctx)",
+    );
     expect(liveMainnetEntrypoint).toContain(
       'import { writeEndpointDiscoveryResponse } from "./mainnet-endpoint-discovery.js";',
     );
