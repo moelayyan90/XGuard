@@ -97,6 +97,7 @@ export async function classifyTailEvent(
 
   const exceptionCode = firstExceptionCode(item.exceptions);
   const logError = firstErrorLogCode(item.logs);
+  const clientErrorStatus = status !== null && status >= 400 && status < 500;
 
   let category: string | null = null;
   let severity: WatchdogSeverity = "medium";
@@ -118,16 +119,16 @@ export async function classifyTailEvent(
     severity = "high";
     errorCode = logError ?? `http_${status}`;
     threshold = 5;
-  } else if (logError !== null) {
-    category = "application_error_log";
-    severity = "high";
-    errorCode = logError;
-    threshold = 4;
   } else if (status === 404 && path !== null && advertisedPath(path)) {
     category = "advertised_endpoint_404";
     severity = "medium";
     errorCode = "advertised_endpoint_404";
     threshold = 8;
+  } else if (logError !== null && !clientErrorStatus) {
+    category = "application_error_log";
+    severity = "high";
+    errorCode = logError;
+    threshold = 4;
   }
 
   if (category === null) return null;
