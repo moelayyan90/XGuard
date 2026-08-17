@@ -1,0 +1,107 @@
+name: Detect first real XGuard settlement
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: xguard-first-real-settlement
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read authoritative mainnet status
+        id: status
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS_JSON="$(curl --fail --show-error --silent --retry 3 --retry-all-errors --max-time 20 \
+            https://xguardgate.com/status)"
+
+          printf '%s\n' "$STATUS_JSON" | jq -e '
+            .gateway == "operational" and
+            .mode == "mainnet" and
+            (.successfulBillableSettlements | type == "number") and
+            (.successfulBillableSettlements >= 0) and
+            (.earnedMicroUsd | type == "number") and
+            (.earnedMicroUsd >= 0) and
+            (.pendingFinality | type == "number") and
+            (.pendingFinality >= 0)
+          ' >/dev/null
+
+          COUNT="$(printf '%s\n' "$STATUS_JSON" | jq -r '.successfulBillableSettlements')"
+          EARNED="$(printf '%s\n' "$STATUS_JSON" | jq -r '.earnedMicroUsd')"
+          PENDING="$(printf '%s\n' "$STATUS_JSON" | jq -r '.pendingFinality')"
+          MEASURED_AT="$(printf '%s\n' "$STATUS_JSON" | jq -r '.measuredAt // "unknown"')"
+
+          {
+            echo "count=$COUNT"
+            echo "earned_micro_usd=$EARNED"
+            echo "pending_finality=$PENDING"
+            echo "measured_at=$MEASURED_AT"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## XGuard settlement truth"
+            echo
+            echo "- Finalized billable settlements: **$COUNT**"
+            echo "- Earned fee: **$EARNED micro-USD**"
+            echo "- Pending finality: **$PENDING**"
+            echo "- Measured at: **$MEASURED_AT**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create one-time first-settlement evidence issue
+        if: ${{ steps.status.outputs.count != '0' && steps.status.outputs.earned_micro_usd != '0' }}
+        uses: actions/github-script@v7
+        env:
+          SETTLEMENT_COUNT: ${{ steps.status.outputs.count }}
+          EARNED_MICRO_USD: ${{ steps.status.outputs.earned_micro_usd }}
+          PENDING_FINALITY: ${{ steps.status.outputs.pending_finality }}
+          MEASURED_AT: ${{ steps.status.outputs.measured_at }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const title = "XGuard: first real mainnet settlement detected";
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "all",
+              per_page: 100,
+            });
+
+            if (issues.some((issue) => issue.title === title)) {
+              core.info("First-settlement evidence issue already exists; no duplicate created.");
+              return;
+            }
+
+            const count = process.env.SETTLEMENT_COUNT;
+            const earned = process.env.EARNED_MICRO_USD;
+            const pending = process.env.PENDING_FINALITY;
+            const measuredAt = process.env.MEASURED_AT;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            const body = [
+              "# First real XGuard mainnet settlement detected",
+              "",
+              "The production `/status` accounting source has reported at least one finalized, billable settlement.",
+              "",
+              `- successfulBillableSettlements: **${count}**`,
+              `- earnedMicroUsd: **${earned}**`,
+              `- pendingFinality: **${pending}**`,
+              `- measuredAt: **${measuredAt}**`,
+              `- workflow evidence: ${runUrl}`,
+              "",
+              "This issue is intentionally created only once. XGuard settlement accounting records `SUCCESSFUL_BILLABLE_SETTLEMENT` only after the settlement fee reaches the EARNED state; generic model/tool/source gateway revenue is recorded separately.",
+            ].join("\n");
+
+            await github.rest.issues.create({ owner, repo, title, body });
