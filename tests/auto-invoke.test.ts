@@ -3,6 +3,7 @@ import {
   autoInvokeResponse,
   classifyAutoInvokeRoute,
   isAutoInvokeBillableStatus,
+  isAutoInvokeRedirectStatus,
   decryptProviderCredential,
   encryptProviderCredential,
   rewrapProviderCredentialRecord,
@@ -53,6 +54,7 @@ describe("XGuard zero-study auto invoke", () => {
         headers: {
           "Content-Type": "application/json",
           "Content-Length": String(new TextEncoder().encode(body).byteLength),
+          "X-Api-Key": `xg_live_${"a".repeat(48)}`,
         },
         body,
       }),
@@ -62,6 +64,45 @@ describe("XGuard zero-study auto invoke", () => {
       upstreamUrl:
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
     });
+  });
+
+  it("does not use an unauthenticated request body for Gemini inference", async () => {
+    const body = JSON.stringify({
+      model: "gemini-3.6-flash",
+      messages: [{ role: "user", content: "hello" }],
+    });
+    const route = await classifyAutoInvokeRoute(
+      new Request(`${ORIGIN}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": String(new TextEncoder().encode(body).byteLength),
+        },
+        body,
+      }),
+    );
+    expect(route).toMatchObject({
+      provider: "openai",
+      upstreamUrl: "https://api.openai.com/v1/chat/completions",
+    });
+  });
+
+  it("bounds model inference when Content-Length is absent", async () => {
+    const body = JSON.stringify({
+      model: "gemini-3.6-flash",
+      padding: "x".repeat(70 * 1024),
+    });
+    const request = new Request(`${ORIGIN}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": `xg_live_${"a".repeat(48)}`,
+      },
+      body,
+    });
+    expect(request.headers.get("content-length")).toBeNull();
+    const route = await classifyAutoInvokeRoute(request);
+    expect(route?.provider).toBe("openai");
   });
 
   it("recognizes Anthropic native SDK traffic without an XGuard-specific route", async () => {
@@ -118,6 +159,14 @@ describe("XGuard zero-study auto invoke", () => {
 
     for (const status of [199, 300, 301, 302, 307, 308, 399, 400, 429, 500])
       expect(isAutoInvokeBillableStatus(status)).toBe(false);
+  });
+
+  it("classifies provider redirects separately from billable success", () => {
+    for (const status of [300, 301, 302, 303, 307, 308, 399])
+      expect(isAutoInvokeRedirectStatus(status)).toBe(true);
+
+    for (const status of [200, 204, 299, 400, 500])
+      expect(isAutoInvokeRedirectStatus(status)).toBe(false);
   });
 
   it("rewraps provider credentials when the XGuard merchant key rotates", async () => {
