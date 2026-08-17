@@ -36,6 +36,17 @@ describe("mainnet release gate", () => {
     expect(deployWorkflow).toContain('BASE_URL="https://xguardgate.com"');
   });
 
+  it("deploys Worker versions without mutating existing zone routes", () => {
+    expect(deployWorkflow).toContain("wrangler versions upload");
+    expect(deployWorkflow).toContain("wrangler versions deploy");
+    expect(deployWorkflow).toContain('--version-tag "${VERSION_TAG}"');
+    expect(deployWorkflow).toContain("--percentage 100");
+    expect(deployWorkflow).not.toContain(
+      'npx wrangler deploy --config "${CONFIG_PATH}"',
+    );
+    expect(deployWorkflow).not.toContain("wrangler triggers deploy");
+  });
+
   it("does not dry-run non-production Worker targets", () => {
     const script = packageJson.scripts?.["verify:mainnet-release"] ?? "";
     expect(script).toContain("build:mainnet");
