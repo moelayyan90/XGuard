@@ -22,7 +22,7 @@ Merchant top-ups are prepaid service liabilities; they are not revenue when depo
 
 ## Free surface
 
-The following remain free because they are discovery, readiness, or protocol metadata rather than value-producing execution:
+The following remain free because they are readiness or protocol metadata rather than value-producing execution:
 
 - `GET /`
 - `GET /healthz`
@@ -39,6 +39,8 @@ The following remain free because they are discovery, readiness, or protocol met
 Successful execution is billable when it consumes XGuard execution value:
 
 - `POST /verify`
+- `GET /discovery/resources`
+- `GET /discovery/search`
 - `POST /v1/gateway/proxy/...`
 - `POST /v1/gateway/sources/search`
 - `POST /v1/gateway/analyze`
@@ -46,7 +48,7 @@ Successful execution is billable when it consumes XGuard execution value:
 - MCP `tools/call` except the explicitly free `xguard_status` tool
 - successful finalized `POST /settle`
 
-MCP `xguard_discover` and `xguard_resource_details` are billed as SOURCE events. Future MCP execution tools default to TOOL billing unless classified more specifically.
+Direct Bazaar catalog listing/search and MCP `xguard_discover` / `xguard_resource_details` are all billed as SOURCE events. This prevents bypassing the MCP paywall through the equivalent HTTP catalog endpoints. Future MCP execution tools default to TOOL billing unless classified more specifically.
 
 ## Accounting state machine
 
@@ -61,7 +63,7 @@ stateDiagram-v2
   Held --> Available: reconciliation proves no settlement
 ```
 
-For gateway, MCP, and verify executions, XGuard reserves the configured fee before execution and earns it only after a successful result. Failed, malformed, rejected, or unavailable operations release the reservation.
+For gateway, direct source discovery, MCP, and verify executions, XGuard reserves the configured fee before execution and earns it only after a successful result. Failed, malformed, rejected, or unavailable operations release the reservation.
 
 For x402 settlement, XGuard continues to use the stricter finality model: downstream success alone is not enough. The settlement fee becomes earned only after independent finalized Base USDC evidence.
 
@@ -83,8 +85,9 @@ No simulated credit is accepted as a production top-up.
 ## Billing invariants
 
 - No billable execution runs when the prepaid service balance cannot cover its configured fee.
-- A successful gateway/MCP/verify execution creates at most one earned usage event for a request id.
+- A successful gateway/direct-discovery/MCP/verify execution creates at most one earned usage event for a request id.
 - Failed execution releases the reserved fee.
+- Equivalent direct HTTP and MCP catalog access cannot bypass SOURCE billing.
 - Duplicate settlement retries do not create a second settlement fee.
 - Settlement revenue is recognized only after independent finalized Base USDC evidence.
 - Merchant top-up deposits are not counted as XGuard revenue.
@@ -95,7 +98,7 @@ No simulated credit is accepted as a production top-up.
 
 A billable request without enough available service balance fails closed with HTTP `402` and `xguard_service_balance_required` / `insufficient_service_balance` semantics. The response identifies the required fee and the top-up path when available.
 
-The protected operation is not intentionally executed downstream when reservation fails.
+Requests without a valid merchant credential fail authentication before value-producing execution. The protected operation is not intentionally executed downstream when authentication or reservation fails.
 
 ## Settlement ambiguity and reconciliation
 
