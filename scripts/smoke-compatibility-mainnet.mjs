@@ -126,6 +126,9 @@ assert(
   "compatibility bridge metadata missing after propagation window",
 );
 
+// /verify is now value-producing prepaid execution. Live anonymous smoke traffic
+// must stop at merchant authentication before payload compatibility processing.
+// Translation and unsupported-network rejection remain covered by unit tests.
 const unauthenticatedLegacy = await request("/verify", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -133,45 +136,28 @@ const unauthenticatedLegacy = await request("/verify", {
 });
 assert(
   unauthenticatedLegacy.response.status === 401,
-  "legacy V1 request did not reach the existing merchant authentication boundary",
-);
-assert(
-  unauthenticatedLegacy.response.headers.get("x-xguard-compatibility") ===
-    "x402-v1-to-v2",
-  "legacy V1 request was not marked as bridged",
-);
-assert(
-  unauthenticatedLegacy.response.headers.get("x-xguard-canonical-network") ===
-    "eip155:8453",
-  "canonical compatibility network header missing",
+  "legacy V1 request bypassed the prepaid merchant authentication boundary",
 );
 
-const wrongNetwork = await request("/verify", {
+const unauthenticatedWrongNetwork = await request("/verify", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(legacyEnvelope("base-sepolia")),
 });
 assert(
-  wrongNetwork.response.status === 400,
-  "unsupported legacy network was not rejected fail-closed",
-);
-assert(
-  wrongNetwork.body?.error === "x402_compatibility_rejected",
-  "unsupported legacy network returned the wrong error boundary",
-);
-assert(
-  wrongNetwork.response.headers.get("x-xguard-compatibility") === "rejected",
-  "rejected compatibility request is not observable",
+  unauthenticatedWrongNetwork.response.status === 401,
+  "unsupported legacy request bypassed the prepaid merchant authentication boundary",
 );
 
 console.log(
   JSON.stringify({
     url: baseUrl.origin,
-    x402CompatibilityBridge: true,
+    x402CompatibilityBridgeAdvertised: true,
     nativeV2: "exact@eip155:8453",
     bridgedV1: "exact@base",
-    liveTranslationReachedAuthBoundary: true,
-    unsupportedLegacyNetworkFailsClosed: true,
+    anonymousVerifyRequiresMerchantAuth: true,
+    compatibilityExecutionRequiresPrepaidAccess: true,
+    translationValidatedByUnitTests: true,
     propagationSafe: true,
     billableExecutionPerformed: false,
   }),
