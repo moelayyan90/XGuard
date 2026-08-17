@@ -1,0 +1,36 @@
+name: Probe MCPFly public submit endpoint
+
+on:
+  push:
+    branches:
+      - chore/distribution-watch-status-20260817
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect public submit page and client bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://mcpserver.so'
+          curl -LfsS --max-time 30 "$base/submit" -o /tmp/submit.html
+          echo '=== PAGE API HINTS ==='
+          grep -Eo 'https?://[^"'"'<> ]+|/api/[A-Za-z0-9_?&=./:-]+' /tmp/submit.html | sort -u | head -100 || true
+          echo '=== JS BUNDLES ==='
+          grep -Eo 'src="[^"]+\.js[^"]*"' /tmp/submit.html | sed -E 's/^src="//;s/"$//' | sort -u >/tmp/js.txt || true
+          cat /tmp/js.txt
+          while IFS= read -r js; do
+            [ -n "$js" ] || continue
+            case "$js" in
+              http*) url="$js" ;;
+              /*) url="$base$js" ;;
+              *) url="$base/$js" ;;
+            esac
+            curl -LfsS --max-time 30 "$url" -o /tmp/bundle.js || continue
+            echo "=== HINTS $url ==="
+            grep -Eo 'https?://[^"'"'<> ]+|/api/[A-Za-z0-9_?&=./:-]+|submit[A-Za-z0-9_/-]*' /tmp/bundle.js | sort -u | grep -Ei 'submit|api' | head -100 || true
+          done </tmp/js.txt
