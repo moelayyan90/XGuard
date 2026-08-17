@@ -29,7 +29,9 @@ describe("monetized mainnet x402 compatibility boundary", () => {
   it("returns authentication failures before parsing legacy traffic", () => {
     const verify = billVerifySource();
     const authorize = verify.indexOf("authorizeMerchantScope(request");
-    const authFailure = verify.indexOf("if (!access.ok) return access.response;");
+    const authFailure = verify.indexOf(
+      "if (!access.ok) return access.response;",
+    );
     const normalize = verify.indexOf(
       "normalizeX402CompatibilityRequest(request)",
     );
