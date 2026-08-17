@@ -1,111 +1,133 @@
 # Billing
 
-## Model
+## Primary x402 model
 
-XGuard is a prepaid, per-successful-execution gateway. It does not silently divert money from a merchant's advertised payment. Service fees are separately disclosed and deducted from the merchant's prepaid XGuard service balance.
+The recommended x402 seller path is **one-signature, postpaid billing**.
 
-Production pricing is configured in `apps/worker/wrangler.mainnet.jsonc`.
+A merchant activates its `payTo` address once by signing the exact XGuard pricing terms. After that:
 
-Current mainnet prices:
+- `/verify` and `/settle` require no XGuard API key;
+- no XGuard prepaid balance is required before the first payment;
+- the buyer's x402 payment still goes to the original merchant `payTo` for the exact buyer-authorized amount;
+- XGuard records a separate service receivable only after independent Base finality confirms success.
 
-| Event                                |     Fee |
-| ------------------------------------ | ------: |
-| Model proxy execution                | $0.0001 |
-| Tool proxy execution                 | $0.0002 |
-| x402 verification execution          | $0.0002 |
-| Source discovery/search              | $0.0010 |
-| Security inspection                  | $0.0010 |
-| Analysis/ranking                     | $0.0020 |
-| Successful finalized x402 settlement | $0.0020 |
+XGuard does not silently divert or skim the merchant's signed buyer payment.
 
-Merchant top-ups are prepaid service liabilities; they are not revenue when deposited.
+## Current x402 pricing
 
-## Free surface
+| Event | XGuard fee |
+| --- | ---: |
+| `POST /verify` | $0 |
+| malformed/rejected request | $0 |
+| failed settlement | $0 |
+| unresolved ambiguous settlement | $0 earned |
+| idempotent retry | no additional fee |
+| independently finalized successful settlement | 0.5%, capped at $0.001 |
 
-The following remain free because they are readiness or protocol metadata rather than value-producing execution:
+The current default unpaid service-fee limit is $1.00. The exact terms accepted by each merchant are stored with the activated address.
 
-- `GET /`
-- `GET /healthz`
-- `GET /readyz`
-- `GET /supported`
-- well-known discovery documents
-- MCP `server/discover`
-- MCP `tools/list`
-- MCP `ping`
-- MCP `xguard_status`
+## Activation state
 
-## Billable surface
+Activation is not an XGuard account signup. It creates no password, email identity, API key, or custody relationship.
 
-Successful execution is billable when it consumes XGuard execution value:
+The activation challenge stores a hash of a short-lived nonce and the exact pricing terms. The merchant signs a message containing:
 
-- `POST /verify`
-- `GET /discovery/resources`
-- `GET /discovery/search`
-- `POST /v1/gateway/proxy/...`
-- `POST /v1/gateway/sources/search`
-- `POST /v1/gateway/analyze`
-- `POST /v1/gateway/security/inspect`
-- MCP `tools/call` except the explicitly free `xguard_status` tool
-- successful finalized `POST /settle`
+- XGuard domain;
+- Base network;
+- merchant `payTo`;
+- pricing version;
+- fee basis points;
+- per-settlement cap;
+- postpaid limit;
+- issued/expiry timestamps;
+- nonce;
+- an explicit statement that the signature is not a token-transfer authorization.
 
-Direct Bazaar catalog listing/search and MCP `xguard_discover` / `xguard_resource_details` are all billed as SOURCE events. This prevents bypassing the MCP paywall through the equivalent HTTP catalog endpoints. Future MCP execution tools default to TOOL billing unless classified more specifically.
+The signature is verified against the merchant address before the postpaid account is activated. A consumed or expired challenge cannot be reused.
 
-## Accounting state machine
+## Accounting state
 
-```mermaid
-stateDiagram-v2
-  [*] --> Available: finalized merchant top-up
-  Available --> Reserved: billable execution accepted
-  Reserved --> Earned: execution succeeds
-  Reserved --> Available: execution fails
-  Reserved --> Held: settlement outcome ambiguous
-  Held --> Earned: reconciliation proves settlement
-  Held --> Available: reconciliation proves no settlement
+```text
+buyer payment signed to merchant payTo
+        |
+        v
+XGuard /verify ----------------------------> no XGuard fee
+        |
+        v
+XGuard /settle -> downstream submission
+        |
+        +-- failure ------------------------> no XGuard fee
+        |
+        +-- ambiguous ----------------------> no fee earned while unresolved
+        |
+        v
+independent Base finality proves exact USDC transfer
+        |
+        v
+calculate signed merchant fee terms
+        |
+        v
+postpaid XGuard service receivable
 ```
 
-For gateway, direct source discovery, MCP, and verify executions, XGuard reserves the configured fee before execution and earns it only after a successful result. Failed, malformed, rejected, or unavailable operations release the reservation.
+The fee calculation uses the settlement amount that independent finality expects/proves and the merchant's stored signed terms:
 
-For x402 settlement, XGuard continues to use the stricter finality model: downstream success alone is not enough. The settlement fee becomes earned only after independent finalized Base USDC evidence.
+```text
+fee = min(floor(amount × fee_bps / 10,000), fee_cap)
+```
 
-## Mainnet implementation
+Fee-event insertion is idempotent by logical payment key.
 
-The live Cloudflare Worker maintains merchant billing state in D1 and coordinates settlement ownership with Durable Objects.
+## Fee balance
 
-Authenticated merchant endpoints:
+```text
+GET /v1/fees?payTo=0x...
+```
 
-- `POST /v1/register`
-- `GET /v1/balance`
-- `POST /v1/topups/intents`
-- `POST /v1/topups/claim`
+The response reports the activated address's signed pricing version, fee basis points, fee cap, accrued amount, credited payments, outstanding due amount, credit, postpaid limit, and Base USDC treasury details.
 
-A top-up intent returns an exact native Base USDC amount and the configured XGuard treasury address. The merchant sends that exact amount, then claims the deposit using the transaction hash and one-time claim token. XGuard independently verifies the finalized Base USDC transfer before crediting the service balance.
+## Crediting service-fee payments
 
-No simulated credit is accepted as a production top-up.
+```http
+POST /v1/fees/claim
+Content-Type: application/json
 
-## Billing invariants
+{
+  "payTo": "0xMERCHANT",
+  "transactionHash": "0xFINALIZED_BASE_TX"
+}
+```
 
-- No billable execution runs when the prepaid service balance cannot cover its configured fee.
-- A successful gateway/direct-discovery/MCP/verify execution creates at most one earned usage event for a request id.
-- Failed execution releases the reserved fee.
-- Equivalent direct HTTP and MCP catalog access cannot bypass SOURCE billing.
-- Duplicate settlement retries do not create a second settlement fee.
-- Settlement revenue is recognized only after independent finalized Base USDC evidence.
-- Merchant top-up deposits are not counted as XGuard revenue.
-- Testnet traffic remains non-billable unless explicitly changed in the testnet configuration.
-- Usage history is immutable; corrections use compensating accounting entries rather than destructive edits.
+XGuard independently verifies that the transaction contains a finalized native Base USDC transfer to the configured XGuard treasury before recording credit.
 
-## Insufficient balance
+A transaction/log pair is globally unique in the billing database and cannot be credited twice. A third party may pay a merchant's XGuard debt because that action can only reduce the selected merchant's outstanding service receivable; it cannot create a charge or redirect a buyer payment.
 
-A billable request without enough available service balance fails closed with HTTP `402` and `xguard_service_balance_required` / `insufficient_service_balance` semantics. The response identifies the required fee and the top-up path when available.
+## Postpaid limit
 
-Requests without a valid merchant credential fail authentication before value-producing execution. The protected operation is not intentionally executed downstream when authentication or reservation fails.
+When `dueMicroUsd` reaches the signed `postpaidLimitMicroUsd`, protected x402 execution for that activated `payTo` pauses with HTTP `402` until enough service-fee credit is recorded.
 
-## Settlement ambiguity and reconciliation
+This limit controls XGuard credit exposure; it is not a prerequisite deposit.
 
-Once an outbound blockchain settlement submission has started, XGuard does not blindly retry through another route. Network timeouts or uncertain downstream outcomes enter an ambiguous state. The reserved settlement fee remains held until independent evidence resolves whether the payment settled.
+## Settlement ambiguity
 
-This prevents duplicate blockchain submission and prevents revenue recognition that has not been proven earned.
+Once outbound settlement submission begins, XGuard does not blindly retry the same authorization through another route. An uncertain outcome remains ambiguous until independent finality/recovery evidence resolves it.
 
-## Auto-top-up
+No XGuard service fee is earned merely because a downstream request timed out or returned uncertain evidence.
 
-XGuard does not infer or charge a merchant funding instrument automatically. Any future auto-top-up mechanism must require explicit merchant authorization, funding limits, and a separately auditable provider integration.
+## Revenue recognition invariants
+
+- activation is not revenue;
+- merchant fee payments are balance credits until matched to earned service receivables;
+- verification is free on the zero-friction x402 path;
+- failed settlement is free;
+- duplicate retries cannot generate another fee;
+- zero-friction settlement revenue is recognized only after independent finalized Base evidence;
+- the stored signed merchant terms determine the fee, not a later silent configuration change;
+- tiny proportional results may floor to zero rather than being forced to a minimum fee;
+- usage and payment records are append-only/idempotent at their financial identity boundaries.
+
+## Legacy universal-gateway billing
+
+Authenticated merchant endpoints such as `/v1/register`, `/v1/balance`, `/v1/topups/*`, plus some model/tool/source/security/MCP execution surfaces, remain for backwards compatibility and retain their existing prepaid accounting model.
+
+Those legacy routes are separate from the recommended x402 seller path. A new merchant using XGuard only as its x402 facilitator should not need them.

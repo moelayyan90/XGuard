@@ -70,8 +70,12 @@ describe("mainnet write endpoint discovery", () => {
     expect(await response?.json()).toMatchObject({ endpoint: "/v1/register" });
   });
 
-  it("documents other write-only mainnet routes consistently", async () => {
+  it("advertises x402 execution as no-signup while retaining legacy prepaid routes", async () => {
     const verify = writeEndpointDiscoveryResponse(request("/verify", "GET"));
+    const settle = writeEndpointDiscoveryResponse(request("/settle", "GET"));
+    const fees = writeEndpointDiscoveryResponse(
+      request("/v1/fees/claim", "GET"),
+    );
     const topup = writeEndpointDiscoveryResponse(
       request("/v1/topups/intents", "GET"),
     );
@@ -79,7 +83,17 @@ describe("mainnet write endpoint discovery", () => {
     expect(await verify?.json()).toMatchObject({
       endpoint: "/verify",
       method: "POST",
-      auth: "api-key",
+      auth: "none",
+    });
+    expect(await settle?.json()).toMatchObject({
+      endpoint: "/settle",
+      method: "POST",
+      auth: "none",
+    });
+    expect(await fees?.json()).toMatchObject({
+      endpoint: "/v1/fees/claim",
+      method: "POST",
+      auth: "none",
     });
     expect(await topup?.json()).toMatchObject({
       endpoint: "/v1/topups/intents",
@@ -97,7 +111,7 @@ describe("mainnet write endpoint discovery", () => {
     expect(options?.headers.get("allow")).toBe("GET, HEAD, OPTIONS");
   });
 
-  it("makes the active settlement resolver discoverable", async () => {
+  it("makes the active settlement resolver discoverable without a merchant key", async () => {
     const path = `/v1/settlements/${PAYMENT_KEY}/resolve`;
     expect(writeEndpointDiscoveryResponse(request(path, "POST"))).toBe(null);
 
@@ -105,7 +119,7 @@ describe("mainnet write endpoint discovery", () => {
     expect(await discovery?.json()).toMatchObject({
       endpoint: path,
       method: "POST",
-      auth: "api-key",
+      auth: "none",
     });
   });
 

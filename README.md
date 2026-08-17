@@ -1,217 +1,165 @@
-# XGuard — Independent x402 Settlement Truth & Recovery Layer
+# XGuard — x402 Settlement Truth & Recovery
 
 [![CI](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml)
 [![Mainnet](https://github.com/moelayyan90/XGuard/actions/workflows/deploy-mainnet.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/deploy-mainnet.yml)
 
-## The x402 settlement truth layer
+**One merchant signature. One facilitator URL. No account, API key, subscription, or prepaid balance for the standard x402 seller path.**
 
-**Facilitators submit payments. XGuard independently determines what actually happened.**
+XGuard is a facilitator-compatible safety layer for x402 v2 on Base mainnet. It routes settlement through a downstream facilitator while independently checking what actually happened on-chain before it treats a payment as final.
 
-XGuard is a merchant-facing settlement correctness and recovery layer for x402. It combines one-settlement ownership, replay protection, downstream facilitator routing, independent finalized Base USDC verification, and EIP-3009 ambiguity recovery so a resource server does not have to equate a facilitator response or timeout with financial truth.
+## Start in under a minute
 
-For every settlement that has enough evidence, XGuard exposes one fail-closed truth state:
+### 1. Activate the merchant `payTo` wallet once
 
-- `FINALIZED` — the exact expected USDC transfer is independently proven on finalized Base state; resource release is safe;
-- `PENDING` — final evidence is not yet sufficient; do not blindly resubmit or call it a failure;
-- `PROVEN_FAILED` — finality/recovery evidence proves the expected settlement did not complete correctly or can no longer settle;
-- `CONFLICT` — success and failure evidence disagree; XGuard refuses to promote the payment to a release-safe state.
+Open:
 
-Merchants can read or actively resolve the state through:
+```text
+https://xguardgate.com/start
+```
+
+Connect the same wallet/address your x402 resource advertises as `payTo` and sign one activation message. The message contains the exact XGuard pricing terms and a short-lived nonce.
+
+The activation signature:
+
+- proves control of `payTo`;
+- accepts the disclosed XGuard service terms;
+- does **not** authorize a token transfer;
+- does **not** change the payment recipient;
+- creates no password, API key, or custodial wallet.
+
+### 2. Point the standard x402 client at XGuard
+
+```ts
+import { HTTPFacilitatorClient } from "@x402/core/http";
+
+const facilitator = new HTTPFacilitatorClient({
+  url: "https://xguardgate.com",
+});
+```
+
+That is the XGuard-specific runtime integration. No XGuard package or authorization header is required for `/verify` or `/settle` after the merchant `payTo` has been activated.
+
+### 3. Keep using x402 normally
+
+The buyer still signs the ordinary x402 `exact` payment to the merchant's original `payTo`. XGuard does not silently rewrite the recipient or reduce the buyer-authorized merchant amount.
+
+## Pricing
+
+The zero-friction x402 seller contract is:
+
+- **0.5%** of each independently finalized successful settlement;
+- **maximum $0.001** XGuard fee per settlement;
+- `/verify`: **$0**;
+- failed settlement: **$0**;
+- ambiguous outcome while unresolved: **$0 earned**;
+- idempotent retry: **no additional fee**;
+- subscription: **none**;
+- prepaid balance before first use: **none**.
+
+The signed activation stores a pricing version, fee basis points, per-settlement cap, and postpaid limit for that merchant address. XGuard does not silently replace those signed terms with a different price.
+
+Because x402 `exact` binds the recipient and value signed by the buyer, the XGuard fee is a **separate postpaid service receivable**. It is not skimmed from the merchant's buyer payment. This preserves the buyer-authorized transfer exactly.
+
+The current default postpaid limit is **$1.00 of unpaid XGuard service fees**. When that limit is reached, XGuard pauses further protected execution for that activated `payTo` until service fees are credited.
+
+See [Pricing](PRICING.md) and [Billing](BILLING.md).
+
+## What XGuard adds
+
+A resource server can use the ordinary x402 facilitator interface while XGuard adds:
+
+- durable one-settlement ownership under concurrency;
+- replay and Payment Identifier binding;
+- no blind second settlement after an ambiguous submission;
+- independent finalized Base USDC verification of payer, payee, asset and amount;
+- EIP-3009 ambiguity recovery using authorization evidence;
+- explicit settlement truth states;
+- bounded parsing, rate limiting and concurrency limiting;
+- downstream health and route controls;
+- immutable settlement/accounting events.
+
+## Settlement truth
+
+XGuard exposes one of four states when enough evidence exists:
+
+- `FINALIZED` — the exact expected Base USDC transfer is independently proven final;
+- `PENDING` — final evidence is not sufficient yet;
+- `PROVEN_FAILED` — final/recovery evidence proves the expected settlement did not complete correctly or can no longer settle;
+- `CONFLICT` — success and failure evidence disagree, so XGuard fails closed.
 
 ```text
 GET  /v1/settlements/{logicalPaymentKey}/truth
 POST /v1/settlements/{logicalPaymentKey}/resolve
 ```
 
-`/settle` also exposes `X-XGuard-Truth-State`, `X-XGuard-Truth-Endpoint`, `X-XGuard-Resolve-Endpoint`, and `X-XGuard-Release-Safe`. A downstream `success: true` can therefore coexist briefly with XGuard truth `PENDING`; only XGuard `FINALIZED` is advertised as independently release-safe.
+For an activated zero-friction merchant these endpoints are correlated to XGuard-owned settlement records without requiring a merchant API key. A pending/ambiguous state is never permission for a blind second submission.
 
-XGuard never uses ambiguity as permission for a blind second settlement submission.
+## Fee status
 
-## Hosted x402 v2 gateway + agent discovery
+Read the postpaid service balance for an activated merchant:
 
-Existing x402 resource servers do not need an XGuard-specific runtime. They can point the standard x402 facilitator client at the hosted XGuard endpoint and gain the settlement-safety and truth layer around the routed downstream facilitator.
+```text
+GET /v1/fees?payTo=0x...
+```
 
-### Live production
+Credit a finalized Base USDC service-fee payment:
 
-- **Mainnet endpoint:** `https://xguardgate.com`
-- **Provider manifest:** `https://xguardgate.com/.well-known/x402/facilitator.json`
-- **Settlement truth:** `/v1/settlements/{logicalPaymentKey}/truth`
-- **Immediate resolver:** `/v1/settlements/{logicalPaymentKey}/resolve`
+```text
+POST /v1/fees/claim
+Content-Type: application/json
+
+{
+  "payTo": "0x...",
+  "transactionHash": "0x..."
+}
+```
+
+The transaction is independently checked against the XGuard treasury before credit is recorded, and the same transfer log cannot be credited twice.
+
+## Production contract
+
+- **Endpoint:** `https://xguardgate.com`
 - **Protocol:** x402 v2
 - **Network:** Base mainnet (`eip155:8453`)
-- **Asset:** Native USDC
-- **Scheme:** `exact` / EIP-3009 authorization
-- **XGuard fee:** **$0.002 per successful billable settlement**
-- **Subscription:** **None**
-- **Install:** no XGuard-specific package required
-- **Discovery:** native x402 Bazaar catalog
-- **Remote MCP:** Streamable HTTP at `/mcp`
-- **MCP Registry name:** `io.github.moelayyan90/xguard`
-- **Execution model:** routed facilitator-compatible gateway; current downstream transaction submitter is xpay
+- **Asset:** native Base USDC
+- **Scheme:** `exact`
+- **Authorization mechanism:** EIP-3009
+- **Current downstream transaction submitter:** xpay
+- **Provider manifest:** `https://xguardgate.com/.well-known/x402/facilitator.json`
+- **Payment manifest:** `https://xguardgate.com/.well-known/payment-manifest`
+- **Activation:** `https://xguardgate.com/start`
 
-The live `/supported` response is authoritative for x402 capabilities and signer attribution. XGuard does not claim that it owns the downstream xpay signer.
+The live `/supported` response is authoritative for protocol capability and signer attribution. XGuard does not claim ownership of the downstream xpay signer.
 
-The live service is continuously checked by CI, CodeQL, guarded Cloudflare deployment, readiness probes, mainnet monitoring, and dedicated agent-stack smoke checks.
+## Discovery and agent surfaces
 
-## Why XGuard
-
-A resource server can call one hosted gateway instead of implementing its own settlement-safety, finality, and recovery machinery around a downstream facilitator.
-
-XGuard adds:
-
-- merchant-facing independent settlement truth and active ambiguity resolution;
-- exact finalized Base USDC verification of payer, payee, asset, amount, and transaction evidence;
-- EIP-3009 `AuthorizationUsed` / `AuthorizationCanceled` recovery for uncertain post-submit outcomes;
-- permanent authorization replay identity and Payment Identifier validation;
-- idempotent duplicate handling and one settlement owner under concurrency;
-- no second-route settlement submission once outbound settlement has started;
-- explicit prepared/started/settled/failed/ambiguous boundaries;
-- facilitator health, circuit state, quarantine, latency tracking, and route controls;
-- independent finalized Base USDC verification before XGuard records earned revenue;
-- merchant service-balance accounting, immutable usage events, reconciliation cases, and fee reservations;
-- strict parsing, capped bodies, rate limiting, concurrency limiting, structured logs, and public health/status endpoints;
-- native Bazaar metadata validation, cataloging, listing, and search;
-- remote MCP and machine-readable discovery surfaces for agents.
-
-## Provider discovery
-
-Developer tools, agents, and ecosystem catalogs can read one stable XGuard-specific provider document:
+XGuard also exposes:
 
 ```text
 GET /.well-known/x402/facilitator.json
-```
-
-Machine-readable agent discovery is also exposed through the MCP manifest, Agent Card, Agent Market metadata, OpenAPI, and `llms.txt` surfaces. Those surfaces advertise the merchant settlement-truth and resolver endpoint templates alongside Bazaar/MCP discovery.
-
-The provider manifest is **XGuard-specific discovery metadata**. It supplements the standard x402 `/supported` endpoint; it is not represented as an x402 protocol-standard registry format.
-
-## Start using XGuard
-
-### 1. Check the live gateway and provider identity
-
-```bash
-curl https://xguardgate.com/healthz
-curl https://xguardgate.com/readyz
-curl https://xguardgate.com/supported
-curl https://xguardgate.com/.well-known/x402/facilitator.json
-```
-
-A healthy production `/supported` response includes x402 v2 `exact` on `eip155:8453` and the native `bazaar` extension.
-
-### 2. Register your service
-
-```bash
-curl -sS -X POST https://xguardgate.com/v1/register \
-  -H 'Content-Type: application/json' \
-  --data '{"name":"my-x402-service"}'
-```
-
-The returned API key is shown once. Store it as `XGUARD_API_KEY` and never commit it.
-
-### 3. Point the standard x402 facilitator client at XGuard
-
-```ts
-import { HTTPFacilitatorClient } from "@x402/core/http";
-
-const headers = {
-  Authorization: `Bearer ${process.env.XGUARD_API_KEY!}`,
-};
-
-const facilitator = new HTTPFacilitatorClient({
-  url: "https://xguardgate.com",
-  createAuthHeaders: async () => ({
-    verify: headers,
-    settle: headers,
-    supported: headers,
-    bazaar: headers,
-  }),
-});
-```
-
-Mainnet billing uses a prepaid XGuard **service balance**. Before the first billable settlement, create a top-up intent, send the exact native Base USDC amount to the returned treasury address, and claim the finalized deposit. See [QUICKSTART.md](QUICKSTART.md).
-
-### 4. Use XGuard truth before treating an uncertain payment as failed
-
-After a settlement response supplies `X-XGuard-Payment-Key`, query the merchant-scoped truth endpoint when independent finality matters:
-
-```text
-GET /v1/settlements/{logicalPaymentKey}/truth
-Authorization: Bearer <XGUARD_API_KEY>
-```
-
-If it remains `PENDING`, trigger an immediate recovery/finality pass instead of resubmitting the authorization:
-
-```text
-POST /v1/settlements/{logicalPaymentKey}/resolve
-Authorization: Bearer <XGUARD_API_KEY>
-```
-
-## AI-agent discovery
-
-XGuard catalogs valid Bazaar metadata carried by successful x402 traffic and exposes the resulting machine-readable catalog and its settlement-truth capability through:
-
-```text
-GET /discovery/resources
-GET /discovery/search?query=...
-POST /mcp
+GET /.well-known/payment-manifest
 GET /.well-known/mcp/server.json
 GET /.well-known/agent-card.json
 GET /.well-known/agent-market.json
-GET /llms.txt
-GET /llms-full.txt
 GET /openapi.json
+GET /llms.txt
+POST /mcp
 ```
 
-The remote MCP server exposes three read-only catalog/status tools:
+The MCP/discovery surfaces are useful for discovery; they are not a substitute for putting XGuard in the resource server's facilitator path.
 
-- `xguard_discover`
-- `xguard_resource_details`
-- `xguard_status`
+## Legacy universal-gateway compatibility
 
-The remote server is also published in the official MCP Registry as `io.github.moelayyan90/xguard`. The repository includes a portable [Agent Skill](SKILL.md) for coding agents that need to inspect, integrate, migrate, or diagnose an x402 resource server against XGuard.
+The repository still contains older authenticated/prepaid gateway surfaces such as `/v1/register`, `/v1/topups/*`, model/tool/source/security execution and some MCP billing paths. They remain for compatibility and are **not required** to use XGuard as the standard x402 facilitator.
 
-This means an AI agent can discover paid HTTP APIs or paid MCP tools cataloged by XGuard without using a separate human-facing marketplace, while the discovery documents can also direct merchant integrations to XGuard's settlement truth and recovery contract.
-
-Bazaar catalog failure never bypasses or weakens XGuard's authoritative payment validation/settlement path.
-
-## Billing boundary
-
-XGuard charges only after an eligible settlement succeeds and independent Base finality confirms the expected USDC transfer.
-
-XGuard does **not** bill malformed requests, failed verification, definitive failed settlements, unresolved ambiguous outcomes, duplicate retries representing the same logical payment, health checks, discovery queries, MCP discovery calls, or testnet traffic.
-
-Merchant top-ups are customer prepayments, not revenue. The `$0.002` becomes gross XGuard service revenue only at the earned-finality boundary.
-
-The settlement-truth contract is deliberately distinct from XGuard revenue recognition: independent evidence may establish `FINALIZED` before an asynchronous accounting projection has completed, without prematurely earning a service fee.
+New x402 seller integrations should use the one-signature activation path above rather than creating an XGuard API key or prepaid service balance.
 
 ## SDK and CLI
 
-Hosted production use does not require an XGuard package; the standard x402 `HTTPFacilitatorClient` configuration above remains the canonical integration surface.
+Hosted x402 production use does not require an XGuard package. The standard `HTTPFacilitatorClient` configuration above is the canonical integration.
 
-The CLI, SDK, and core package are also published as CI-built, smoke-tested GitHub prerelease tarballs. Install the CLI directly from the verified public release:
-
-```bash
-npm install -g https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.0/xguard-0.1.0-alpha.0.tgz
-xguard --help
-xguard doctor --help
-```
-
-Install the SDK and core package without waiting for npm registry publication:
-
-```bash
-npm install \
-  https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.0/xguard-core-0.1.0-alpha.0.tgz \
-  https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.0/xguard-sdk-0.1.0-alpha.0.tgz
-```
-
-Release checksums are published at:
-
-```text
-https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.0/SHA256SUMS
-```
-
-The public npm names are prepared, but first npm publication remains identity-gated until an authorized npm credential or trusted publisher owns the packages. XGuard does not represent those npm packages as published before that happens.
+CI-built prerelease tarballs for the CLI/SDK/Core are available through GitHub Releases for migration and diagnostics. Public npm names must not be described as published until registry publication is independently verified.
 
 ## Security and operations
 
@@ -231,16 +179,12 @@ npm run smoke:live
 npm run smoke:mainnet
 ```
 
-The smoke checks validate liveness, readiness, provider identity, capabilities, fail-closed behavior, network boundaries, Bazaar discovery, MCP discovery, package build/install behavior, and public release installation. They do not fabricate a real customer payment.
+Smoke tests validate behavior but do not fabricate customer transactions.
 
 ## Documentation
 
-[Quickstart](QUICKSTART.md) · [API](docs/API.md) · [OpenAPI](docs/openapi.yaml) · [facilitators](docs/FACILITATORS.md) · [Pricing](PRICING.md) · [Billing](BILLING.md) · [Treasury](TREASURY.md) · [Unit economics](UNIT_ECONOMICS.md) · [Payouts](PAYOUTS.md) · [Deployment](DEPLOYMENT.md)
+[Quickstart](QUICKSTART.md) · [API](docs/API.md) · [facilitators](docs/FACILITATORS.md) · [Pricing](PRICING.md) · [Billing](BILLING.md) · [Deployment](DEPLOYMENT.md)
 
-## Ecosystem listing
-
-Canonical public metadata for directories and ecosystem curators is available in [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md).
-
-XGuard is an independent project and is not an official product of the x402 Foundation, Coinbase, Cloudflare, Base, Circle, xpay, PayAI, or OKX.
+XGuard is independent infrastructure. It is not an official product of the x402 Foundation, Coinbase, Cloudflare, Base, Circle, xpay, PayAI, or OKX.
 
 Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md).

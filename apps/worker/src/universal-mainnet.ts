@@ -20,6 +20,15 @@ import {
 import { universalProtocolResponse } from "./universal-protocol-router.js";
 import { universalSecurityGuardResponse } from "./universal-security-guard.js";
 import { universalWebhookResponse } from "./universal-webhook-ingress.js";
+import {
+  zeroFrictionActivationResponse,
+  type ZeroFrictionActivationEnv,
+} from "./zero-friction-activation-api.js";
+import { pruneZeroFrictionClaimChallenges } from "./zero-friction-claim.js";
+import {
+  zeroFrictionX402Response,
+  type ZeroFrictionEnv,
+} from "./zero-friction-x402.js";
 
 export {
   MainnetPaymentCoordinator,
@@ -28,7 +37,8 @@ export {
   XPayGlobalRateGate,
 };
 
-interface UniversalMainnetEnv {
+interface UniversalMainnetEnv
+  extends ZeroFrictionEnv, ZeroFrictionActivationEnv {
   DB: D1Database;
   BASE_RPC_URL: string;
   XGUARD_TREASURY_USDC_ADDRESS: string;
@@ -117,6 +127,30 @@ export default {
     const securityBlock = universalSecurityGuardResponse(standardRequest);
     if (securityBlock !== null) return securityBlock;
 
+    const activation = await zeroFrictionActivationResponse(
+      standardRequest,
+      env,
+    );
+    if (activation !== null) return activation;
+
+    const x402Fetch = async (x402Request: Request): Promise<Response> => {
+      const zeroFriction = await zeroFrictionX402Response(
+        x402Request,
+        env,
+        ctx,
+        (internalRequest) => mainnetFetch(internalRequest, env, ctx),
+      );
+      return zeroFriction ?? mainnetFetch(x402Request, env, ctx);
+    };
+
+    const zeroFriction = await zeroFrictionX402Response(
+      standardRequest,
+      env,
+      ctx,
+      (internalRequest) => mainnetFetch(internalRequest, env, ctx),
+    );
+    if (zeroFriction !== null) return zeroFriction;
+
     const buyerPassCreateBlock = await buyerPassCreationGuard(
       standardRequest,
       env,
@@ -126,11 +160,7 @@ export default {
     const buyerPass = await buyerPassResponse(standardRequest, env);
     if (buyerPass !== null) return buyerPass;
 
-    const a2a = await a2aGatewayV1Response(
-      standardRequest,
-      env,
-      (internalRequest) => mainnetFetch(internalRequest, env, ctx),
-    );
+    const a2a = await a2aGatewayV1Response(standardRequest, env, x402Fetch);
     if (a2a !== null) return a2a;
 
     const portal = buyerPortalResponse(standardRequest);
@@ -146,8 +176,8 @@ export default {
     if (resilientWebhook !== null) return resilientWebhook;
 
     const protocolResponse = await universalProtocolResponse(standardRequest, {
-      verifyX402: (x402Request) => mainnetFetch(x402Request, env, ctx),
-      settleX402: (x402Request) => mainnetFetch(x402Request, env, ctx),
+      verifyX402: x402Fetch,
+      settleX402: x402Fetch,
     });
     if (protocolResponse !== null) return protocolResponse;
 
@@ -169,5 +199,13 @@ export default {
 
   async scheduled(controller, env, ctx): Promise<void> {
     await mainnetScheduled(controller, env, ctx);
+    await pruneZeroFrictionClaimChallenges(env.DB).catch((error) =>
+      console.warn(
+        JSON.stringify({
+          event: "zero_friction_claim_prune_failed",
+          error: error instanceof Error ? error.message : "unknown_error",
+        }),
+      ),
+    );
   },
 } satisfies ExportedHandler<UniversalMainnetEnv>;

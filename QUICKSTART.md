@@ -1,16 +1,94 @@
 # XGuard quickstart
 
-XGuard production runs at:
+For the standard x402 seller path, XGuard requires **one wallet signature once**, then only the normal facilitator URL.
 
-- **Gateway:** `https://xguardgate.com`
-- **Billing:** prepaid Base mainnet native USDC
-- **Model:** pay per successful execution
+- Production gateway: `https://xguardgate.com`
+- Activation: `https://xguardgate.com/start`
+- Protocol: x402 v2 `exact`
+- Network: Base mainnet (`eip155:8453`)
+- Asset: native Base USDC
 
-XGuard is not limited to x402. The production gateway can meter model calls, tool calls, source discovery, analysis, security inspection, x402 verification, and finalized x402 settlement.
+## 1. Activate the merchant `payTo` once
 
-## 1. Free readiness and protocol discovery
+Open:
 
-These calls are free:
+```text
+https://xguardgate.com/start
+```
+
+Connect the wallet/address your resource server advertises as `payTo` and sign the activation message.
+
+The signed message contains the exact pricing version, service-share basis points, per-settlement cap, postpaid limit, short-lived nonce, and expiry. It proves control of `payTo`; it is **not** a token-transfer authorization.
+
+There is no XGuard account, email, password, API key, or prepaid balance in this path.
+
+## 2. Change one facilitator URL
+
+```ts
+import { HTTPFacilitatorClient } from "@x402/core/http";
+
+const facilitator = new HTTPFacilitatorClient({
+  url: "https://xguardgate.com",
+});
+```
+
+No XGuard-specific package or auth-header callback is required for `/verify` or `/settle` after activation.
+
+## 3. Use x402 normally
+
+The buyer signs the ordinary x402 payment to the merchant's original `payTo`. XGuard routes and verifies the settlement without changing the signed recipient or value.
+
+### Current zero-friction x402 pricing
+
+| Event | XGuard fee |
+| --- | ---: |
+| Verify | $0 |
+| Failed settlement | $0 |
+| Unresolved ambiguous settlement | $0 earned |
+| Idempotent retry | no additional fee |
+| Independently finalized successful settlement | 0.5%, capped at $0.001 |
+| Monthly subscription | none |
+| Prepayment before first use | none |
+
+The default unpaid XGuard service-fee limit is $1.00. The terms accepted during activation are stored with that merchant address.
+
+## Settlement truth
+
+A successful downstream response is not automatically treated as independent financial truth. XGuard exposes:
+
+```text
+GET  /v1/settlements/{logicalPaymentKey}/truth
+POST /v1/settlements/{logicalPaymentKey}/resolve
+```
+
+Truth states:
+
+- `FINALIZED`
+- `PENDING`
+- `PROVEN_FAILED`
+- `CONFLICT`
+
+Only `FINALIZED` means XGuard independently proved the expected Base USDC transfer final. XGuard does not blindly resubmit the same authorization after an uncertain outbound settlement.
+
+## Fee balance and payment
+
+Read the service-fee balance:
+
+```bash
+curl -sS 'https://xguardgate.com/v1/fees?payTo=0xYOUR_PAYTO'
+```
+
+When service fees need to be credited, send native Base USDC to the treasury returned by that endpoint and submit the finalized transaction hash:
+
+```bash
+curl -sS -X POST https://xguardgate.com/v1/fees/claim \
+  -H 'Content-Type: application/json' \
+  --data '{"payTo":"0xYOUR_PAYTO","transactionHash":"0xYOUR_TX_HASH"}'
+```
+
+XGuard verifies the finalized transfer before recording credit. A unique transaction/log can be credited only once.
+
+## Free readiness and discovery
 
 ```bash
 curl https://xguardgate.com/
@@ -18,169 +96,11 @@ curl https://xguardgate.com/healthz
 curl https://xguardgate.com/readyz
 curl https://xguardgate.com/supported
 curl https://xguardgate.com/status
+curl https://xguardgate.com/.well-known/payment-manifest
 ```
 
-Well-known manifests and MCP `server/discover`, `tools/list`, `ping`, and `xguard_status` are also free. Catalog results, searches, and execution are billable.
+## Legacy universal-gateway endpoints
 
-## 2. Register a merchant
+Older authenticated/prepaid routes (`/v1/register`, `/v1/topups/*`, model/tool/source/security execution and some MCP billing paths) remain for backwards compatibility. They are not part of the recommended x402 seller onboarding and are not required for `/verify` or `/settle` on an activated `payTo`.
 
-```bash
-curl -sS -X POST https://xguardgate.com/v1/register \
-  -H 'Content-Type: application/json' \
-  --data '{"name":"my-service"}'
-```
-
-Save the returned API key:
-
-```bash
-export XGUARD_URL=https://xguardgate.com
-export XGUARD_API_KEY='xg_live_...'
-```
-
-Do not commit the key.
-
-## 3. Fund the prepaid service balance
-
-Create a top-up intent:
-
-```bash
-curl -sS -X POST "$XGUARD_URL/v1/topups/intents" \
-  -H "Authorization: Bearer $XGUARD_API_KEY" \
-  -H 'Content-Type: application/json' \
-  --data '{"amountUsd":"1.00"}'
-```
-
-Send exactly the returned native Base USDC amount to the returned treasury address, then claim it:
-
-```bash
-curl -sS -X POST "$XGUARD_URL/v1/topups/claim" \
-  -H "Authorization: Bearer $XGUARD_API_KEY" \
-  -H 'Content-Type: application/json' \
-  --data '{"claimToken":"YOUR_CLAIM_TOKEN","transactionHash":"0xYOUR_TX_HASH"}'
-```
-
-Check the balance:
-
-```bash
-curl -sS "$XGUARD_URL/v1/balance" \
-  -H "Authorization: Bearer $XGUARD_API_KEY"
-```
-
-Top-ups are prepaid service liabilities, not earned XGuard revenue.
-
-## 4. Use the Universal Gateway
-
-### Model execution
-
-XGuard supports BYOK proxy execution. The caller supplies its upstream provider key and XGuard meters the successful gateway event separately.
-
-```bash
-curl -sS -X POST "$XGUARD_URL/v1/gateway/proxy/openai/v1/responses" \
-  -H "Authorization: Bearer $XGUARD_API_KEY" \
-  -H "X-XGuard-Upstream-Key: $OPENAI_API_KEY" \
-  -H 'Content-Type: application/json' \
-  --data '{"model":"gpt-5","input":"hello"}'
-```
-
-Equivalent provider routes exist for the providers exposed by `/v1/gateway/capabilities`.
-
-### Source discovery
-
-Preferred search endpoint:
-
-```bash
-curl -sS -X POST "$XGUARD_URL/v1/gateway/sources/search" \
-  -H "Authorization: Bearer $XGUARD_API_KEY" \
-  -H 'Content-Type: application/json' \
-  --data '{"query":"weather API"}'
-```
-
-The native Bazaar HTTP views are also authenticated and SOURCE-billed; they are not free bypasses:
-
-```bash
-curl -sS "$XGUARD_URL/discovery/resources?limit=10" \
-  -H "Authorization: Bearer $XGUARD_API_KEY"
-
-curl -sS "$XGUARD_URL/discovery/search?query=weather" \
-  -H "Authorization: Bearer $XGUARD_API_KEY"
-```
-
-### Analysis
-
-```bash
-curl -sS -X POST "$XGUARD_URL/v1/gateway/analyze" \
-  -H "Authorization: Bearer $XGUARD_API_KEY" \
-  -H 'Content-Type: application/json' \
-  --data '{"candidates":[{"provider":"a","latencyMs":100,"costMicroUsd":1000,"errorRateBps":50,"qualityBps":9000},{"provider":"b","latencyMs":80,"costMicroUsd":1200,"errorRateBps":100,"qualityBps":9300}]}'
-```
-
-### Security inspection
-
-```bash
-curl -sS -X POST "$XGUARD_URL/v1/gateway/security/inspect" \
-  -H "Authorization: Bearer $XGUARD_API_KEY" \
-  -H 'Content-Type: application/json' \
-  --data '{"targetUrl":"https://example.com","method":"POST","headerNames":["authorization"]}'
-```
-
-Successful calls return `X-XGuard-Fee-Micro-Usd` and `X-XGuard-Accounting` response headers.
-
-## 5. MCP billing boundary
-
-The remote MCP server remains discoverable without payment, but value-producing execution is not free.
-
-Free:
-
-- `server/discover`
-- `tools/list`
-- `ping`
-- `xguard_status`
-
-Billable:
-
-- `xguard_discover`
-- `xguard_resource_details`
-- future execution tools unless explicitly marked free
-
-Billable MCP `tools/call` requests require the merchant bearer credential and sufficient prepaid service balance. Source-oriented MCP tools use the configured SOURCE fee, matching the equivalent direct HTTP catalog endpoints.
-
-## 6. x402 remains one gateway, not the business dependency
-
-Existing x402 v2 resource servers can still point their facilitator client at XGuard:
-
-```ts
-import { HTTPFacilitatorClient } from "@x402/core/http";
-
-const createAuthHeaders = async () => {
-  const headers = {
-    Authorization: `Bearer ${process.env.XGUARD_API_KEY!}`,
-  };
-  return {
-    verify: headers,
-    settle: headers,
-    supported: headers,
-    bazaar: headers,
-  };
-};
-
-const facilitatorClient = new HTTPFacilitatorClient({
-  url: process.env.XGUARD_URL ?? "https://xguardgate.com",
-  createAuthHeaders,
-});
-```
-
-Mainnet x402 verification is a separately metered successful execution. A successful finalized settlement is also billed at the settlement fee. Settlement revenue is recognized only after independent Base USDC finality.
-
-## Current production prices
-
-| Event                           |     Fee |
-| ------------------------------- | ------: |
-| Model proxy                     | $0.0001 |
-| Tool proxy                      | $0.0002 |
-| x402 verify                     | $0.0002 |
-| Source search / MCP source tool | $0.0010 |
-| Security inspect                | $0.0010 |
-| Analysis                        | $0.0020 |
-| Finalized x402 settlement       | $0.0020 |
-
-See `BILLING.md` for accounting invariants and failure semantics.
+See [Billing](BILLING.md), [Pricing](PRICING.md), and [API](docs/API.md) for the exact accounting and endpoint contract.

@@ -7,41 +7,84 @@ export type EndpointDescriptor = {
 };
 
 const ENDPOINTS: Record<string, EndpointDescriptor> = {
+  "/v1/activate/challenge": {
+    method: "POST",
+    auth: "none",
+    contentType: "application/json",
+    description:
+      "Create a short-lived message containing the exact XGuard pricing terms for one-time merchant-wallet activation.",
+    body: { payTo: "0x-prefixed merchant EVM address" },
+  },
+  "/v1/activate": {
+    method: "POST",
+    auth: "none",
+    contentType: "application/json",
+    description:
+      "Activate a merchant payTo address with one wallet signature. No account, password, API key, or prepayment is created.",
+    body: {
+      payTo: "0x-prefixed merchant EVM address",
+      nonce: "challenge nonce",
+      signature: "wallet signature over the returned activation message",
+    },
+  },
   "/v1/register": {
     method: "POST",
     auth: "none",
     contentType: "application/json",
-    description: "Create an XGuard merchant and return its one-time API key.",
+    description:
+      "Legacy optional merchant registration; it is not used by XGuard's keyless x402 path.",
     body: { name: "string" },
   },
   "/v1/topups/intents": {
     method: "POST",
     auth: "api-key",
     contentType: "application/json",
-    description: "Create a prepaid USDC top-up intent.",
+    description:
+      "Legacy prepaid billing endpoint for existing API-key merchants.",
     body: { amountUsd: "string | number" },
   },
   "/v1/topups/claim": {
     method: "POST",
     auth: "api-key",
     contentType: "application/json",
-    description: "Claim a finalized prepaid USDC top-up.",
+    description:
+      "Legacy prepaid billing endpoint for existing API-key merchants.",
     body: {
       claimToken: "string",
       transactionHash: "0x-prefixed transaction hash",
     },
   },
+  "/v1/fees": {
+    method: "GET",
+    auth: "none",
+    contentType: "application/json",
+    description:
+      "Read the postpaid XGuard service-fee balance for an activated payTo address using ?payTo=0x....",
+  },
+  "/v1/fees/claim": {
+    method: "POST",
+    auth: "none",
+    contentType: "application/json",
+    description:
+      "Credit a finalized Base USDC service-fee payment to an activated merchant account.",
+    body: {
+      payTo: "0x-prefixed merchant EVM address",
+      transactionHash: "0x-prefixed transaction hash",
+    },
+  },
   "/verify": {
     method: "POST",
-    auth: "api-key",
+    auth: "none",
     contentType: "application/json",
-    description: "Verify an x402 payment request through XGuard.",
+    description:
+      "Verify x402 through XGuard after one-time payTo activation. No API key or prepaid balance is required.",
   },
   "/settle": {
     method: "POST",
-    auth: "api-key",
+    auth: "none",
     contentType: "application/json",
-    description: "Settle an x402 payment request through XGuard.",
+    description:
+      "Settle x402 through XGuard after one-time payTo activation. The service share accrues only after independent finality confirms success.",
   },
 };
 
@@ -58,9 +101,8 @@ function jsonHeaders(extra: HeadersInit = {}): Headers {
 
 function normalizedPathname(request: Request): string {
   const pathname = new URL(request.url).pathname;
-  if (pathname.length > 1 && pathname.endsWith("/")) {
+  if (pathname.length > 1 && pathname.endsWith("/"))
     return pathname.slice(0, -1);
-  }
   return pathname;
 }
 
@@ -70,7 +112,7 @@ function descriptorFor(pathname: string): EndpointDescriptor | undefined {
   if (TRUTH_PATH.test(pathname))
     return {
       method: "GET",
-      auth: "api-key",
+      auth: "none",
       contentType: "application/json",
       description:
         "Read XGuard's independent settlement truth: FINALIZED, PENDING, PROVEN_FAILED, or CONFLICT.",
@@ -78,7 +120,7 @@ function descriptorFor(pathname: string): EndpointDescriptor | undefined {
   if (RESOLVE_PATH.test(pathname))
     return {
       method: "POST",
-      auth: "api-key",
+      auth: "none",
       contentType: "application/json",
       description:
         "Immediately re-check independent Base finality and ambiguous EIP-3009 recovery evidence.",
@@ -92,7 +134,6 @@ export function writeEndpointDiscoveryResponse(
   const pathname = normalizedPathname(request);
   const descriptor = descriptorFor(pathname);
   if (descriptor === undefined) return null;
-
   if (request.method === descriptor.method) return null;
 
   const allowed = [...new Set(["GET", "HEAD", "OPTIONS", descriptor.method])];
@@ -102,7 +143,7 @@ export function writeEndpointDiscoveryResponse(
     "X-XGuard-Discovery": "endpoint-introspection",
   };
 
-  if (request.method === "OPTIONS") {
+  if (request.method === "OPTIONS")
     return new Response(null, {
       status: 204,
       headers: {
@@ -111,7 +152,6 @@ export function writeEndpointDiscoveryResponse(
         "X-Content-Type-Options": "nosniff",
       },
     });
-  }
 
   if (request.method === "GET" || request.method === "HEAD") {
     const body = JSON.stringify({
@@ -119,7 +159,6 @@ export function writeEndpointDiscoveryResponse(
       endpoint: pathname,
       ...descriptor,
     });
-
     return new Response(request.method === "HEAD" ? null : body, {
       status: 200,
       headers: jsonHeaders(commonHeaders),
