@@ -168,7 +168,10 @@ async function chargeEconomicAttempt(
   response = await adaptCompatibilityResponse(response, compatibility);
   const headers = new Headers(response.headers);
   headers.set("X-XGuard-Attempt-Fee-USD", "0.04");
-  headers.set("X-XGuard-Attempt-Fee-Micro-USD", String(ATTEMPT_FEE_MICRO_USD));
+  headers.set(
+    "X-XGuard-Attempt-Fee-Micro-USD",
+    String(ATTEMPT_FEE_MICRO_USD),
+  );
   headers.set("X-XGuard-Attempt-Fee-State", "earned");
   headers.set("X-XGuard-Attempt-Fee-Refundable", "false");
   headers.set("X-XGuard-Attempt-Key", logicalPaymentKey);
@@ -187,10 +190,7 @@ async function rewritePublicPricing(
   const url = new URL(request.url);
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
 
-  if (
-    contentType.includes("application/json") &&
-    url.pathname === "/"
-  ) {
+  if (contentType.includes("application/json") && url.pathname === "/") {
     try {
       const body = (await response.clone().json()) as Record<string, unknown>;
       body.price = {
@@ -235,7 +235,10 @@ async function rewritePublicPricing(
         "SUCCESSFUL BILLABLE SETTLEMENT",
         "ACCEPTED ECONOMIC ATTEMPT",
       )
-      .replace("FAILED SETTLEMENT</span><b>$0", "DOWNSTREAM FAILURE</span><b>$0.04")
+      .replace(
+        "FAILED SETTLEMENT</span><b>$0",
+        "DOWNSTREAM FAILURE</span><b>$0.04",
+      )
       .replace(
         "MALFORMED REQUEST</span><b>$0",
         "MALFORMED / UNAUTHENTICATED</span><b>$0",
