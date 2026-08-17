@@ -1,0 +1,103 @@
+name: Live Buyer Pass smoke
+
+on:
+  push:
+    branches: [agent/live-buyer-pass-smoke]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Probe live Buyer Pass safely
+        shell: bash
+        env:
+          BASE: https://xguardgate.com
+          SOURCE_COMMIT: 5f28ac3ad46817ded99be6fd8047c5073a37c154
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p live-evidence
+          pass_body="$(mktemp)"
+          balance_body="$(mktemp)"
+          offer_body="$(mktemp)"
+          decision_body="$(mktemp)"
+          topup_body="$(mktemp)"
+          discovery_body="$(mktemp)"
+          cleanup() { rm -f "$pass_body" "$balance_body" "$offer_body" "$decision_body" "$topup_body" "$discovery_body"; }
+          trap cleanup EXIT
+
+          create_status="$(curl -sS -o "$pass_body" -w '%{http_code}' -X POST "$BASE/v1/buyer-pass" -H 'content-type: application/json' --data '{"channel":"api","label":"Live Smoke"}')"
+          [[ "$create_status" == "201" ]]
+          buyer_pass="$(jq -r '.buyerPass // empty' "$pass_body")"
+          pass_id="$(jq -r '.passId // empty' "$pass_body")"
+          [[ "$buyer_pass" =~ ^xg_pass_[A-Za-z0-9_-]{40,64}$ ]]
+          [[ "$pass_id" =~ ^bp_[0-9a-f]{32}$ ]]
+          rm -f "$pass_body"
+
+          balance_status="$(curl -sS -o "$balance_body" -w '%{http_code}' "$BASE/v1/buyer-pass" -H "authorization: Bearer $buyer_pass")"
+          [[ "$balance_status" == "200" ]]
+          available_micro="$(jq -r '.availableMicroUsd' "$balance_body")"
+          held_micro="$(jq -r '.heldMicroUsd' "$balance_body")"
+          [[ "$available_micro" == "0" ]]
+          [[ "$held_micro" == "0" ]]
+
+          offer_status="$(curl -sS -o "$offer_body" -w '%{http_code}' -X POST "$BASE/v1/payment/offer" -H 'content-type: application/json' --data '{}')"
+          [[ "$offer_status" == "200" ]]
+          offer_billable="$(jq -r '.billable' "$offer_body")"
+          offer_fee="$(jq -r '.feeMicroUsd' "$offer_body")"
+          offer_pass_endpoint="$(jq -r '.access.buyerPassEndpoint // empty' "$offer_body")"
+          [[ "$offer_billable" == "false" ]]
+          [[ "$offer_pass_endpoint" == "/v1/buyer-pass" ]]
+
+          request_id="live-smoke-$(cat /proc/sys/kernel/random/uuid)"
+          decision_status="$(curl -sS -o "$decision_body" -w '%{http_code}' -X POST "$BASE/v1/payment/decision" -H "authorization: Bearer $buyer_pass" -H 'content-type: application/json' --data "{\"requestId\":\"$request_id\",\"channel\":\"api\",\"rail\":\"generic_http\",\"provider\":\"live_smoke\",\"amount\":\"1.00\",\"currency\":\"USD\",\"payee\":\"Smoke Merchant\",\"merchantOrigin\":\"https://example.com\",\"expectedAmount\":\"1.00\",\"expectedPayee\":\"Smoke Merchant\"}")"
+          [[ "$decision_status" == "402" ]]
+          decision_error="$(jq -r '.error // empty' "$decision_body")"
+
+          topup_status="$(curl -sS -o "$topup_body" -w '%{http_code}' -X POST "$BASE/v1/buyer-pass/topups/intents" -H "authorization: Bearer $buyer_pass" -H 'content-type: application/json' --data '{"amountUsd":"0.01"}')"
+          [[ "$topup_status" == "201" ]]
+          topup_requested="$(jq -r '.requestedUsd' "$topup_body")"
+          topup_exact="$(jq -r '.exactDepositUsdc' "$topup_body")"
+          topup_network="$(jq -r '.network' "$topup_body")"
+          topup_asset="$(jq -r '.asset' "$topup_body")"
+          treasury_present="$(jq -r '(.treasuryAddress | type == "string" and length == 42)' "$topup_body")"
+          claim_token_present="$(jq -r '(.claimToken | type == "string" and length > 20)' "$topup_body")"
+          [[ "$topup_requested" == "0.01" ]]
+          [[ "$treasury_present" == "true" ]]
+          [[ "$claim_token_present" == "true" ]]
+          rm -f "$topup_body"
+
+          discovery_status="$(curl -sS -o "$discovery_body" -w '%{http_code}' "$BASE/.well-known/xguard-payment.json")"
+          [[ "$discovery_status" == "200" ]]
+          discovery_pass="$(jq -r '.endpoints.buyerPass // empty' "$discovery_body")"
+          discovery_topup="$(jq -r '.endpoints.buyerPassTopUp // empty' "$discovery_body")"
+          [[ "$discovery_pass" == "$BASE/v1/buyer-pass" ]]
+          [[ "$discovery_topup" == "$BASE/v1/buyer-pass/topups/intents" ]]
+
+          SOURCE_COMMIT="$SOURCE_COMMIT" CREATE_STATUS="$create_status" BALANCE_STATUS="$balance_status" AVAILABLE_MICRO="$available_micro" HELD_MICRO="$held_micro" OFFER_STATUS="$offer_status" OFFER_BILLABLE="$offer_billable" OFFER_FEE="$offer_fee" DECISION_STATUS="$decision_status" DECISION_ERROR="$decision_error" TOPUP_STATUS="$topup_status" TOPUP_REQUESTED="$topup_requested" TOPUP_EXACT="$topup_exact" TOPUP_NETWORK="$topup_network" TOPUP_ASSET="$topup_asset" DISCOVERY_STATUS="$discovery_status" node <<'NODE' > live-evidence/buyer-pass-smoke.json
+          const e = process.env;
+          process.stdout.write(JSON.stringify({
+            sourceCommit: e.SOURCE_COMMIT,
+            checkedAt: new Date().toISOString(),
+            endpoint: "https://xguardgate.com",
+            createPass: { status: Number(e.CREATE_STATUS), tokenShapeValid: true, plaintextTokenStoredInArtifact: false },
+            balance: { status: Number(e.BALANCE_STATUS), availableMicroUsd: Number(e.AVAILABLE_MICRO), heldMicroUsd: Number(e.HELD_MICRO) },
+            offer: { status: Number(e.OFFER_STATUS), billable: e.OFFER_BILLABLE === "true", feeMicroUsd: Number(e.OFFER_FEE), buyerPassAdvertised: true },
+            unfundedDecision: { status: Number(e.DECISION_STATUS), error: e.DECISION_ERROR, feeEarned: false },
+            topUpIntent: { status: Number(e.TOPUP_STATUS), requestedUsd: e.TOPUP_REQUESTED, exactDepositUsdc: e.TOPUP_EXACT, network: e.TOPUP_NETWORK, asset: e.TOPUP_ASSET, treasuryConfigured: true, claimTokenPresentButNotStored: true, fundsSent: false },
+            discovery: { status: Number(e.DISCOVERY_STATUS), buyerPassAdvertised: true, topUpAdvertised: true },
+            secretsStored: false
+          }, null, 2));
+          NODE
+          sha256sum live-evidence/buyer-pass-smoke.json > live-evidence/SHA256SUMS
+          unset buyer_pass request_id
+      - uses: actions/upload-artifact@v6
+        with:
+          name: xguard-live-buyer-pass-smoke-${{ github.sha }}
+          path: live-evidence
+          if-no-files-found: error
+          retention-days: 30
