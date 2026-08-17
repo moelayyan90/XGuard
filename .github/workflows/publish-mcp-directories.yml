@@ -29,6 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           response="$(curl --fail-with-body -sS --max-time 20 \
+            --retry 4 --retry-all-errors --retry-delay 2 \
             -X POST 'https://mcprepository.com/api/index' \
             -H 'Content-Type: application/json' \
             --data '{"url":"https://github.com/moelayyan90/XGuard"}')"
@@ -64,7 +65,7 @@ jobs:
           set -euo pipefail
           BASE='https://xguardgate.com'
 
-          manifest="$(curl -fsS --max-time 20 "${BASE}/.well-known/mcp.json")"
+          manifest="$(curl -fsS --max-time 20 --retry 4 --retry-all-errors --retry-delay 2 "${BASE}/.well-known/mcp.json")"
           printf '%s' "${manifest}" | node -e '
             let s="";
             process.stdin.on("data",d=>s+=d).on("end",()=>{
@@ -73,7 +74,7 @@ jobs:
             });
           '
 
-          submit="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+          submit="$(curl -sS --max-time 30 --retry 4 --retry-all-errors --retry-delay 2 -w $'\n%{http_code}' \
             -X POST 'https://mcpub.dev/mcp' \
             -H 'Content-Type: application/json' \
             --data '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"submit","arguments":{"url":"https://xguardgate.com","description":"XGuard universal transaction safety and evidence gateway for buyer/agent pre-payment decisions, MCP tools, API and webhook execution, and independent x402 settlement truth."}}}')"
@@ -85,7 +86,7 @@ jobs:
             exit 1
           fi
 
-          lookup="$(curl --fail-with-body -sS --max-time 30 \
+          lookup="$(curl --fail-with-body -sS --max-time 30 --retry 4 --retry-all-errors --retry-delay 2 \
             -X POST 'https://mcpub.dev/mcp' \
             -H 'Content-Type: application/json' \
             --data '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get","arguments":{"url":"https://xguardgate.com"}}}')"
@@ -105,19 +106,21 @@ jobs:
         run: |
           set -euo pipefail
           URI='https://xguardgate.com/.well-known/agent-card.json'
-          card="$(curl -fsS --max-time 20 "${URI}")"
+          card="$(curl -fsS --max-time 20 --retry 4 --retry-all-errors --retry-delay 2 "${URI}")"
           if ! printf '%s' "${card}" | node -e '
             let s="";
             process.stdin.on("data",d=>s+=d).on("end",()=>{
               const x=JSON.parse(s);
-              const ok=String(x.protocolVersion||"").startsWith("0.3") && String(x.url||"")==="https://xguardgate.com/a2a" && x.preferredTransport==="JSONRPC";
-              process.exit(ok?0:1);
+              const interfaces=Array.isArray(x.supportedInterfaces)?x.supportedInterfaces:[];
+              const v1=interfaces.some(i=>i&&String(i.url||"")==="https://xguardgate.com/a2a"&&i.protocolBinding==="JSONRPC"&&String(i.protocolVersion||"")==="1.0");
+              const v03=interfaces.some(i=>i&&String(i.url||"")==="https://xguardgate.com/a2a"&&i.protocolBinding==="JSONRPC"&&String(i.protocolVersion||"").startsWith("0.3"));
+              process.exit(v1&&v03?0:1);
             });
           '; then
-            echo "XGuard Agent Card is not A2A-compatible on the canonical domain; refusing registry refresh."
+            echo "XGuard Agent Card is not A2A 1.0-compatible with the advertised 0.3 compatibility interface; refusing registry refresh."
             exit 1
           fi
-          response="$(curl -sS --max-time 30 -w $'\n%{http_code}' \
+          response="$(curl -sS --max-time 30 --retry 4 --retry-all-errors --retry-delay 2 -w $'\n%{http_code}' \
             -X POST 'https://a2aregistry.org/api/agents/register' \
             -H 'Content-Type: application/json' \
             --data "{\"wellKnownURI\":\"${URI}\"}")"
