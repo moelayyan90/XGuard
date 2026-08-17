@@ -1,0 +1,315 @@
+commit=c953a1a0692a863f2c478f482060a3978e5b8b1a
+checked_at=2026-08-17T11:52:25Z
+
+=== GET /healthz ===
+status=200
+{"status":"ok","mode":"mainnet","network":"eip155:8453"}
+
+=== POST / ===
+status=200
+{"name":"XGuard","title":"XGuard — x402 Economic Firewall & Facilitator Safety Gateway","version":"0.4.0","protocol":"x402-v2","mode":"mainnet","network":"eip155:8453","asset":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","price":{"amount":"0.002","currency":"USD","event":"successful_billable_settlement","model":"merchant_prepaid_service_balance"},"endpoints":{"register":"/v1/register","balance":"/v1/balance","topUpIntent":"/v1/topups/intents","topUpClaim":"/v1/topups/claim","supported":"/supported","verify":"/verify","settle":"/settle","status":"/status","discovery":"/discovery/resources","discoverySearch":"/discovery/search","mcp":"/mcp","mcpManifest":"/.well-known/mcp/server.json"},"discovery":{"extension":"bazaar","native":true},"repository":"https://github.com/moelayyan90/XGuard"}
+
+=== GET /.well-known/agent-card.json ===
+status=200
+{"name":"XGuard","description":"A safety, verification, idempotency, finality, and settlement gateway for x402 v2 payments on Base mainnet. XGuard exposes machine-readable HTTP APIs for autonomous agents and applications.","supportedInterfaces":[{"url":"https://xguard-mainnet.maqamapp.workers.dev/a2a","protocolBinding":"JSONRPC","protocolVersion":"0.3"}],"version":"0.4.0","documentationUrl":"https://xguard-mainnet.maqamapp.workers.dev/llms-full.txt","providerManifest":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json","capabilities":{"streaming":false,"pushNotifications":false,"extendedAgentCard":false,"x402CompatibilityBridge":true},"defaultInputModes":["text/plain","application/json"],"defaultOutputModes":["text/plain","application/json"],"skills":[{"id":"x402-capability-discovery","name":"Discover x402 payment capabilities","description":"Returns the x402 v2 payment kinds, networks, schemes, extensions, and signer capabilities currently exposed by XGuard.","tags":["x402","payments","discovery","base","usdc"],"examples":["GET https://xguard-mainnet.maqamapp.workers.dev/supported"],"inputModes":["application/json"],"outputModes":["application/json"]},{"id":"x402-payment-verification","name":"Verify x402 payment authorization","description":"Validates an x402 v2 payment authorization through XGuard's guarded facilitator route. Requires a merchant Bearer API key.","tags":["x402","verify","payments","security"],"examples":["POST https://xguard-mainnet.maqamapp.workers.dev/verify"],"inputModes":["application/json"],"outputModes":["application/json"]},{"id":"x402-payment-settlement","name":"Settle x402 payment","description":"Submits an x402 v2 settlement through XGuard with duplicate protection, durable coordination, finality tracking, and fee accounting. Requires a merchant Bearer API key and service balance.","tags":["x402","settlement","payments","idempotency","finality"],"examples":["POST https://xguard-mainnet.maqamapp.workers.dev/settle"],"inputModes":["application/json"],"outputModes":["application/json"]},{"id":"mcp-x402-discovery","name":"Discover x402 resources over MCP","description":"Use the public Streamable HTTP MCP server to discover paid x402 HTTP APIs and MCP tools cataloged by XGuard.","tags":["mcp","x402","bazaar","discovery","agents"],"examples":["POST https://xguard-mainnet.maqamapp.workers.dev/mcp with MCP-Protocol-Version: 2026-07-28","GET https://xguard-mainnet.maqamapp.workers.dev/discovery/resources","GET https://xguard-mainnet.maqamapp.workers.dev/discovery/search?query=weather"]},{"id":"x402-safe-migration","name":"Generate a safe XGuard migration kit","description":"Generate side-effect-free instructions for a merchant-controlled switch from an observed facilitator path to XGuard without creating payments or changing third-party infrastructure.","tags":["x402","migration","facilitator","safety"],"examples":["GET https://xguard-mainnet.maqamapp.workers.dev/.well-known/xguard/migrate?from=cdp&name=my-service"]},{"id":"x402-settlement-truth","name":"Resolve independent x402 settlement truth","description":"Use XGuard's merchant-scoped finality and recovery endpoints to distinguish FINALIZED, PENDING, PROVEN_FAILED, and CONFLICT without blindly resubmitting an ambiguous payment authorization.","tags":["x402","settlement","finality","recovery","payments","safety"],"examples":["GET https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/<logicalPaymentKey>/truth","POST https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/<logicalPaymentKey>/resolve"]}],"xguardDiscovery":{"mcp":"https://xguard-mainnet.maqamapp.workers.dev/mcp","mcpManifest":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json","resources":"https://xguard-mainnet.maqamapp.workers.dev/discovery/resources","search":"https://xguard-mainnet.maqamapp.workers.dev/discovery/search","migration":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/xguard/migrate","settlementTruth":"https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/{logicalPaymentKey}/truth","settlementResolve":"https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/{logicalPaymentKey}/resolve","preferredMcpProtocolVersion":"2026-07-28"},"protocolVersion":"0.3.0","url":"https://xguard-mainnet.maqamapp.workers.dev/a2a","preferredTransport":"JSONRPC","additionalInterfaces":[{"url":"https://xguard-mainnet.maqamapp.workers.dev/a2a","transport":"JSONRPC"}],"provider":{"organization":"XGuard","url":"https://github.com/moelayyan90/XGuard"},"compatibility":{"mode":"transaction-compatibility-bridge","canonical":{"x402Version":2,"scheme":"exact","network":"eip155:8453"},"acceptedLegacy":[{"x402Version":1,"scheme":"exact","network":"base","translation":"maxAmountRequired->amount; base->eip155:8453"}],"invariant":"The EIP-3009 authorization payload and signature are preserved verbatim; only the x402 protocol envelope is normalized.","endpoints":{"verify":"/verify","settle":"/settle","supported":"/support
+
+=== GET /.well-known/agent-market.json ===
+status=200
+{"name":"XGuard","version":"0.4.0","description":"Machine-discoverable x402 v2 verification and settlement gateway for autonomous agents and applications.","protocol":"x402-v2","network":"eip155:8453","asset":"USDC","discovery":{"provider":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json","agentCard":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json","openapi":"https://xguard-mainnet.maqamapp.workers.dev/openapi.json","llms":"https://xguard-mainnet.maqamapp.workers.dev/llms.txt","llmsFull":"https://xguard-mainnet.maqamapp.workers.dev/llms-full.txt","supported":"https://xguard-mainnet.maqamapp.workers.dev/supported","status":"https://xguard-mainnet.maqamapp.workers.dev/status","health":"https://xguard-mainnet.maqamapp.workers.dev/healthz","readiness":"https://xguard-mainnet.maqamapp.workers.dev/readyz","mcp":"https://xguard-mainnet.maqamapp.workers.dev/mcp","mcpManifest":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json","resources":"https://xguard-mainnet.maqamapp.workers.dev/discovery/resources","search":"https://xguard-mainnet.maqamapp.workers.dev/discovery/search","migration":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/xguard/migrate","settlementTruth":"https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/{logicalPaymentKey}/truth","settlementResolve":"https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/{logicalPaymentKey}/resolve","preferredMcpProtocolVersion":"2026-07-28"},"commercialModel":{"event":"successful_billable_settlement","feeUsd":"0.002","billing":"merchant_prepaid_service_balance"},"authentication":{"type":"http-bearer","registrationEndpoint":"https://xguard-mainnet.maqamapp.workers.dev/v1/register","protectedEndpoints":["/v1/balance","/v1/topups/intents","/v1/topups/claim","/verify","/settle"]},"compatibility":{"mode":"transaction-compatibility-bridge","canonical":{"x402Version":2,"scheme":"exact","network":"eip155:8453"},"acceptedLegacy":[{"x402Version":1,"scheme":"exact","network":"base","translation":"maxAmountRequired->amount; base->eip155:8453"}],"invariant":"The EIP-3009 authorization payload and signature are preserved verbatim; only the x402 protocol envelope is normalized.","endpoints":{"verify":"/verify","settle":"/settle","supported":"/supported"}}}
+
+=== GET /.well-known/x402/facilitator.json ===
+status=200
+{"manifest":"xguard-provider-manifest-v1","kind":"x402-facilitator","id":"io.github.moelayyan90/xguard","name":"XGuard","version":"0.4.0","status":"production","description":"Hosted x402 v2 facilitator-compatible safety and routing gateway for Base mainnet USDC with replay protection, duplicate-settlement protection, durable settlement ownership, independent finality verification, accounting, reconciliation, Bazaar discovery, and MCP discovery.","protocol":{"name":"x402","version":2,"specification":"https://github.com/x402-foundation/x402/blob/main/specs/x402-specification-v2.md","canonicalVersion":2,"supportedVersions":[1,2]},"facilitator":{"baseUrl":"https://xguard-mainnet.maqamapp.workers.dev","supported":"https://xguard-mainnet.maqamapp.workers.dev/supported","verify":"https://xguard-mainnet.maqamapp.workers.dev/verify","settle":"https://xguard-mainnet.maqamapp.workers.dev/settle","network":"eip155:8453","scheme":"exact","asset":{"symbol":"USDC","address":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","transferMethod":"eip3009"},"clientConfig":{"type":"HTTPFacilitatorClient","url":"https://xguard-mainnet.maqamapp.workers.dev","authentication":"bearer"},"compatibilityBridge":{"accepts":["x402-v1 exact@base","x402-v2 exact@eip155:8453"],"canonicalizesTo":"x402-v2 exact@eip155:8453"}},"onboarding":{"registration":"https://xguard-mainnet.maqamapp.workers.dev/v1/register","balance":"https://xguard-mainnet.maqamapp.workers.dev/v1/balance","topUpIntent":"https://xguard-mainnet.maqamapp.workers.dev/v1/topups/intents","topUpClaim":"https://xguard-mainnet.maqamapp.workers.dev/v1/topups/claim","packageInstallationRequired":false,"apiKeyRequiredForVerifyAndSettle":true},"pricing":{"subscription":"none","event":"successful_billable_settlement","feeUsd":"0.002","billing":"merchant_prepaid_service_balance","freeOperations":["supported","health","status","discovery","mcp_discovery","failed_verification","failed_settlement","duplicate_retry"]},"safety":{"replayProtection":true,"duplicateSettlementProtection":true,"durableSettlementOwnership":true,"failClosedAmbiguousSettlement":true,"independentBaseUsdcFinalityVerification":true,"reconciliation":true,"merchantFacingSettlementTruth":true,"activeAmbiguityResolution":true,"releaseSafeOnlyAfterIndependentFinality":true,"blindResubmissionAfterAmbiguity":false},"settlementExecution":{"mode":"routed","currentDownstream":"xpay","signerAttribution":"Use the live /supported response as authoritative.","note":"XGuard is the merchant-facing facilitator-compatible gateway and safety layer. The current downstream transaction submitter is xpay; XGuard independently verifies finality before recording earned service revenue."},"discovery":{"agentCard":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json","agentMarket":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-market.json","openapi":"https://xguard-mainnet.maqamapp.workers.dev/openapi.json","llms":"https://xguard-mainnet.maqamapp.workers.dev/llms.txt","llmsFull":"https://xguard-mainnet.maqamapp.workers.dev/llms-full.txt","bazaarResources":"https://xguard-mainnet.maqamapp.workers.dev/discovery/resources","bazaarSearch":"https://xguard-mainnet.maqamapp.workers.dev/discovery/search","mcp":"https://xguard-mainnet.maqamapp.workers.dev/mcp","mcpManifest":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json"},"operations":{"health":"https://xguard-mainnet.maqamapp.workers.dev/healthz","readiness":"https://xguard-mainnet.maqamapp.workers.dev/readyz","status":"https://xguard-mainnet.maqamapp.workers.dev/status"},"source":{"repository":"https://github.com/moelayyan90/XGuard","license":"Apache-2.0"},"independence":"XGuard is independent and is not an official product of the x402 Foundation, Coinbase, Cloudflare, Base, Circle, xpay, PayAI, or OKX.","compatibility":{"mode":"transaction-compatibility-bridge","canonical":{"x402Version":2,"scheme":"exact","network":"eip155:8453"},"acceptedLegacy":[{"x402Version":1,"scheme":"exact","network":"base","translation":"maxAmountRequired->amount; base->eip155:8453"}],"invariant":"The EIP-3009 authorization payload and signature are preserved verbatim; only the x402 protocol envelope is normalized.","endpoints":{"verify":"/verify","settle":"/settle","supported":"/supported"}},"settlementTruth":{"version":"xguard-settlement-truth-v1","role":"independent-finality-and-recovery-layer","states":["FINALIZED","PENDING","PROVEN_FAILED","CONFLICT"],"releaseSafeState":"FINALIZED","truthEndpoint":"/v1/settlements/{logicalPaymentKey}/truth","resolveEndpoint":"/v1/settlements/{logicalPaymentKey}/resolve","authentication":"merchant-bearer","evidence":["finalized Base USDC transfer","EIP-3009 AuthorizationUsed","EIP-3009 AuthorizationCanceled"],"invariant":"An ambiguous post-submit outcome is never treated as permission for a blind second settlement submission."}}
+
+=== GET /.well-known/x402 ===
+status=200
+{
+  "manifest": "xguard-provider-manifest-v1",
+  "kind": "x402-facilitator",
+  "id": "io.github.moelayyan90/xguard",
+  "name": "XGuard",
+  "version": "0.4.0",
+  "status": "production",
+  "description": "Hosted x402 v2 facilitator-compatible safety and routing gateway for Base mainnet USDC with replay protection, duplicate-settlement protection, durable settlement ownership, independent finality verification, accounting, reconciliation, Bazaar discovery, and MCP discovery.",
+  "protocol": {
+    "name": "x402",
+    "version": 2,
+    "specification": "https://github.com/x402-foundation/x402/blob/main/specs/x402-specification-v2.md"
+  },
+  "facilitator": {
+    "baseUrl": "https://xguard-mainnet.maqamapp.workers.dev",
+    "supported": "https://xguard-mainnet.maqamapp.workers.dev/supported",
+    "verify": "https://xguard-mainnet.maqamapp.workers.dev/verify",
+    "settle": "https://xguard-mainnet.maqamapp.workers.dev/settle",
+    "network": "eip155:8453",
+    "scheme": "exact",
+    "asset": {
+      "symbol": "USDC",
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "transferMethod": "eip3009"
+    },
+    "clientConfig": {
+      "type": "HTTPFacilitatorClient",
+      "url": "https://xguard-mainnet.maqamapp.workers.dev",
+      "authentication": "bearer"
+    }
+  },
+  "onboarding": {
+    "registration": "https://xguard-mainnet.maqamapp.workers.dev/v1/register",
+    "balance": "https://xguard-mainnet.maqamapp.workers.dev/v1/balance",
+    "topUpIntent": "https://xguard-mainnet.maqamapp.workers.dev/v1/topups/intents",
+    "topUpClaim": "https://xguard-mainnet.maqamapp.workers.dev/v1/topups/claim",
+    "packageInstallationRequired": false,
+    "apiKeyRequiredForVerifyAndSettle": true
+  },
+  "pricing": {
+    "subscription": "none",
+    "event": "successful_billable_settlement",
+    "feeUsd": "0.002",
+    "billing": "merchant_prepaid_service_balance",
+    "freeOperations": [
+      "supported",
+      "health",
+      "status",
+      "discovery",
+      "mcp_discovery",
+      "failed_verification",
+      "failed_settlement",
+      "duplicate_retry"
+    ]
+  },
+  "safety": {
+    "replayProtection": true,
+    "duplicateSettlementProtection": true,
+    "durableSettlementOwnership": true,
+    "failClosedAmbiguousSettlement": true,
+    "independentBaseUsdcFinalityVerification": true,
+    "reconciliation": true
+  },
+  "settlementExecution": {
+    "mode": "routed",
+    "currentDownstream": "xpay",
+    "signerAttribution": "Use the live /supported response as authoritative.",
+    "note": "XGuard is the merchant-facing facilitator-compatible gateway and safety layer. The current downstream transaction submitter is xpay; XGuard independently verifies finality before recording earned service revenue."
+  },
+  "discovery": {
+    "agentCard": "https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json",
+    "agentMarket": "https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-market.json",
+    "openapi": "https://xguard-mainnet.maqamapp.workers.dev/openapi.json",
+    "llms": "https://xguard-mainnet.maqamapp.workers.dev/llms.txt",
+    "llmsFull": "https://xguard-mainnet.maqamapp.workers.dev/llms-full.txt",
+    "bazaarResources": "https://xguard-mainnet.maqamapp.workers.dev/discovery/resources",
+    "bazaarSearch": "https://xguard-mainnet.maqamapp.workers.dev/discovery/search",
+    "mcp": "https://xguard-mainnet.maqamapp.workers.dev/mcp",
+    "mcpManifest": "https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json"
+  },
+  "operations": {
+    "health": "https://xguard-mainnet.maqamapp.workers.dev/healthz",
+    "readiness": "https://xguard-mainnet.maqamapp.workers.dev/readyz",
+    "status": "https://xguard-mainnet.maqamapp.workers.dev/status"
+  },
+  "source": {
+    "repository": "https://github.com/moelayyan90/XGuard",
+    "license": "Apache-2.0"
+  },
+  "independence": "XGuard is independent and is not an official product of the x402 Foundation, Coinbase, Cloudflare, Base, Circle, xpay, PayAI, or OKX."
+}
+
+=== GET /.well-known/monetization ===
+status=200
+{
+  "manifest": "xguard-monetization-v1",
+  "schemaVersion": 1,
+  "service": {
+    "id": "io.github.moelayyan90/xguard",
+    "name": "XGuard",
+    "version": "0.4.0"
+  },
+  "pricing": {
+    "subscription": "none",
+    "event": "successful_billable_settlement",
+    "feeUsd": "0.002",
+    "billing": "merchant_prepaid_service_balance",
+    "freeOperations": [
+      "supported",
+      "health",
+      "status",
+      "discovery",
+      "mcp_discovery",
+      "failed_verification",
+      "failed_settlement",
+      "duplicate_retry"
+    ]
+  },
+  "onboarding": {
+    "registration": "https://xguard-mainnet.maqamapp.workers.dev/v1/register",
+    "balance": "https://xguard-mainnet.maqamapp.workers.dev/v1/balance",
+    "topUpIntent": "https://xguard-mainnet.maqamapp.workers.dev/v1/topups/intents",
+    "topUpClaim": "https://xguard-mainnet.maqamapp.workers.dev/v1/topups/claim",
+    "packageInstallationRequired": false,
+    "apiKeyRequiredForVerifyAndSettle": true
+  },
+  "x402": {
+    "providerManifest": "https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json",
+    "discovery": "https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402",
+    "supported": "https://xguard-mainnet.maqamapp.workers.dev/supported",
+    "verify": "https://xguard-mainnet.maqamapp.workers.dev/verify",
+    "settle": "https://xguard-mainnet.maqamapp.workers.dev/settle"
+  },
+  "note": "XGuard compatibility metadata for machine pricing discovery. Use /supported for live x402 capabilities and signer attribution."
+}
+
+=== GET /.well-known/mcp/server.json ===
+status=200
+{"name":"io.github.moelayyan90/xguard","title":"XGuard","description":"Remote MCP server for discovering x402-paid HTTP APIs and MCP tools cataloged by XGuard.","version":"0.4.0","protocol":"x402-v2","network":"eip155:8453","mcp":{"preferredProtocolVersion":"2026-07-28","backwardCompatibleThrough":"2025-03-26","transport":"streamable-http","stateless":true},"remotes":[{"type":"streamable-http","url":"https://xguard-mainnet.maqamapp.workers.dev/mcp"}],"discovery":{"resources":"https://xguard-mainnet.maqamapp.workers.dev/discovery/resources","search":"https://xguard-mainnet.maqamapp.workers.dev/discovery/search","migration":"https://xguard-mainnet.maqamapp.workers.dev/.well-known/xguard/migrate","settlementTruth":"https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/{logicalPaymentKey}/truth","settlementResolve":"https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/{logicalPaymentKey}/resolve"}}
+
+=== GET /openapi.json ===
+status=200
+{"openapi":"3.1.0","info":{"title":"XGuard Mainnet API","version":"0.4.0","description":"Guarded x402 v2 verification and settlement API for Base mainnet USDC."},"servers":[{"url":"https://xguard-mainnet.maqamapp.workers.dev"}],"tags":[{"name":"Discovery"},{"name":"Merchant"},{"name":"Payments"}],"paths":{"/":{"get":{"tags":["Discovery"],"summary":"Describe XGuard","responses":{"200":{"description":"XGuard service metadata"}}}},"/.well-known/x402/facilitator.json":{"get":{"tags":["Discovery"],"summary":"Read the XGuard facilitator provider manifest","description":"XGuard-specific machine-readable provider metadata. This supplements, but does not replace, the standard x402 /supported response.","responses":{"200":{"description":"Provider manifest"}}}},"/provider.json":{"get":{"tags":["Discovery"],"summary":"Read the XGuard facilitator provider manifest alias","responses":{"200":{"description":"Provider manifest"}}}},"/healthz":{"get":{"tags":["Discovery"],"summary":"Liveness check","responses":{"200":{"description":"Worker is alive"}}}},"/readyz":{"get":{"tags":["Discovery"],"summary":"Readiness check","responses":{"200":{"description":"Mainnet route is ready"},"503":{"description":"Mainnet route is degraded or unavailable"}}}},"/supported":{"get":{"tags":["Discovery"],"summary":"List supported x402 kinds","responses":{"200":{"description":"Supported x402 capabilities"}}}},"/status":{"get":{"tags":["Discovery"],"summary":"Read operational status","responses":{"200":{"description":"Operational status and settlement counters"}}}},"/v1/register":{"post":{"tags":["Merchant"],"summary":"Register a merchant","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"name":{"type":"string"}}}}}},"responses":{"201":{"description":"Merchant registered and API key issued"}}}},"/v1/balance":{"get":{"tags":["Merchant"],"summary":"Read merchant service balance","security":[{"bearerAuth":[]}],"responses":{"200":{"description":"Merchant balance"},"401":{"description":"Missing or invalid merchant API key"}}}},"/v1/topups/intents":{"post":{"tags":["Merchant"],"summary":"Create a service-balance top-up intent","security":[{"bearerAuth":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["amountUsd"],"properties":{"amountUsd":{"oneOf":[{"type":"string"},{"type":"number"}]}}}}}},"responses":{"201":{"description":"Top-up intent created"},"401":{"description":"Missing or invalid merchant API key"}}}},"/v1/topups/claim":{"post":{"tags":["Merchant"],"summary":"Claim a finalized Base USDC top-up","security":[{"bearerAuth":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["claimToken","transactionHash"],"properties":{"claimToken":{"type":"string"},"transactionHash":{"type":"string"}}}}}},"responses":{"200":{"description":"Top-up credited"},"401":{"description":"Missing or invalid merchant API key"}}}},"/verify":{"post":{"tags":["Payments"],"summary":"Verify an x402 v2 payment authorization","security":[{"bearerAuth":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","description":"x402 v2 facilitator request containing paymentPayload and paymentRequirements as defined by the x402 specification.","additionalProperties":true}}}},"responses":{"200":{"description":"x402 verification result"},"400":{"description":"Malformed or unsupported payment request"},"401":{"description":"Missing or invalid merchant API key"},"503":{"description":"No healthy facilitator route is available"}}}},"/settle":{"post":{"tags":["Payments"],"summary":"Settle an x402 v2 payment","security":[{"bearerAuth":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","description":"x402 v2 facilitator request containing paymentPayload and paymentRequirements as defined by the x402 specification.","additionalProperties":true}}}},"responses":{"200":{"description":"x402 settlement result"},"400":{"description":"Malformed or unsupported payment request"},"401":{"description":"Missing or invalid merchant API key"},"402":{"description":"Merchant service balance is insufficient"},"409":{"description":"Duplicate, conflicting, or in-progress settlement"},"503":{"description":"Settlement outcome is ambiguous or route unavailable"}}}},"/discovery/resources":{"get":{"summary":"List x402 Bazaar resources cataloged by XGuard","responses":{"200":{"description":"Discovery catalog"}}}},"/discovery/search":{"get":{"summary":"Search XGuard's x402 Bazaar catalog","parameters":[{"name":"query","in":"query","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"Matching resources"}}}},"/.well-known/xguard/migrate":{"get":{"summary":"Generate a side-effect-free XGuard facilitator switch kit","description":"Returns merchant-controlled migration instructions only. It does not register, fund, mutate third-party configuration, create syntheti
+
+=== GET /llms.txt ===
+status=200
+# XGuard
+
+> XGuard is a guarded x402 v2 verification and settlement gateway for autonomous agents and applications on Base mainnet USDC.
+
+XGuard charges $0.002 only for a successful billable settlement. Verification, malformed requests, failed settlements, duplicates, replays, and discovery requests are not billable.
+
+## Discovery
+- [Provider manifest](https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json): machine-readable facilitator identity, integration, pricing, onboarding, and safety metadata
+- [Agent Card](https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json): machine-readable agent/service capability metadata
+- [MCP server metadata](https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json): official remote MCP server metadata
+- [Remote MCP](https://xguard-mainnet.maqamapp.workers.dev/mcp): streamable HTTP MCP endpoint for agent discovery
+- [Bazaar resources](https://xguard-mainnet.maqamapp.workers.dev/discovery/resources): machine-readable catalog of x402-paid HTTP APIs and MCP tools
+- [Bazaar search](https://xguard-mainnet.maqamapp.workers.dev/discovery/search?query=x402): searchable XGuard catalog surface
+- [OpenAPI](https://xguard-mainnet.maqamapp.workers.dev/openapi.json): complete HTTP API description
+- [Supported x402 kinds](https://xguard-mainnet.maqamapp.workers.dev/supported): live x402 capabilities and authoritative signer attribution
+- [Status](https://xguard-mainnet.maqamapp.workers.dev/status): operational status
+- [Readiness](https://xguard-mainnet.maqamapp.workers.dev/readyz): live mainnet route readiness
+
+## Core API
+- POST https://xguard-mainnet.maqamapp.workers.dev/v1/register — create a merchant identity and receive a Bearer API key
+- POST https://xguard-mainnet.maqamapp.workers.dev/verify — verify an x402 v2 payment authorization
+- POST https://xguard-mainnet.maqamapp.workers.dev/settle — settle an x402 v2 payment with duplicate protection and finality tracking
+
+## Authentication
+Protected merchant and payment endpoints use Authorization: Bearer <merchant-api-key>.
+
+## Protocol
+x402 version 2; Base mainnet (eip155:8453); exact scheme; native USDC.
+## Agent discovery
+MCP: https://xguard-mainnet.maqamapp.workers.dev/mcp (preferred protocol 2026-07-28; Streamable HTTP; stateless)
+MCP manifest: https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json
+Bazaar resources: https://xguard-mainnet.maqamapp.workers.dev/discovery/resources
+Bazaar search: https://xguard-mainnet.maqamapp.workers.dev/discovery/search?query=<terms>
+Safe migration kit: https://xguard-mainnet.maqamapp.workers.dev/.well-known/xguard/migrate?from=<cdp|payai>&name=<merchant>
+Settlement truth: https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/<logicalPaymentKey>/truth (merchant API key required)
+Settlement resolve: https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/<logicalPaymentKey>/resolve (merchant API key required; POST)
+Settlement truth states are FINALIZED, PENDING, PROVEN_FAILED, and CONFLICT; only FINALIZED is release-safe.
+The resolver checks independent Base finality and EIP-3009 recovery evidence and never blindly resubmits an ambiguous authorization.
+The migration kit is instruction-only and does not move funds, change third-party infrastructure, or synthesize x402 settlements.
+
+
+=== GET /llms-full.txt ===
+status=200
+# XGuard
+
+> XGuard is a guarded x402 v2 verification and settlement gateway for autonomous agents and applications on Base mainnet USDC.
+
+XGuard charges $0.002 only for a successful billable settlement. Verification, malformed requests, failed settlements, duplicates, replays, and discovery requests are not billable.
+
+## Discovery
+- [Provider manifest](https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json): machine-readable facilitator identity, integration, pricing, onboarding, and safety metadata
+- [Agent Card](https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json): machine-readable agent/service capability metadata
+- [MCP server metadata](https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json): official remote MCP server metadata
+- [Remote MCP](https://xguard-mainnet.maqamapp.workers.dev/mcp): streamable HTTP MCP endpoint for agent discovery
+- [Bazaar resources](https://xguard-mainnet.maqamapp.workers.dev/discovery/resources): machine-readable catalog of x402-paid HTTP APIs and MCP tools
+- [Bazaar search](https://xguard-mainnet.maqamapp.workers.dev/discovery/search?query=x402): searchable XGuard catalog surface
+- [OpenAPI](https://xguard-mainnet.maqamapp.workers.dev/openapi.json): complete HTTP API description
+- [Supported x402 kinds](https://xguard-mainnet.maqamapp.workers.dev/supported): live x402 capabilities and authoritative signer attribution
+- [Status](https://xguard-mainnet.maqamapp.workers.dev/status): operational status
+- [Readiness](https://xguard-mainnet.maqamapp.workers.dev/readyz): live mainnet route readiness
+
+## Core API
+- POST https://xguard-mainnet.maqamapp.workers.dev/v1/register — create a merchant identity and receive a Bearer API key
+- POST https://xguard-mainnet.maqamapp.workers.dev/verify — verify an x402 v2 payment authorization
+- POST https://xguard-mainnet.maqamapp.workers.dev/settle — settle an x402 v2 payment with duplicate protection and finality tracking
+
+## Authentication
+Protected merchant and payment endpoints use Authorization: Bearer <merchant-api-key>.
+
+## Protocol
+x402 version 2; Base mainnet (eip155:8453); exact scheme; native USDC.
+
+## Merchant balance
+- GET https://xguard-mainnet.maqamapp.workers.dev/v1/balance — current prepaid XGuard service balance
+- POST https://xguard-mainnet.maqamapp.workers.dev/v1/topups/intents — create an exact Base USDC top-up intent
+- POST https://xguard-mainnet.maqamapp.workers.dev/v1/topups/claim — claim a finalized top-up transaction
+
+## Provider selection
+Use https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json when a catalog, agent, or integration tool needs XGuard provider metadata. Use https://xguard-mainnet.maqamapp.workers.dev/supported as the authoritative live x402 capability and signer response. The provider manifest is XGuard-specific metadata and does not claim to be part of the x402 protocol specification.
+
+## Settlement safety semantics
+XGuard derives stable payment identities, rejects conflicting active authorizations, coordinates settlement durably, prevents automatic retries when downstream outcome is ambiguous, tracks Base USDC finality, and earns its service fee only after successful finality confirmation.
+
+## Settlement execution
+XGuard is the merchant-facing facilitator-compatible gateway. The current downstream transaction submitter is xpay. XGuard independently verifies finalized Base USDC settlement evidence before recognizing its service fee.
+
+## HTTP behavior
+- 200: successful discovery/verification/settlement response
+- 400: malformed or unsupported request
+- 401: merchant API key missing or invalid
+- 402: merchant service balance cannot cover the XGuard fee
+- 409: duplicate/conflicting/in-progress settlement state
+- 429: request or concurrency limit exceeded
+- 503: protected dependency unavailable or settlement result is ambiguous
+
+## Machine-readable contract
+Use https://xguard-mainnet.maqamapp.workers.dev/openapi.json as the authoritative HTTP interface description and https://xguard-mainnet.maqamapp.workers.dev/supported for live x402 network/scheme/signer support.
+## Agent discovery
+MCP: https://xguard-mainnet.maqamapp.workers.dev/mcp (preferred protocol 2026-07-28; Streamable HTTP; stateless)
+MCP manifest: https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json
+Bazaar resources: https://xguard-mainnet.maqamapp.workers.dev/discovery/resources
+Bazaar search: https://xguard-mainnet.maqamapp.workers.dev/discovery/search?query=<terms>
+Safe migration kit: https://xguard-mainnet.maqamapp.workers.dev/.well-known/xguard/migrate?from=<cdp|payai>&name=<merchant>
+Settlement truth: https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/<logicalPaymentKey>/truth (merchant API key required)
+Settlement resolve: https://xguard-mainnet.maqamapp.workers.dev/v1/settlements/<logicalPaymentKey>/resolve (merchant API key required; POST)
+Settlement truth states are FINALIZED, PENDING, PROVEN_FAILED, and CONFLICT
+
+=== GET /robots.txt ===
+status=200
+User-agent: *
+Allow: /
+
+# Machine-readable AI/service discovery
+# https://xguard-mainnet.maqamapp.workers.dev/.well-known/x402/facilitator.json
+# https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-card.json
+# https://xguard-mainnet.maqamapp.workers.dev/.well-known/agent-market.json
+# https://xguard-mainnet.maqamapp.workers.dev/.well-known/mcp/server.json
+# https://xguard-mainnet.maqamapp.workers.dev/mcp
+# https://xguard-mainnet.maqamapp.workers.dev/discovery/resources
+# https://xguard-mainnet.maqamapp.workers.dev/discovery/search?query=x402
+# https://xguard-mainnet.maqamapp.workers.dev/llms.txt
+# https://xguard-mainnet.maqamapp.workers.dev/openapi.json
+
+
+=== GET /readyz ===
+status=200
+{"status":"ready","mainnet":true,"facilitator":"operational"}
+
+=== GET /supported ===
+status=200
+{"kinds":[{"x402Version":2,"scheme":"exact","network":"eip155:8453"},{"x402Version":1,"scheme":"exact","network":"base"}],"extensions":["bazaar"],"signers":{"eip155:*":["0x2772F7F74ac0aCA38C6238aA5EcE72B27bEB8C17"]},"compatibility":{"canonical":{"x402Version":2,"network":"eip155:8453","scheme":"exact"},"acceptedLegacy":[{"x402Version":1,"network":"base","scheme":"exact"}],"mode":"normalize-v1-to-v2"}}
+
+=== GET /status ===
+status=200
+{"gateway":"operational","mode":"mainnet","network":"eip155:8453","facilitator":"HEALTHY","pendingFinality":0,"openReconciliationCases":0,"economicFirewallShadow":{"mode":"observe","telemetry":"operational","intents":0,"verifyEvents":0,"settleEvents":0,"correlatedIntents":0,"settleWithoutVerifyIntents":0,"authorizationMismatchEvents":0},"economicFirewallAudit":{"mode":"off","telemetry":"operational","evaluatedSettles":0,"pass":0,"review":0,"correlatedAuthorization":0,"verifyNotObserved":0,"authorizationMismatch":0},"measuredAt":"2026-08-17T11:52:27.350Z","discovery":{"resources":0,"mcpResources":0,"httpResources":0},"mcp":{"endpoint":"/mcp","transport":"streamable-http"},"facilitatorProvider":"xpay","ambiguousRecovery":{"pending":0,"failed":0},"financialMetrics":"private","unitEconomics":{"state":"protected"}}
+
+=== GET /.git/config ===
+status=404
+{"error":"not_found"}
+
+=== GET /.env ===
+status=404
+{"error":"not_found"}
+
