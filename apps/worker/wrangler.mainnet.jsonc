@@ -29,11 +29,6 @@
       "head_sampling_rate": 0.1,
     },
   },
-  "tail_consumers": [
-    {
-      "service": "xguard-watchdog",
-    },
-  ],
   "vars": {
     "BASE_RPC_URL": "https://base.public.blockpi.network/v1/rpc/public",
     "BASE_RPC_FALLBACK_URLS": "https://mainnet.base.org",
