@@ -280,11 +280,14 @@ export async function watchdogStatus(db: D1Database): Promise<{
   openBreakers: number;
   openIncidents: number;
 }> {
+  const now = new Date().toISOString();
   const [breakers, incidents] = await Promise.all([
     db
       .prepare(
-        `SELECT COUNT(*) AS count FROM watchdog_breakers WHERE state='OPEN'`,
+        `SELECT COUNT(*) AS count FROM watchdog_breakers
+         WHERE state='OPEN' AND expires_at>?`,
       )
+      .bind(now)
       .first<{ count: number }>(),
     db
       .prepare(

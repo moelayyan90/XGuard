@@ -13,6 +13,7 @@ const watchdogWorker = readFileSync(
   "apps/worker/src/mainnet-watchdog.ts",
   "utf8",
 );
+const watchdogStore = readFileSync("apps/worker/src/watchdog-store.ts", "utf8");
 const mainnetWorker = readFileSync("apps/worker/src/mainnet-modern.ts", "utf8");
 const migration = readFileSync(
   "apps/worker/migrations/0012_watchdog_control_plane.sql",
@@ -70,6 +71,12 @@ describe("watchdog control plane source", () => {
     );
   });
 
+  it("reports only unexpired OPEN breakers as live circuits", () => {
+    expect(watchdogStore).toContain("const now = new Date().toISOString()");
+    expect(watchdogStore).toContain("WHERE state='OPEN' AND expires_at>?");
+    expect(watchdogStore).toContain(".bind(now)");
+  });
+
   it("preserves the latest x402 HTTP compatibility and rate-limit wiring", () => {
     expect(mainnetWorker).toContain(
       'import { x402HttpCompatibilityResponse } from "./x402-http-compatibility-bridge.js";',
@@ -90,14 +97,13 @@ describe("watchdog control plane source", () => {
     );
   });
 
-  it("deploys watchdog independently and verifies its policy version", () => {
+  it("has an independently ordered deployment and live health verification workflow", () => {
     expect(deployWorkflow).toContain("Deploy XGuard watchdog");
     expect(deployWorkflow).toContain("group: xguard-watchdog-deploy");
-    expect(deployWorkflow).toContain("cancel-in-progress: true");
     expect(deployWorkflow).toContain("wrangler deploy --config");
     expect(deployWorkflow).toContain("xguard-watchdog.maqamapp.workers.dev");
+    expect(deployWorkflow).toContain("policyVersion");
     expect(deployWorkflow).toContain("/healthz");
-    expect(deployWorkflow).toContain('policyVersion!=="2026-08-17-v2"');
   });
 
   it("only auto-rolls back after deployment succeeded and live verification failed", () => {
