@@ -12,42 +12,48 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect public MCP submission endpoint
+      - name: Inspect Agentery submit page and client request shape
         shell: bash
         run: |
           python - <<'PY'
-          import json
-          import urllib.error
+          import re
+          import urllib.parse
           import urllib.request
 
-          url = "https://agentery.com/api/mcpsubmit"
-          ua = "Mozilla/5.0 XGuard-registry-check"
+          base = "https://agentery.com"
+          url = base + "/submit"
+          ua = {"User-Agent":"Mozilla/5.0 XGuard-registry-check"}
+          req = urllib.request.Request(url, headers=ua)
+          with urllib.request.urlopen(req, timeout=30) as r:
+              html = r.read().decode("utf-8", "replace")
+              print("PAGE_STATUS", r.status)
+          print("PAGE_LENGTH", len(html))
+          for needle in ["email","price","payment","sign in","login","github","mcp","submit","form","endpoint","url"]:
+              hits=list(re.finditer(needle, html, re.I))[:8]
+              for m in hits:
+                  a=max(0,m.start()-400); b=min(len(html),m.end()+900)
+                  print("HTML_NEEDLE", needle, html[a:b].replace("\n"," "))
 
-          for method, data, headers in [
-              ("GET", None, {"User-Agent": ua, "Accept": "application/json, text/event-stream"}),
-              ("POST", json.dumps({
-                  "jsonrpc":"2.0",
-                  "id":1,
-                  "method":"initialize",
-                  "params":{
-                      "protocolVersion":"2025-06-18",
-                      "capabilities":{},
-                      "clientInfo":{"name":"xguard-registry-check","version":"1.0"}
-                  }
-              }).encode(), {"User-Agent":ua,"Content-Type":"application/json","Accept":"application/json, text/event-stream"}),
-          ]:
-              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+          scripts = sorted(set(re.findall(r'<script[^>]+src=[\"\']([^\"\']+\.js[^\"\']*)[\"\']', html, re.I)))
+          print("SCRIPTS", len(scripts))
+          for script in scripts:
+              full=urllib.parse.urljoin(url, script)
               try:
+                  req=urllib.request.Request(full, headers=ua)
                   with urllib.request.urlopen(req, timeout=30) as r:
-                      body = r.read().decode("utf-8", "replace")
-                      print(method, "STATUS", r.status)
-                      print(method, "HEADERS", dict(r.headers))
-                      print(method, "BODY", body[:12000])
-              except urllib.error.HTTPError as exc:
-                  body = exc.read().decode("utf-8", "replace")
-                  print(method, "STATUS", exc.code)
-                  print(method, "HEADERS", dict(exc.headers))
-                  print(method, "BODY", body[:12000])
+                      js=r.read().decode("utf-8","replace")
               except Exception as exc:
-                  print(method, "ERROR", type(exc).__name__, str(exc))
+                  print("FETCH_ERROR", full, type(exc).__name__, str(exc)); continue
+              low=js.lower()
+              if not any(k in low for k in ["submit","/api/","github","email","pricing","mcp"]):
+                  continue
+              print("=== BUNDLE",full,"LEN",len(js),"===")
+              printed=0
+              for needle in ["/api/","submit","github","email","payment","price","fetch(","method:","POST","endpoint","url","mcp"]:
+                  for m in list(re.finditer(re.escape(needle), js, re.I))[:8]:
+                      a=max(0,m.start()-650); b=min(len(js),m.end()+1300)
+                      print("JS_NEEDLE",needle,js[a:b].replace("\\n"," "))
+                      printed+=1
+                      if printed>=100: break
+                  if printed>=100: break
           PY
