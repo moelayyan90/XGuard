@@ -10,46 +10,11 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
   checks: write
   pull-requests: read
 
 jobs:
-  format-zero-friction:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent/zero-friction-x402' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - name: Format zero-friction sources
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('apps/worker/src/zero-friction-x402.ts')
-          text = path.read_text().replace('  zeroFrictionAccount,\n', '')
-          path.write_text(text)
-          PY
-          npx prettier --write apps/worker/src/mainnet-endpoint-discovery.ts apps/worker/src/public-payment-contract.ts apps/worker/src/universal-mainnet.ts apps/worker/src/zero-friction-billing.ts apps/worker/src/zero-friction-x402.ts tests/mainnet-endpoint-discovery.test.ts
-      - name: Commit formatting when needed
-        shell: bash
-        run: |
-          if git diff --quiet; then
-            exit 0
-          fi
-          git config user.name 'xguard-ci'
-          git config user.email 'actions@users.noreply.github.com'
-          git add apps/worker/src/mainnet-endpoint-discovery.ts apps/worker/src/public-payment-contract.ts apps/worker/src/universal-mainnet.ts apps/worker/src/zero-friction-billing.ts apps/worker/src/zero-friction-x402.ts tests/mainnet-endpoint-discovery.test.ts
-          git commit -m 'chore: format zero-friction changes'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
-
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
