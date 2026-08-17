@@ -5,6 +5,10 @@ const watchdogConfig = readFileSync(
   "apps/worker/wrangler.watchdog.jsonc",
   "utf8",
 );
+const mainnetConfig = readFileSync(
+  "apps/worker/wrangler.mainnet.jsonc",
+  "utf8",
+);
 const watchdogWorker = readFileSync(
   "apps/worker/src/mainnet-watchdog.ts",
   "utf8",
@@ -31,6 +35,13 @@ describe("watchdog control plane source", () => {
     expect(watchdogConfig).toContain('"invocation_logs": true');
     expect(watchdogConfig).toContain('"traces"');
     expect(watchdogConfig).toContain('"crons": ["*/1 * * * *"]');
+  });
+
+  it("attaches the live watchdog to every mainnet invocation", () => {
+    expect(mainnetConfig).toContain('"tail_consumers"');
+    expect(mainnetConfig).toContain('"service": "xguard-watchdog"');
+    expect(mainnetConfig).toContain('"traces"');
+    expect(mainnetConfig).toContain('"head_sampling_rate": 0.1');
   });
 
   it("contains tail-time structured telemetry and scheduled synthetic probes", () => {
