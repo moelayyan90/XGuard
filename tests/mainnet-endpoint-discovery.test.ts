@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { writeEndpointDiscoveryResponse } from "../apps/worker/src/mainnet-endpoint-discovery.js";
+import {
+  writeEndpointDiscoveryResponse,
+} from "../apps/worker/src/mainnet-endpoint-discovery.js";
 
 const BASE = "https://xguard-mainnet.maqamapp.workers.dev";
 
@@ -7,25 +9,32 @@ function request(path: string, method: string) {
   return new Request(new URL(path, BASE), { method });
 }
 
+function discover(path: string, method: string) {
+  return writeEndpointDiscoveryResponse(request(path, method));
+}
+
+function requireResponse(response: Response | null): Response {
+  expect(response).not.toBeNull();
+  if (response === null) throw new Error("expected discovery response");
+  return response;
+}
+
 describe("mainnet write endpoint discovery", () => {
-  it("leaves the real POST registration flow untouched", () => {
-    expect(writeEndpointDiscoveryResponse(request("/v1/register", "POST"))).toBe(
-      null,
-    );
+  it("passes POST registration through", () => {
+    const response = discover("/v1/register", "POST");
+    expect(response).toBeNull();
   });
 
-  it("makes GET /v1/register discoverable without registering a merchant", async () => {
-    const response = writeEndpointDiscoveryResponse(
-      request("/v1/register", "GET"),
-    );
+  it("describes GET registration safely", async () => {
+    const response = requireResponse(discover("/v1/register", "GET"));
+    const body = await response.json();
 
-    expect(response).not.toBeNull();
-    expect(response?.status).toBe(200);
-    expect(response?.headers.get("x-xguard-discovery")).toBe(
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-xguard-discovery")).toBe(
       "endpoint-introspection",
     );
-    expect(response?.headers.get("allow")).toContain("POST");
-    expect(await response?.json()).toMatchObject({
+    expect(response.headers.get("allow")).toContain("POST");
+    expect(body).toMatchObject({
       service: "XGuard",
       endpoint: "/v1/register",
       method: "POST",
@@ -34,62 +43,55 @@ describe("mainnet write endpoint discovery", () => {
     });
   });
 
-  it("supports HEAD and OPTIONS probes without creating side effects", async () => {
-    const head = writeEndpointDiscoveryResponse(
-      request("/v1/register", "HEAD"),
-    );
-    const options = writeEndpointDiscoveryResponse(
-      request("/v1/register", "OPTIONS"),
-    );
+  it("supports HEAD and OPTIONS probes", async () => {
+    const head = requireResponse(discover("/v1/register", "HEAD"));
+    const options = requireResponse(discover("/v1/register", "OPTIONS"));
 
-    expect(head?.status).toBe(200);
-    expect(await head?.text()).toBe("");
-    expect(options?.status).toBe(204);
-    expect(options?.headers.get("allow")).toBe("GET, HEAD, OPTIONS, POST");
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    expect(options.status).toBe(204);
+    expect(options.headers.get("allow")).toBe("GET, HEAD, OPTIONS, POST");
   });
 
-  it("returns 405 instead of a misleading 404 for unsupported methods", async () => {
-    const response = writeEndpointDiscoveryResponse(
-      request("/v1/register", "PUT"),
-    );
+  it("returns 405 for unsupported methods", async () => {
+    const response = requireResponse(discover("/v1/register", "PUT"));
+    const body = await response.json();
 
-    expect(response?.status).toBe(405);
-    expect(await response?.json()).toMatchObject({
+    expect(response.status).toBe(405);
+    expect(body).toMatchObject({
       error: "method_not_allowed",
       endpoint: "/v1/register",
     });
   });
 
-  it("normalizes a trailing slash for crawler compatibility", async () => {
-    const response = writeEndpointDiscoveryResponse(
-      request("/v1/register/", "GET"),
-    );
+  it("normalizes a trailing slash", async () => {
+    const response = requireResponse(discover("/v1/register/", "GET"));
+    const body = await response.json();
 
-    expect(response?.status).toBe(200);
-    expect(await response?.json()).toMatchObject({ endpoint: "/v1/register" });
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ endpoint: "/v1/register" });
   });
 
-  it("documents other write-only mainnet routes consistently", async () => {
-    const verify = writeEndpointDiscoveryResponse(request("/verify", "GET"));
-    const topup = writeEndpointDiscoveryResponse(
-      request("/v1/topups/intents", "GET"),
-    );
+  it("documents protected write routes", async () => {
+    const verify = requireResponse(discover("/verify", "GET"));
+    const topup = requireResponse(discover("/v1/topups/intents", "GET"));
+    const verifyBody = await verify.json();
+    const topupBody = await topup.json();
 
-    expect(await verify?.json()).toMatchObject({
+    expect(verifyBody).toMatchObject({
       endpoint: "/verify",
       method: "POST",
       auth: "api-key",
     });
-    expect(await topup?.json()).toMatchObject({
+    expect(topupBody).toMatchObject({
       endpoint: "/v1/topups/intents",
       method: "POST",
       auth: "api-key",
     });
   });
 
-  it("does not intercept unrelated routes", () => {
-    expect(writeEndpointDiscoveryResponse(request("/status", "GET"))).toBe(
-      null,
-    );
+  it("ignores unrelated routes", () => {
+    const response = discover("/status", "GET");
+    expect(response).toBeNull();
   });
 });
