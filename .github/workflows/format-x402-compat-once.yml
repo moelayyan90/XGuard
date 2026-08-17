@@ -1,0 +1,49 @@
+name: Format x402 compatibility bridge once
+
+on:
+  push:
+    branches: [feature/x402-v1-v2-compatibility-bridge]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/x402-v1-v2-compatibility-bridge
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Format compatibility files
+        run: |
+          npx prettier --write \
+            apps/worker/src/mainnet-modern.ts \
+            apps/worker/src/x402-compatibility-bridge.ts \
+            apps/worker/src/x402-compatibility-discovery.ts \
+            tests/x402-compatibility-bridge.test.ts \
+            scripts/smoke-compatibility-mainnet.mjs \
+            package.json
+      - name: Verify focused bridge
+        run: |
+          npm run build
+          npx vitest run tests/x402-compatibility-bridge.test.ts
+          npm run typecheck
+      - name: Remove one-shot workflow and commit canonical formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/format-x402-compat-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Format and verify x402 compatibility bridge"
+          git push origin HEAD:feature/x402-v1-v2-compatibility-bridge
