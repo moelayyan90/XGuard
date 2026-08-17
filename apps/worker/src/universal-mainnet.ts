@@ -3,7 +3,9 @@ import monetizedMainnet, {
   MainnetRequestGate,
   XPayGlobalRateGate,
 } from "./monetized-mainnet.js";
+import { buyerPortalResponse } from "./buyer-portal.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
+import { paymentDecisionResponse } from "./payment-decision.js";
 import { universalProtocolResponse } from "./universal-protocol-router.js";
 import { universalWebhookResponse } from "./universal-webhook-ingress.js";
 
@@ -12,6 +14,8 @@ export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 interface UniversalMainnetEnv {
   DB: D1Database;
   XGUARD_TOOL_FEE_MICRO_USD?: string;
+  XGUARD_SECURITY_FEE_MICRO_USD?: string;
+  XGUARD_PAYMENT_DECISION_FEE_MICRO_USD?: string;
   [key: string]: unknown;
 }
 
@@ -33,6 +37,15 @@ const mainnetScheduled =
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
+
+    // Buyer/agent-side XGuard owns the pre-payment decision boundary. It runs
+    // before any settlement-protocol adapter so x402 is one rail, not the
+    // product definition. A normal non-XGuard payment is never intercepted.
+    const portal = buyerPortalResponse(standardRequest);
+    if (portal !== null) return portal;
+
+    const paymentDecision = await paymentDecisionResponse(standardRequest, env);
+    if (paymentDecision !== null) return paymentDecision;
 
     const protocolResponse = await universalProtocolResponse(standardRequest, {
       verifyX402: (x402Request) => mainnetFetch(x402Request, env, ctx),
