@@ -8,14 +8,14 @@ Production pricing is configured in `apps/worker/wrangler.mainnet.jsonc`.
 
 Current mainnet prices:
 
-| Event | Fee |
-| --- | ---: |
-| Model proxy execution | $0.0001 |
-| Tool proxy execution | $0.0002 |
-| x402 verification execution | $0.0002 |
-| Source discovery/search | $0.0010 |
-| Security inspection | $0.0010 |
-| Analysis/ranking | $0.0020 |
+| Event                                |     Fee |
+| ------------------------------------ | ------: |
+| Model proxy execution                | $0.0001 |
+| Tool proxy execution                 | $0.0002 |
+| x402 verification execution          | $0.0002 |
+| Source discovery/search              | $0.0010 |
+| Security inspection                  | $0.0010 |
+| Analysis/ranking                     | $0.0020 |
 | Successful finalized x402 settlement | $0.0020 |
 
 Merchant top-ups are prepaid service liabilities; they are not revenue when deposited.

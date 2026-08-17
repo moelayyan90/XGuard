@@ -163,14 +163,14 @@ Mainnet x402 verification is a separately metered successful execution. A succes
 
 ## Current production prices
 
-| Event | Fee |
-| --- | ---: |
-| Model proxy | $0.0001 |
-| Tool proxy | $0.0002 |
-| x402 verify | $0.0002 |
+| Event                           |     Fee |
+| ------------------------------- | ------: |
+| Model proxy                     | $0.0001 |
+| Tool proxy                      | $0.0002 |
+| x402 verify                     | $0.0002 |
 | Source search / MCP source tool | $0.0010 |
-| Security inspect | $0.0010 |
-| Analysis | $0.0020 |
-| Finalized x402 settlement | $0.0020 |
+| Security inspect                | $0.0010 |
+| Analysis                        | $0.0020 |
+| Finalized x402 settlement       | $0.0020 |
 
 See `BILLING.md` for accounting invariants and failure semantics.

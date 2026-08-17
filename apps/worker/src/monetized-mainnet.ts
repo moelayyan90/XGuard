@@ -96,7 +96,8 @@ async function billVerify(
       "XGUARD_VERIFY_FEE_MICRO_USD",
     ),
     execute: () => delegateFetch(request, env, ctx),
-    isEarned: async (response) => response.status >= 200 && response.status < 300,
+    isEarned: async (response) =>
+      response.status >= 200 && response.status < 300,
   });
 }
 
@@ -172,20 +173,8 @@ async function billExecution(input: {
       code === "gateway_event_already_earned" ||
       code === "gateway_event_in_progress"
     )
-      return jsonResponse(
-        { error: code },
-        409,
-        input.requestId,
-        0,
-        "conflict",
-      );
-    return jsonResponse(
-      { error: code },
-      400,
-      input.requestId,
-      0,
-      "rejected",
-    );
+      return jsonResponse({ error: code }, 409, input.requestId, 0, "conflict");
+    return jsonResponse({ error: code }, 400, input.requestId, 0, "rejected");
   }
 
   const started = Date.now();
@@ -244,7 +233,8 @@ export async function inspectMcpBillingDescriptor(
   const rawLength = request.headers.get("content-length");
   if (rawLength !== null && /^[0-9]+$/.test(rawLength)) {
     const declared = Number(rawLength);
-    if (!Number.isSafeInteger(declared) || declared > MCP_BODY_LIMIT) return null;
+    if (!Number.isSafeInteger(declared) || declared > MCP_BODY_LIMIT)
+      return null;
   }
 
   let payload: unknown;
@@ -264,7 +254,8 @@ export function classifyMcpToolCall(
 ): McpBillingDescriptor | null {
   if (!isRecord(payload) || payload.method !== "tools/call") return null;
   const params = isRecord(payload.params) ? payload.params : null;
-  const name = params !== null && typeof params.name === "string" ? params.name : "";
+  const name =
+    params !== null && typeof params.name === "string" ? params.name : "";
   if (name === "" || FREE_MCP_TOOLS.has(name)) return null;
 
   if (name === "xguard_discover" || name === "xguard_resource_details")
@@ -314,13 +305,29 @@ function feeForMcpKind(
   kind: GatewayEventKind,
 ): number {
   if (kind === "MODEL")
-    return configuredFee(env.XGUARD_MODEL_FEE_MICRO_USD, 100, "XGUARD_MODEL_FEE_MICRO_USD");
+    return configuredFee(
+      env.XGUARD_MODEL_FEE_MICRO_USD,
+      100,
+      "XGUARD_MODEL_FEE_MICRO_USD",
+    );
   if (kind === "TOOL")
-    return configuredFee(env.XGUARD_TOOL_FEE_MICRO_USD, 200, "XGUARD_TOOL_FEE_MICRO_USD");
+    return configuredFee(
+      env.XGUARD_TOOL_FEE_MICRO_USD,
+      200,
+      "XGUARD_TOOL_FEE_MICRO_USD",
+    );
   if (kind === "SOURCE")
-    return configuredFee(env.XGUARD_SOURCE_FEE_MICRO_USD, 1_000, "XGUARD_SOURCE_FEE_MICRO_USD");
+    return configuredFee(
+      env.XGUARD_SOURCE_FEE_MICRO_USD,
+      1_000,
+      "XGUARD_SOURCE_FEE_MICRO_USD",
+    );
   if (kind === "ANALYSIS")
-    return configuredFee(env.XGUARD_ANALYSIS_FEE_MICRO_USD, 2_000, "XGUARD_ANALYSIS_FEE_MICRO_USD");
+    return configuredFee(
+      env.XGUARD_ANALYSIS_FEE_MICRO_USD,
+      2_000,
+      "XGUARD_ANALYSIS_FEE_MICRO_USD",
+    );
   return configuredFee(
     env.XGUARD_SECURITY_FEE_MICRO_USD,
     1_000,
@@ -394,7 +401,8 @@ function jsonResponse(
 }
 
 function errorCode(error: unknown): string {
-  if (error instanceof Error && error.message.trim() !== "") return error.message;
+  if (error instanceof Error && error.message.trim() !== "")
+    return error.message;
   return "unknown_error";
 }
 
