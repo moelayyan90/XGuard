@@ -84,7 +84,7 @@ function answer(input: string, origin: string): string {
 
   if (normalized.includes("supported") || normalized.includes("capabil")) {
     return [
-      "XGuard is a prepaid universal execution gateway for AI models, tools, source discovery, security inspection, analysis, and x402 payment flows.",
+      "XGuard is a prepaid universal execution gateway for AI models, tools, source discovery, security inspection, analysis, and x402 v2 payment flows.",
       `Capabilities: ${origin}/v1/gateway/capabilities`,
       `x402 support: ${origin}/supported`,
       `Provider manifest: ${origin}/.well-known/x402/facilitator.json`,
