@@ -73,7 +73,10 @@ export async function classifyAutoInvokeRoute(
   }
 
   if (!isOpenAiCompatiblePath(path)) return null;
-  const model = await readModel(request);
+  const model =
+    merchantTokenFromStandardClient(request) === null
+      ? null
+      : await readModel(request);
   if (model?.toLowerCase().startsWith("gemini-")) {
     const suffix = path.startsWith("/v1") ? path.slice(3) : path;
     return {
@@ -186,11 +189,11 @@ async function executeAutoInvoke(
       }),
     );
   } catch {
-    await releaseGatewayFee(
+    const accounting = await releaseAutoInvokeReservation(
       env.DB,
       access.merchant.merchantId,
       reservation.eventKey,
-    ).catch(() => undefined);
+    );
     return autoResponse(
       { error: "upstream_unavailable", provider: route.provider },
       502,
@@ -198,20 +201,49 @@ async function executeAutoInvoke(
       0,
       route.provider,
       0,
+      accounting,
     );
   }
 
   const latencyMs = Math.max(0, Date.now() - started);
-  if (!isAutoInvokeBillableStatus(upstream.status)) {
-    await releaseGatewayFee(
+  if (isAutoInvokeRedirectStatus(upstream.status)) {
+    const accounting = await releaseAutoInvokeReservation(
       env.DB,
       access.merchant.merchantId,
       reservation.eventKey,
-    ).catch(() => undefined);
-    return proxiedResponse(upstream, requestId, 0, route.provider, latencyMs);
+    );
+    return autoResponse(
+      {
+        error: "upstream_redirect_rejected",
+        provider: route.provider,
+        upstreamStatus: upstream.status,
+      },
+      502,
+      requestId,
+      0,
+      route.provider,
+      latencyMs,
+      accounting,
+    );
   }
 
-  await earnGatewayFee(env.DB, {
+  if (!isAutoInvokeBillableStatus(upstream.status)) {
+    const accounting = await releaseAutoInvokeReservation(
+      env.DB,
+      access.merchant.merchantId,
+      reservation.eventKey,
+    );
+    return proxiedResponse(
+      upstream,
+      requestId,
+      0,
+      route.provider,
+      latencyMs,
+      accounting,
+    );
+  }
+
+  const accounting = await finalizeAutoInvokeSuccess(env.DB, {
     merchantId: access.merchant.merchantId,
     eventKey: reservation.eventKey,
     upstreamStatus: upstream.status,
@@ -222,14 +254,54 @@ async function executeAutoInvoke(
   return proxiedResponse(
     upstream,
     requestId,
-    feeMicroUsd,
+    accounting === "earned" ? feeMicroUsd : 0,
     route.provider,
     latencyMs,
+    accounting,
   );
 }
 
 export function isAutoInvokeBillableStatus(status: number): boolean {
   return Number.isInteger(status) && status >= 200 && status < 300;
+}
+
+export function isAutoInvokeRedirectStatus(status: number): boolean {
+  return Number.isInteger(status) && status >= 300 && status < 400;
+}
+
+export type AutoInvokeAccountingState =
+  "earned" | "released" | "pending-release";
+
+export async function finalizeAutoInvokeSuccess(
+  db: D1Database,
+  input: {
+    merchantId: string;
+    eventKey: string;
+    upstreamStatus: number;
+    latencyMs: number;
+    requestBytes?: number;
+    responseBytes?: number;
+  },
+): Promise<AutoInvokeAccountingState> {
+  try {
+    await earnGatewayFee(db, input);
+    return "earned";
+  } catch {
+    return releaseAutoInvokeReservation(db, input.merchantId, input.eventKey);
+  }
+}
+
+export async function releaseAutoInvokeReservation(
+  db: D1Database,
+  merchantId: string,
+  eventKey: string,
+): Promise<Exclude<AutoInvokeAccountingState, "earned">> {
+  try {
+    await releaseGatewayFee(db, merchantId, eventKey);
+    return "released";
+  } catch {
+    return "pending-release";
+  }
 }
 
 async function vaultResponse(
@@ -568,6 +640,7 @@ function proxiedResponse(
   feeMicroUsd: number,
   provider: ProviderId,
   latencyMs: number,
+  accounting: AutoInvokeAccountingState,
 ): Response {
   const headers = new Headers(upstream.headers);
   headers.delete("set-cookie");
@@ -576,6 +649,7 @@ function proxiedResponse(
   headers.set("X-XGuard-Fee-Micro-Usd", String(feeMicroUsd));
   headers.set("X-XGuard-Provider", provider);
   headers.set("X-XGuard-Upstream-Latency-Ms", String(latencyMs));
+  headers.set("X-XGuard-Accounting", accounting);
   headers.set("X-Content-Type-Options", "nosniff");
   return new Response(upstream.body, {
     status: upstream.status,
@@ -591,14 +665,17 @@ function autoResponse(
   feeMicroUsd: number,
   provider: ProviderId,
   latencyMs: number,
+  accounting?: AutoInvokeAccountingState,
 ): Response {
-  return jsonResponse(value, status, {
+  const headers: Record<string, string> = {
     "X-XGuard-Auto-Invoked": "true",
     "X-XGuard-Request-Id": requestId,
     "X-XGuard-Fee-Micro-Usd": String(feeMicroUsd),
     "X-XGuard-Provider": provider,
     "X-XGuard-Upstream-Latency-Ms": String(latencyMs),
-  });
+  };
+  if (accounting !== undefined) headers["X-XGuard-Accounting"] = accounting;
+  return jsonResponse(value, status, headers);
 }
 
 function requestWithMerchantAuthorization(
@@ -646,17 +723,8 @@ async function readModel(request: Request): Promise<string | null> {
   if (request.method === "GET" || request.method === "HEAD") return null;
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
   if (!contentType.includes("application/json")) return null;
-  const rawLength = request.headers.get("content-length");
-  if (rawLength === null || !/^[0-9]+$/.test(rawLength)) return null;
-  const declared = Number(rawLength);
-  if (
-    !Number.isSafeInteger(declared) ||
-    declared < 0 ||
-    declared > MAX_JSON_BODY_BYTES
-  )
-    return null;
   try {
-    const value = (await request.clone().json()) as unknown;
+    const value = await boundedJsonValue(request, true);
     if (typeof value !== "object" || value === null || Array.isArray(value))
       return null;
     const model = (value as Record<string, unknown>).model;
@@ -667,12 +735,55 @@ async function readModel(request: Request): Promise<string | null> {
 }
 
 async function jsonObject(request: Request): Promise<Record<string, unknown>> {
-  const declared = contentLength(request.headers);
-  if (declared > MAX_JSON_BODY_BYTES) throw new Error("request_body_too_large");
-  const value = (await request.json()) as unknown;
+  const value = await boundedJsonValue(request, false);
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error("json_object_required");
   return value as Record<string, unknown>;
+}
+
+async function boundedJsonValue(
+  request: Request,
+  cloneRequest: boolean,
+): Promise<unknown> {
+  const target = cloneRequest ? request.clone() : request;
+  const rawLength = target.headers.get("content-length");
+  if (rawLength !== null) {
+    if (!/^[0-9]+$/.test(rawLength)) throw new Error("invalid_content_length");
+    const declared = Number(rawLength);
+    if (
+      !Number.isSafeInteger(declared) ||
+      declared < 0 ||
+      declared > MAX_JSON_BODY_BYTES
+    )
+      throw new Error("request_body_too_large");
+  }
+  if (target.body === null) throw new Error("json_body_required");
+
+  const reader = target.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_JSON_BODY_BYTES) {
+        void reader.cancel().catch(() => undefined);
+        throw new Error("request_body_too_large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
 }
 
 function parseProvider(value: unknown): ProviderId {
