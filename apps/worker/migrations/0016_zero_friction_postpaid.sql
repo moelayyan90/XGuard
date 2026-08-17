@@ -1,6 +1,14 @@
 CREATE TABLE zero_friction_accounts (
   pay_to TEXT PRIMARY KEY,
   merchant_id TEXT NOT NULL UNIQUE REFERENCES merchants(merchant_id),
+  pricing_version TEXT NOT NULL,
+  fee_bps INTEGER NOT NULL CHECK (fee_bps >= 0 AND fee_bps <= 10000),
+  fee_cap_micro_usd INTEGER NOT NULL CHECK (
+    fee_cap_micro_usd >= 0 AND fee_cap_micro_usd <= 9007199254740991
+  ),
+  postpaid_limit_micro_usd INTEGER NOT NULL CHECK (
+    postpaid_limit_micro_usd > 0 AND postpaid_limit_micro_usd <= 9007199254740991
+  ),
   accrued_micro_usd INTEGER NOT NULL DEFAULT 0 CHECK (
     accrued_micro_usd >= 0 AND accrued_micro_usd <= 9007199254740991
   ),
@@ -15,6 +23,14 @@ CREATE TABLE zero_friction_accounts (
 CREATE TABLE zero_friction_claim_challenges (
   challenge_hash TEXT PRIMARY KEY,
   pay_to TEXT NOT NULL,
+  pricing_version TEXT NOT NULL,
+  fee_bps INTEGER NOT NULL CHECK (fee_bps >= 0 AND fee_bps <= 10000),
+  fee_cap_micro_usd INTEGER NOT NULL CHECK (
+    fee_cap_micro_usd >= 0 AND fee_cap_micro_usd <= 9007199254740991
+  ),
+  postpaid_limit_micro_usd INTEGER NOT NULL CHECK (
+    postpaid_limit_micro_usd > 0 AND postpaid_limit_micro_usd <= 9007199254740991
+  ),
   expires_at_epoch INTEGER NOT NULL,
   consumed_at TEXT,
   created_at TEXT NOT NULL
