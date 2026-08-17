@@ -23,6 +23,30 @@ export function normalizeZeroFrictionPayTo(value: string): string {
   return normalized;
 }
 
+export function calculateZeroFrictionFeeMicroUsd(
+  amountMicroUsd: number,
+  feeBps: number,
+  feeCapMicroUsd: number,
+): number {
+  if (!Number.isSafeInteger(amountMicroUsd) || amountMicroUsd < 0)
+    throw new Error("invalid_zero_friction_settlement_amount");
+  if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 10_000)
+    throw new Error("invalid_zero_friction_fee_bps");
+  if (
+    !Number.isSafeInteger(feeCapMicroUsd) ||
+    feeCapMicroUsd < 0 ||
+    feeCapMicroUsd > MAX_SAFE_MICRO_USD
+  )
+    throw new Error("invalid_zero_friction_fee_cap");
+
+  const proportional =
+    (BigInt(amountMicroUsd) * BigInt(feeBps)) / BigInt(10_000);
+  const capped = proportional < BigInt(feeCapMicroUsd)
+    ? proportional
+    : BigInt(feeCapMicroUsd);
+  return Number(capped);
+}
+
 export async function zeroFrictionMerchantId(rawPayTo: string): Promise<string> {
   const payTo = normalizeZeroFrictionPayTo(rawPayTo);
   const digest = await sha256Hex(payTo);
