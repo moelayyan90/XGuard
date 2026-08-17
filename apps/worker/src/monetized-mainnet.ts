@@ -91,6 +91,12 @@ async function billVerify(
   env: MonetizedMainnetEnv,
   ctx: ExecutionContext,
 ): Promise<Response> {
+  // Authentication is deliberately the first value-producing boundary.
+  // Anonymous legacy or malformed traffic must not reach compatibility
+  // parsing before XGuard has established a prepaid merchant identity.
+  const access = await authorizeMerchantScope(request, env, "verify");
+  if (!access.ok) return access.response;
+
   let compatibility: CompatibilityRequest | null = null;
   let effectiveRequest = request;
 
@@ -98,14 +104,10 @@ async function billVerify(
     compatibility = await normalizeX402CompatibilityRequest(request);
     if (compatibility !== null) effectiveRequest = compatibility.request;
   } catch {
-    // Reuse the canonical mainnet compatibility rejection boundary. Invalid
-    // legacy traffic must never reserve or earn a monetization fee.
+    // Reuse the canonical mainnet compatibility rejection boundary only after
+    // authentication. Invalid legacy traffic must never reserve or earn a fee.
     return delegateFetch(request, env, ctx);
   }
-
-  const access = await authorizeMerchantScope(effectiveRequest, env, "verify");
-  if (!access.ok)
-    return adaptCompatibilityResponse(access.response, compatibility);
 
   return billExecution({
     request: effectiveRequest,
