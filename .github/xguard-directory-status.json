@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-16T21:43:00Z",
+  "updatedAt": "2026-08-17T05:12:32Z",
   "entries": {
     "officialMcpRegistry": {
       "status": "listed",
@@ -36,6 +36,13 @@
       "protocolVersion": "0.3.0",
       "registeredAt": "2026-08-16T21:41:27Z",
       "evidence": "A2A Registry returned HTTP 201, verified message/send through its A2A SDK, and recorded task_conformance passed=true"
+    },
+    "toolHive": {
+      "status": "ready_for_submission",
+      "testedAt": "2026-08-17T05:12:31Z",
+      "toolHiveVersion": "0.43.0",
+      "runId": "31997034944",
+      "evidence": "ToolHive remote proxy initialized XGuard successfully and tools/list returned xguard_discover, xguard_resource_details, and xguard_status; compatibility run ended with TOOLHIVE_XGUARD_COMPATIBILITY=PASS"
     },
     "x402scan": {
       "status": "pending_maintainer_review",
