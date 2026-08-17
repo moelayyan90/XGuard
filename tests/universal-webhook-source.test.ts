@@ -33,7 +33,7 @@ describe("universal webhook production wiring", () => {
     expect(resilient).toContain("RETRY_DELAYS_MS");
     expect(resilient).toContain("WEBHOOK_DELIVERY_QUEUE");
     expect(resilient).toContain("WEBHOOK_RATE_LIMITER");
-    expect(resilient).toContain("await this.state.storage.setAlarm(");
+    expect(resilient).toContain("await this.ctx.storage.setAlarm(");
     expect(resilient).toContain('redirect: "manual"');
     expect(resilient).toContain("strictPublicHttpsTarget(");
     expect(config).toContain('"WEBHOOK_DELIVERY_QUEUE"');
