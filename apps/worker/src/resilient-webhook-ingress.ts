@@ -1,3 +1,4 @@
+import { DurableObject } from "cloudflare:workers";
 import { strictPublicHttpsTarget } from "./universal-security-guard.js";
 
 const INGRESS_PATH = "/v1/webhooks/in/";
@@ -195,12 +196,7 @@ export async function resilientWebhookIngressResponse(
   );
 }
 
-export class WebhookDeliveryQueue {
-  constructor(
-    private readonly state: DurableObjectState,
-    private readonly env: DeliveryEnv,
-  ) {}
-
+export class WebhookDeliveryQueue extends DurableObject<DeliveryEnv> {
   async enqueue(input: EnqueueInput): Promise<void> {
     if (strictPublicHttpsTarget(input.destinationUrl) === null)
       throw new Error("unsafe_webhook_destination");
@@ -211,7 +207,7 @@ export class WebhookDeliveryQueue {
     const chunks = Math.ceil(bytes.byteLength / CHUNK_BYTES);
     for (let index = 0; index < chunks; index += 1) {
       const start = index * CHUNK_BYTES;
-      await this.state.storage.put(
+      await this.ctx.storage.put(
         `body:${index}`,
         exactBuffer(
           bytes.slice(start, Math.min(bytes.byteLength, start + CHUNK_BYTES)),
@@ -231,12 +227,12 @@ export class WebhookDeliveryQueue {
       deliveredStatus: null,
       deliveredLatencyMs: null,
     };
-    await this.state.storage.put("meta", meta);
-    await this.state.storage.setAlarm(Date.now() + 10);
+    await this.ctx.storage.put("meta", meta);
+    await this.ctx.storage.setAlarm(Date.now() + 10);
   }
 
   async alarm(): Promise<void> {
-    const meta = await this.state.storage.get<QueueMeta>("meta");
+    const meta = await this.ctx.storage.get<QueueMeta>("meta");
     if (meta === undefined) return;
 
     if (meta.deliveredUpstream) {
@@ -249,7 +245,7 @@ export class WebhookDeliveryQueue {
         );
         await this.cleanup(meta);
       } catch {
-        await this.state.storage.setAlarm(Date.now() + 5_000);
+        await this.ctx.storage.setAlarm(Date.now() + 5_000);
       }
       return;
     }
@@ -285,7 +281,7 @@ export class WebhookDeliveryQueue {
       meta.deliveredUpstream = true;
       meta.deliveredStatus = response.status;
       meta.deliveredLatencyMs = latency;
-      await this.state.storage.put("meta", meta);
+      await this.ctx.storage.put("meta", meta);
       try {
         await markDelivered(
           this.env.DB,
@@ -295,7 +291,7 @@ export class WebhookDeliveryQueue {
         );
         await this.cleanup(meta);
       } catch {
-        await this.state.storage.setAlarm(Date.now() + 5_000);
+        await this.ctx.storage.setAlarm(Date.now() + 5_000);
       }
       return;
     }
@@ -303,7 +299,7 @@ export class WebhookDeliveryQueue {
     const status = response?.status ?? null;
     await response?.body?.cancel().catch(() => undefined);
     meta.attempt += 1;
-    await this.state.storage.put("meta", meta);
+    await this.ctx.storage.put("meta", meta);
     await markFailed(this.env.DB, meta.eventId, status, latency).catch(
       () => undefined,
     );
@@ -314,14 +310,14 @@ export class WebhookDeliveryQueue {
     const delay =
       RETRY_DELAYS_MS[Math.min(meta.attempt - 1, RETRY_DELAYS_MS.length - 1)] ??
       RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]!;
-    await this.state.storage.setAlarm(Date.now() + delay);
+    await this.ctx.storage.setAlarm(Date.now() + delay);
   }
 
   private async readBody(meta: QueueMeta): Promise<ArrayBuffer> {
     const output = new Uint8Array(meta.bodyBytes);
     let offset = 0;
     for (let index = 0; index < meta.bodyChunks; index += 1) {
-      const chunk = await this.state.storage.get<ArrayBuffer>(`body:${index}`);
+      const chunk = await this.ctx.storage.get<ArrayBuffer>(`body:${index}`);
       if (chunk === undefined) throw new Error("webhook_body_missing");
       const bytes = new Uint8Array(chunk);
       output.set(bytes, offset);
@@ -331,9 +327,9 @@ export class WebhookDeliveryQueue {
   }
 
   private async cleanup(meta: QueueMeta): Promise<void> {
-    await this.state.storage.delete("meta");
+    await this.ctx.storage.delete("meta");
     for (let index = 0; index < meta.bodyChunks; index += 1)
-      await this.state.storage.delete(`body:${index}`);
+      await this.ctx.storage.delete(`body:${index}`);
   }
 }
 
