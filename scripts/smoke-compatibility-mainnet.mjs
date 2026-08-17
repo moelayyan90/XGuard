@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+
 const baseUrl = new URL(
   process.env.XGUARD_MAINNET_URL ??
     "https://xguard-mainnet.maqamapp.workers.dev",
@@ -6,7 +9,7 @@ const baseUrl = new URL(
 const PAY_TO = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C";
 const PAYER = "0x857b06519E91e3A54538791bDbb0E22373e36b66";
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const SMOKE_TOKEN = `${Date.now()}-${crypto.randomUUID()}`;
+const SMOKE_TOKEN = `${Date.now()}-${randomUUID()}`;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -58,7 +61,7 @@ async function waitForCompatibilityMetadata() {
       last.body?.compatibility?.mode === "normalize-v1-to-v2"
     )
       return last;
-    if (attempt < 8) await new Promise((resolve) => setTimeout(resolve, 2_000));
+    if (attempt < 8) await delay(2_000);
   }
   return last;
 }
