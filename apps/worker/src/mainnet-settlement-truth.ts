@@ -135,7 +135,7 @@ export async function settlementTruthForMerchant(
 
   if (finality === null && recovery === null) return null;
   const state = classifySettlementTruth(finality, recovery);
-  const source =
+  const source: SettlementTruth["source"] =
     finality !== null && recovery !== null
       ? "combined"
       : recovery !== null
@@ -151,8 +151,8 @@ export async function settlementTruthForMerchant(
     finality?.updated_at ??
     new Date().toISOString();
   const reason = truthReason(state, finality, recovery);
-  const base = {
-    version: "xguard-settlement-truth-v1" as const,
+  const base: Omit<SettlementTruth, "proofDigest"> = {
+    version: "xguard-settlement-truth-v1",
     logicalPaymentKey,
     state,
     authoritativeForRelease: state === "FINALIZED",
