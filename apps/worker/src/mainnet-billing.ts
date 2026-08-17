@@ -87,13 +87,7 @@ async function earnZeroFrictionSettlementFee(
           logical_payment_key,merchant_id,pay_to,fee_micro_usd,created_at
         ) VALUES(?,?,?,?,?)`,
       )
-      .bind(
-        logicalPaymentKey,
-        merchantId,
-        account.payTo,
-        amountMicroUsd,
-        now,
-      ),
+      .bind(logicalPaymentKey, merchantId, account.payTo, amountMicroUsd, now),
     db
       .prepare(
         `INSERT OR IGNORE INTO usage_events(

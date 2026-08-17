@@ -1,5 +1,6 @@
-export const XGUARD_FINALIZED_FEE_USD = "0.0005";
-export const XGUARD_FINALIZED_FEE_MICRO_USD = 500;
+export const XGUARD_FINALIZED_FEE_BPS = 50;
+export const XGUARD_FINALIZED_FEE_USD = "0.001";
+export const XGUARD_FINALIZED_FEE_MICRO_USD = 1000;
 /** @deprecated Compatibility aliases for callers that imported the old names. */
 export const XGUARD_ATTEMPT_FEE_USD = XGUARD_FINALIZED_FEE_USD;
 /** @deprecated Compatibility aliases for callers that imported the old names. */
@@ -29,6 +30,9 @@ const NORMALIZE_PATHS = new Set([
 
 type PaymentEnv = {
   XGUARD_TREASURY_USDC_ADDRESS?: string;
+  XGUARD_PRICING_VERSION?: string;
+  XGUARD_FEE_BPS?: string;
+  XGUARD_FEE_CAP_MICRO_USD?: string;
   XGUARD_POSTPAID_LIMIT_MICRO_USD?: string;
 };
 
@@ -67,21 +71,29 @@ function manifest(origin: string, env: PaymentEnv): Record<string, unknown> {
         : {}),
     },
     pricing: {
-      amountUsd: XGUARD_FINALIZED_FEE_USD,
-      amountMicroUsd: XGUARD_FINALIZED_FEE_MICRO_USD,
-      event: "finalized_successful_settlement",
-      billing: "zero_signup_postpaid",
+      pricingVersion: env.XGUARD_PRICING_VERSION ?? "2026-08-zero-friction-v1",
+      model: "capped_revenue_share_after_finality",
+      feeBps: parseFeeBps(env.XGUARD_FEE_BPS),
+      feePercent: `${parseFeeBps(env.XGUARD_FEE_BPS) / 100}%`,
+      feeCapUsd: microUsdToUsd(parseFeeCap(env.XGUARD_FEE_CAP_MICRO_USD)),
+      feeCapMicroUsd: parseFeeCap(env.XGUARD_FEE_CAP_MICRO_USD),
+      event: "independently_finalized_successful_settlement",
+      billing: "postpaid_capped_revenue_share",
       verifyFeeUsd: "0",
       failedSettlementFeeUsd: "0",
       retryAdditionalFeeUsd: "0",
       postpaidLimitMicroUsd: parseLimit(env.XGUARD_POSTPAID_LIMIT_MICRO_USD),
     },
     onboarding: {
-      signupRequired: false,
+      accountRequired: false,
+      emailRequired: false,
+      passwordRequired: false,
       apiKeyRequired: false,
       prepaymentRequired: false,
-      instruction: `Set the standard x402 facilitator URL to ${origin}`,
-      quickstart: `${origin}/quickstart`,
+      walletActivation: "one_signature",
+      activation: `${origin}/start`,
+      instruction: `Activate payTo once at ${origin}/start, then set the standard x402 facilitator URL to ${origin}`,
+      quickstart: `${origin}/start`,
       feeBalance: `${origin}/v1/fees?payTo={payTo}`,
       feeClaim: `${origin}/v1/fees/claim`,
     },
@@ -203,7 +215,27 @@ function normalizeText(value: string): string {
 
 function paymentPage(origin: string, env: PaymentEnv): string {
   const limit = microUsdToUsd(parseLimit(env.XGUARD_POSTPAID_LIMIT_MICRO_USD));
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>XGuard Payments</title><meta name="robots" content="index,follow"><style>body{font:16px/1.55 system-ui,sans-serif;max-width:860px;margin:auto;padding:48px 24px;background:#07090d;color:#f5f7fb}a{color:#9fd0ff}pre,code{background:#11151d;border:1px solid #242b38;border-radius:8px}pre{padding:16px;overflow:auto}.price{font-size:44px;font-weight:800}.card{padding:20px;border:1px solid #242b38;border-radius:14px;margin:18px 0}</style></head><body><h1>XGuard payment door</h1><div class="price">$${XGUARD_FINALIZED_FEE_USD}</div><p>per independently finalized successful settlement. Verify, failures and idempotent retries add no fee.</p><div class="card"><h2>Start</h2><p><strong>No signup. No API key. No prepaid balance.</strong></p><pre>const facilitator = new HTTPFacilitatorClient({ url: "${origin}" });</pre><p>That is the full x402 integration. Fees accrue postpaid by the merchant <code>payTo</code> address. Service only pauses when unpaid fees reach $${limit}.</p><a href="/quickstart">Open 30-second quickstart</a></div><div class="card"><h2>Machine / Agent</h2><pre>GET ${origin}/.well-known/payment-manifest</pre><p>The JSON response contains the exact no-auth execution and fee endpoints.</p></div></body></html>`;
+  const feeBps = parseFeeBps(env.XGUARD_FEE_BPS);
+  const feeCap = microUsdToUsd(parseFeeCap(env.XGUARD_FEE_CAP_MICRO_USD));
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>XGuard Payments</title><meta name="robots" content="index,follow"><style>body{font:16px/1.55 system-ui,sans-serif;max-width:860px;margin:auto;padding:48px 24px;background:#07090d;color:#f5f7fb}a{color:#9fd0ff}pre,code{background:#11151d;border:1px solid #242b38;border-radius:8px}pre{padding:16px;overflow:auto}.price{font-size:44px;font-weight:800}.card{padding:20px;border:1px solid #242b38;border-radius:14px;margin:18px 0}</style></head><body><h1>XGuard payment door</h1><div class="price">${feeBps / 100}%</div><p>of each independently finalized successful settlement, capped at $${feeCap}. Verify, failures and idempotent retries add no fee.</p><div class="card"><h2>Start</h2><p><strong>No account. No email. No API key. No prepaid balance.</strong></p><p>Sign once with the merchant <code>payTo</code> wallet, then use:</p><pre>const facilitator = new HTTPFacilitatorClient({ url: "${origin}" });</pre><p>Service only pauses when unpaid XGuard fees reach $${limit}.</p><a href="/start">Connect wallet & activate once</a></div><div class="card"><h2>Machine / Agent</h2><pre>GET ${origin}/.well-known/payment-manifest</pre><p>The JSON response contains the exact no-auth execution and fee endpoints.</p></div></body></html>`;
+}
+
+function parseFeeBps(value: string | undefined): number {
+  if (value === undefined || !/^[0-9]+$/.test(value))
+    return XGUARD_FINALIZED_FEE_BPS;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 10_000
+    ? parsed
+    : XGUARD_FINALIZED_FEE_BPS;
+}
+
+function parseFeeCap(value: string | undefined): number {
+  if (value === undefined || !/^[0-9]+$/.test(value))
+    return XGUARD_FINALIZED_FEE_MICRO_USD;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0
+    ? parsed
+    : XGUARD_FINALIZED_FEE_MICRO_USD;
 }
 
 function parseLimit(value: string | undefined): number {

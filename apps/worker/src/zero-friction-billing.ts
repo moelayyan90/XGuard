@@ -35,7 +35,11 @@ export function validateZeroFrictionPricingTerms(
 ): ZeroFrictionPricingTerms {
   if (!/^[a-z0-9._-]{1,64}$/i.test(terms.pricingVersion))
     throw new Error("invalid_zero_friction_pricing_version");
-  if (!Number.isInteger(terms.feeBps) || terms.feeBps < 0 || terms.feeBps > 10_000)
+  if (
+    !Number.isInteger(terms.feeBps) ||
+    terms.feeBps < 0 ||
+    terms.feeBps > 10_000
+  )
     throw new Error("invalid_zero_friction_fee_bps");
   if (
     !Number.isSafeInteger(terms.feeCapMicroUsd) ||
@@ -77,7 +81,9 @@ export function calculateZeroFrictionFeeMicroUsd(
   return Number(capped);
 }
 
-export async function zeroFrictionMerchantId(rawPayTo: string): Promise<string> {
+export async function zeroFrictionMerchantId(
+  rawPayTo: string,
+): Promise<string> {
   const payTo = normalizeZeroFrictionPayTo(rawPayTo);
   const digest = await sha256Hex(payTo);
   return `${ZERO_FRICTION_PREFIX}${digest.slice(0, 40)}`;
@@ -271,8 +277,6 @@ export async function recordZeroFrictionPayment(
   deposit: FinalizedUsdcDeposit,
 ): Promise<ZeroFrictionAccount> {
   const account = await zeroFrictionAccount(db, rawPayTo);
-  if (deposit.sender.toLowerCase() !== account.payTo)
-    throw new Error("zero_friction_payment_sender_mismatch");
   if (deposit.amountMicroUsd <= 0)
     throw new Error("zero_friction_payment_amount_invalid");
 

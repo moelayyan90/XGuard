@@ -109,10 +109,17 @@ export async function zeroFrictionActivationResponse(
   return null;
 }
 
-function currentTerms(env: ZeroFrictionActivationEnv): ZeroFrictionPricingTerms {
+function currentTerms(
+  env: ZeroFrictionActivationEnv,
+): ZeroFrictionPricingTerms {
   return {
     pricingVersion: env.XGUARD_PRICING_VERSION ?? "2026-08-zero-friction-v1",
-    feeBps: boundedInteger(env.XGUARD_FEE_BPS ?? "50", 0, 10_000, "XGUARD_FEE_BPS"),
+    feeBps: boundedInteger(
+      env.XGUARD_FEE_BPS ?? "50",
+      0,
+      10_000,
+      "XGUARD_FEE_BPS",
+    ),
     feeCapMicroUsd: boundedInteger(
       env.XGUARD_FEE_CAP_MICRO_USD ?? "1000",
       0,
@@ -137,11 +144,15 @@ async function protectedActivation(
   const path = new URL(request.url).pathname;
   try {
     const [client, global] = await Promise.all([
-      env.REQUEST_RATE_LIMITER.limit({ key: `activate:${path}:${sha256Hex(ip)}` }),
+      env.REQUEST_RATE_LIMITER.limit({
+        key: `activate:${path}:${sha256Hex(ip)}`,
+      }),
       env.GLOBAL_RATE_LIMITER.limit({ key: `activate:${path}` }),
     ]);
     if (!client.success || !global.success)
-      return json({ error: "rate_limit_exceeded" }, 429, { "Retry-After": "60" });
+      return json({ error: "rate_limit_exceeded" }, 429, {
+        "Retry-After": "60",
+      });
   } catch {
     return json({ error: "protection_unavailable" }, 503);
   }
@@ -164,7 +175,11 @@ async function jsonBody(request: Request): Promise<Record<string, unknown>> {
       415,
     );
   const parsed = parseJsonStrict(
-    await readHttpBodyTextCapped(request, MAX_JSON_BYTES, "activation JSON body"),
+    await readHttpBodyTextCapped(
+      request,
+      MAX_JSON_BYTES,
+      "activation JSON body",
+    ),
   );
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     throw new XGuardError("BAD_REQUEST", "JSON body must be an object", 400);
@@ -238,10 +253,17 @@ function microUsdToUsd(value: number): string {
 
 function errorResponse(error: unknown): Response {
   const code = error instanceof Error ? error.message : "activation_failed";
-  const status =
-    code.includes("signature_invalid") ? 401 :
-    code.includes("already_used") || code.includes("mismatch") || code.includes("raced") ? 409 :
-    code.includes("invalid") || code.includes("expired") || code.includes("not_found") ? 400 : 500;
+  const status = code.includes("signature_invalid")
+    ? 401
+    : code.includes("already_used") ||
+        code.includes("mismatch") ||
+        code.includes("raced")
+      ? 409
+      : code.includes("invalid") ||
+          code.includes("expired") ||
+          code.includes("not_found")
+        ? 400
+        : 500;
   return json(
     {
       error: code.replace(/[^a-zA-Z0-9_.:-]/g, "_"),
@@ -281,7 +303,10 @@ function json(
 
 function secure(response: Response): Response {
   const headers = new Headers(response.headers);
-  headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  headers.set(
+    "Strict-Transport-Security",
+    "max-age=31536000; includeSubDomains",
+  );
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("X-Frame-Options", "DENY");
   headers.set("Referrer-Policy", "no-referrer");

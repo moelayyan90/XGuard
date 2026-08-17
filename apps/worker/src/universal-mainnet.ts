@@ -38,8 +38,7 @@ export {
 };
 
 interface UniversalMainnetEnv
-  extends ZeroFrictionEnv,
-    ZeroFrictionActivationEnv {
+  extends ZeroFrictionEnv, ZeroFrictionActivationEnv {
   DB: D1Database;
   BASE_RPC_URL: string;
   XGUARD_TREASURY_USDC_ADDRESS: string;

@@ -44,6 +44,9 @@ export interface ZeroFrictionEnv extends MainnetProtocolEnv {
   GLOBAL_RATE_LIMITER: RateLimit;
   BASE_RPC_URL: string;
   XGUARD_TREASURY_USDC_ADDRESS: string;
+  XGUARD_PRICING_VERSION?: string;
+  XGUARD_FEE_BPS?: string;
+  XGUARD_FEE_CAP_MICRO_USD?: string;
   XGUARD_FEE_MICRO_USD: string;
   XGUARD_POSTPAID_LIMIT_MICRO_USD?: string;
   PAYMENT_IDENTIFIER_TTL_SECONDS: string;
@@ -103,13 +106,12 @@ async function handleVerify(
   try {
     validateRuntime(env);
     const parsed = await parseMainnetFacilitatorRequest(request);
-    const account = await ensureZeroFrictionMerchant(env.DB, parsed.payTo);
-    const debtBlock = dueBlock(account, env);
-    if (debtBlock !== null) return debtBlock;
-
-    return withProtection(request, env, account.payTo, async () => {
+    return withProtection(request, env, parsed.payTo, async () => {
+      const account = await ensureZeroFrictionMerchant(env.DB, parsed.payTo);
+      const debtBlock = dueBlock(account);
+      if (debtBlock !== null) return debtBlock;
       const result = await xPayVerify(env, parsed.raw, parsed.payer);
-      return json(result, 200, feeHeaders(account, env, "not-charged"));
+      return json(result, 200, feeHeaders(account, "not-charged"));
     });
   } catch (error) {
     return errorResponse(error);
@@ -126,13 +128,12 @@ async function handleSettle(
     validateRuntime(env);
     const parsed = await parseMainnetFacilitatorRequest(request);
     network = parsed.paymentRequirements.network;
-    const account = await ensureZeroFrictionMerchant(env.DB, parsed.payTo);
-    const debtBlock = dueBlock(account, env);
-    if (debtBlock !== null) return debtBlock;
-
-    return withProtection(request, env, account.payTo, async () =>
-      settleProtected(parsed, account, env, ctx),
-    );
+    return withProtection(request, env, parsed.payTo, async () => {
+      const account = await ensureZeroFrictionMerchant(env.DB, parsed.payTo);
+      const debtBlock = dueBlock(account);
+      if (debtBlock !== null) return debtBlock;
+      return settleProtected(parsed, account, env, ctx);
+    });
   } catch (error) {
     return json(
       settlementFailure(network, errorCode(error), publicErrorMessage(error)),
@@ -168,7 +169,7 @@ async function settleProtected(
 
   if (prepared.kind === "CACHED")
     return json(prepared.result, 200, {
-      ...feeHeaders(account, env, "already-accounted"),
+      ...feeHeaders(account, "already-accounted"),
       "X-XGuard-Replayed": "true",
       "X-XGuard-Payment-Key": identities.logicalPaymentKey,
     });
@@ -253,7 +254,7 @@ async function settleProtected(
     await stub.finalize(result, result.errorReason ?? "downstream_rejected");
     ctx.waitUntil(stub.flushOutbox());
     return json(result, 200, {
-      ...feeHeaders(account, env, "not-charged"),
+      ...feeHeaders(account, "not-charged"),
       "X-XGuard-Replayed": "false",
       "X-XGuard-Payment-Key": identities.logicalPaymentKey,
     });
@@ -313,7 +314,7 @@ async function settleProtected(
 
   ctx.waitUntil(stub.flushOutbox());
   return json(result, 200, {
-    ...feeHeaders(account, env, "pending-finality"),
+    ...feeHeaders(account, "pending-finality"),
     "X-XGuard-Replayed": "false",
     "X-XGuard-Payment-Key": identities.logicalPaymentKey,
     "X-XGuard-Truth-State": "PENDING",
@@ -330,8 +331,10 @@ async function feeBalance(
   try {
     validateRuntime(env);
     const payTo = new URL(request.url).searchParams.get("payTo") ?? "";
-    const account = await ensureZeroFrictionMerchant(env.DB, payTo);
-    return json(feeBalanceBody(account, env));
+    return withProtection(request, env, payTo, async () => {
+      const account = await ensureZeroFrictionMerchant(env.DB, payTo);
+      return json(feeBalanceBody(account));
+    });
   } catch (error) {
     return errorResponse(error);
   }
@@ -354,25 +357,21 @@ async function claimFeePayment(
         400,
       );
 
-    const account = await ensureZeroFrictionMerchant(env.DB, payTo);
-    const deposit = await verifyFinalizedBaseUsdcDeposit({
-      rpcUrl: env.BASE_RPC_URL,
-      transactionHash,
-      treasuryAddress: env.XGUARD_TREASURY_USDC_ADDRESS,
-      usdcContractAddress: BASE_USDC,
-    });
-    if (deposit.sender.toLowerCase() !== account.payTo)
-      throw new XGuardError(
-        "PAYMENT_CONFLICT",
-        "Fee payment must be sent from the same payTo address that uses XGuard",
-        409,
+    return withProtection(request, env, payTo, async () => {
+      const account = await ensureZeroFrictionMerchant(env.DB, payTo);
+      const deposit = await verifyFinalizedBaseUsdcDeposit({
+        rpcUrl: env.BASE_RPC_URL,
+        transactionHash,
+        treasuryAddress: env.XGUARD_TREASURY_USDC_ADDRESS,
+        usdcContractAddress: BASE_USDC,
+      });
+      const updated = await recordZeroFrictionPayment(
+        env.DB,
+        account.payTo,
+        deposit,
       );
-    const updated = await recordZeroFrictionPayment(
-      env.DB,
-      account.payTo,
-      deposit,
-    );
-    return json({ credited: true, ...feeBalanceBody(updated, env) });
+      return json({ credited: true, ...feeBalanceBody(updated) });
+    });
   } catch (error) {
     return errorResponse(error);
   }
@@ -489,18 +488,15 @@ async function claimPaymentIdentifier(
     );
 }
 
-function dueBlock(
-  account: ZeroFrictionAccount,
-  env: ZeroFrictionEnv,
-): Response | null {
-  const limit = postpaidLimitMicroUsd(env);
+function dueBlock(account: ZeroFrictionAccount): Response | null {
+  const limit = account.postpaidLimitMicroUsd;
   if (account.dueMicroUsd < limit) return null;
   return json(
     {
       error: "xguard_service_fee_due",
       message:
         "XGuard starts with no signup or prepayment. This payTo address has reached its postpaid service limit; settle the accrued fee to continue.",
-      ...feeBalanceBody(account, env),
+      ...feeBalanceBody(account),
       claimEndpoint: "/v1/fees/claim",
       claimBody: {
         payTo: account.payTo,
@@ -511,17 +507,20 @@ function dueBlock(
   );
 }
 
-function feeBalanceBody(account: ZeroFrictionAccount, env: ZeroFrictionEnv) {
+function feeBalanceBody(account: ZeroFrictionAccount) {
   return {
     payTo: account.payTo,
-    billingModel: "postpaid-after-finality",
-    feePerFinalizedSettlementMicroUsd: feeMicroUsd(env),
-    feePerFinalizedSettlementUsd: microUsdToUsd(feeMicroUsd(env)),
+    billingModel: "capped-share-after-finality",
+    pricingVersion: account.pricingVersion,
+    feeBps: account.feeBps,
+    feePercent: `${account.feeBps / 100}%`,
+    feeCapMicroUsd: account.feeCapMicroUsd,
+    feeCapUsd: microUsdToUsd(account.feeCapMicroUsd),
     accruedMicroUsd: account.accruedMicroUsd,
     paidMicroUsd: account.paidMicroUsd,
     dueMicroUsd: account.dueMicroUsd,
     creditMicroUsd: account.creditMicroUsd,
-    postpaidLimitMicroUsd: postpaidLimitMicroUsd(env),
+    postpaidLimitMicroUsd: account.postpaidLimitMicroUsd,
     treasury: {
       network: BASE_MAINNET,
       asset: BASE_USDC,
@@ -532,14 +531,15 @@ function feeBalanceBody(account: ZeroFrictionAccount, env: ZeroFrictionEnv) {
 
 function feeHeaders(
   account: ZeroFrictionAccount,
-  env: ZeroFrictionEnv,
   state: string,
 ): Record<string, string> {
   return {
-    "X-XGuard-Auth": "none",
-    "X-XGuard-Billing": "postpaid-after-finality",
+    "X-XGuard-Auth": "none-after-one-time-wallet-activation",
+    "X-XGuard-Billing": "capped-share-after-finality",
     "X-XGuard-Fee-State": state,
-    "X-XGuard-Fee-USD": microUsdToUsd(feeMicroUsd(env)),
+    "X-XGuard-Pricing-Version": account.pricingVersion,
+    "X-XGuard-Fee-Bps": String(account.feeBps),
+    "X-XGuard-Fee-Cap-USD": microUsdToUsd(account.feeCapMicroUsd),
     "X-XGuard-PayTo": account.payTo,
   };
 }
@@ -711,6 +711,11 @@ function errorCode(error: unknown): string {
 
 function publicErrorMessage(error: unknown): string {
   if (error instanceof XGuardError) return error.message;
+  if (
+    error instanceof Error &&
+    error.message === "zero_friction_activation_required"
+  )
+    return "Activate this merchant payTo once at https://xguardgate.com/start. No account, API key, or prepayment is required.";
   if (error instanceof Error && error.name === "AbortError")
     return "Upstream facilitator timed out";
   return "XGuard could not safely complete the request";
@@ -718,11 +723,16 @@ function publicErrorMessage(error: unknown): string {
 
 function errorStatus(
   error: unknown,
-): 400 | 401 | 402 | 409 | 415 | 429 | 500 | 503 {
+): 400 | 401 | 402 | 403 | 409 | 415 | 429 | 500 | 503 {
+  if (
+    error instanceof Error &&
+    error.message === "zero_friction_activation_required"
+  )
+    return 403;
   if (error instanceof XGuardError) {
     const status = error.status;
-    if ([400, 401, 402, 409, 415, 429, 500, 503].includes(status))
-      return status as 400 | 401 | 402 | 409 | 415 | 429 | 500 | 503;
+    if ([400, 401, 402, 403, 409, 415, 429, 500, 503].includes(status))
+      return status as 400 | 401 | 402 | 403 | 409 | 415 | 429 | 500 | 503;
   }
   if (error instanceof Error && error.name === "AbortError") return 503;
   return 500;
