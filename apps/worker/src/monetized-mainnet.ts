@@ -48,8 +48,11 @@ type CoreScheduled = (
 
 const delegateFetch = mainnetModern.fetch as unknown as CoreFetch;
 const delegateScheduled = mainnetModern.scheduled as unknown as CoreScheduled;
-
 const MCP_BODY_LIMIT = 128 * 1024;
+const BILLABLE_DISCOVERY_PATHS = new Map<string, string>([
+  ["/discovery/search", "discovery.search"],
+  ["/discovery/resources", "discovery.resources"],
+]);
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
@@ -57,6 +60,12 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/verify")
       return billVerify(request, env, ctx);
+
+    if (request.method === "GET") {
+      const operation = BILLABLE_DISCOVERY_PATHS.get(url.pathname);
+      if (operation !== undefined)
+        return billDirectDiscovery(request, env, ctx, operation);
+    }
 
     if (request.method === "POST" && url.pathname === "/mcp") {
       const descriptor = await inspectMcpBillingDescriptor(request);
@@ -93,6 +102,30 @@ async function billVerify(
       200,
       "XGUARD_VERIFY_FEE_MICRO_USD",
     ),
+    execute: () => delegateFetch(request, env, ctx),
+    isEarned: async (response) =>
+      response.status >= 200 && response.status < 300,
+  });
+}
+
+async function billDirectDiscovery(
+  request: Request,
+  env: MonetizedMainnetEnv,
+  ctx: ExecutionContext,
+  operation: string,
+): Promise<Response> {
+  const access = await authorizeMerchantScope(request, env, "billing");
+  if (!access.ok) return access.response;
+
+  return billExecution({
+    request,
+    env,
+    merchantId: access.merchant.merchantId,
+    requestId: requestId(request),
+    kind: "SOURCE",
+    provider: "xguard-catalog",
+    operation,
+    amountMicroUsd: feeForMcpKind(env, "SOURCE"),
     execute: () => delegateFetch(request, env, ctx),
     isEarned: async (response) =>
       response.status >= 200 && response.status < 300,
