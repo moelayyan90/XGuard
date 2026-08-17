@@ -68,6 +68,7 @@ async function watchdogFetch(
       producer: env.WATCHDOG_PRODUCER ?? DEFAULT_PRODUCER,
       openBreakers: state.openBreakers,
       openIncidents: state.openIncidents,
+      activeBreakers: state.activeBreakers,
       protections: [
         "tail-runtime-detection",
         "structured-execution-telemetry",
