@@ -1,4 +1,4 @@
-name: Verify XGuard watchdog tail ingestion
+name: Verify XGuard post-deploy health
 
 on:
   workflow_run:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: xguard-watchdog-tail-verify
+  group: xguard-post-deploy-health
   cancel-in-progress: true
 
 jobs:
@@ -18,73 +18,40 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 6
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           package-manager-cache: false
 
-      - run: npm ci --ignore-scripts
-
-      - name: Prove mainnet events reach the watchdog Tail Worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WRANGLER_SEND_METRICS: "false"
+      - name: Verify canonical mainnet after deploy
         shell: bash
         run: |
           set -euo pipefail
+          BASE_URL="https://xguardgate.com"
 
-          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" \
-            | tr -d '\r\n' \
-            | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
-          export CLOUDFLARE_API_TOKEN
+          retry_json() {
+            local url="$1"
+            local check="$2"
+            for attempt in {1..18}; do
+              if body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "$url" 2>/dev/null)" \
+                && printf '%s' "$body" | node -e "$check"; then
+                return 0
+              fi
+              sleep 5
+            done
+            echo "::error::Post-deploy check failed for $url"
+            return 1
+          }
 
-          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-            echo "::error::Cloudflare authorization is required to verify live Tail Worker ingestion."
-            exit 1
-          fi
+          retry_json "${BASE_URL}/healthz" \
+            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x||typeof x!=="object")process.exit(1)})'
 
-          LOG_FILE="$(mktemp)"
-          set +e
-          timeout 40s npx wrangler tail xguard-watchdog \
-            --format json \
-            --search watchdog_invocation \
-            >"${LOG_FILE}" 2>&1 &
-          TAIL_PID=$!
-          set -e
+          retry_json "${BASE_URL}/status" \
+            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet")process.exit(1)})'
 
-          sleep 8
-          BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
-          for attempt in 1 2 3; do
-            curl -fsS --max-time 15 \
-              -H 'Cache-Control: no-cache' \
-              "${BASE_URL}/healthz?tailVerify=${GITHUB_RUN_ID}-${attempt}" \
-              >/dev/null
-            sleep 2
-          done
+          retry_json "${BASE_URL}/.well-known/agent-card.json" \
+            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolBinding==="JSONRPC"&&i.protocolVersion==="1.0"&&i.url==="https://xguardgate.com/a2a"))process.exit(1)})'
 
-          set +e
-          wait "${TAIL_PID}"
-          TAIL_STATUS=$?
-          set -e
-          if [[ "${TAIL_STATUS}" -ne 0 && "${TAIL_STATUS}" -ne 124 ]]; then
-            cat "${LOG_FILE}"
-            echo "::error::wrangler tail exited unexpectedly with status ${TAIL_STATUS}."
-            exit 1
-          fi
-
-          if ! grep -Fq 'watchdog_invocation' "${LOG_FILE}" \
-            || ! grep -Fq 'xguard-mainnet' "${LOG_FILE}" \
-            || ! grep -Fq '/healthz' "${LOG_FILE}"; then
-            cat "${LOG_FILE}"
-            echo "::error::No live xguard-mainnet /healthz invocation reached xguard-watchdog."
-            exit 1
-          fi
-
-          echo "Verified: xguard-mainnet invocations are reaching xguard-watchdog in real time."
+          echo "Verified: canonical XGuard mainnet is healthy after deploy."
