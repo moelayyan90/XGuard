@@ -5,6 +5,7 @@ import monetizedMainnet, {
 } from "./monetized-mainnet.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 import { universalProtocolResponse } from "./universal-protocol-router.js";
+import { universalWebhookResponse } from "./universal-webhook-ingress.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
@@ -38,6 +39,9 @@ export default {
       settleX402: (x402Request) => mainnetFetch(x402Request, env, ctx),
     });
     if (protocolResponse !== null) return protocolResponse;
+
+    const webhookResponse = await universalWebhookResponse(standardRequest, env);
+    if (webhookResponse !== null) return webhookResponse;
 
     const genericHttp = await genericHttpConnectorResponse(
       standardRequest,
