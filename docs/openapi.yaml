@@ -3,10 +3,10 @@ info:
   title: XGuard Mainnet API
   version: 0.2.0-mainnet-rc
   description: >-
-    Live x402 v2 facilitator-compatible gateway for Base mainnet native USDC.
-    XGuard charges $0.002 only after a successful settlement reaches independent
-    finalized on-chain confirmation. Merchant top-ups are prepaid service balances,
-    not earned revenue.
+    Live x402 v2 facilitator-compatible gateway and independent settlement truth
+    layer for Base mainnet native USDC. XGuard charges $0.002 only after a
+    successful settlement reaches independent finalized on-chain confirmation.
+    Merchant top-ups are prepaid service balances, not earned revenue.
   license:
     name: Apache-2.0
 servers:
@@ -16,6 +16,7 @@ tags:
   - name: Operations
   - name: Merchants
   - name: Billing
+  - name: Settlement Truth
   - name: x402
 paths:
   /:
@@ -184,6 +185,69 @@ paths:
             or already-claimed deposit,
           }
         "401": { description: Invalid or missing merchant API key }
+  /v1/settlements/{logicalPaymentKey}/truth:
+    get:
+      tags: [Settlement Truth]
+      summary: Read XGuard's independent truth for one logical settlement
+      description: >-
+        Returns whether the expected Base USDC settlement is independently
+        FINALIZED, still PENDING, PROVEN_FAILED, or in CONFLICT. Only FINALIZED
+        sets authoritativeForRelease=true.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LogicalPaymentKey"
+      responses:
+        "200":
+          description: Terminal or conflict settlement truth
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementTruthResponse"
+        "202":
+          description: Independent evidence is still pending
+          headers:
+            Retry-After:
+              schema: { type: integer, const: 5 }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementTruthResponse"
+        "401": { description: Invalid or missing merchant API key }
+        "403": { description: API key lacks settlement scope }
+        "404": { description: No merchant-owned settlement truth record exists }
+        "503": { description: Settlement truth storage or resolver unavailable }
+  /v1/settlements/{logicalPaymentKey}/resolve:
+    post:
+      tags: [Settlement Truth]
+      summary: Trigger immediate independent settlement resolution
+      description: >-
+        Prioritizes an ambiguous EIP-3009 recovery record, checks finalized Base
+        AuthorizationUsed/AuthorizationCanceled evidence, verifies the exact USDC
+        transfer when present, and re-checks a pending known transaction. It never
+        blindly resubmits the payment authorization.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LogicalPaymentKey"
+      responses:
+        "200":
+          description: Resolution reached a terminal or conflict truth state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementTruthResponse"
+        "202":
+          description: Resolution ran but sufficient final evidence is not yet available
+          headers:
+            Retry-After:
+              schema: { type: integer, const: 5 }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementTruthResponse"
+        "401": { description: Invalid or missing merchant API key }
+        "403": { description: API key lacks settlement scope }
+        "404": { description: No merchant-owned settlement truth record exists }
+        "503": { description: Settlement truth storage or resolver unavailable }
   /verify:
     post:
       tags: [x402]
@@ -222,14 +286,25 @@ paths:
               $ref: "#/components/schemas/FacilitatorRequest"
       responses:
         "200":
-          description: Downstream settlement result; XGuard fee may still be pending independent finality
+          description: Downstream settlement result with independent XGuard truth state when available
           headers:
             X-XGuard-Replayed:
               schema: { type: boolean }
             X-XGuard-Payment-Key:
-              schema: { type: string }
+              schema:
+                type: string
+                pattern: "^[0-9a-f]{64}$"
             X-XGuard-Fee-State:
               schema: { type: string }
+            X-XGuard-Truth-State:
+              schema:
+                $ref: "#/components/schemas/SettlementTruthState"
+            X-XGuard-Truth-Endpoint:
+              schema: { type: string }
+            X-XGuard-Resolve-Endpoint:
+              schema: { type: string }
+            X-XGuard-Release-Safe:
+              schema: { type: boolean }
           content:
             application/json:
               schema:
@@ -251,6 +326,15 @@ components:
       type: http
       scheme: bearer
       bearerFormat: XGuard merchant API key
+  parameters:
+    LogicalPaymentKey:
+      name: logicalPaymentKey
+      in: path
+      required: true
+      description: Immutable XGuard logical authorization identity
+      schema:
+        type: string
+        pattern: "^[0-9a-fA-F]{64}$"
   schemas:
     RootResponse:
       type: object
@@ -374,6 +458,65 @@ components:
         asset: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
         treasuryAddress: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
         instruction: { type: string }
+    SettlementTruthState:
+      type: string
+      enum: [FINALIZED, PENDING, PROVEN_FAILED, CONFLICT]
+    SettlementTruthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - logicalPaymentKey
+        - state
+        - authoritativeForRelease
+        - network
+        - asset
+        - payer
+        - payTo
+        - amountMicroUsd
+        - transactionHash
+        - source
+        - reason
+        - observedAt
+        - proofDigest
+        - truthEndpoint
+        - resolveEndpoint
+      properties:
+        version: { const: xguard-settlement-truth-v1 }
+        logicalPaymentKey:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        state:
+          $ref: "#/components/schemas/SettlementTruthState"
+        authoritativeForRelease: { type: boolean }
+        network: { const: "eip155:8453" }
+        asset:
+          type: string
+          pattern: "^0x[0-9a-fA-F]{40}$"
+        payer:
+          type: string
+          pattern: "^0x[0-9a-fA-F]{40}$"
+        payTo:
+          type: string
+          pattern: "^0x[0-9a-fA-F]{40}$"
+        amountMicroUsd: { type: integer, minimum: 1 }
+        transactionHash:
+          anyOf:
+            - type: string
+              pattern: "^0x[0-9a-fA-F]{64}$"
+            - type: "null"
+        source:
+          type: string
+          enum: [finality, recovery, combined]
+        reason: { type: string }
+        observedAt: { type: string, format: date-time }
+        proofDigest:
+          anyOf:
+            - type: string
+              pattern: "^[0-9a-f]{64}$"
+            - type: "null"
+        truthEndpoint: { type: string }
+        resolveEndpoint: { type: string }
     FacilitatorRequest:
       type: object
       required: [x402Version, paymentPayload, paymentRequirements]

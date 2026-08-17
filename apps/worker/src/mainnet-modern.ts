@@ -9,6 +9,11 @@ import {
 } from "./auto-invoke.js";
 import { writeEndpointDiscoveryResponse } from "./mainnet-endpoint-discovery.js";
 import { authorizeMerchantScope } from "./mainnet-revenue-hardening.js";
+import {
+  settlementTruthResponse,
+  settlementTruthStateForPayment,
+  type SettlementTruthEnv,
+} from "./mainnet-settlement-truth.js";
 import { universalGatewayResponse } from "./universal-gateway.js";
 import { releaseStaleGatewayHolds } from "./universal-gateway-billing.js";
 import {
@@ -21,8 +26,12 @@ import { augmentCompatibilityDiscovery } from "./x402-compatibility-discovery.js
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
 
-interface MainnetModernEnv {
+interface MainnetModernEnv extends SettlementTruthEnv {
   DB: D1Database;
+  BASE_RPC_URL: string;
+  XGUARD_FEE_MICRO_USD: string;
+  XPAY_DOWNSTREAM_COST_MICRO_USD?: string;
+  PAYAI_DOWNSTREAM_COST_MICRO_USD?: string;
   XGUARD_MODEL_FEE_MICRO_USD?: string;
   XGUARD_TOOL_FEE_MICRO_USD?: string;
   XGUARD_SOURCE_FEE_MICRO_USD?: string;
@@ -47,6 +56,8 @@ const delegateScheduled = modernCore.scheduled as unknown as CoreScheduled;
 const HSTS_VALUE = "max-age=31536000; includeSubDomains";
 const GATEWAY_STALE_HOLD_MS = 60 * 60 * 1000;
 const GATEWAY_STALE_HOLD_LIMIT = 50;
+const SETTLEMENT_TRUTH_PATH =
+  /^\/v1\/settlements\/[0-9a-fA-F]{64}\/(truth|resolve)$/;
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
@@ -55,6 +66,9 @@ export default {
 
     const endpointDiscovery = writeEndpointDiscoveryResponse(standardRequest);
     if (endpointDiscovery !== null) return secureResponse(endpointDiscovery);
+
+    const truthResponse = await routeSettlementTruth(standardRequest, env);
+    if (truthResponse !== null) return secureResponse(truthResponse);
 
     if (standardUrl.pathname === "/" && standardRequest.method === "POST") {
       const discoveryRequest = new Request(standardRequest.url, {
@@ -114,6 +128,8 @@ export default {
     if (effectiveRequest.method === "GET")
       response = await augmentCompatibilityDiscovery(response, url.pathname);
     response = await adaptCompatibilityResponse(response, compatibility);
+    if (effectiveRequest.method === "POST" && url.pathname === "/settle")
+      response = await attachSettlementTruthHeaders(response, env.DB);
     return secureResponse(response);
   },
 
@@ -136,6 +152,71 @@ export default {
       );
   },
 } satisfies ExportedHandler<MainnetModernEnv>;
+
+async function routeSettlementTruth(
+  request: Request,
+  env: MainnetModernEnv,
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (!SETTLEMENT_TRUTH_PATH.test(url.pathname)) return null;
+  const access = await authorizeMerchantScope(request, env, "settle");
+  if (!access.ok) return access.response;
+  try {
+    return await settlementTruthResponse(
+      request,
+      env,
+      access.merchant.merchantId,
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "settlement_truth_request_failed",
+        code: errorCode(error),
+      }),
+    );
+    return jsonResponse({ error: "settlement_truth_unavailable" }, 503);
+  }
+}
+
+async function attachSettlementTruthHeaders(
+  response: Response,
+  db: D1Database,
+): Promise<Response> {
+  const logicalPaymentKey = response.headers
+    .get("X-XGuard-Payment-Key")
+    ?.toLowerCase();
+  if (
+    logicalPaymentKey === undefined ||
+    !/^[0-9a-f]{64}$/.test(logicalPaymentKey)
+  )
+    return response;
+
+  const state = await settlementTruthStateForPayment(
+    db,
+    logicalPaymentKey,
+  ).catch(() => null);
+  if (state === null) return response;
+
+  const headers = new Headers(response.headers);
+  headers.set("X-XGuard-Truth-State", state);
+  headers.set(
+    "X-XGuard-Truth-Endpoint",
+    `/v1/settlements/${logicalPaymentKey}/truth`,
+  );
+  headers.set(
+    "X-XGuard-Resolve-Endpoint",
+    `/v1/settlements/${logicalPaymentKey}/resolve`,
+  );
+  headers.set(
+    "X-XGuard-Release-Safe",
+    state === "FINALIZED" ? "true" : "false",
+  );
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 async function rotateCredentialWithVaultRewrap(
   request: Request,
@@ -223,6 +304,17 @@ function compatibilityErrorResponse(code: string): Response {
   );
 }
 
+function jsonResponse(value: unknown, status = 200): Response {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 function secureResponse(response: Response): Response {
   const headers = new Headers(response.headers);
   headers.set("Strict-Transport-Security", HSTS_VALUE);
@@ -234,4 +326,11 @@ function secureResponse(response: Response): Response {
     statusText: response.statusText,
     headers,
   });
+}
+
+function errorCode(error: unknown): string {
+  if (!(error instanceof Error)) return "unknown_error";
+  return error.name === "AbortError"
+    ? "AbortError"
+    : error.message.slice(0, 96).replace(/[^a-zA-Z0-9_.:-]/g, "_");
 }
