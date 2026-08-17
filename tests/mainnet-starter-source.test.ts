@@ -15,9 +15,7 @@ describe("XGuard example production defaults", () => {
     );
     const combined = sources.join("\n");
 
-    expect(combined).toContain(
-      "https://xguard-mainnet.maqamapp.workers.dev",
-    );
+    expect(combined).toContain("https://xguard-mainnet.maqamapp.workers.dev");
     expect(combined).toContain("eip155:8453");
     expect(combined).toContain("PAY_TO_MAINNET_ADDRESS");
     expect(combined).toContain("XGUARD_EXAMPLE_PAY_TO");

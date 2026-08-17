@@ -1,9 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import {
-  PAYAI_URL,
-  XPAY_URL,
-} from "../apps/worker/src/mainnet-protocol.js";
+import { PAYAI_URL, XPAY_URL } from "../apps/worker/src/mainnet-protocol.js";
 
 describe("mainnet downstream identity", () => {
   it("canonically routes to xpay without changing the legacy source alias", () => {

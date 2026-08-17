@@ -69,7 +69,8 @@ const paid = createPaymentWrapper(resourceServer, {
                 type: "string",
                 minLength: 1,
                 maxLength: 200,
-                description: "Text to echo after successful mainnet settlement.",
+                description:
+                  "Text to echo after successful mainnet settlement.",
               },
             },
             required: ["message"],

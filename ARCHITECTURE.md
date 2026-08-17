@@ -26,14 +26,14 @@ flowchart TD
 
 ## Runtime surfaces
 
-| Surface                                  | Purpose                                                                  | Production role                                                        |
-| ---------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `apps/worker/src/mainnet-modern.ts`      | Production `xguard-mainnet` entrypoint; HTTPS/security, MCP, discovery   | **Canonical production Worker entrypoint**                             |
-| `apps/worker/src/mainnet-supervisor.ts`  | Merchant authorization, upstream quota protection, recovery/maintenance  | Production supervision around the financial core                      |
-| `apps/worker/src/mainnet-edge.ts`        | Mainnet Bazaar discovery/MCP wrapper                                     | D1 discovery catalog; delegates financial decisions                    |
-| `apps/worker/src/mainnet.ts`             | Base mainnet financial core                                              | Durable Object settlement ownership + D1 billing/finality/reconciliation |
-| `apps/worker/src/index.ts`               | Separate Base Sepolia worker                                             | Manual, non-billable testnet only                                      |
-| `apps/gateway`                           | Legacy portable/local Node reference                                     | Local/test operations; not the `xguard-mainnet` deployment path       |
+| Surface                                 | Purpose                                                                 | Production role                                                          |
+| --------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `apps/worker/src/mainnet-modern.ts`     | Production `xguard-mainnet` entrypoint; HTTPS/security, MCP, discovery  | **Canonical production Worker entrypoint**                               |
+| `apps/worker/src/mainnet-supervisor.ts` | Merchant authorization, upstream quota protection, recovery/maintenance | Production supervision around the financial core                         |
+| `apps/worker/src/mainnet-edge.ts`       | Mainnet Bazaar discovery/MCP wrapper                                    | D1 discovery catalog; delegates financial decisions                      |
+| `apps/worker/src/mainnet.ts`            | Base mainnet financial core                                             | Durable Object settlement ownership + D1 billing/finality/reconciliation |
+| `apps/worker/src/index.ts`              | Separate Base Sepolia worker                                            | Manual, non-billable testnet only                                        |
+| `apps/gateway`                          | Legacy portable/local Node reference                                    | Local/test operations; not the `xguard-mainnet` deployment path          |
 
 The mainnet Worker currently supports x402 v2 `exact` payments using native USDC on Base mainnet. Merchant service fees are separately disclosed and funded through the prepaid XGuard service balance; they are not silently deducted from the seller's advertised payment amount.
 
