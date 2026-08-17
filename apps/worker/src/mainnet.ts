@@ -45,6 +45,12 @@ import {
   pruneMainnetEconomicShadowTelemetry,
   recordMainnetEconomicShadowObservation,
 } from "./mainnet-economic-shadow-telemetry.js";
+import {
+  evaluateMainnetEconomicSettlementAudit,
+  mainnetEconomicAuditStats,
+  parseMainnetEconomicAuditMode,
+  recordMainnetEconomicAuditDecision,
+} from "./mainnet-economic-audit.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
 
@@ -67,6 +73,7 @@ interface MainnetEnv extends MainnetProtocolEnv {
   HEALTH_MAX_AGE_SECONDS: string;
   PAYAI_DOWNSTREAM_COST_MICRO_USD: string;
   ECONOMIC_FIREWALL_SHADOW_MODE?: string;
+  ECONOMIC_FIREWALL_AUDIT_MODE?: string;
 }
 
 type Variables = { requestId: string };
@@ -209,6 +216,17 @@ app.get("/status", async (context) => {
     );
     return null;
   });
+  const auditTelemetry = await mainnetEconomicAuditStats(context.env.DB).catch(
+    (error) => {
+      console.warn(
+        JSON.stringify({
+          event: "economic_firewall_audit_telemetry_read_failed",
+          code: errorCode(error),
+        }),
+      );
+      return null;
+    },
+  );
   return context.json({
     gateway: "operational",
     mode: "mainnet",
@@ -230,6 +248,20 @@ app.get("/status", async (context) => {
         correlatedIntents: 0,
         settleWithoutVerifyIntents: 0,
         authorizationMismatchEvents: 0,
+      }),
+    },
+    economicFirewallAudit: {
+      mode: parseMainnetEconomicAuditMode(
+        context.env.ECONOMIC_FIREWALL_AUDIT_MODE,
+      ),
+      telemetry: auditTelemetry === null ? "unavailable" : "operational",
+      ...(auditTelemetry ?? {
+        evaluatedSettles: 0,
+        pass: 0,
+        review: 0,
+        correlatedAuthorization: 0,
+        verifyNotObserved: 0,
+        authorizationMismatch: 0,
       }),
     },
     measuredAt: new Date().toISOString(),
@@ -659,22 +691,7 @@ function observeEconomicFirewallShadow(
       }),
     );
     context.executionCtx.waitUntil(
-      recordMainnetEconomicShadowObservation(
-        context.env.DB,
-        merchant.merchantId,
-        shadow,
-        operation,
-      ).catch((error) =>
-        console.warn(
-          JSON.stringify({
-            event: "economic_firewall_shadow_telemetry_write_failed",
-            requestId: context.get("requestId"),
-            operation,
-            merchantId: merchant.merchantId,
-            code: errorCode(error),
-          }),
-        ),
-      ),
+      persistEconomicFirewallObservation(context, merchant, shadow, operation),
     );
   } catch (error) {
     console.warn(
@@ -687,6 +704,62 @@ function observeEconomicFirewallShadow(
       }),
     );
   }
+}
+
+async function persistEconomicFirewallObservation(
+  context: AppContext,
+  merchant: MerchantIdentity,
+  shadow: ReturnType<typeof deriveMainnetEconomicShadowBinding>,
+  operation: "verify" | "settle",
+): Promise<void> {
+  if (
+    operation === "settle" &&
+    parseMainnetEconomicAuditMode(context.env.ECONOMIC_FIREWALL_AUDIT_MODE) ===
+      "audit"
+  ) {
+    try {
+      const decision = await evaluateMainnetEconomicSettlementAudit(
+        context.env.DB,
+        merchant.merchantId,
+        shadow,
+      );
+      console.log(
+        JSON.stringify({
+          event: "economic_firewall_audit_decision",
+          requestId: context.get("requestId"),
+          verdict: decision.verdict,
+          reason: decision.reason,
+          intentId: shadow.intent.intentId,
+        }),
+      );
+      await recordMainnetEconomicAuditDecision(context.env.DB, decision);
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          event: "economic_firewall_audit_failed",
+          requestId: context.get("requestId"),
+          code: errorCode(error),
+        }),
+      );
+    }
+  }
+
+  await recordMainnetEconomicShadowObservation(
+    context.env.DB,
+    merchant.merchantId,
+    shadow,
+    operation,
+  ).catch((error) =>
+    console.warn(
+      JSON.stringify({
+        event: "economic_firewall_shadow_telemetry_write_failed",
+        requestId: context.get("requestId"),
+        operation,
+        merchantId: merchant.merchantId,
+        code: errorCode(error),
+      }),
+    ),
+  );
 }
 
 async function requireMerchant(context: AppContext): Promise<MerchantIdentity> {
