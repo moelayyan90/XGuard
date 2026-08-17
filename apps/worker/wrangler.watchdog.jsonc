@@ -30,12 +30,6 @@
       "migrations_dir": "migrations",
     },
   ],
-  "analytics_engine_datasets": [
-    {
-      "binding": "ANALYTICS",
-      "dataset": "xguard_watchdog",
-    },
-  ],
   "triggers": {
     "crons": ["*/1 * * * *"],
   },
