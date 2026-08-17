@@ -7,10 +7,10 @@ const PROVIDER_PATH = "/.well-known/x402/facilitator.json";
 const DISCOVERY_CACHE_CONTROL =
   "public, max-age=3600, stale-while-revalidate=86400";
 const MONETIZATION_ETAG = '"xguard-monetization-v1"';
-const GLAMA_ETAG = '"xguard-glama-v1"';
+const GLAMA_ETAG = '"xguard-glama-v2"';
 const GLAMA_METADATA = {
-  $schema: "https://glama.ai/mcp/schemas/server.json",
-  maintainers: ["moelayyan90"],
+  $schema: "https://glama.ai/mcp/schemas/connector.json",
+  maintainers: [{ email: "mo.elayyan2023@gmail.com" }],
 } as const;
 
 export async function compatibilityDiscoveryResponse(
