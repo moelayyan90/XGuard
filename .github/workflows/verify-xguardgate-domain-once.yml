@@ -1,0 +1,31 @@
+name: Verify xguardgate.com once
+
+on:
+  push:
+    branches:
+      - ops/verify-xguardgate-domain
+
+permissions:
+  contents: read
+
+jobs:
+  verify-domain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify apex and www custom domains
+        shell: bash
+        run: |
+          set -euo pipefail
+          for host in xguardgate.com www.xguardgate.com; do
+            echo "=== ${host} DNS ==="
+            getent ahosts "${host}"
+            echo "=== ${host} TLS/health ==="
+            response="$(curl -fsS --max-time 20 -D /tmp/headers "https://${host}/healthz")"
+            printf '%s' "${response}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'
+            grep -qi '^strict-transport-security:' /tmp/headers
+            echo "=== ${host} discovery ==="
+            curl -fsS --max-time 20 "https://${host}/.well-known/x402/facilitator.json?domain-check=1" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="x402-facilitator"||x.status!=="production"||!x.facilitator)process.exit(1)})'
+          done
+          echo '{"xguardgateDomainLive":true,"apex":true,"www":true,"https":true,"healthz":true,"discovery":true}'
