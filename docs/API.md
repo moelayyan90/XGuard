@@ -1,10 +1,11 @@
 # XGuard HTTP API
 
-**Mainnet base URL:** `https://xguard-mainnet.maqamapp.workers.dev`  
-**Testnet base URL:** `https://xguard-testnet.maqamapp.workers.dev`  
-**Mainnet mode:** Base mainnet native USDC, x402 v2 `exact`, EIP-3009 authorization
+**Production base URL:** `https://xguard-mainnet.maqamapp.workers.dev`  
+**Production network:** Base mainnet native USDC, x402 v2 `exact`, EIP-3009 authorization
 
-The machine-readable mainnet contract is [openapi.yaml](openapi.yaml). Current official x402 v2 types remain authoritative where the protocol evolves.
+A separate Base Sepolia testnet exists only for explicit non-billable integration testing. It is isolated from the production merchant billing path and is not the default API environment.
+
+The machine-readable production contract is [openapi.yaml](openapi.yaml). Current official x402 v2 types remain authoritative where the protocol evolves.
 
 ## Public mainnet endpoints
 
@@ -116,6 +117,6 @@ The payment key is an operational correlation value, not a bearer credential.
 - insufficient service balance returns HTTP `402` with guidance to create a top-up intent;
 - unhealthy, stale, or economically ineligible downstream routing fails closed.
 
-## Testnet
+## Optional testnet API
 
-The separate Base Sepolia Worker remains non-billable at `https://xguard-testnet.maqamapp.workers.dev`. Testnet behavior and capability are intentionally isolated from the mainnet merchant billing path.
+The separate Base Sepolia Worker remains non-billable at `https://xguard-testnet.maqamapp.workers.dev`. Use it only when a testnet environment is selected explicitly. Testnet behavior and capability are intentionally isolated from the mainnet merchant billing path.
