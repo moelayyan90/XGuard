@@ -88,6 +88,24 @@ assert(
   "gateway charging model changed unexpectedly",
 );
 
+const webhookRoutes = await json("/v1/webhooks/routes");
+assert(
+  webhookRoutes.response.status === 401,
+  "webhook route management bypassed merchant authentication",
+);
+
+const unknownWebhookToken = "A".repeat(43);
+const webhookIngress = await json(`/v1/webhooks/in/${unknownWebhookToken}`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ smoke: true }),
+});
+assert(
+  webhookIngress.response.status === 404 &&
+    webhookIngress.body?.error === "webhook_route_not_found",
+  "universal webhook ingress or its D1 route table is unavailable",
+);
+
 const directResources = await json("/discovery/resources?limit=1");
 assert(
   directResources.response.status === 401,
@@ -201,6 +219,7 @@ console.log(
     ready: true,
     mainnet: true,
     universalGateway: true,
+    universalWebhookIngress: true,
     directDiscoveryPaywalled: true,
     verifyPaywalled: true,
     mcpExecutionPaywalled: true,
