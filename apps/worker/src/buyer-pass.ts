@@ -16,6 +16,8 @@ export interface BuyerPassEnv {
   DB: D1Database;
   BASE_RPC_URL: string;
   XGUARD_TREASURY_USDC_ADDRESS: string;
+  REQUEST_RATE_LIMITER: RateLimit;
+  GLOBAL_RATE_LIMITER: RateLimit;
 }
 
 export interface BuyerPassPrincipal {
@@ -50,6 +52,9 @@ export async function buyerPassResponse(
 
   if (request.method === "OPTIONS")
     return cors(new Response(null, { status: 204 }));
+
+  const protection = await buyerPassAbuseProtection(request, env, url.pathname);
+  if (protection !== null) return protection;
 
   try {
     if (url.pathname === "/v1/buyer-pass" && request.method === "POST") {
@@ -402,6 +407,36 @@ function microUsdToUsd(value: number): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function buyerPassAbuseProtection(
+  request: Request,
+  env: BuyerPassEnv,
+  path: string,
+): Promise<Response | null> {
+  // Keep the anonymous onboarding endpoint available without allowing it to
+  // become a free D1 row-creation primitive. The client key is used only by
+  // Cloudflare's rate-limit binding and is never persisted in XGuard tables.
+  const clientKey = (request.headers.get("cf-connecting-ip") ?? "unknown")
+    .trim()
+    .slice(0, 128);
+  try {
+    const [client, global] = await Promise.all([
+      env.REQUEST_RATE_LIMITER.limit({
+        key: `buyer-pass:${path}:${clientKey}`,
+      }),
+      env.GLOBAL_RATE_LIMITER.limit({ key: `buyer-pass:${path}` }),
+    ]);
+    if (!client.success || !global.success)
+      return privateJson({ error: "rate_limit_exceeded" }, 429, {
+        "Retry-After": "60",
+      });
+    return null;
+  } catch {
+    // Buyer Pass is an identity + money boundary. If abuse protection is not
+    // available, fail closed instead of creating unmetered identities.
+    return privateJson({ error: "protection_unavailable" }, 503);
+  }
 }
 
 function privateJson(

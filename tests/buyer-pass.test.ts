@@ -28,6 +28,15 @@ describe("Buyer Pass", () => {
     expect(() => parseBuyerTopUpAmountUsd("1e2")).toThrow("invalid_amountUsd");
   });
 
+  it("rate limits Buyer Pass routes before creating identities", async () => {
+    const source = await readFile("apps/worker/src/buyer-pass.ts", "utf8");
+    expect(source).toContain("REQUEST_RATE_LIMITER.limit");
+    expect(source).toContain("GLOBAL_RATE_LIMITER.limit");
+    expect(source).toContain("cf-connecting-ip");
+    expect(source).toContain("protection_unavailable");
+    expect(source).not.toContain("buyer-pass:${path}:${token}");
+  });
+
   it("removes the merchant API-key setup from the browser flow", async () => {
     const worker = await readFile(
       "browser-extension/service-worker.js",
