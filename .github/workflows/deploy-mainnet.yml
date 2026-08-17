@@ -4,17 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - "apps/worker/src/mainnet*.ts"
-      - "apps/worker/src/discovery.ts"
-      - "apps/worker/src/agent-discovery*.ts"
-      - "apps/worker/src/base-*.ts"
-      - "apps/worker/src/xpay-*.ts"
-      - "apps/worker/wrangler.mainnet.jsonc"
-      - "apps/worker/migrations/**"
-      - "scripts/resolve-cloudflare-config.mjs"
-      - "scripts/smoke-mainnet.mjs"
-      - ".github/workflows/deploy-mainnet.yml"
 
 permissions:
   contents: read
@@ -77,6 +66,15 @@ jobs:
           const fs = require('node:fs');
           const path = process.argv[2];
           const source = fs.readFileSync(path, 'utf8');
+          if (!/"name"\s*:\s*"xguard-mainnet"/.test(source)) {
+            throw new Error('refusing deployment: Worker target is not xguard-mainnet');
+          }
+          if (!/"main"\s*:\s*"src\/mainnet-modern\.ts"/.test(source)) {
+            throw new Error('refusing deployment: mainnet entrypoint is not src/mainnet-modern.ts');
+          }
+          if (!/"database_name"\s*:\s*"xguard-mainnet"/.test(source)) {
+            throw new Error('refusing deployment: D1 target is not xguard-mainnet');
+          }
           const match = source.match(/"XGUARD_TREASURY_USDC_ADDRESS"\s*:\s*"([^"]+)"/);
           if (!match || !/^0x[0-9a-fA-F]{40}$/.test(match[1])) {
             throw new Error('mainnet treasury address is missing or invalid');
@@ -94,6 +92,23 @@ jobs:
           VERIFY_TOKEN="${GITHUB_SHA:-$(date +%s)}"
           DISCOVERY_QUERY="?deploy=${VERIFY_TOKEN}"
 
+          propagated=0
+          for attempt in {1..18}; do
+            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/.well-known/agent-card.json${DISCOVERY_QUERY}&attempt=${attempt}" || true)"
+            code="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.4.0"||!x.xguardDiscovery||x.xguardDiscovery.preferredMcpProtocolVersion!=="2026-07-28")process.exit(1)})'; then
+              propagated=1
+              break
+            fi
+            sleep 5
+          done
+          if [[ "${propagated}" -ne 1 ]]; then
+            echo "::error::The newly deployed XGuard discovery surface did not propagate within 90 seconds."
+            exit 1
+          fi
+
           curl -fsS --max-time 15 "${BASE_URL}/healthz" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'
 
@@ -110,13 +125,19 @@ jobs:
           rm -f "${root_headers}"
 
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/agent-card.json${DISCOVERY_QUERY}" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.4.0"||!String(x.providerManifest||"").endsWith("/.well-known/x402/facilitator.json")||!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolVersion==="2")||!Array.isArray(x.skills)||!x.skills.some(k=>k&&k.id==="x402-payment-settlement")||!x.skills.some(k=>k&&k.id==="mcp-x402-discovery")||!x.xguardDiscovery||!String(x.xguardDiscovery.mcp||"").endsWith("/mcp")||x.xguardDiscovery.preferredMcpProtocolVersion!=="2026-07-28")process.exit(1)})'
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.4.0"||!String(x.providerManifest||"").endsWith("/.well-known/agent-card.json")&&false||!String(x.providerManifest||"").endsWith("/.well-known/x402/facilitator.json")||!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolBinding==="JSONRPC"&&i.protocolVersion==="0.3"&&String(i.url||"").endsWith("/a2a"))||!Array.isArray(x.skills)||!x.skills.some(k=>k&&k.id==="x402-payment-settlement")||!x.skills.some(k=>k&&k.id==="mcp-x402-discovery")||!x.xguardDiscovery||!String(x.xguardDiscovery.mcp||"").endsWith("/mcp")||x.xguardDiscovery.preferredMcpProtocolVersion!=="2026-07-28")process.exit(1)})'
 
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/agent-market.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard"||x.version!=="0.4.0"||x.protocol!=="x402-v2"||x.network!=="eip155:8453"||!x.discovery||!String(x.discovery.agentCard||"").endsWith("/.well-known/agent-card.json")||!String(x.discovery.provider||"").endsWith("/.well-known/x402/facilitator.json")||!String(x.discovery.mcp||"").endsWith("/mcp")||x.discovery.preferredMcpProtocolVersion!=="2026-07-28")process.exit(1)})'
 
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/x402/facilitator.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="x402-facilitator"||x.status!=="production"||!x.facilitator||x.facilitator.baseUrl!=="https://xguard-mainnet.maqamapp.workers.dev"||x.facilitator.network!=="eip155:8453"||x.facilitator.scheme!=="exact"||!x.pricing||x.pricing.feeUsd!=="0.002"||!x.onboarding||x.onboarding.packageInstallationRequired!==false||!x.settlementExecution||x.settlementExecution.mode!=="routed"||x.settlementExecution.currentDownstream!=="xpay")process.exit(1)})'
+
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/x402${DISCOVERY_QUERY}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="x402-facilitator"||x.status!=="production"||!x.facilitator||x.facilitator.network!=="eip155:8453")process.exit(1)})'
+
+          curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/monetization${DISCOVERY_QUERY}" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.manifest!=="xguard-monetization-v1"||x.schemaVersion!==1||!x.pricing||x.pricing.feeUsd!=="0.002"||!x.x402||!String(x.x402.providerManifest||"").endsWith("/.well-known/x402/facilitator.json"))process.exit(1)})'
 
           curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/mcp/server.json${DISCOVERY_QUERY}" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="io.github.moelayyan90/xguard"||x.version!=="0.4.0"||!x.mcp||x.mcp.preferredProtocolVersion!=="2026-07-28"||!Array.isArray(x.remotes)||!x.remotes.some(r=>r&&r.type==="streamable-http"&&String(r.url||"").endsWith("/mcp")))process.exit(1)})'
@@ -180,5 +201,21 @@ jobs:
           curl -fsS --max-time 15 "${BASE_URL}/supported" \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||!x.kinds.some(k=>k&&k.x402Version===2&&k.network==="eip155:8453"&&k.scheme==="exact"))process.exit(1)})'
 
-          curl -fsS --max-time 15 "${BASE_URL}/status" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet"||x.facilitator!=="HEALTHY"||x.facilitatorProvider!=="xpay"||!x.ambiguousRecovery||!Number.isInteger(x.ambiguousRecovery.pending)||!Number.isInteger(x.ambiguousRecovery.failed))process.exit(1)})'
+          status_ready=0
+          for attempt in {1..18}; do
+            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/status?deploy=${VERIFY_TOKEN}&attempt=${attempt}" || true)"
+            code="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet"||x.facilitator!=="HEALTHY"||x.facilitatorProvider!=="xpay"||!x.ambiguousRecovery||!Number.isInteger(x.ambiguousRecovery.pending)||!Number.isInteger(x.ambiguousRecovery.failed))process.exit(1)})'; then
+              status_ready=1
+              break
+            fi
+            sleep 5
+          done
+          if [[ "${status_ready}" -ne 1 ]]; then
+            echo "::error::XGuard public status contract did not stabilize within 90 seconds."
+            exit 1
+          fi
+
+          npm run smoke:mainnet

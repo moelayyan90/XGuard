@@ -16,6 +16,7 @@ const LEGACY_MCP_PROTOCOLS = new Set([
 const SUPPORTED_PROTOCOLS = [MODERN_MCP_PROTOCOL, ...LEGACY_MCP_PROTOCOLS];
 const CACHE_TTL_MS = 300_000;
 const MAX_MCP_BODY_BYTES = 128 * 1024;
+const HSTS_VALUE = "max-age=31536000; includeSubDomains";
 const SERVER_INFO = { name: "xguard-mainnet", version: XGUARD_MCP_VERSION };
 
 type ModernMcpEnv = { DB: D1Database };
@@ -105,7 +106,7 @@ export async function modernMcpRequest(
   if (method === "tools/list") {
     return mcpResult(id, {
       resultType: "complete",
-      tools: mcpTools(),
+      tools: xguardMcpTools(),
       ttlMs: CACHE_TTL_MS,
       cacheScope: "public",
       _meta: serverMeta(),
@@ -213,56 +214,77 @@ function validateModernEnvelope(
   return null;
 }
 
-function mcpTools() {
+export function xguardMcpTools() {
+  const safeReadAnnotations = {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  };
+
   return [
     {
       name: "xguard_discover",
       title: "Discover x402 resources",
       description:
-        "Discover x402-paid HTTP APIs and MCP tools cataloged by XGuard. Use a natural-language query or list recent resources.",
+        "Search XGuard's x402 catalog or list recent entries. Returns matching HTTP or MCP resources. Example: query='weather API', type='http'.",
       inputSchema: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "Natural-language search query.",
+            description: "Search phrase; omit to list recent resources.",
           },
-          type: { type: "string", enum: ["http", "mcp"] },
+          type: {
+            type: "string",
+            enum: ["http", "mcp"],
+            description: "Optional resource kind: http or mcp.",
+          },
           payTo: {
             type: "string",
-            description: "Optional payment recipient address.",
+            description: "Filter by exact payment-recipient address.",
           },
           limit: {
             type: "integer",
             minimum: 1,
             maximum: 100,
             default: 10,
+            description: "Maximum results to return (1-100; default 10).",
           },
         },
         additionalProperties: false,
       },
+      annotations: { ...safeReadAnnotations },
     },
     {
       name: "xguard_resource_details",
       title: "Inspect x402 resource",
       description:
-        "Return XGuard catalog records for one exact resource URL or resource key.",
+        "Look up one exact XGuard catalog resource by URL or key and return matching records. Example: resource='https://api.example.com/pay'.",
       inputSchema: {
         type: "object",
-        properties: { resource: { type: "string" } },
+        properties: {
+          resource: {
+            type: "string",
+            description: "Exact resource URL or XGuard resource key.",
+          },
+        },
         required: ["resource"],
         additionalProperties: false,
       },
+      annotations: { ...safeReadAnnotations },
     },
     {
       name: "xguard_status",
       title: "XGuard status",
-      description: "Return XGuard mainnet and discovery catalog status.",
+      description:
+        "Return live XGuard mainnet gateway health and discovery statistics. Example: call with no arguments before routing traffic.",
       inputSchema: {
         type: "object",
         properties: {},
         additionalProperties: false,
       },
+      annotations: { ...safeReadAnnotations },
     },
   ];
 }
@@ -397,6 +419,7 @@ function corsResponse(response: Response): Response {
   );
   headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   headers.set("Access-Control-Expose-Headers", "MCP-Protocol-Version");
+  headers.set("Strict-Transport-Security", HSTS_VALUE);
   headers.set("X-Content-Type-Options", "nosniff");
   return new Response(response.body, {
     status: response.status,

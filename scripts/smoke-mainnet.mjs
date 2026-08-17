@@ -116,6 +116,38 @@ assert(
   "provider settlement attribution changed",
 );
 
+const migration = await json(
+  "/.well-known/xguard/migrate?from=cdp&name=mainnet-smoke",
+);
+assert(migration.response.status === 200, "safe migration endpoint failed");
+assert(migration.body.schemaVersion === "2", "migration schema changed");
+assert(
+  migration.body.sideEffects === false,
+  "migration endpoint gained side effects",
+);
+assert(
+  migration.body.paymentExecution === false,
+  "migration endpoint unexpectedly executes payments",
+);
+const preCutover = migration.body.steps?.find(
+  (step) => step?.id === "safe-precutover-checks",
+);
+assert(preCutover?.sideEffects === false, "pre-cutover checks are not safe");
+assert(
+  Array.isArray(preCutover?.requests) &&
+    preCutover.requests.every((request) => request.startsWith("GET ")) &&
+    !preCutover.requests.some(
+      (request) => request.includes("/verify") || request.includes("/settle"),
+    ),
+  "migration pre-cutover checks include billable/protocol execution",
+);
+assert(
+  migration.body.automationBoundary?.createsSyntheticPayments === false &&
+    migration.body.automationBoundary
+      ?.callsVerifyOrSettleWithoutRealProtocolTraffic === false,
+  "migration automation safety boundary changed",
+);
+
 const discovery = await json("/discovery/resources?limit=1");
 assert(discovery.response.status === 200, "Bazaar discovery endpoint failed");
 assert(
@@ -199,14 +231,10 @@ assert(
   "mainnet reconciliation count is invalid",
 );
 assert(
-  Number.isInteger(status.body.successfulBillableSettlements) &&
-    status.body.successfulBillableSettlements >= 0,
-  "mainnet earned settlement count is invalid",
-);
-assert(
-  Number.isInteger(status.body.earnedMicroUsd) &&
-    status.body.earnedMicroUsd >= 0,
-  "mainnet earned revenue total is invalid",
+  status.body.financialMetrics === "private" &&
+    status.body.successfulBillableSettlements === undefined &&
+    status.body.earnedMicroUsd === undefined,
+  "mainnet public status exposed protected financial metrics",
 );
 assert(
   Number.isInteger(status.body.discovery?.resources) &&
@@ -223,11 +251,11 @@ console.log(
     network: status.body.network,
     facilitator: status.body.facilitator,
     providerManifest: true,
+    migrationKit: true,
     bazaar: true,
     mcp: true,
+    financialMetrics: status.body.financialMetrics,
     discoveryResources: status.body.discovery.resources,
-    successfulBillableSettlements: status.body.successfulBillableSettlements,
-    earnedMicroUsd: status.body.earnedMicroUsd,
     openReconciliationCases: status.body.openReconciliationCases,
   }),
 );

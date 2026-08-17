@@ -3,6 +3,7 @@ import {
   MODERN_MCP_PROTOCOL,
   modernMcpRequest,
   shouldUseModernMcp,
+  xguardMcpTools,
 } from "../apps/worker/src/mainnet-mcp-modern.js";
 
 const URL = "https://xguard-mainnet.maqamapp.workers.dev/mcp";
@@ -56,6 +57,9 @@ describe("MCP 2026-07-28 mainnet surface", () => {
     expect(response.headers.get("MCP-Protocol-Version")).toBe(
       MODERN_MCP_PROTOCOL,
     );
+    expect(response.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=31536000; includeSubDomains",
+    );
     const body = (await response.json()) as {
       result: Record<string, unknown>;
     };
@@ -98,6 +102,29 @@ describe("MCP 2026-07-28 mainnet surface", () => {
     ]);
     expect(body.result.ttlMs).toBe(300000);
     expect(body.result.cacheScope).toBe("public");
+  });
+
+  it("declares every public MCP tool safe and agent-readable", () => {
+    const tools = xguardMcpTools();
+    expect(tools).toHaveLength(3);
+
+    for (const tool of tools) {
+      expect(tool.description).toMatch(/Example:/);
+      expect(tool.annotations).toMatchObject({
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
+
+      const properties = tool.inputSchema.properties as Record<
+        string,
+        { description?: string }
+      >;
+      for (const property of Object.values(properties)) {
+        expect(property.description?.trim().length).toBeGreaterThan(0);
+      }
+    }
   });
 
   it("uses the truthful status provider for the modern status tool", async () => {

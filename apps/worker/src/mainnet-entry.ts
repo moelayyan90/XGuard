@@ -21,13 +21,69 @@ type PublicScheduled = (
 
 const mainnetFetch = mainnetHandler.fetch as unknown as PublicFetch;
 const mainnetScheduled = mainnetHandler.scheduled as unknown as PublicScheduled;
+const FACILITATOR_DISCOVERY_PATH = "/.well-known/x402/facilitator.json";
+const VERIFYMCP_OWNERS_PATH = "/.well-known/owners.json";
+const VERIFYMCP_OWNER_EMAIL = "mo.elayyan2023@gmail.com";
+
+function verifyMcpOwnersResponse(request: Request): Response | null {
+  const url = new URL(request.url);
+  if (url.pathname !== VERIFYMCP_OWNERS_PATH) return null;
+
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response(null, {
+      status: 405,
+      headers: {
+        Allow: "GET, HEAD",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  const body = JSON.stringify({
+    $schema: "https://verifymcp.io/schemas/owners.json",
+    owners: [VERIFYMCP_OWNER_EMAIL],
+  });
+
+  return new Response(request.method === "HEAD" ? null : body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
+function normalizeDiscoveryRequest(request: Request): Request {
+  if (request.method !== "GET" && request.method !== "HEAD") return request;
+
+  const url = new URL(request.url);
+  const malformedLiteral = `${FACILITATOR_DISCOVERY_PATH}'`;
+  const malformedEncoded = `${FACILITATOR_DISCOVERY_PATH}%27`;
+
+  if (
+    url.pathname !== malformedLiteral &&
+    url.pathname.toLowerCase() !== malformedEncoded.toLowerCase()
+  ) {
+    return request;
+  }
+
+  url.pathname = FACILITATOR_DISCOVERY_PATH;
+  return new Request(url.toString(), {
+    method: request.method,
+    headers: request.headers,
+  });
+}
 
 const handler: ExportedHandler<PublicMainnetEnv> = {
   async fetch(request, env, executionCtx): Promise<Response> {
+    const ownership = verifyMcpOwnersResponse(request);
+    if (ownership !== null) return ownership;
+
     const searchIndex = searchIndexResponse(request);
     if (searchIndex !== null) return searchIndex;
 
-    const discovery = discoveryResponse(request);
+    const discovery = discoveryResponse(normalizeDiscoveryRequest(request));
     if (discovery !== null) return discovery;
 
     const url = new URL(request.url);
