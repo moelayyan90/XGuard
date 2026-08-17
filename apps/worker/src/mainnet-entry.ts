@@ -4,6 +4,7 @@ import mainnetHandler, {
 } from "./mainnet.js";
 import { discoveryResponse } from "./discovery.js";
 import { writeEndpointDiscoveryResponse } from "./mainnet-endpoint-discovery.js";
+import { portalDesignResponse } from "./portal-design.js";
 import { searchIndexResponse } from "./search-indexing.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
@@ -83,6 +84,9 @@ const handler: ExportedHandler<PublicMainnetEnv> = {
 
     const writeEndpointDiscovery = writeEndpointDiscoveryResponse(request);
     if (writeEndpointDiscovery !== null) return writeEndpointDiscovery;
+
+    const portal = portalDesignResponse(request);
+    if (portal !== null) return portal;
 
     const searchIndex = searchIndexResponse(request);
     if (searchIndex !== null) return searchIndex;
