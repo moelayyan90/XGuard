@@ -20,6 +20,8 @@ export function modernMcpManifest(origin: string) {
       resources: `${origin}/discovery/resources`,
       search: `${origin}/discovery/search`,
       migration: `${origin}/.well-known/xguard/migrate`,
+      settlementTruth: `${origin}/v1/settlements/{logicalPaymentKey}/truth`,
+      settlementResolve: `${origin}/v1/settlements/{logicalPaymentKey}/resolve`,
     },
   };
 }
@@ -69,6 +71,30 @@ export async function enhanceAgentDiscoveryResponse(
           ],
         });
       }
+      if (
+        !skills.some(
+          (skill) => isRecord(skill) && skill.id === "x402-settlement-truth",
+        )
+      ) {
+        skills.push({
+          id: "x402-settlement-truth",
+          name: "Resolve independent x402 settlement truth",
+          description:
+            "Use XGuard's merchant-scoped finality and recovery endpoints to distinguish FINALIZED, PENDING, PROVEN_FAILED, and CONFLICT without blindly resubmitting an ambiguous payment authorization.",
+          tags: [
+            "x402",
+            "settlement",
+            "finality",
+            "recovery",
+            "payments",
+            "safety",
+          ],
+          examples: [
+            `GET ${url.origin}/v1/settlements/<logicalPaymentKey>/truth`,
+            `POST ${url.origin}/v1/settlements/<logicalPaymentKey>/resolve`,
+          ],
+        });
+      }
       body.skills = skills;
       body.xguardDiscovery = {
         mcp: `${url.origin}/mcp`,
@@ -76,6 +102,8 @@ export async function enhanceAgentDiscoveryResponse(
         resources: `${url.origin}/discovery/resources`,
         search: `${url.origin}/discovery/search`,
         migration: `${url.origin}/.well-known/xguard/migrate`,
+        settlementTruth: `${url.origin}/v1/settlements/{logicalPaymentKey}/truth`,
+        settlementResolve: `${url.origin}/v1/settlements/{logicalPaymentKey}/resolve`,
         preferredMcpProtocolVersion: "2026-07-28",
       };
       return body;
@@ -93,6 +121,8 @@ export async function enhanceAgentDiscoveryResponse(
         resources: `${url.origin}/discovery/resources`,
         search: `${url.origin}/discovery/search`,
         migration: `${url.origin}/.well-known/xguard/migrate`,
+        settlementTruth: `${url.origin}/v1/settlements/{logicalPaymentKey}/truth`,
+        settlementResolve: `${url.origin}/v1/settlements/{logicalPaymentKey}/resolve`,
         preferredMcpProtocolVersion: "2026-07-28",
       };
       return body;
@@ -140,6 +170,41 @@ export async function enhanceAgentDiscoveryResponse(
           responses: { "200": { description: "Safe migration kit" } },
         },
       };
+      paths["/v1/settlements/{logicalPaymentKey}/truth"] ??= {
+        get: {
+          summary: "Read XGuard's independent settlement truth",
+          description:
+            "Merchant-authenticated lookup of finalized Base settlement and EIP-3009 recovery evidence. FINALIZED is the only release-safe state.",
+          security: [{ bearerAuth: [] }],
+          parameters: [logicalPaymentKeyParameter()],
+          responses: {
+            "200": {
+              description:
+                "Terminal settlement truth or fail-closed conflicting evidence",
+            },
+            "202": { description: "Independent evidence remains pending" },
+            "401": { description: "Merchant authentication required" },
+            "404": { description: "Settlement truth record not found" },
+          },
+        },
+      };
+      paths["/v1/settlements/{logicalPaymentKey}/resolve"] ??= {
+        post: {
+          summary: "Resolve an ambiguous x402 settlement now",
+          description:
+            "Triggers immediate finalized Base and EIP-3009 recovery checks without blindly resubmitting the payment authorization.",
+          security: [{ bearerAuth: [] }],
+          parameters: [logicalPaymentKeyParameter()],
+          responses: {
+            "200": { description: "Resolution reached a terminal truth state" },
+            "202": {
+              description: "Sufficient final evidence is not yet available",
+            },
+            "401": { description: "Merchant authentication required" },
+            "404": { description: "Settlement truth record not found" },
+          },
+        },
+      };
       paths["/mcp"] ??= {
         post: {
           summary: "XGuard Streamable HTTP MCP endpoint",
@@ -163,12 +228,26 @@ export async function enhanceAgentDiscoveryResponse(
       `Bazaar resources: ${url.origin}/discovery/resources`,
       `Bazaar search: ${url.origin}/discovery/search?query=<terms>`,
       `Safe migration kit: ${url.origin}/.well-known/xguard/migrate?from=<cdp|payai>&name=<merchant>`,
+      `Settlement truth: ${url.origin}/v1/settlements/<logicalPaymentKey>/truth (merchant API key required)`,
+      `Settlement resolve: ${url.origin}/v1/settlements/<logicalPaymentKey>/resolve (merchant API key required; POST)`,
+      "Settlement truth states are FINALIZED, PENDING, PROVEN_FAILED, and CONFLICT; only FINALIZED is release-safe.",
+      "The resolver checks independent Base finality and EIP-3009 recovery evidence and never blindly resubmits an ambiguous authorization.",
       "The migration kit is instruction-only and does not move funds, change third-party infrastructure, or synthesize x402 settlements.",
     ].join("\n");
     return textResponse(response, `${text.trimEnd()}${appendix}\n`);
   }
 
   return response;
+}
+
+function logicalPaymentKeyParameter() {
+  return {
+    name: "logicalPaymentKey",
+    in: "path",
+    required: true,
+    description: "Immutable XGuard logical payment identity",
+    schema: { type: "string", pattern: "^[0-9a-fA-F]{64}$" },
+  };
 }
 
 async function rewriteJson(
