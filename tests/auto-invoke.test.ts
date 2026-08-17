@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   autoInvokeResponse,
+  autoRequestId,
   classifyAutoInvokeRoute,
   isAutoInvokeBillableStatus,
   isAutoInvokeRedirectStatus,
@@ -27,6 +28,37 @@ describe("XGuard zero-study auto invoke", () => {
     expect(body.standardClients).toHaveProperty("openai");
     expect(body.standardClients).toHaveProperty("anthropic");
     expect(body.xguardSpecificHeaderRequiredPerRequest).toBe(false);
+  });
+
+  it("uses OpenAI X-Client-Request-Id as a fallback without overriding X-Request-Id", () => {
+    const preferred = autoRequestId(
+      new Request(ORIGIN, {
+        headers: {
+          "X-Request-Id": "xguard-primary-1234",
+          "X-Client-Request-Id": "openai-client-5678",
+        },
+      }),
+    );
+    expect(preferred).toBe("xguard-primary-1234");
+
+    const fallback = autoRequestId(
+      new Request(ORIGIN, {
+        headers: { "X-Client-Request-Id": "openai-client-5678" },
+      }),
+    );
+    expect(fallback).toBe("openai-client-5678");
+  });
+
+  it("ignores malformed client request IDs and generates a UUID", () => {
+    const generated = autoRequestId(
+      new Request(ORIGIN, {
+        headers: { "X-Client-Request-Id": "bad id" },
+      }),
+    );
+    expect(generated).not.toBe("bad id");
+    expect(generated).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
   });
 
   it("infers OpenAI from standard OpenAI-compatible requests", async () => {

@@ -801,9 +801,11 @@ function modelFee(env: AutoInvokeEnv): number {
   return value;
 }
 
-function autoRequestId(request: Request): string {
-  const supplied = request.headers.get("x-request-id")?.trim();
-  if (supplied && /^[A-Za-z0-9._:-]{8,96}$/.test(supplied)) return supplied;
+export function autoRequestId(request: Request): string {
+  for (const header of ["x-request-id", "x-client-request-id"]) {
+    const supplied = request.headers.get(header)?.trim();
+    if (supplied && /^[A-Za-z0-9._:-]{8,96}$/.test(supplied)) return supplied;
+  }
   return crypto.randomUUID();
 }
 
