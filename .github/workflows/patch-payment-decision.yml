@@ -85,10 +85,10 @@ jobs:
           )
           text = text.replace('): Promise<any> {', '): Promise<PaymentDecisionReceipt> {')
 
-          capture_count = text.count('recordMatch[1],')
+          capture_count = text.count('recordMatch[1]')
           if capture_count != 2:
               raise SystemExit(f'unexpected recordMatch capture count: {capture_count}')
-          text = text.replace('recordMatch[1],', 'recordMatch[1] ?? "",')
+          text = text.replace('recordMatch[1]', '(recordMatch[1] ?? "")')
           text = text.replace(
               'const [wholeRaw, fractionRaw = ""] = value.split(".");',
               'const [wholeRaw = "0", fractionRaw = ""] = value.split(".");',
