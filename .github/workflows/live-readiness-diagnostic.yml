@@ -15,48 +15,61 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: diag/live-readiness-20260817
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
       - name: Probe public production surface
         shell: bash
         run: |
           set -u
-          BASE_URL="https://xguard-mainnet.maqamapp.workers.dev"
           REPORT="diagnostics/live-readiness.txt"
           mkdir -p diagnostics
           : > "${REPORT}"
           printf 'commit=%s\nchecked_at=%s\n\n' "${GITHUB_SHA}" "$(date -u +%FT%TZ)" >> "${REPORT}"
 
           probe() {
-            method="$1"
-            path="$2"
+            base="$1"
+            method="$2"
+            path="$3"
             tmp="$(mktemp)"
+            headers="$(mktemp)"
             if [[ "${method}" == "POST" ]]; then
-              code="$(curl -sS --max-time 20 -X POST -H 'Cache-Control: no-cache' -o "${tmp}" -w '%{http_code}' "${BASE_URL}${path}" || printf 'curl_error')"
+              code="$(curl -sS --max-time 20 -X POST -H 'Cache-Control: no-cache' -D "${headers}" -o "${tmp}" -w '%{http_code}' "${base}${path}" || printf 'curl_error')"
             else
-              code="$(curl -sS --max-time 20 -H 'Cache-Control: no-cache' -o "${tmp}" -w '%{http_code}' "${BASE_URL}${path}" || printf 'curl_error')"
+              code="$(curl -sS --max-time 20 -H 'Cache-Control: no-cache' -D "${headers}" -o "${tmp}" -w '%{http_code}' "${base}${path}" || printf 'curl_error')"
             fi
-            printf '=== %s %s ===\nstatus=%s\n' "${method}" "${path}" "${code}" >> "${REPORT}"
+            printf '=== %s %s%s ===\nstatus=%s\n' "${method}" "${base}" "${path}" "${code}" >> "${REPORT}"
+            grep -iE '^(x-xguard-discovery|content-type|cache-control|strict-transport-security):' "${headers}" >> "${REPORT}" || true
             head -c 5000 "${tmp}" >> "${REPORT}" || true
             printf '\n\n' >> "${REPORT}"
-            rm -f "${tmp}"
+            rm -f "${tmp}" "${headers}"
           }
 
-          probe GET /healthz
-          probe POST /
-          probe GET /.well-known/agent-card.json
-          probe GET /.well-known/agent-market.json
-          probe GET /.well-known/x402/facilitator.json
-          probe GET /.well-known/x402
-          probe GET /.well-known/monetization
-          probe GET /.well-known/mcp/server.json
-          probe GET /openapi.json
-          probe GET /llms.txt
-          probe GET /llms-full.txt
-          probe GET /robots.txt
-          probe GET /readyz
-          probe GET /supported
-          probe GET /status
-          probe GET /.git/config
-          probe GET /.env
+          WORKERS="https://xguard-mainnet.maqamapp.workers.dev"
+          CUSTOM="https://xguardgate.com"
+
+          probe "${WORKERS}" GET /healthz
+          probe "${WORKERS}" GET /readyz
+          probe "${WORKERS}" GET /status
+          probe "${WORKERS}" GET /.git/config
+          probe "${WORKERS}" GET /.env
+
+          probe "${CUSTOM}" GET /healthz
+          probe "${CUSTOM}" POST /
+          probe "${CUSTOM}" GET /readyz
+          probe "${CUSTOM}" GET /status
+          probe "${CUSTOM}" GET /.well-known/x402/facilitator.json
+          probe "${CUSTOM}" GET /.git/config
+          probe "${CUSTOM}" GET /.env
+
+          printf '=== npm run smoke:mainnet ===\n' >> "${REPORT}"
+          set +e
+          npm run smoke:mainnet >> "${REPORT}" 2>&1
+          smoke_status=$?
+          set -e
+          printf '\nexit=%s\n' "${smoke_status}" >> "${REPORT}"
       - name: Commit public diagnostic report
         shell: bash
         run: |
@@ -67,5 +80,5 @@ jobs:
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m 'diagnostics: capture live readiness [skip ci]'
+          git commit -m 'diagnostics: capture custom-domain readiness [skip ci]'
           git push origin HEAD:diag/live-readiness-20260817
