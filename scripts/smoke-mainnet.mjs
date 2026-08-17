@@ -116,6 +116,20 @@ assert(
   "provider settlement attribution changed",
 );
 
+const glama = await json("/.well-known/glama.json");
+assert(glama.response.status === 200, "Glama discovery endpoint failed");
+assert(
+  glama.body.$schema === "https://glama.ai/mcp/schemas/connector.json",
+  "Glama connector schema changed",
+);
+assert(
+  Array.isArray(glama.body.maintainers) &&
+    glama.body.maintainers.some(
+      (maintainer) => maintainer?.email === "mo.elayyan2023@gmail.com",
+    ),
+  "Glama maintainer ownership metadata is missing",
+);
+
 const migration = await json(
   "/.well-known/xguard/migrate?from=cdp&name=mainnet-smoke",
 );
@@ -251,6 +265,7 @@ console.log(
     network: status.body.network,
     facilitator: status.body.facilitator,
     providerManifest: true,
+    glamaDiscovery: true,
     migrationKit: true,
     bazaar: true,
     mcp: true,
