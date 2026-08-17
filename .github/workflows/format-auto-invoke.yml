@@ -20,7 +20,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Format changed files
-        run: npx prettier --write apps/worker/src/auto-invoke.ts apps/worker/src/mainnet-modern.ts apps/worker/migrations/0011_auto_invoke_vault.sql tests/auto-invoke.test.ts
+        run: npx prettier --write apps/worker/src/auto-invoke.ts apps/worker/src/mainnet-modern.ts tests/auto-invoke.test.ts
       - name: Commit formatting
         shell: bash
         run: |
@@ -30,6 +30,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/worker/src/auto-invoke.ts apps/worker/src/mainnet-modern.ts apps/worker/migrations/0011_auto_invoke_vault.sql tests/auto-invoke.test.ts
+          git add apps/worker/src/auto-invoke.ts apps/worker/src/mainnet-modern.ts tests/auto-invoke.test.ts
           git commit -m "Format auto-invoke implementation"
           git push origin HEAD:agent/zero-study-auto-invoke
