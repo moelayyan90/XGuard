@@ -1,7 +1,6 @@
 import { authorizeMerchantScope } from "./mainnet-revenue-hardening.js";
 import {
   earnGatewayFee,
-  gatewayEventKey,
   releaseGatewayFee,
   reserveGatewayFee,
   type GatewayEventKind,
