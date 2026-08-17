@@ -6,23 +6,39 @@ XGuard is distributed once at the payment-rail / facilitator / gateway layer so 
 
 The canonical distribution unit is **one rail integration**, not one merchant integration.
 
-## Economics
+## Economics: per-rail pricing, not one universal fee
 
-XGuard's commercial target is a minimum **$0.02 contribution profit per independently finalized billable settlement**.
+XGuard must not use one fixed per-settlement price across every platform. Each rail has different transaction pricing, gas sponsorship, network mix, merchant prices, volume, and commercial constraints.
 
-`contribution profit` means rail service revenue minus attributable variable costs for that settlement (downstream facilitator cost, chain/RPC cost attributable to the operation, paid infrastructure usage, and other directly measurable per-settlement costs). It is intentionally not described as company-wide accounting net income, which also depends on fixed overhead, tax, legal, payroll, and other period costs.
+For every prospective rail integration, XGuard records the rail's current published pricing and attributable variable costs, then proposes the smallest commercially acceptable XGuard fee that leaves positive contribution profit and does not make the rail uneconomic.
 
-For a rail contract, the minimum billable amount per finalized settlement is therefore:
+Canonical rule:
 
 ```text
-rail service fee >= attributable variable cost + $0.02
+XGuard rail price = negotiated per-rail price
+XGuard contribution = XGuard rail price - directly attributable XGuard variable cost
+accept integration only when expected contribution > 0
 ```
 
-The merchant's buyer-authorized `amount` and `payTo` remain unchanged. The rail operator pays XGuard separately under the infrastructure agreement.
+Pricing shapes may differ by rail:
 
-For very small x402 payments, the XGuard rail fee does not need to be transferred as a second onchain payment for every request. It can accrue as an idempotent rail receivable and be invoiced / settled in aggregate. This prevents a two-cent service fee from modifying or invalidating a sub-cent buyer payment.
+- per-finalized-settlement fee;
+- percentage of the rail operator's own transaction fee;
+- volume tiers;
+- monthly platform fee plus a lower usage fee;
+- premium settlement-truth/recovery fee;
+- aggregate receivable settled periodically rather than one separate onchain payment per merchant transaction.
 
-No fee is earned for definitive failure, unresolved ambiguity, or duplicate replay of the same logical payment.
+The merchant's buyer-authorized `amount` and `payTo` remain unchanged. The rail operator pays XGuard separately under the infrastructure agreement. No fee is earned for definitive failure, unresolved ambiguity, or duplicate replay of the same logical payment.
+
+## Current public pricing anchors
+
+Pricing must be re-verified before every commercial proposal.
+
+- Coinbase CDP x402 Facilitator: first 1,000 transactions/month free, then $0.001/transaction according to current official CDP documentation.
+- xpay: currently advertises zero protocol fees and sponsored Base gas; XGuard therefore cannot assume a per-transaction fee budget exists and should propose a premium reliability/recovery, platform, or revenue-share arrangement instead.
+- PayAI: official documentation advertises a free tier and authenticated production tiers, but current public pages are inconsistent on the free-tier settlement count; do not invent a production unit price. Quote only after the current commercial tier is confirmed with PayAI.
+- Polygon: Polygon publishes a first-party x402 facilitator and multiple alternative facilitators. Public docs currently emphasize access/integration rather than a universal published per-transaction price; commercial pricing must be confirmed before quoting.
 
 ## Platform-neutral adapter contract
 
@@ -30,10 +46,11 @@ XGuard must not depend on xpay-specific request ownership in the canonical rail 
 
 - `identifyRailPrincipal()` — authenticate the infrastructure partner, not the merchant;
 - `capabilities()` — networks, schemes, assets, signer/settler identity, limits;
+- `pricingSnapshot()` — timestamped source-backed rail pricing/cost assumptions;
 - `prepare(payment)` — strict validation, replay identity, one-outbound-owner reservation;
 - `observeSubmission(evidence)` — record the rail's outbound boundary without creating a second submission;
 - `resolve(payment)` — establish `FINALIZED`, `PENDING`, `PROVEN_FAILED`, or `CONFLICT` from independent evidence;
-- `accrueFee(payment)` — create exactly one finality-gated rail receivable only when commercial and cost floors are satisfied;
+- `accrueFee(payment)` — create exactly one finality-gated rail receivable under that rail's agreed pricing contract;
 - `exportUsage()` — bounded partner reconciliation / invoice evidence.
 
 Adapters must preserve the merchant payment exactly and must never obtain authority to rewrite a buyer-signed `exact` transfer.
@@ -42,18 +59,17 @@ Adapters must preserve the merchant payment exactly and must never obtain author
 
 ### Tier 1 — production facilitators / rails
 
-These are the highest-leverage targets because one integration can cover many sellers.
-
 1. Coinbase CDP x402 Facilitator
 2. PayAI facilitator / agentic-payments infrastructure
 3. xpay facilitator
 4. Polygon Labs x402 facilitator
-5. Other production x402 facilitators that expose a stable verify/settle boundary
-6. Self-hosted enterprise facilitators
+5. Thirdweb x402 facilitator/infrastructure
+6. Corbits facilitator/proxy infrastructure
+7. Questflow and other production x402 facilitators
+8. x402.rs and other open-source facilitators
+9. Self-hosted enterprise facilitators
 
 ### Tier 2 — infrastructure platforms embedding x402
-
-These can distribute XGuard as a built-in payment-safety option or internal module for deployments created on the platform.
 
 - Cloudflare Workers / Agents
 - AWS agent/payment infrastructure
@@ -72,26 +88,24 @@ These can distribute XGuard as a built-in payment-safety option or internal modu
 
 The rail operator should not be asked to migrate merchants or modify merchant prices.
 
-The narrow pitch is:
-
-> Add XGuard once behind your settlement boundary. Your sellers do nothing. XGuard independently resolves post-submit ambiguity, prevents unsafe duplicate settlement behavior, and provides finality/reconciliation evidence. We bill the rail only for independently finalized protected settlements under a separate B2B agreement.
+> Add XGuard once behind your settlement boundary. Your sellers do nothing. XGuard independently resolves post-submit ambiguity, prevents unsafe duplicate settlement behavior, and provides finality/reconciliation evidence. Pricing is adapted to your existing rail economics rather than forcing one universal XGuard fee.
 
 ## Rollout order
 
 1. Finish generic rail principal + rail receivable primitives.
 2. Implement xpay as the first adapter because XGuard already routes through it and can validate the interface against known production behavior.
-3. Implement a CDP-compatible adapter contract without hard-coding credentials or merchant assumptions.
-4. Implement PayAI and Polygon-compatible capability adapters.
-5. Publish the adapter contract for self-hosted facilitators.
-6. Submit XGuard to official x402 ecosystem/developer-tool channels and open targeted integration proposals with rail maintainers.
-7. Add Cloudflare/AWS/Vercel/Stripe integration guides only where a real supported x402 execution boundary exists; do not claim native integration before partner acceptance.
+3. Implement CDP-, PayAI-, Polygon-, Thirdweb-, Corbits-, Questflow-, and x402.rs-compatible adapter contracts without merchant-specific assumptions.
+4. Publish the adapter contract for self-hosted facilitators.
+5. Submit XGuard to official ecosystem/developer-tool channels and open targeted integration proposals with rail maintainers.
+6. Add Cloudflare/AWS/Vercel/Stripe integration guides only where a real supported x402 execution boundary exists; never claim native integration before partner acceptance.
+7. Maintain a pricing registry that re-verifies each rail's public commercial terms before proposals are generated.
 
 ## Success metric
 
-The primary growth metric is:
+Primary metric:
 
 ```text
-independently finalized settlements protected by XGuard per day
+independently finalized settlements protected by XGuard per day across all rails
 ```
 
 Secondary metrics:
@@ -99,7 +113,7 @@ Secondary metrics:
 - rails integrated;
 - eligible merchant endpoints inherited through those rails;
 - protected settlement success / ambiguity-resolution rate;
-- earned contribution profit per finalized settlement;
-- aggregate contribution profit per rail.
+- contribution profit per rail;
+- aggregate contribution profit across all rails.
 
 Merchant registrations, API keys issued, and prepaid balances are legacy metrics and are not canonical growth KPIs for rail-embedded XGuard.
