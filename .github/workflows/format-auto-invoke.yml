@@ -1,0 +1,82 @@
+name: Format auto invoke
+
+on:
+  push:
+    branches: [agent/zero-study-auto-invoke]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/zero-study-auto-invoke
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Fix WebCrypto buffers, vault validation, and format
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/worker/src/auto-invoke.ts')
+          source = path.read_text()
+
+          source = source.replace(
+              '      iv,\n      additionalData: vaultAad(merchantId, provider),',
+              '      iv: exactArrayBuffer(iv),\n      additionalData: exactArrayBuffer(vaultAad(merchantId, provider)),',
+          )
+          source = source.replace(
+              '    new TextEncoder().encode(plaintext),',
+              '    exactArrayBuffer(new TextEncoder().encode(plaintext)),',
+          )
+          source = source.replace(
+              '      iv: fromBase64Url(iv),\n      additionalData: vaultAad(merchantId, provider),',
+              '      iv: exactArrayBuffer(fromBase64Url(iv)),\n      additionalData: exactArrayBuffer(vaultAad(merchantId, provider)),',
+          )
+          source = source.replace(
+              '    fromBase64Url(ciphertext),',
+              '    exactArrayBuffer(fromBase64Url(ciphertext)),',
+          )
+
+          marker = '\nfunction contentLength(headers: Headers): number {'
+          helper = '''\nfunction exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {\n  const copy = new Uint8Array(bytes.byteLength);\n  copy.set(bytes);\n  return copy.buffer;\n}\n'''
+          if 'function exactArrayBuffer' not in source:
+              if marker not in source:
+                  raise SystemExit('exactArrayBuffer insertion marker missing')
+              source = source.replace(marker, helper + marker, 1)
+
+          old_post = '''    const provider = parseProvider(body.provider);\n    const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";'''
+          new_post = '''    let provider: ProviderId;\n    try {\n      provider = parseProvider(body.provider);\n    } catch (error) {\n      return jsonResponse({ error: errorCode(error) }, 400);\n    }\n    const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";'''
+          if old_post in source:
+              source = source.replace(old_post, new_post, 1)
+
+          old_delete = '''    const provider = parseProvider(\n      decodeURIComponent(url.pathname.slice(`${VAULT_PATH}/`.length)),\n    );\n    await env.DB.prepare('''
+          new_delete = '''    let provider: ProviderId;\n    try {\n      provider = parseProvider(\n        decodeURIComponent(url.pathname.slice(`${VAULT_PATH}/`.length)),\n      );\n    } catch (error) {\n      return jsonResponse({ error: errorCode(error) }, 400);\n    }\n    await env.DB.prepare('''
+          if old_delete in source:
+              source = source.replace(old_delete, new_delete, 1)
+
+          path.write_text(source)
+          PY
+          npx prettier --write apps/worker/src/auto-invoke.ts apps/worker/src/mainnet-modern.ts tests/auto-invoke.test.ts
+          npx vitest run tests/auto-invoke.test.ts
+          npx tsc -b --pretty false
+      - name: Commit fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/auto-invoke.ts apps/worker/src/mainnet-modern.ts tests/auto-invoke.test.ts
+          git commit -m "Fix auto-invoke WebCrypto and vault validation"
+          git push origin HEAD:agent/zero-study-auto-invoke
