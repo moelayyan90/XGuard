@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { publicDiscoveryPreflight } from "../apps/worker/src/universal-mainnet.js";
+import { publicDiscoveryPreflight } from "../apps/worker/src/public-discovery-preflight.js";
 
 const ORIGIN = "https://xguardgate.com";
 
