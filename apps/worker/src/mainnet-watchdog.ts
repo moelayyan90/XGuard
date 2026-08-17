@@ -11,7 +11,6 @@ import {
 
 interface WatchdogEnv {
   DB: D1Database;
-  ANALYTICS: AnalyticsEngineDataset;
   WATCHDOG_PRODUCER?: string;
   WATCHDOG_MAINNET_URL?: string;
 }
@@ -69,6 +68,7 @@ async function watchdogFetch(
       openIncidents: state.openIncidents,
       protections: [
         "tail-runtime-detection",
+        "structured-execution-telemetry",
         "synthetic-readiness-probes",
         "route-circuit-breakers",
         "bounded-auto-recovery",
@@ -94,7 +94,7 @@ async function processTail(
 
   for (const item of events) {
     if ((item.scriptName ?? "unknown") !== producer) continue;
-    writeTelemetry(env.ANALYTICS, item);
+    writeTelemetry(item);
     tasks.push(processOneTailEvent(env.DB, item, producer));
   }
 
@@ -133,25 +133,20 @@ async function processOneTailEvent(
   }
 }
 
-function writeTelemetry(
-  dataset: AnalyticsEngineDataset,
-  item: TailEventLike,
-): void {
+function writeTelemetry(item: TailEventLike): void {
   const telemetry = extractTelemetry(item.event);
   const outcome = typeof item.outcome === "string" ? item.outcome : "unknown";
-  const scriptName = item.scriptName ?? "unknown";
-  const route = `${telemetry.method}:${telemetry.path}`.slice(0, 96);
-  dataset.writeDataPoint({
-    indexes: [route],
-    blobs: [
-      scriptName,
-      telemetry.method,
-      telemetry.path,
+  console.log(
+    JSON.stringify({
+      event: "watchdog_invocation",
+      script: item.scriptName ?? "unknown",
+      method: telemetry.method,
+      path: telemetry.path,
       outcome,
-      statusClass(telemetry.status),
-    ],
-    doubles: [1, telemetry.status],
-  });
+      status: telemetry.status,
+      statusClass: statusClass(telemetry.status),
+    }),
+  );
 }
 
 async function runSyntheticProbes(
