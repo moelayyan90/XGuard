@@ -12,46 +12,23 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Locate public submit bundle and Firestore contract
+      - name: Inspect inline MCP Hub submit contract
         shell: bash
         run: |
           python - <<'PY'
           import re
-          import urllib.parse
           import urllib.request
 
-          base = "https://www.aimcp.info"
-          page = base + "/en/submit"
-          ua = {"User-Agent":"Mozilla/5.0 XGuard-registry-check"}
-          req = urllib.request.Request(page, headers=ua)
+          page = "https://www.aimcp.info/en/submit"
+          req = urllib.request.Request(page, headers={"User-Agent":"Mozilla/5.0 XGuard-registry-check"})
           with urllib.request.urlopen(req, timeout=30) as r:
               html = r.read().decode("utf-8", "replace")
-
-          candidates = set()
-          for pat in [
-              r'(?:src|href)=[\"\']([^\"\']+\.js(?:\?[^\"\']*)?)[\"\']',
-              r'[\"\']([^\"\']+\.js)[\"\']',
-              r'(/_next/static/[^\"\'<> ]+\.js)',
-          ]:
-              candidates.update(re.findall(pat, html, re.I))
-          print("JS_COUNT", len(candidates))
-          for raw in sorted(candidates):
-              full = urllib.parse.urljoin(page, raw)
-              try:
-                  req = urllib.request.Request(full, headers=ua)
-                  with urllib.request.urlopen(req, timeout=30) as r:
-                      js = r.read().decode("utf-8", "replace")
-              except Exception as exc:
-                  print("FETCH_ERROR", full, type(exc).__name__, str(exc))
-                  continue
-              if "githubUrl" not in js and "contactEmail" not in js:
-                  continue
-              print("TARGET_BUNDLE", full, "LEN", len(js))
-              for needle in ["githubUrl", "contactEmail", "status:\"pending\"", "projectId", "apiKey", "F4)(", "firebase", "submission"]:
-                  matches = list(re.finditer(re.escape(needle), js, re.I))
-                  print("NEEDLE_COUNT", needle, len(matches))
-                  for m in matches[:8]:
-                      a=max(0,m.start()-2200); b=min(len(js),m.end()+3200)
-                      print("---",needle,"AT",m.start(),"---")
-                      print(js[a:b].replace("\\n"," "))
+          print("HTML_LENGTH", len(html))
+          for needle in ["githubUrl", "contactEmail", "status:\"pending\"", "status:'pending'", "projectId", "apiKey", "firebase", "mcpSubmissions", "submissions", "addDoc", "collection(", "createdAt"]:
+              matches=list(re.finditer(re.escape(needle), html, re.I))
+              print("COUNT", needle, len(matches))
+              for m in matches[:20]:
+                  a=max(0,m.start()-2500); b=min(len(html),m.end()+4500)
+                  print("---",needle,"AT",m.start(),"---")
+                  print(html[a:b].replace("\n"," "))
           PY
