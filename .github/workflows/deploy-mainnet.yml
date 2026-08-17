@@ -44,7 +44,7 @@ jobs:
 
           CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" \
             | tr -d '\r\n' \
-            | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+            | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           export CLOUDFLARE_API_TOKEN
 
           if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
@@ -87,7 +87,22 @@ jobs:
           NODE
 
           npx wrangler d1 migrations apply xguard-mainnet --remote --config "${CONFIG_PATH}"
-          npx wrangler deploy --config "${CONFIG_PATH}"
+
+          # The custom domains already exist on xguard-mainnet. Uploading and
+          # promoting a Worker Version updates code/bindings without asking the
+          # GitHub token to mutate zone routes. Cloudflare documents route/domain
+          # changes as a separate `wrangler triggers deploy` operation.
+          VERSION_TAG="git-${GITHUB_SHA}"
+          npx wrangler versions upload \
+            --config "${CONFIG_PATH}" \
+            --tag "${VERSION_TAG}" \
+            --message "XGuard ${GITHUB_SHA}"
+          npx wrangler versions deploy \
+            --config "${CONFIG_PATH}" \
+            --version-tag "${VERSION_TAG}" \
+            --percentage 100 \
+            --yes \
+            --message "Deploy XGuard ${GITHUB_SHA}"
 
       - name: Verify live monetization boundary
         shell: bash
@@ -113,15 +128,38 @@ jobs:
             exit 1
           fi
 
-          payment_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/payment-manifest?deploy=${VERIFY_TOKEN}")"
-          printf '%s' "${payment_body}" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const p=x.pricing||{};if(p.amountUsd!=="0.04"||p.amountMicroUsd!==40000||p.event!=="accepted_authenticated_economic_attempt")process.exit(1);if(!x.onboarding?.human||!x.execution?.verify||!x.execution?.settle)process.exit(1)})'
+          payment_surfaces_ready=0
+          for attempt in {1..18}; do
+            payment_response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/.well-known/payment-manifest?deploy=${VERIFY_TOKEN}&attempt=${attempt}" || true)"
+            payment_code="${payment_response##*$'\n'}"
+            payment_body="${payment_response%$'\n'*}"
+            if [[ "${payment_code}" != "200" ]] || ! printf '%s' "${payment_body}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const p=x.pricing||{};if(p.amountUsd!=="0.04"||p.amountMicroUsd!==40000||p.event!=="accepted_authenticated_economic_attempt")process.exit(1);if(!x.onboarding?.human||!x.execution?.verify||!x.execution?.settle)process.exit(1)})'; then
+              sleep 5
+              continue
+            fi
 
-          agent_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/.well-known/agent-card.json?deploy=${VERIFY_TOKEN}")"
-          printf '%s' "${agent_body}" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolVersion==="1.0"&&i.protocolBinding==="JSONRPC"))process.exit(1)})'
+            agent_response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/.well-known/agent-card.json?deploy=${VERIFY_TOKEN}&attempt=${attempt}" || true)"
+            agent_code="${agent_response##*$'\n'}"
+            agent_body="${agent_response%$'\n'*}"
+            if [[ "${agent_code}" != "200" ]] || ! printf '%s' "${agent_body}" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.supportedInterfaces)||!x.supportedInterfaces.some(i=>i&&i.protocolVersion==="1.0"&&i.protocolBinding==="JSONRPC"))process.exit(1)})'; then
+              sleep 5
+              continue
+            fi
 
-          curl -fsS --max-time 15 -H 'Accept: text/html' "${BASE_URL}/pay?deploy=${VERIFY_TOKEN}" | grep -q '\$0.04'
+            if ! curl -fsS --max-time 15 -H 'Accept: text/html' "${BASE_URL}/pay?deploy=${VERIFY_TOKEN}&attempt=${attempt}" | grep -q '\$0.04'; then
+              sleep 5
+              continue
+            fi
+
+            payment_surfaces_ready=1
+            break
+          done
+          if [[ "${payment_surfaces_ready}" -ne 1 ]]; then
+            echo "::error::The new XGuard payment and agent surfaces did not propagate."
+            exit 1
+          fi
 
           health_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/healthz?deploy=${VERIFY_TOKEN}")"
           printf '%s' "${health_body}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.mode!=="mainnet")process.exit(1)})'
