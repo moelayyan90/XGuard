@@ -21,7 +21,11 @@
           "tier": "Community",
           "status": "Active",
           "tags": ["remote", "x402", "payments", "security", "discovery"],
-          "tools": ["xguard_discover", "xguard_resource_details", "xguard_status"],
+          "tools": [
+            "xguard_discover",
+            "xguard_resource_details",
+            "xguard_status"
+          ],
           "custom_metadata": {
             "author": "XGuard",
             "homepage": "https://github.com/moelayyan90/XGuard",
