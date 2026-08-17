@@ -7,9 +7,20 @@ CREATE TABLE zero_friction_accounts (
   paid_micro_usd INTEGER NOT NULL DEFAULT 0 CHECK (
     paid_micro_usd >= 0 AND paid_micro_usd <= 9007199254740991
   ),
+  claimed_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE zero_friction_claim_challenges (
+  challenge_hash TEXT PRIMARY KEY,
+  pay_to TEXT NOT NULL,
+  expires_at_epoch INTEGER NOT NULL,
+  consumed_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX zero_friction_claim_challenges_expiry_idx
+  ON zero_friction_claim_challenges(expires_at_epoch, consumed_at);
 
 CREATE TABLE zero_friction_fee_events (
   logical_payment_key TEXT PRIMARY KEY REFERENCES settlement_projection(logical_payment_key),
