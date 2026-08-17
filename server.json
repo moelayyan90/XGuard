@@ -1,17 +1,25 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard",
-  "title": "XGuard",
-  "description": "Paid MCP execution gateway for AI tools, security checks, analysis, and x402 settlement.",
+  "title": "XGuard Payment Decision",
+  "description": "Optional pre-payment verification, decision, and independent transaction evidence for humans and autonomous AI agents. XGuard can return ALLOW, REVIEW, or BLOCK before money moves; x402 is one supported settlement adapter, not the product boundary.",
   "repository": {
     "url": "https://github.com/moelayyan90/XGuard",
     "source": "github"
   },
-  "version": "0.5.1",
+  "version": "0.6.0",
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://xguardgate.com/mcp"
+      "url": "https://xguardgate.com/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Optional Bearer XGuard Buyer Pass for paid payment-decision calls. Free discovery and xguard_payment_offer work without it. Create a Buyer Pass at https://xguardgate.com/v1/buyer-pass.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
     }
   ]
 }
