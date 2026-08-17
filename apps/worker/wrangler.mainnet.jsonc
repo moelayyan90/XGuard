@@ -22,7 +22,8 @@
   "vars": {
     "BASE_RPC_URL": "https://base.public.blockpi.network/v1/rpc/public",
     "BASE_RPC_FALLBACK_URLS": "https://mainnet.base.org",
-    "XGUARD_FEE_MICRO_USD": "40000",
+    "XGUARD_FEE_MICRO_USD": "500",
+    "XGUARD_POSTPAID_LIMIT_MICRO_USD": "1000000",
     "XGUARD_VERIFY_FEE_MICRO_USD": "200",
     "XGUARD_MODEL_FEE_MICRO_USD": "100",
     "XGUARD_TOOL_FEE_MICRO_USD": "200",
