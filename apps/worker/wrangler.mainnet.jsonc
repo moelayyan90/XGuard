@@ -3,8 +3,8 @@
   "name": "xguard-mainnet",
   "main": "src/universal-mainnet.ts",
   "compatibility_date": "2026-08-14",
-  "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": false,
   "routes": [
     {
       "pattern": "xguardgate.com",
@@ -65,6 +65,11 @@
       "namespace_id": "2002",
       "simple": { "limit": 10000, "period": 60 },
     },
+    {
+      "name": "WEBHOOK_RATE_LIMITER",
+      "namespace_id": "2003",
+      "simple": { "limit": 600, "period": 60 },
+    },
   ],
   "durable_objects": {
     "bindings": [
@@ -74,6 +79,10 @@
       },
       { "name": "REQUEST_GATE", "class_name": "MainnetRequestGate" },
       { "name": "XPAY_RATE_GATE", "class_name": "XPayGlobalRateGate" },
+      {
+        "name": "WEBHOOK_DELIVERY_QUEUE",
+        "class_name": "WebhookDeliveryQueue"
+      },
     ],
   },
   "migrations": [
@@ -84,6 +93,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["XPayGlobalRateGate"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["WebhookDeliveryQueue"]
     },
   ],
   "d1_databases": [
