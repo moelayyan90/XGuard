@@ -193,7 +193,7 @@ function hasWatchdogCircuitMarker(values: unknown[] | undefined): boolean {
     for (const part of parts) {
       if (
         typeof part === "string" &&
-        part.includes('\"event\":\"watchdog_circuit_open\"')
+        part.includes('"event":"watchdog_circuit_open"')
       )
         return true;
     }
