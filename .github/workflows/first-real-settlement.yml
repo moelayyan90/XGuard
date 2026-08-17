@@ -60,7 +60,7 @@ jobs:
 
       - name: Create one-time first-settlement evidence issue
         if: ${{ steps.status.outputs.count != '0' && steps.status.outputs.earned_micro_usd != '0' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           SETTLEMENT_COUNT: ${{ steps.status.outputs.count }}
           EARNED_MICRO_USD: ${{ steps.status.outputs.earned_micro_usd }}
