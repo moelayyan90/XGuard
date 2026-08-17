@@ -2,11 +2,13 @@
   "manifest_version": 3,
   "name": "XGuard Payment Decision",
   "version": "0.1.0",
-  "description": "Optional buyer-side pre-payment verification and transaction evidence. No fee for showing or skipping XGuard.",
-  "permissions": ["storage"],
+  "description": "Optional buyer-side payment verification and transaction evidence before checkout. Showing or skipping XGuard is free.",
+  "homepage_url": "https://xguardgate.com/",
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
-    "https://xguardgate.com/*",
-    "https://www.xguardgate.com/*"
+    "https://xguardgate.com/*"
   ],
   "background": {
     "service_worker": "service-worker.js",
@@ -14,14 +16,34 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*/*", "http://*/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://*/*"
+      ],
+      "exclude_matches": [
+        "https://xguardgate.com/*",
+        "https://www.xguardgate.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
   ],
   "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "action": {
-    "default_title": "XGuard Payment Decision"
+    "default_title": "XGuard Payment Decision",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   }
 }
