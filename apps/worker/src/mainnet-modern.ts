@@ -7,6 +7,7 @@ import {
   autoInvokeResponse,
   rewrapProviderCredentials,
 } from "./auto-invoke.js";
+import { writeEndpointDiscoveryResponse } from "./mainnet-endpoint-discovery.js";
 import { authorizeMerchantScope } from "./mainnet-revenue-hardening.js";
 import { universalGatewayResponse } from "./universal-gateway.js";
 import { releaseStaleGatewayHolds } from "./universal-gateway-billing.js";
@@ -50,6 +51,29 @@ const GATEWAY_STALE_HOLD_LIMIT = 50;
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
+    const standardUrl = new URL(standardRequest.url);
+
+    const endpointDiscovery = writeEndpointDiscoveryResponse(standardRequest);
+    if (endpointDiscovery !== null) return secureResponse(endpointDiscovery);
+
+    if (standardUrl.pathname === "/" && standardRequest.method === "POST") {
+      const discoveryRequest = new Request(standardRequest.url, {
+        method: "GET",
+        headers: standardRequest.headers,
+      });
+      const discoveryResponse = await delegateFetch(discoveryRequest, env, ctx);
+      const headers = new Headers(discoveryResponse.headers);
+      headers.set("X-XGuard-Discovery", "root-post");
+      headers.set("Cache-Control", "no-store");
+      return secureResponse(
+        new Response(discoveryResponse.body, {
+          status: discoveryResponse.status,
+          statusText: discoveryResponse.statusText,
+          headers,
+        }),
+      );
+    }
+
     let compatibility: CompatibilityRequest | null = null;
     let effectiveRequest = standardRequest;
 

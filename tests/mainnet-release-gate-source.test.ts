@@ -8,6 +8,14 @@ const deployWorkflow = readFileSync(
   ".github/workflows/deploy-mainnet.yml",
   "utf8",
 );
+const mainnetConfig = readFileSync(
+  "apps/worker/wrangler.mainnet.jsonc",
+  "utf8",
+);
+const liveMainnetEntrypoint = readFileSync(
+  "apps/worker/src/mainnet-modern.ts",
+  "utf8",
+);
 
 describe("mainnet release gate", () => {
   it("uses the mainnet-specific gate in the production deploy workflow", () => {
@@ -21,5 +29,21 @@ describe("mainnet release gate", () => {
     expect(script).toContain("build:mainnet");
     expect(script).not.toContain("run build &&");
     expect(script).not.toContain("build:economic-preview");
+  });
+
+  it("keeps discovery compatibility wired into the production entrypoint", () => {
+    expect(mainnetConfig).toContain('"main": "src/mainnet-modern.ts"');
+    expect(liveMainnetEntrypoint).toContain(
+      'import { writeEndpointDiscoveryResponse } from "./mainnet-endpoint-discovery.js";',
+    );
+    expect(liveMainnetEntrypoint).toContain(
+      "writeEndpointDiscoveryResponse(standardRequest)",
+    );
+    expect(liveMainnetEntrypoint).toContain(
+      'standardUrl.pathname === "/" && standardRequest.method === "POST"',
+    );
+    expect(liveMainnetEntrypoint).toContain(
+      'headers.set("X-XGuard-Discovery", "root-post")',
+    );
   });
 });
