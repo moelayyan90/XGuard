@@ -38,6 +38,9 @@ async function waitForWatchdogQuiescence() {
         Number.isInteger(body?.openBreakers)
       ) {
         expectedPolicyObserved = true;
+        const activeBreakers = Array.isArray(body?.activeBreakers)
+          ? body.activeBreakers
+          : [];
         if (body.openBreakers === 0) {
           console.log(
             JSON.stringify({
@@ -45,6 +48,7 @@ async function waitForWatchdogQuiescence() {
               policyVersion: body.policyVersion,
               attempt,
               openIncidents: body.openIncidents ?? null,
+              activeBreakers,
             }),
           );
           return;
@@ -56,6 +60,7 @@ async function waitForWatchdogQuiescence() {
             attempt,
             openBreakers: body.openBreakers,
             openIncidents: body.openIncidents ?? null,
+            activeBreakers,
           }),
         );
       } else if (response.status === 200) {
