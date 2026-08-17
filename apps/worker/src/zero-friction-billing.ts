@@ -188,8 +188,17 @@ export async function zeroFrictionAccount(
   rawPayTo: string,
 ): Promise<ZeroFrictionAccount> {
   const account = await zeroFrictionAccountOrNull(db, rawPayTo);
-  if (account === null) throw new Error("zero_friction_account_not_found");
+  if (account === null) throw new Error("zero_friction_activation_required");
   return account;
+}
+
+/** Compatibility name used by the x402 request path. It no longer creates an
+ * account; it only returns a wallet that completed signed activation. */
+export async function ensureZeroFrictionMerchant(
+  db: D1Database,
+  rawPayTo: string,
+): Promise<ZeroFrictionAccount> {
+  return zeroFrictionAccount(db, rawPayTo);
 }
 
 export async function zeroFrictionAccountByMerchant(
@@ -210,7 +219,7 @@ export async function accrueZeroFrictionFee(
   logicalPaymentKey: string,
 ): Promise<{ amountMicroUsd: number }> {
   const account = await zeroFrictionAccountByMerchant(db, merchantId);
-  if (account === null) throw new Error("zero_friction_account_not_found");
+  if (account === null) throw new Error("zero_friction_activation_required");
   const projection = await db
     .prepare(
       `SELECT fee_micro_usd,state FROM settlement_projection
