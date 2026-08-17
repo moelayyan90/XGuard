@@ -2,6 +2,9 @@ name: Detect first real XGuard settlement
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Deploy XGuard mainnet"]
+    types: [completed]
   schedule:
     - cron: "*/5 * * * *"
 
@@ -15,6 +18,7 @@ concurrency:
 
 jobs:
   detect:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
