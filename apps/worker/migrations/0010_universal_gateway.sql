@@ -1,7 +1,3 @@
-UPDATE merchants
-SET api_key_scopes = api_key_scopes || ',gateway'
-WHERE instr(',' || api_key_scopes || ',', ',gateway,') = 0;
-
 CREATE TABLE gateway_fee_reservations (
   event_key TEXT PRIMARY KEY,
   merchant_id TEXT NOT NULL REFERENCES merchants(merchant_id),
