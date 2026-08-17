@@ -338,10 +338,12 @@ function parseCompatibleRequirement(
   const amount = atomicAmount(raw.amount, "requirement_amount");
   const payTo = evmAddress(raw.payTo, "requirement_pay_to");
   if (
+    typeof raw.maxTimeoutSeconds !== "number" ||
     !Number.isSafeInteger(raw.maxTimeoutSeconds) ||
     raw.maxTimeoutSeconds <= 0
   )
     throw new Error("invalid_requirement_max_timeout_seconds");
+  const maxTimeoutSeconds = raw.maxTimeoutSeconds;
   const extra = raw.extra === undefined ? undefined : asRecord(raw.extra);
   return {
     scheme: "exact",
@@ -349,7 +351,7 @@ function parseCompatibleRequirement(
     amount,
     asset: raw.asset,
     payTo,
-    maxTimeoutSeconds: raw.maxTimeoutSeconds,
+    maxTimeoutSeconds,
     ...(extra === undefined ? {} : { extra }),
   };
 }

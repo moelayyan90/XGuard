@@ -226,9 +226,7 @@ describe("x402 HTTP compatibility bridge", () => {
     expect(response.status).toBe(409);
     const body = (await response.json()) as Record<string, unknown>;
     expect(body.error).toBe("target_is_not_x402_v2");
-    expect(await response.clone().text()).not.toContain(
-      "private upstream content",
-    );
+    expect(JSON.stringify(body)).not.toContain("private upstream content");
   });
 
   it("rejects local and private targets before any outbound request", async () => {
