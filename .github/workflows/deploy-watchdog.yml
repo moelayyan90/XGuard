@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: xguard-mainnet-deploy
+  group: xguard-watchdog-deploy
   cancel-in-progress: false
 
 jobs:
@@ -59,42 +59,34 @@ jobs:
           export CLOUDFLARE_API_TOKEN
 
           if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-            echo "::notice::Watchdog deployment is armed but waiting for Cloudflare GitHub Actions authorization."
-            exit 0
-          fi
-
-          if ! npx wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);process.exit(Array.isArray(a)&&a.some(x=>x&&x.name==="xguard-mainnet")?0:1)})'; then
-            echo "::error::xguard-mainnet D1 must exist before the watchdog can deploy."
+            echo "::error::Cloudflare deployment credentials are missing."
             exit 1
           fi
 
-          CONFIG_PATH="${GITHUB_WORKSPACE}/apps/worker/wrangler.watchdog.resolved.jsonc"
-          node scripts/resolve-cloudflare-config.mjs \
-            --template apps/worker/wrangler.watchdog.jsonc \
-            --output "${CONFIG_PATH}" \
-            --database-name xguard-mainnet
+          CONFIG="apps/worker/wrangler.watchdog.jsonc"
+          if ! grep -Fq '"name": "xguard-watchdog"' "${CONFIG}"; then
+            echo "::error::Refusing to deploy a non-watchdog Worker."
+            exit 1
+          fi
 
-          npx wrangler d1 migrations apply xguard-mainnet --remote --config "${CONFIG_PATH}"
-          npx wrangler deploy --config "${CONFIG_PATH}"
+          D1_ID="$(npx wrangler d1 info xguard-watchdog --json | node -e '
+            let data = "";
+            process.stdin.on("data", (chunk) => (data += chunk));
+            process.stdin.on("end", () => {
+              const parsed = JSON.parse(data);
+              if (!parsed.uuid) process.exit(2);
+              process.stdout.write(parsed.uuid);
+            });
+          ')"
+          sed "s/00000000-0000-0000-0000-000000000000/${D1_ID}/g" "${CONFIG}" > "${RUNNER_TEMP}/wrangler.watchdog.resolved.jsonc"
+          CONFIG="${RUNNER_TEMP}/wrangler.watchdog.resolved.jsonc"
 
-      - name: Verify watchdog live health
+          npx wrangler d1 migrations apply xguard-watchdog --remote --config "${CONFIG}"
+          npx wrangler deploy --config "${CONFIG}"
+
+      - name: Verify watchdog health
         shell: bash
         run: |
           set -euo pipefail
-          BASE_URL="https://xguard-watchdog.maqamapp.workers.dev"
-          ready=0
-          for attempt in {1..18}; do
-            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/healthz?attempt=${attempt}" || true)"
-            code="${response##*$'\n'}"
-            body="${response%$'\n'*}"
-            if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
-              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.service!=="XGuard Watchdog"||x.mode!=="self-healing-control-plane")process.exit(1)})'; then
-              ready=1
-              break
-            fi
-            sleep 5
-          done
-          if [[ "${ready}" -ne 1 ]]; then
-            echo "::error::XGuard watchdog did not become healthy after deployment."
-            exit 1
-          fi
+          curl -fsS --max-time 20 --retry 3 --retry-delay 2 \
+            https://xguard-watchdog.maqamapp.workers.dev/healthz
