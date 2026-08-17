@@ -1,0 +1,29 @@
+name: Verify XGuard in Glama registry
+
+on:
+  push:
+    branches:
+      - chore/distribution-watch-status-20260817
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query public Glama directory API
+        shell: bash
+        run: |
+          python - <<'PY'
+          import urllib.parse
+          import urllib.request
+
+          base = "https://glama.ai/api/mcp/v1/servers"
+          query = urllib.parse.urlencode({"query":"XGuard","first":"50"})
+          req = urllib.request.Request(base + "?" + query, headers={"User-Agent":"XGuard-registry-status-check/1.0"})
+          with urllib.request.urlopen(req, timeout=30) as r:
+              body = r.read().decode("utf-8", "replace")
+              print("STATUS", r.status)
+              print("BODY", body[:30000])
+          PY
