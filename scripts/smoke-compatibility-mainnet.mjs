@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+
 const baseUrl = new URL(
   process.env.XGUARD_MAINNET_URL ??
     "https://xguard-mainnet.maqamapp.workers.dev",
@@ -6,6 +9,7 @@ const baseUrl = new URL(
 const PAY_TO = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C";
 const PAYER = "0x857b06519E91e3A54538791bDbb0E22373e36b66";
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const SMOKE_TOKEN = `${Date.now()}-${randomUUID()}`;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -14,6 +18,11 @@ function assert(condition, message) {
 async function request(path, init = {}) {
   const response = await fetch(new URL(path, baseUrl), {
     ...init,
+    headers: {
+      "Cache-Control": "no-cache",
+      "X-XGuard-Monitor": "github-actions-compatibility-smoke",
+      ...(init.headers ?? {}),
+    },
     redirect: "manual",
     signal: AbortSignal.timeout(15_000),
   });
@@ -24,6 +33,37 @@ async function request(path, init = {}) {
     // Some protocol errors can be non-JSON; callers assert only when needed.
   }
   return { response, body };
+}
+
+async function waitForCompatibilityMetadata() {
+  let last = null;
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    last = await request(
+      `/supported?compatSmoke=${encodeURIComponent(SMOKE_TOKEN)}&attempt=${attempt}`,
+    );
+    const kinds = Array.isArray(last.body?.kinds) ? last.body.kinds : [];
+    const hasV2 = kinds.some(
+      (kind) =>
+        kind?.x402Version === 2 &&
+        kind?.scheme === "exact" &&
+        kind?.network === "eip155:8453",
+    );
+    const hasV1 = kinds.some(
+      (kind) =>
+        kind?.x402Version === 1 &&
+        kind?.scheme === "exact" &&
+        kind?.network === "base",
+    );
+    if (
+      last.response.status === 200 &&
+      hasV2 &&
+      hasV1 &&
+      last.body?.compatibility?.mode === "normalize-v1-to-v2"
+    )
+      return last;
+    if (attempt < 8) await delay(2_000);
+  }
+  return last;
 }
 
 function legacyEnvelope(network = "base") {
@@ -60,7 +100,8 @@ function legacyEnvelope(network = "base") {
   };
 }
 
-const supported = await request("/supported");
+const supported = await waitForCompatibilityMetadata();
+assert(supported !== null, "compatibility /supported did not respond");
 assert(supported.response.status === 200, "compatibility /supported failed");
 assert(
   Array.isArray(supported.body?.kinds) &&
@@ -79,11 +120,11 @@ assert(
       kind?.scheme === "exact" &&
       kind?.network === "base",
   ),
-  "bridged x402 v1 Base capability missing",
+  "bridged x402 v1 Base capability missing after propagation window",
 );
 assert(
   supported.body?.compatibility?.mode === "normalize-v1-to-v2",
-  "compatibility bridge metadata missing",
+  "compatibility bridge metadata missing after propagation window",
 );
 
 const unauthenticatedLegacy = await request("/verify", {
@@ -132,6 +173,7 @@ console.log(
     bridgedV1: "exact@base",
     liveTranslationReachedAuthBoundary: true,
     unsupportedLegacyNetworkFailsClosed: true,
+    propagationSafe: true,
     billableExecutionPerformed: false,
   }),
 );
