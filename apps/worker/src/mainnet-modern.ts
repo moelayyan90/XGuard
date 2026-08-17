@@ -61,11 +61,26 @@ const GATEWAY_STALE_HOLD_MS = 60 * 60 * 1000;
 const GATEWAY_STALE_HOLD_LIMIT = 50;
 const SETTLEMENT_TRUTH_PATH =
   /^\/v1\/settlements\/[0-9a-fA-F]{64}\/(truth|resolve)$/;
+const BLOCKED_METADATA_SEGMENTS = new Set([
+  ".git",
+  ".svn",
+  ".hg",
+  ".bzr",
+  ".aws",
+  ".ssh",
+]);
+const BLOCKED_SECRET_FILES = new Set([".ds_store", "id_rsa", "id_ed25519"]);
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
     const standardUrl = new URL(standardRequest.url);
+
+    const sensitiveProbe = sensitivePathProbeResponse(
+      standardRequest,
+      standardUrl,
+    );
+    if (sensitiveProbe !== null) return secureResponse(sensitiveProbe);
 
     const endpointDiscovery = writeEndpointDiscoveryResponse(standardRequest);
     if (endpointDiscovery !== null) return secureResponse(endpointDiscovery);
@@ -172,6 +187,65 @@ export default {
       );
   },
 } satisfies ExportedHandler<MainnetModernEnv>;
+
+function sensitivePathProbeResponse(
+  request: Request,
+  url: URL,
+): Response | null {
+  const normalizedPath = normalizeSecurityPath(url.pathname);
+  const segments = normalizedPath.split("/").filter(Boolean);
+  const blocked = segments.some(
+    (segment) =>
+      BLOCKED_METADATA_SEGMENTS.has(segment) ||
+      BLOCKED_SECRET_FILES.has(segment) ||
+      segment === ".env" ||
+      segment.startsWith(".env.") ||
+      segment.startsWith(".env-") ||
+      segment.startsWith(".env_"),
+  );
+  if (!blocked) return null;
+
+  console.warn(
+    JSON.stringify({
+      event: "sensitive_path_probe_blocked",
+      method: request.method,
+      pathClass: "repository_or_secret_metadata",
+    }),
+  );
+
+  return new Response(null, {
+    status: 404,
+    headers: {
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
+function normalizeSecurityPath(pathname: string): string {
+  let decoded = pathname;
+  for (let i = 0; i < 2; i += 1) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+
+  const stack: string[] = [];
+  for (const rawSegment of decoded.replace(/\\/g, "/").split("/")) {
+    const segment = rawSegment.trim().toLowerCase();
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      stack.pop();
+      continue;
+    }
+    stack.push(segment);
+  }
+  return `/${stack.join("/")}`;
+}
 
 async function routeSettlementTruth(
   request: Request,
