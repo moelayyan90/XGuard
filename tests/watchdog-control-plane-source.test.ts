@@ -24,22 +24,24 @@ const rollbackWorkflow = readFileSync(
 );
 
 describe("watchdog control plane source", () => {
-  it("deploys as an independent Worker with logs, traces, analytics and cron probes", () => {
+  it("deploys as an independent Worker with logs, traces and cron probes", () => {
     expect(watchdogConfig).toContain('"name": "xguard-watchdog"');
     expect(watchdogConfig).toContain('"main": "src/mainnet-watchdog.ts"');
-    expect(watchdogConfig).toContain('"analytics_engine_datasets"');
-    expect(watchdogConfig).toContain('"binding": "ANALYTICS"');
+    expect(watchdogConfig).not.toContain('"analytics_engine_datasets"');
+    expect(watchdogConfig).toContain('"invocation_logs": true');
     expect(watchdogConfig).toContain('"traces"');
     expect(watchdogConfig).toContain('"crons": ["*/1 * * * *"]');
   });
 
-  it("contains both tail-time detection and scheduled synthetic probes", () => {
+  it("contains tail-time structured telemetry and scheduled synthetic probes", () => {
     expect(watchdogWorker).toContain("tail(");
     expect(watchdogWorker).toContain("processTail(events, env)");
+    expect(watchdogWorker).toContain('event: "watchdog_invocation"');
     expect(watchdogWorker).toContain("runSyntheticProbes");
     expect(watchdogWorker).toContain("recordWatchdogSignal");
     expect(watchdogWorker).toContain("openRouteBreaker");
     expect(watchdogWorker).toContain("openGlobalWriteBreaker");
+    expect(watchdogWorker).not.toContain("AnalyticsEngineDataset");
   });
 
   it("fails closed before risky mainnet writes when a watchdog circuit is open", () => {
