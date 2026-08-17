@@ -3,6 +3,11 @@ import modernCore, {
   MainnetRequestGate,
   XPayGlobalRateGate,
 } from "./mainnet-modern-core.js";
+import {
+  autoInvokeResponse,
+  rewrapProviderCredentials,
+} from "./auto-invoke.js";
+import { authorizeMerchantScope } from "./mainnet-revenue-hardening.js";
 import { universalGatewayResponse } from "./universal-gateway.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
@@ -35,6 +40,17 @@ const HSTS_VALUE = "max-age=31536000; includeSubDomains";
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
+
+    const rotated = await rotateCredentialWithVaultRewrap(
+      standardRequest,
+      env,
+      ctx,
+    );
+    if (rotated !== null) return secureResponse(rotated);
+
+    const automatic = await autoInvokeResponse(standardRequest, env);
+    if (automatic !== null) return secureResponse(automatic);
+
     const gateway = await universalGatewayResponse(
       standardRequest,
       env,
@@ -48,6 +64,64 @@ export default {
     await delegateScheduled(controller, env, ctx);
   },
 } satisfies ExportedHandler<MainnetModernEnv>;
+
+async function rotateCredentialWithVaultRewrap(
+  request: Request,
+  env: MainnetModernEnv,
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (request.method !== "POST" || url.pathname !== "/v1/api-key/rotate")
+    return null;
+  const authorization = request.headers.get("authorization");
+  if (authorization === null || !authorization.startsWith("Bearer "))
+    return delegateFetch(request, env, ctx);
+  const oldToken = authorization.slice("Bearer ".length).trim();
+  if (!/^xg_live_[A-Za-z0-9_-]{40,}$/.test(oldToken))
+    return delegateFetch(request, env, ctx);
+  const access = await authorizeMerchantScope(request, env, "billing");
+  if (!access.ok) return access.response;
+  const response = await delegateFetch(request, env, ctx);
+  if (response.status !== 201) return response;
+  let payload: Record<string, unknown>;
+  try {
+    const parsed = (await response.clone().json()) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+      return response;
+    payload = parsed as Record<string, unknown>;
+  } catch {
+    return response;
+  }
+  const newToken = typeof payload.apiKey === "string" ? payload.apiKey : "";
+  if (!/^xg_live_[A-Za-z0-9_-]{40,}$/.test(newToken)) return response;
+  try {
+    const count = await rewrapProviderCredentials(
+      env.DB,
+      access.merchant.merchantId,
+      oldToken,
+      newToken,
+    );
+    const headers = new Headers(response.headers);
+    headers.set("X-XGuard-Vault-Rewrapped", String(count));
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  } catch {
+    payload.providerVaultRewrap = "failed";
+    payload.warning =
+      "The XGuard key rotated, but linked provider credentials could not be rewrapped. Keep the new key and relink providers before model traffic.";
+    return new Response(JSON.stringify(payload, null, 2), {
+      status: 201,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-XGuard-Vault-Rewrap": "failed",
+      },
+    });
+  }
+}
 
 function secureResponse(response: Response): Response {
   const headers = new Headers(response.headers);
