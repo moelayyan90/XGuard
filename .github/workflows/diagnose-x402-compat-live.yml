@@ -10,8 +10,37 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+
+      - name: Run legacy mainnet smoke alone
+        shell: bash
+        run: |
+          set +e
+          node scripts/smoke-mainnet.mjs > /tmp/mainnet-smoke.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/mainnet-smoke.log
+          echo "MAINNET_SMOKE_EXIT=${status}"
+
+      - name: Run compatibility smoke alone
+        shell: bash
+        run: |
+          set +e
+          node scripts/smoke-compatibility-mainnet.mjs > /tmp/compat-smoke.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/compat-smoke.log
+          echo "COMPAT_SMOKE_EXIT=${status}"
+
       - name: Probe live compatibility bridge without billable execution
         shell: bash
         run: |
