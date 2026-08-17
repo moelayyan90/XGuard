@@ -3,6 +3,7 @@ import modernCore, {
   MainnetRequestGate,
   XPayGlobalRateGate,
 } from "./mainnet-modern-core.js";
+import { autoInvokeResponse } from "./auto-invoke.js";
 import { universalGatewayResponse } from "./universal-gateway.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate, XPayGlobalRateGate };
@@ -35,6 +36,10 @@ const HSTS_VALUE = "max-age=31536000; includeSubDomains";
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
+
+    const automatic = await autoInvokeResponse(standardRequest, env);
+    if (automatic !== null) return secureResponse(automatic);
+
     const gateway = await universalGatewayResponse(
       standardRequest,
       env,
