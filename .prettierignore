@@ -2,6 +2,7 @@ node_modules
 dist
 coverage
 apps/worker/worker-configuration.d.ts
+apps/worker/src/search-indexing.ts
 /worker-configuration.d.ts
 package-lock.json
 .wrangler
