@@ -15,7 +15,7 @@ describe("buyer browser surface source invariants", () => {
   it("does not read common sensitive payment input values", async () => {
     const source = await readFile(contentPath, "utf8");
     expect(source).not.toMatch(
-      /input\s*\[\s*name\s*[*^$|~]?=\s*['\"]?(?:card|cc|cvv|cvc|pan)/i,
+      /input\s*\[\s*name\s*[*^$|~]?=\s*['"]?(?:card|cc|cvv|cvc|pan)/i,
     );
     expect(source).not.toMatch(
       /querySelectorAll\([^)]*(?:password|cc-number|card-number|cvv|cvc)/i,

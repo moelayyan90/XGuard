@@ -1,4 +1,4 @@
-/* global chrome, crypto, fetch */
+/* global chrome, crypto */
 const API_ORIGIN = "https://xguardgate.com";
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

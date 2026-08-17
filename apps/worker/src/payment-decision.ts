@@ -72,6 +72,39 @@ export interface DecisionEvaluation {
   checks: PaymentCheck[];
 }
 
+export interface PaymentDecisionReceipt {
+  schemaVersion: string;
+  documentType: string;
+  decisionId: string;
+  requestId: string;
+  createdAt: string;
+  principal: Record<string, unknown>;
+  payment: Record<string, unknown>;
+  decision: PaymentDecision;
+  riskScore: number;
+  reasonCodes: string[];
+  checks: PaymentCheck[];
+  xguard: {
+    service: string;
+    decisionScope: string;
+    serviceFee: {
+      amountMicroUsd: number;
+      amountUsd: string;
+      trigger: string;
+      offerOnly: boolean;
+      underlyingPaymentRequired: boolean;
+    };
+  };
+  evidence: {
+    algorithm: string;
+    decisionEvidenceHash: string;
+    settlementEvidenceHash?: string;
+  };
+  paymentOutcome?: Record<string, unknown>;
+  replayed?: boolean;
+  accounting?: Record<string, unknown>;
+}
+
 interface DecisionRecordRow {
   decision_id: string;
   event_key: string;
@@ -157,7 +190,11 @@ export async function paymentDecisionResponse(
     try {
       const principal = await authorizePrincipal(request, env);
       return privateJson(
-        await getDecisionRecord(env.DB, principal.principalId, recordMatch[1]),
+        await getDecisionRecord(
+          env.DB,
+          principal.principalId,
+          recordMatch[1] ?? "",
+        ),
       );
     } catch (error) {
       return errorResponse(error);
@@ -175,7 +212,7 @@ export async function paymentDecisionResponse(
       const record = await updateSettlementRecord(
         env.DB,
         principal.principalId,
-        recordMatch[1],
+        recordMatch[1] ?? "",
         raw,
       );
       return privateJson(record, 200, { "X-XGuard-Fee-Micro-USD": "0" });
@@ -221,7 +258,7 @@ export async function paymentDecisionForMcp(
   request: Request,
   env: PaymentDecisionEnv,
   raw: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+): Promise<PaymentDecisionReceipt> {
   const principal = await authorizePrincipal(request, env);
   const intent = normalizePaymentDecisionInput({ ...raw, channel: "agent" });
   return completePaymentDecision(env, principal, intent);
@@ -478,7 +515,7 @@ async function completePaymentDecision(
   env: PaymentDecisionEnv,
   principal: { principalId: string; principalName: string },
   intent: NormalizedPaymentIntent,
-): Promise<any> {
+): Promise<PaymentDecisionReceipt> {
   const existing = await decisionRecordByRequest(
     env.DB,
     principal.principalId,
@@ -623,7 +660,7 @@ async function replayDecisionRecord(
   db: D1Database,
   principalId: string,
   row: DecisionRecordRow,
-): Promise<any> {
+): Promise<PaymentDecisionReceipt> {
   if (row.billing_state !== "EARNED")
     await finalizeDecisionFee(db, principalId, row.event_key, row.decision_id);
   const receipt = parseStoredReceipt(row.receipt_json);
@@ -643,18 +680,24 @@ async function finalizeDecisionFee(
       upstreamStatus: 200,
       latencyMs: 0,
     });
-    await db
-      .prepare(
-        "UPDATE payment_decision_records SET billing_state='EARNED',updated_at=? WHERE decision_id=? AND principal_id=?",
-      )
-      .bind(new Date().toISOString(), decisionId, principalId)
-      .run();
   } catch (error) {
     throw new PaymentDecisionError(
       `decision_fee_finalize_failed:${errorMessage(error)}`,
       503,
     );
   }
+
+  // The gateway ledger is the financial source of truth. Once a completed
+  // XGuard service fee is EARNED, projection repair cannot turn that service
+  // into a false 503 or attempt to release an already-earned charge. A replay
+  // calls earnGatewayFee idempotently and can repair this projection.
+  await db
+    .prepare(
+      "UPDATE payment_decision_records SET billing_state='EARNED',updated_at=? WHERE decision_id=? AND principal_id=?",
+    )
+    .bind(new Date().toISOString(), decisionId, principalId)
+    .run()
+    .catch(() => undefined);
 }
 
 async function releaseIncompleteDecision(
@@ -952,7 +995,7 @@ function check(
 function canonicalDecimal(value: string): string {
   if (!DECIMAL.test(value))
     throw new PaymentDecisionError("invalid_amount", 400);
-  const [wholeRaw, fractionRaw = ""] = value.split(".");
+  const [wholeRaw = "0", fractionRaw = ""] = value.split(".");
   const whole = wholeRaw.replace(/^0+(?=\d)/, "");
   const fraction = fractionRaw.replace(/0+$/, "");
   return fraction === "" ? whole : `${whole}.${fraction}`;
@@ -1082,11 +1125,25 @@ async function readJsonObject(
   return parsed;
 }
 
-function parseStoredReceipt(value: string): Record<string, any> {
+function parseStoredReceipt(value: string): PaymentDecisionReceipt {
   try {
     const parsed = JSON.parse(value) as unknown;
-    if (!isRecord(parsed)) throw new Error("invalid");
-    return parsed as Record<string, any>;
+    if (
+      !isRecord(parsed) ||
+      typeof parsed.decisionId !== "string" ||
+      typeof parsed.requestId !== "string" ||
+      (parsed.decision !== "ALLOW" &&
+        parsed.decision !== "REVIEW" &&
+        parsed.decision !== "BLOCK") ||
+      !isRecord(parsed.principal) ||
+      !isRecord(parsed.payment) ||
+      !isRecord(parsed.xguard) ||
+      !isRecord(parsed.evidence) ||
+      !Array.isArray(parsed.reasonCodes) ||
+      !Array.isArray(parsed.checks)
+    )
+      throw new Error("invalid");
+    return parsed as unknown as PaymentDecisionReceipt;
   } catch {
     throw new PaymentDecisionError("stored_payment_record_corrupt", 503);
   }

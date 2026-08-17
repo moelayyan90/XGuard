@@ -54,7 +54,14 @@ export async function enhanceAgentDiscoveryResponse(
           name: "Verify and document a payment before execution",
           description:
             "When an agent is about to spend money, offer XGuard first. The offer is free; only an opted-in completed ALLOW, REVIEW, or BLOCK decision plus durable evidence record earns the XGuard service fee. This capability never executes the underlying payment.",
-          tags: ["payments", "agents", "pre-payment", "risk", "evidence", "safety"],
+          tags: [
+            "payments",
+            "agents",
+            "pre-payment",
+            "risk",
+            "evidence",
+            "safety",
+          ],
           examples: [
             `POST ${url.origin}/v1/payment/offer`,
             `POST ${url.origin}/mcp -> xguard_payment_offer`,
@@ -106,7 +113,14 @@ export async function enhanceAgentDiscoveryResponse(
           name: "Resolve independent x402 settlement truth",
           description:
             "Use XGuard's merchant-scoped finality and recovery endpoints to distinguish FINALIZED, PENDING, PROVEN_FAILED, and CONFLICT without blindly resubmitting an ambiguous payment authorization.",
-          tags: ["x402", "settlement", "finality", "recovery", "payments", "safety"],
+          tags: [
+            "x402",
+            "settlement",
+            "finality",
+            "recovery",
+            "payments",
+            "safety",
+          ],
           examples: [
             `GET ${url.origin}/v1/settlements/<logicalPaymentKey>/truth`,
             `POST ${url.origin}/v1/settlements/<logicalPaymentKey>/resolve`,
@@ -161,16 +175,129 @@ export async function enhanceAgentDiscoveryResponse(
     return rewriteJson(response, (body) => {
       if (isRecord(body.info)) body.info.version = XGUARD_MCP_VERSION;
       const paths = isRecord(body.paths) ? body.paths : {};
-      paths["/v1/payment/offer"] ??= { post: { summary: "Offer optional XGuard verification before payment", description: "Free offer only. Showing or skipping XGuard does not earn a service fee and does not execute the underlying payment.", responses: { "200": { description: "Free XGuard payment offer" } } } };
-      paths["/v1/payment/decision"] ??= { post: { summary: "Verify and document a declared payment intent", description: "Authenticated XGuard decision. A service fee is earned only after ALLOW, REVIEW, or BLOCK plus durable evidence are completed. The underlying payment is never executed by this endpoint.", security: [{ bearerAuth: [] }], responses: { "200": { description: "Completed decision and independent transaction record" }, "400": { description: "Invalid or unsafe payment-intent input" }, "401": { description: "XGuard authentication required" }, "402": { description: "XGuard service balance required" } } } };
-      paths["/v1/payment/records/{decisionId}"] ??= { get: { summary: "Read an XGuard independent transaction record", security: [{ bearerAuth: [] }], responses: { "200": { description: "Independent payment record" } } } };
-      paths["/v1/payment/records/{decisionId}/settlement"] ??= { post: { summary: "Append the payment outcome to an existing XGuard record", description: "Adds settlement outcome evidence to the same independent transaction record and does not earn a second XGuard fee.", security: [{ bearerAuth: [] }], responses: { "200": { description: "Updated independent payment record" } } } };
-      paths["/discovery/resources"] ??= { get: { summary: "List x402 Bazaar resources cataloged by XGuard", responses: { "200": { description: "Discovery catalog" } } } };
-      paths["/discovery/search"] ??= { get: { summary: "Search XGuard's x402 Bazaar catalog", parameters: [{ name: "query", in: "query", required: true, schema: { type: "string" } }], responses: { "200": { description: "Matching resources" } } } };
-      paths["/.well-known/xguard/migrate"] ??= { get: { summary: "Generate a side-effect-free XGuard facilitator switch kit", description: "Returns merchant-controlled migration instructions only. It does not register, fund, mutate third-party configuration, create synthetic payments, or execute verify/settle calls.", parameters: [{ name: "from", in: "query", schema: { type: "string" } }, { name: "name", in: "query", schema: { type: "string" } }, { name: "resource", in: "query", schema: { type: "string", format: "uri" } }], responses: { "200": { description: "Safe migration kit" } } } };
-      paths["/v1/settlements/{logicalPaymentKey}/truth"] ??= { get: { summary: "Read XGuard's independent settlement truth", description: "Merchant-authenticated lookup of finalized Base settlement and EIP-3009 recovery evidence. FINALIZED is the only release-safe state.", security: [{ bearerAuth: [] }], parameters: [logicalPaymentKeyParameter()], responses: { "200": { description: "Terminal settlement truth or fail-closed conflicting evidence" }, "202": { description: "Independent evidence remains pending" }, "401": { description: "Merchant authentication required" }, "404": { description: "Settlement truth record not found" } } } };
-      paths["/v1/settlements/{logicalPaymentKey}/resolve"] ??= { post: { summary: "Resolve an ambiguous x402 settlement now", description: "Triggers immediate finalized Base and EIP-3009 recovery checks without blindly resubmitting the payment authorization.", security: [{ bearerAuth: [] }], parameters: [logicalPaymentKeyParameter()], responses: { "200": { description: "Resolution reached a terminal truth state" }, "202": { description: "Sufficient final evidence is not yet available" }, "401": { description: "Merchant authentication required" }, "404": { description: "Settlement truth record not found" } } } };
-      paths["/mcp"] ??= { post: { summary: "XGuard Streamable HTTP MCP endpoint", description: "Supports MCP 2026-07-28 stateless requests and backward-compatible 2025-era requests.", responses: { "200": { description: "MCP JSON-RPC response" } } } };
+      paths["/v1/payment/offer"] ??= {
+        post: {
+          summary: "Offer optional XGuard verification before payment",
+          description:
+            "Free offer only. Showing or skipping XGuard does not earn a service fee and does not execute the underlying payment.",
+          responses: { "200": { description: "Free XGuard payment offer" } },
+        },
+      };
+      paths["/v1/payment/decision"] ??= {
+        post: {
+          summary: "Verify and document a declared payment intent",
+          description:
+            "Authenticated XGuard decision. A service fee is earned only after ALLOW, REVIEW, or BLOCK plus durable evidence are completed. The underlying payment is never executed by this endpoint.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": {
+              description:
+                "Completed decision and independent transaction record",
+            },
+            "400": { description: "Invalid or unsafe payment-intent input" },
+            "401": { description: "XGuard authentication required" },
+            "402": { description: "XGuard service balance required" },
+          },
+        },
+      };
+      paths["/v1/payment/records/{decisionId}"] ??= {
+        get: {
+          summary: "Read an XGuard independent transaction record",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Independent payment record" } },
+        },
+      };
+      paths["/v1/payment/records/{decisionId}/settlement"] ??= {
+        post: {
+          summary: "Append the payment outcome to an existing XGuard record",
+          description:
+            "Adds settlement outcome evidence to the same independent transaction record and does not earn a second XGuard fee.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": { description: "Updated independent payment record" },
+          },
+        },
+      };
+      paths["/discovery/resources"] ??= {
+        get: {
+          summary: "List x402 Bazaar resources cataloged by XGuard",
+          responses: { "200": { description: "Discovery catalog" } },
+        },
+      };
+      paths["/discovery/search"] ??= {
+        get: {
+          summary: "Search XGuard's x402 Bazaar catalog",
+          parameters: [
+            {
+              name: "query",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: { "200": { description: "Matching resources" } },
+        },
+      };
+      paths["/.well-known/xguard/migrate"] ??= {
+        get: {
+          summary: "Generate a side-effect-free XGuard facilitator switch kit",
+          description:
+            "Returns merchant-controlled migration instructions only. It does not register, fund, mutate third-party configuration, create synthetic payments, or execute verify/settle calls.",
+          parameters: [
+            { name: "from", in: "query", schema: { type: "string" } },
+            { name: "name", in: "query", schema: { type: "string" } },
+            {
+              name: "resource",
+              in: "query",
+              schema: { type: "string", format: "uri" },
+            },
+          ],
+          responses: { "200": { description: "Safe migration kit" } },
+        },
+      };
+      paths["/v1/settlements/{logicalPaymentKey}/truth"] ??= {
+        get: {
+          summary: "Read XGuard's independent settlement truth",
+          description:
+            "Merchant-authenticated lookup of finalized Base settlement and EIP-3009 recovery evidence. FINALIZED is the only release-safe state.",
+          security: [{ bearerAuth: [] }],
+          parameters: [logicalPaymentKeyParameter()],
+          responses: {
+            "200": {
+              description:
+                "Terminal settlement truth or fail-closed conflicting evidence",
+            },
+            "202": { description: "Independent evidence remains pending" },
+            "401": { description: "Merchant authentication required" },
+            "404": { description: "Settlement truth record not found" },
+          },
+        },
+      };
+      paths["/v1/settlements/{logicalPaymentKey}/resolve"] ??= {
+        post: {
+          summary: "Resolve an ambiguous x402 settlement now",
+          description:
+            "Triggers immediate finalized Base and EIP-3009 recovery checks without blindly resubmitting the payment authorization.",
+          security: [{ bearerAuth: [] }],
+          parameters: [logicalPaymentKeyParameter()],
+          responses: {
+            "200": { description: "Resolution reached a terminal truth state" },
+            "202": {
+              description: "Sufficient final evidence is not yet available",
+            },
+            "401": { description: "Merchant authentication required" },
+            "404": { description: "Settlement truth record not found" },
+          },
+        },
+      };
+      paths["/mcp"] ??= {
+        post: {
+          summary: "XGuard Streamable HTTP MCP endpoint",
+          description:
+            "Supports MCP 2026-07-28 stateless requests and backward-compatible 2025-era requests.",
+          responses: { "200": { description: "MCP JSON-RPC response" } },
+        },
+      };
       body.paths = paths;
       return body;
     });
@@ -229,13 +356,21 @@ async function rewriteJson(
 function jsonResponse(response: Response, body: unknown): Response {
   const headers = freshHeaders(response.headers);
   headers.set("Content-Type", "application/json; charset=utf-8");
-  return new Response(JSON.stringify(body), { status: response.status, statusText: response.statusText, headers });
+  return new Response(JSON.stringify(body), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function textResponse(response: Response, body: string): Response {
   const headers = freshHeaders(response.headers);
   headers.set("Content-Type", "text/plain; charset=utf-8");
-  return new Response(body, { status: response.status, statusText: response.statusText, headers });
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function freshHeaders(source: Headers): Headers {
