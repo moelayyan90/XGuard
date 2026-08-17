@@ -1,0 +1,62 @@
+name: Canonicalize xguardgate.com once
+
+on:
+  push:
+    branches:
+      - feat/xguardgate-canonical
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Replace legacy production host with custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          old = "xguard-mainnet." + "maqamapp.workers.dev"
+          new = "xguardgate.com"
+          helper = ".github/workflows/canonicalize-xguardgate-once.yml"
+          changed = []
+          for rel in subprocess.check_output(["git", "ls-files"], text=True).splitlines():
+              if rel == helper:
+                  continue
+              path = Path(rel)
+              try:
+                  raw = path.read_bytes()
+                  text = raw.decode("utf-8")
+              except (UnicodeDecodeError, OSError):
+                  continue
+              if old not in text:
+                  continue
+              path.write_text(text.replace(old, new), encoding="utf-8")
+              changed.append(rel)
+          print(f"canonicalized_files={len(changed)}")
+          for rel in changed:
+              print(rel)
+          if not changed:
+              raise SystemExit("no production URL references found to canonicalize")
+          PY
+          npm ci --ignore-scripts
+          npx prettier --write .
+          git config user.name moelayyan90
+          git config user.email mo.elayyan2023@gmail.com
+          git add -A ':!.github/workflows/canonicalize-xguardgate-once.yml'
+          if git diff --cached --quiet; then
+            echo "No canonical URL changes to commit"
+            exit 1
+          fi
+          git commit -m "Make xguardgate.com the canonical production endpoint"
+          git push origin HEAD:feat/xguardgate-canonical
