@@ -19,9 +19,50 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Format changed files
-        run: npx prettier --write apps/worker/src/auto-invoke.ts apps/worker/src/mainnet-modern.ts tests/auto-invoke.test.ts
-      - name: Commit formatting
+      - name: Guard redirect billing and format changed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('apps/worker/src/auto-invoke.ts')
+          source = source_path.read_text()
+          old = '  if (upstream.status < 200 || upstream.status >= 400) {'
+          new = '  if (!isAutoInvokeBillableStatus(upstream.status)) {'
+          if old in source:
+              source = source.replace(old, new, 1)
+          elif new not in source:
+              raise SystemExit('auto-invoke upstream status gate not found')
+
+          marker = '\nasync function vaultResponse('
+          helper = '''\nexport function isAutoInvokeBillableStatus(status: number): boolean {\n  return Number.isInteger(status) && status >= 200 && status < 300;\n}\n'''
+          if 'export function isAutoInvokeBillableStatus' not in source:
+              if marker not in source:
+                  raise SystemExit('auto-invoke helper insertion marker not found')
+              source = source.replace(marker, helper + marker, 1)
+          source_path.write_text(source)
+
+          test_path = Path('tests/auto-invoke.test.ts')
+          test = test_path.read_text()
+          old_import = '''  autoInvokeResponse,\n  classifyAutoInvokeRoute,'''
+          new_import = '''  autoInvokeResponse,\n  classifyAutoInvokeRoute,\n  isAutoInvokeBillableStatus,'''
+          if old_import in test and 'isAutoInvokeBillableStatus' not in test:
+              test = test.replace(old_import, new_import, 1)
+          elif 'isAutoInvokeBillableStatus' not in test:
+              raise SystemExit('auto-invoke test import marker not found')
+
+          block = '''\n  it("bills only 2xx auto-invoke provider responses", () => {\n    for (const status of [200, 201, 204, 299])\n      expect(isAutoInvokeBillableStatus(status)).toBe(true);\n\n    for (const status of [199, 300, 301, 302, 307, 308, 399, 400, 429, 500])\n      expect(isAutoInvokeBillableStatus(status)).toBe(false);\n  });\n'''
+          if 'bills only 2xx auto-invoke provider responses' not in test:
+              marker = '\n  it("does not intercept unrelated XGuard routes", async () => {'
+              if marker not in test:
+                  raise SystemExit('auto-invoke test insertion marker not found')
+              test = test.replace(marker, block + marker, 1)
+          test_path.write_text(test)
+          PY
+          npx prettier --write apps/worker/src/auto-invoke.ts apps/worker/src/mainnet-modern.ts tests/auto-invoke.test.ts
+          npx vitest run tests/auto-invoke.test.ts
+      - name: Commit formatting and redirect-billing guard
         shell: bash
         run: |
           set -euo pipefail
@@ -31,5 +72,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add apps/worker/src/auto-invoke.ts apps/worker/src/mainnet-modern.ts tests/auto-invoke.test.ts
-          git commit -m "Format auto-invoke implementation"
+          git commit -m "Do not bill auto-invoke redirects"
           git push origin HEAD:agent/zero-study-auto-invoke
