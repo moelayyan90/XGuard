@@ -69,8 +69,8 @@ jobs:
           if (!/"name"\s*:\s*"xguard-mainnet"/.test(source)) {
             throw new Error('refusing deployment: Worker target is not xguard-mainnet');
           }
-          if (!/"main"\s*:\s*"src\/mainnet-modern\.ts"/.test(source)) {
-            throw new Error('refusing deployment: mainnet entrypoint is not src/mainnet-modern.ts');
+          if (!/"main"\s*:\s*"src\/monetized-mainnet\.ts"/.test(source)) {
+            throw new Error('refusing deployment: mainnet entrypoint is not src/monetized-mainnet.ts');
           }
           if (!/"database_name"\s*:\s*"xguard-mainnet"/.test(source)) {
             throw new Error('refusing deployment: D1 target is not xguard-mainnet');
