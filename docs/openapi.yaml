@@ -1,39 +1,42 @@
 openapi: 3.1.0
 info:
   title: XGuard Mainnet API
-  version: 0.2.0-mainnet-rc
+  version: 0.3.0-zero-friction
   description: >-
-    Live x402 v2 facilitator-compatible gateway and independent settlement truth
-    layer for Base mainnet native USDC. XGuard charges $0.002 only after a
-    successful settlement reaches independent finalized on-chain confirmation.
-    Merchant top-ups are prepaid service balances, not earned revenue.
+    XGuard is an x402 v2 facilitator-compatible settlement safety and truth layer
+    for Base mainnet native USDC. The recommended seller flow is one signed
+    merchant-wallet activation followed by keyless /verify and /settle. XGuard
+    earns a disclosed capped revenue share only after independent finality proves
+    a successful settlement.
   license:
     name: Apache-2.0
 servers:
   - url: https://xguardgate.com
-    description: Live Base mainnet Worker
+    description: Production Base mainnet gateway
 tags:
   - name: Operations
-  - name: Merchants
-  - name: Billing
-  - name: Settlement Truth
+  - name: Activation
   - name: x402
+  - name: Settlement Truth
+  - name: Billing
+  - name: Legacy
 paths:
   /:
     get:
       tags: [Operations]
-      summary: Discover release, network, pricing, and endpoints
+      summary: Discover production service, pricing and endpoints
       responses:
         "200":
-          description: Gateway metadata
+          description: Public service metadata
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RootResponse"
+                type: object
+                additionalProperties: true
   /healthz:
     get:
       tags: [Operations]
-      summary: Check Worker liveness
+      summary: Worker liveness
       responses:
         "200":
           description: Worker is alive
@@ -49,210 +52,144 @@ paths:
   /readyz:
     get:
       tags: [Operations]
-      summary: Check D1 and fresh facilitator readiness
+      summary: Database and downstream readiness
       responses:
-        "200":
-          description: Mainnet is ready
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReadinessResponse"
-        "503":
-          description: Database or facilitator readiness failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReadinessResponse"
+        "200": { description: Ready }
+        "503": { description: Not ready }
   /supported:
     get:
       tags: [x402]
-      summary: Return measured x402 v2 mainnet capability
+      summary: Return measured x402 v2 capabilities
       responses:
         "200":
           description: Facilitator capability response
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SupportedResponse"
+                type: object
+                additionalProperties: true
   /status:
     get:
       tags: [Operations]
-      summary: Return live gateway and accounting status
+      summary: Return gateway, route, finality and accounting status
       responses:
         "200":
-          description: Current mainnet status
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StatusResponse"
-  /v1/register:
-    post:
-      tags: [Merchants]
-      summary: Register a merchant and create a bearer API key
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [name]
-              properties:
-                name: { type: string, minLength: 2, maxLength: 80 }
-      responses:
-        "201":
-          description: Merchant created; apiKey is returned once
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RegisterResponse"
-        "400": { description: Invalid registration request }
-        "429": { description: Rate limit exceeded }
-  /v1/balance:
-    get:
-      tags: [Billing]
-      summary: Return merchant prepaid service balance
-      security: [{ bearerAuth: [] }]
-      responses:
-        "200":
-          description: Balance
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BalanceResponse"
-        "401": { description: Invalid or missing merchant API key }
-  /v1/topups/intents:
-    post:
-      tags: [Billing]
-      summary: Create a one-time exact Base USDC top-up intent
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [amountUsd]
-              properties:
-                amountUsd:
-                  type: string
-                  pattern: "^[0-9]+(?:\\.[0-9]{1,6})?$"
-      responses:
-        "201":
-          description: One-time deposit intent
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TopUpIntentResponse"
-        "400": { description: Invalid amount }
-        "401": { description: Invalid or missing merchant API key }
-  /v1/topups/claim:
-    post:
-      tags: [Billing]
-      summary: Verify and claim a finalized matching Base USDC deposit
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [claimToken, transactionHash]
-              properties:
-                claimToken: { type: string, minLength: 1 }
-                transactionHash:
-                  type: string
-                  pattern: "^0x[0-9a-fA-F]{64}$"
-      responses:
-        "200":
-          description: Deposit claimed and service balance credited
+          description: Status
           content:
             application/json:
               schema:
                 type: object
-                required: [credited, balance]
-                properties:
-                  credited: { const: true }
-                  balance: { $ref: "#/components/schemas/BalanceResponse" }
-        "400":
-          {
-            description: Invalid,
-            mismatched,
-            unfinalized,
-            expired,
-            or already-claimed deposit,
-          }
-        "401": { description: Invalid or missing merchant API key }
-  /v1/settlements/{logicalPaymentKey}/truth:
+                additionalProperties: true
+  /start:
     get:
-      tags: [Settlement Truth]
-      summary: Read XGuard's independent truth for one logical settlement
+      tags: [Activation]
+      summary: One-page merchant wallet activation
       description: >-
-        Returns whether the expected Base USDC settlement is independently
-        FINALIZED, still PENDING, PROVEN_FAILED, or in CONFLICT. Only FINALIZED
-        sets authoritativeForRelease=true.
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: "#/components/parameters/LogicalPaymentKey"
+        Connect the merchant payTo wallet and sign the exact pricing terms once.
+        No account, email, password, API key, subscription or prepayment is
+        created by this flow.
       responses:
         "200":
-          description: Terminal or conflict settlement truth
+          description: HTML activation page
           content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SettlementTruthResponse"
-        "202":
-          description: Independent evidence is still pending
-          headers:
-            Retry-After:
-              schema: { type: integer, const: 5 }
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SettlementTruthResponse"
-        "401": { description: Invalid or missing merchant API key }
-        "403": { description: API key lacks settlement scope }
-        "404": { description: No merchant-owned settlement truth record exists }
-        "503": { description: Settlement truth storage or resolver unavailable }
-  /v1/settlements/{logicalPaymentKey}/resolve:
+            text/html:
+              schema: { type: string }
+  /v1/activate/challenge:
     post:
-      tags: [Settlement Truth]
-      summary: Trigger immediate independent settlement resolution
-      description: >-
-        Prioritizes an ambiguous EIP-3009 recovery record, checks finalized Base
-        AuthorizationUsed/AuthorizationCanceled evidence, verifies the exact USDC
-        transfer when present, and re-checks a pending known transaction. It never
-        blindly resubmits the payment authorization.
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: "#/components/parameters/LogicalPaymentKey"
+      tags: [Activation]
+      summary: Create a short-lived signed-terms activation challenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [payTo]
+              properties:
+                payTo:
+                  type: string
+                  pattern: "^0x[0-9a-fA-F]{40}$"
       responses:
         "200":
-          description: Resolution reached a terminal or conflict truth state
+          description: Challenge with exact message and pricing terms
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SettlementTruthResponse"
-        "202":
-          description: Resolution ran but sufficient final evidence is not yet available
-          headers:
-            Retry-After:
-              schema: { type: integer, const: 5 }
+                $ref: "#/components/schemas/ActivationChallenge"
+        "400": { description: Invalid merchant address or pricing configuration }
+        "429": { description: Rate limited }
+        "503": { description: Protection layer unavailable }
+  /v1/activate:
+    post:
+      tags: [Activation]
+      summary: Activate a merchant payTo with one wallet signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [payTo, nonce, signature]
+              properties:
+                payTo:
+                  type: string
+                  pattern: "^0x[0-9a-fA-F]{40}$"
+                nonce:
+                  type: string
+                  pattern: "^0x[0-9a-fA-F]{64}$"
+                signature:
+                  type: string
+                  pattern: "^0x[0-9a-fA-F]+$"
+      responses:
+        "200":
+          description: Merchant activated for keyless x402 execution
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SettlementTruthResponse"
-        "401": { description: Invalid or missing merchant API key }
-        "403": { description: API key lacks settlement scope }
-        "404": { description: No merchant-owned settlement truth record exists }
-        "503": { description: Settlement truth storage or resolver unavailable }
+                type: object
+                required: [activated, payTo, facilitatorUrl, pricing]
+                properties:
+                  activated: { const: true }
+                  payTo: { type: string }
+                  facilitatorUrl: { const: "https://xguardgate.com" }
+                  pricing: { $ref: "#/components/schemas/PricingTerms" }
+        "400": { description: Invalid, missing or expired challenge }
+        "401": { description: Signature does not verify for payTo }
+        "409": { description: Challenge already consumed or raced }
+        "429": { description: Rate limited }
+  /v1/activate/status:
+    get:
+      tags: [Activation]
+      summary: Check whether a merchant payTo is activated
+      parameters:
+        - name: payTo
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^0x[0-9a-fA-F]{40}$"
+      responses:
+        "200":
+          description: Activation status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [activated, payTo]
+                properties:
+                  activated: { type: boolean }
+                  payTo: { type: string }
+                  pricing: { $ref: "#/components/schemas/PricingTerms" }
   /verify:
     post:
       tags: [x402]
-      summary: Verify an x402 v2 Base authorization without submitting value
-      security: [{ bearerAuth: [] }]
+      summary: Verify x402 without submitting value
+      description: >-
+        The paymentRequirements.payTo address must have completed the one-time
+        wallet activation. No XGuard Authorization header or prepaid balance is
+        required after activation. Verification does not earn an XGuard fee.
       requestBody:
         required: true
         content:
@@ -268,16 +205,21 @@ paths:
                 type: object
                 additionalProperties: true
         "400": { description: Malformed or unsupported payment request }
-        "401": { description: Invalid or missing merchant API key }
-        "413": { description: Request body exceeded the hard limit }
-        "415": { description: Content-Type was not application/json }
-        "429": { description: Rate or concurrency limit exceeded }
-        "503": { description: No fresh safe facilitator route }
+        "403": { description: Merchant payTo has not completed activation }
+        "413": { description: Request exceeded the hard body limit }
+        "415": { description: Content-Type must be application/json }
+        "429": { description: Rate or concurrency limited }
+        "503": { description: No safe fresh downstream route }
   /settle:
     post:
       tags: [x402]
-      summary: Reserve the XGuard fee and settle once through the selected Base route
-      security: [{ bearerAuth: [] }]
+      summary: Submit one protected x402 settlement route
+      description: >-
+        No XGuard Authorization header or prepaid balance is required after the
+        merchant payTo is activated. XGuard does not silently change the buyer-
+        authorized recipient or amount. A service receivable is calculated from
+        the merchant's signed terms only after independent Base finality proves
+        success.
       requestBody:
         required: true
         content:
@@ -286,23 +228,26 @@ paths:
               $ref: "#/components/schemas/FacilitatorRequest"
       responses:
         "200":
-          description: Downstream settlement result with independent XGuard truth state when available
+          description: Settlement result
           headers:
+            X-XGuard-Auth:
+              schema: { type: string, const: none-after-one-time-wallet-activation }
+            X-XGuard-Billing:
+              schema: { type: string, const: postpaid-capped-revenue-share }
+            X-XGuard-Pricing-Version:
+              schema: { type: string }
+            X-XGuard-Fee-Bps:
+              schema: { type: string }
+            X-XGuard-Fee-Cap-USD:
+              schema: { type: string }
             X-XGuard-Replayed:
               schema: { type: boolean }
             X-XGuard-Payment-Key:
               schema:
                 type: string
                 pattern: "^[0-9a-f]{64}$"
-            X-XGuard-Fee-State:
-              schema: { type: string }
             X-XGuard-Truth-State:
-              schema:
-                $ref: "#/components/schemas/SettlementTruthState"
-            X-XGuard-Truth-Endpoint:
-              schema: { type: string }
-            X-XGuard-Resolve-Endpoint:
-              schema: { type: string }
+              schema: { enum: [FINALIZED, PENDING, PROVEN_FAILED, CONFLICT] }
             X-XGuard-Release-Safe:
               schema: { type: boolean }
           content:
@@ -311,216 +256,169 @@ paths:
                 type: object
                 additionalProperties: true
         "400": { description: Malformed or unsupported payment request }
-        "401": { description: Invalid or missing merchant API key }
-        "402": { description: Insufficient XGuard prepaid service balance }
-        "409":
-          { description: Conflicting binding or settlement already in progress }
-        "413": { description: Request body exceeded the hard limit }
-        "415": { description: Content-Type was not application/json }
-        "429": { description: Rate or concurrency limit exceeded }
-        "503":
-          { description: Unavailable route or ambiguous post-submit outcome }
+        "402": { description: Signed postpaid service limit reached }
+        "403": { description: Merchant payTo has not completed activation }
+        "409": { description: Conflicting binding or settlement already in progress }
+        "413": { description: Request exceeded the hard body limit }
+        "415": { description: Content-Type must be application/json }
+        "429": { description: Rate or concurrency limited }
+        "503": { description: Unavailable route or ambiguous post-submit outcome }
+  /v1/settlements/{logicalPaymentKey}/truth:
+    get:
+      tags: [Settlement Truth]
+      summary: Read independent truth for a zero-friction settlement
+      parameters:
+        - $ref: "#/components/parameters/LogicalPaymentKey"
+      responses:
+        "200":
+          description: Terminal/conflict settlement truth
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "202":
+          description: Independent evidence remains pending
+          headers:
+            Retry-After:
+              schema: { type: integer, const: 5 }
+        "404": { description: No matching XGuard settlement record }
+        "503": { description: Truth storage/resolution unavailable }
+  /v1/settlements/{logicalPaymentKey}/resolve:
+    post:
+      tags: [Settlement Truth]
+      summary: Run immediate independent finality/recovery resolution
+      description: Never blindly resubmits the payment authorization.
+      parameters:
+        - $ref: "#/components/parameters/LogicalPaymentKey"
+      responses:
+        "200": { description: Terminal/conflict truth reached }
+        "202": { description: Evidence remains pending }
+        "404": { description: No matching XGuard settlement record }
+        "503": { description: Resolver unavailable }
+  /v1/fees:
+    get:
+      tags: [Billing]
+      summary: Read signed pricing and postpaid XGuard service balance
+      parameters:
+        - name: payTo
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^0x[0-9a-fA-F]{40}$"
+      responses:
+        "200":
+          description: Fee balance and signed terms
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "403": { description: payTo is not activated }
+  /v1/fees/claim:
+    post:
+      tags: [Billing]
+      summary: Credit a finalized Base USDC XGuard service-fee payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [payTo, transactionHash]
+              properties:
+                payTo:
+                  type: string
+                  pattern: "^0x[0-9a-fA-F]{40}$"
+                transactionHash:
+                  type: string
+                  pattern: "^0x[0-9a-fA-F]{64}$"
+      responses:
+        "200": { description: Finalized treasury transfer credited }
+        "400": { description: Invalid/unfinalized transaction }
+        "403": { description: payTo is not activated }
+        "409": { description: Transfer cannot be credited }
+  /v1/register:
+    post:
+      tags: [Legacy]
+      deprecated: true
+      summary: Legacy API-key merchant registration
+      description: Not required for the recommended x402 seller path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 80 }
+      responses:
+        "201": { description: Legacy merchant/API key created }
+  /v1/topups/intents:
+    post:
+      tags: [Legacy]
+      deprecated: true
+      summary: Legacy prepaid top-up intent
+      description: Not required for the recommended x402 seller path.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Legacy top-up intent created }
+        "401": { description: Invalid legacy API key }
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: XGuard merchant API key
+      bearerFormat: Legacy XGuard merchant API key
   parameters:
     LogicalPaymentKey:
       name: logicalPaymentKey
       in: path
       required: true
-      description: Immutable XGuard logical authorization identity
       schema:
         type: string
         pattern: "^[0-9a-fA-F]{64}$"
   schemas:
-    RootResponse:
+    PricingTerms:
       type: object
-      required:
-        [name, version, protocol, mode, network, asset, price, endpoints]
-      properties:
-        name: { const: XGuard }
-        version: { type: string }
-        protocol: { const: x402-v2 }
-        mode: { const: mainnet }
-        network: { const: "eip155:8453" }
-        asset: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
-        price:
-          type: object
-          required: [amount, currency, event, model]
-          properties:
-            amount: { const: "0.002" }
-            currency: { const: USD }
-            event: { const: successful_billable_settlement }
-            model: { const: merchant_prepaid_service_balance }
-        endpoints:
-          type: object
-          additionalProperties: { type: string }
-    ReadinessResponse:
-      type: object
-      required: [status, mainnet]
-      properties:
-        status: { enum: [ready, not_ready] }
-        mainnet: { const: true }
-        facilitator: { enum: [operational, degraded] }
-    CapabilityKind:
-      type: object
-      required: [x402Version, scheme, network]
-      properties:
-        x402Version: { const: 2 }
-        scheme: { const: exact }
-        network: { const: "eip155:8453" }
-        extra:
-          type: object
-          additionalProperties: true
-    SupportedResponse:
-      type: object
-      required: [kinds, extensions, signers]
-      properties:
-        kinds:
-          type: array
-          items: { $ref: "#/components/schemas/CapabilityKind" }
-        extensions:
-          type: array
-          items: { type: string }
-        signers:
-          type: object
-          additionalProperties: true
-    StatusResponse:
-      type: object
-      required:
-        - gateway
-        - mode
-        - network
-        - facilitator
-        - pendingFinality
-        - openReconciliationCases
-        - successfulBillableSettlements
-        - earnedMicroUsd
-        - measuredAt
-      properties:
-        gateway: { const: operational }
-        mode: { const: mainnet }
-        network: { const: "eip155:8453" }
-        facilitator: { type: string }
-        pendingFinality: { type: integer, minimum: 0 }
-        openReconciliationCases: { type: integer, minimum: 0 }
-        successfulBillableSettlements: { type: integer, minimum: 0 }
-        earnedMicroUsd: { type: integer, minimum: 0 }
-        measuredAt: { type: string, format: date-time }
-    Merchant:
-      type: object
-      required: [merchantId, name, availableMicroUsd, heldMicroUsd]
-      properties:
-        merchantId: { type: string }
-        name: { type: string }
-        availableMicroUsd: { type: integer, minimum: 0 }
-        heldMicroUsd: { type: integer, minimum: 0 }
-    RegisterResponse:
-      type: object
-      required: [merchant, apiKey, warning, treasury]
-      properties:
-        merchant: { $ref: "#/components/schemas/Merchant" }
-        apiKey: { type: string, pattern: "^xg_live_" }
-        warning: { type: string }
-        treasury:
-          type: object
-          required: [network, asset, address]
-          properties:
-            network: { const: "eip155:8453" }
-            asset: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
-            address: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
-    BalanceResponse:
-      $ref: "#/components/schemas/Merchant"
-    TopUpIntentResponse:
-      type: object
-      required:
-        - intentId
-        - claimToken
-        - requestedMicroUsd
-        - exactDepositMicroUsd
-        - exactDepositUsdc
-        - expiresAtEpoch
-        - network
-        - asset
-        - treasuryAddress
-        - instruction
-      properties:
-        intentId: { type: string }
-        claimToken: { type: string }
-        requestedMicroUsd: { type: integer, minimum: 10000 }
-        exactDepositMicroUsd: { type: integer, minimum: 10001 }
-        exactDepositUsdc: { type: string }
-        expiresAtEpoch: { type: integer, minimum: 1 }
-        network: { const: "eip155:8453" }
-        asset: { const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }
-        treasuryAddress: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
-        instruction: { type: string }
-    SettlementTruthState:
-      type: string
-      enum: [FINALIZED, PENDING, PROVEN_FAILED, CONFLICT]
-    SettlementTruthResponse:
-      type: object
-      additionalProperties: false
       required:
         - version
-        - logicalPaymentKey
-        - state
-        - authoritativeForRelease
-        - network
-        - asset
-        - payer
-        - payTo
-        - amountMicroUsd
-        - transactionHash
-        - source
-        - reason
-        - observedAt
-        - proofDigest
-        - truthEndpoint
-        - resolveEndpoint
+        - feeBps
+        - feePercent
+        - feeCapMicroUsd
+        - feeCapUsd
+        - postpaidLimitMicroUsd
+        - postpaidLimitUsd
       properties:
-        version: { const: xguard-settlement-truth-v1 }
-        logicalPaymentKey:
-          type: string
-          pattern: "^[0-9a-f]{64}$"
-        state:
-          $ref: "#/components/schemas/SettlementTruthState"
-        authoritativeForRelease: { type: boolean }
-        network: { const: "eip155:8453" }
-        asset:
-          type: string
-          pattern: "^0x[0-9a-fA-F]{40}$"
-        payer:
-          type: string
-          pattern: "^0x[0-9a-fA-F]{40}$"
-        payTo:
-          type: string
-          pattern: "^0x[0-9a-fA-F]{40}$"
-        amountMicroUsd: { type: integer, minimum: 1 }
-        transactionHash:
-          anyOf:
-            - type: string
+        version: { type: string }
+        feeBps: { type: integer, minimum: 0, maximum: 10000 }
+        feePercent: { type: string }
+        feeCapMicroUsd: { type: integer, minimum: 0 }
+        feeCapUsd: { type: string }
+        postpaidLimitMicroUsd: { type: integer, minimum: 1 }
+        postpaidLimitUsd: { type: string }
+    ActivationChallenge:
+      allOf:
+        - $ref: "#/components/schemas/PricingTerms"
+        - type: object
+          required: [payTo, nonce, message, expiresAt]
+          properties:
+            payTo:
+              type: string
+              pattern: "^0x[0-9a-fA-F]{40}$"
+            nonce:
+              type: string
               pattern: "^0x[0-9a-fA-F]{64}$"
-            - type: "null"
-        source:
-          type: string
-          enum: [finality, recovery, combined]
-        reason: { type: string }
-        observedAt: { type: string, format: date-time }
-        proofDigest:
-          anyOf:
-            - type: string
-              pattern: "^[0-9a-f]{64}$"
-            - type: "null"
-        truthEndpoint: { type: string }
-        resolveEndpoint: { type: string }
+            message: { type: string }
+            expiresAt: { type: string, format: date-time }
     FacilitatorRequest:
       type: object
-      required: [x402Version, paymentPayload, paymentRequirements]
       additionalProperties: false
+      required: [x402Version, paymentPayload, paymentRequirements]
       properties:
         x402Version: { const: 2 }
         paymentPayload:
@@ -529,3 +427,13 @@ components:
         paymentRequirements:
           type: object
           additionalProperties: true
+          required: [scheme, network, asset, amount, payTo]
+          properties:
+            scheme: { const: exact }
+            network: { const: "eip155:8453" }
+            asset:
+              const: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            amount: { type: string }
+            payTo:
+              type: string
+              pattern: "^0x[0-9a-fA-F]{40}$"
