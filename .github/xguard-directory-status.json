@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-17T09:20:00Z",
+  "updatedAt": "2026-08-17T09:45:00Z",
   "entries": {
     "officialMcpRegistry": {
       "status": "listed",
@@ -29,10 +29,10 @@
       "evidence": "public MCPFly API returned success=true and 'Submission received and pending approval' after a duplicate search returned zero XGuard results"
     },
     "lobeHub": {
-      "status": "submitted_for_review",
-      "submittedAt": "2026-08-17T09:18:45Z",
+      "status": "account_required_self_service",
+      "checkedAt": "2026-08-17T09:45:00Z",
       "issue": "https://github.com/lobehub/lobehub/issues/18423",
-      "evidence": "public marketplace review request opened with truthful remote MCP metadata and downstream-signer attribution caveat"
+      "evidence": "LobeHub closed the review issue and now requires the official @lobehub/market-cli self-service flow. New listing submission requires market-cli login plus GitHub account linking; no LobeHub credential/session is available, so no credential was fabricated or bypassed."
     },
     "agentNdx": {
       "status": "manual_review_required",
