@@ -22,11 +22,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Print discovery Prettier diff
-        run: |
-          npx prettier --write apps/worker/src/agent-discovery-modern.ts tests/agent-discovery-modern.test.ts
-          git diff --no-ext-diff -- apps/worker/src/agent-discovery-modern.ts tests/agent-discovery-modern.test.ts
-          git checkout -- apps/worker/src/agent-discovery-modern.ts tests/agent-discovery-modern.test.ts
       - run: npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
