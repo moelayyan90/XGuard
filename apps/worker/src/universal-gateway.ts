@@ -223,26 +223,57 @@ async function billProviderProxy(
       }),
     );
   } catch {
-    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
-      () => undefined,
+    const accounting = await releaseGatewayExecutionReservation(
+      env.DB,
+      merchantId,
+      reserved.eventKey,
     );
     return gatewayResponse(
       { error: "upstream_unavailable", provider: provider.id },
       502,
       requestId,
       0,
+      { "X-XGuard-Accounting": accounting },
     );
   }
 
   const latencyMs = Math.max(0, Date.now() - started);
-  if (!isBillableGatewayStatus(upstream.status)) {
-    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
-      () => undefined,
+  if (isGatewayRedirectStatus(upstream.status)) {
+    const accounting = await releaseGatewayExecutionReservation(
+      env.DB,
+      merchantId,
+      reserved.eventKey,
     );
-    return proxiedResponse(upstream, requestId, 0, provider.id, latencyMs);
+    return gatewayResponse(
+      {
+        error: "upstream_redirect_rejected",
+        provider: provider.id,
+        upstreamStatus: upstream.status,
+      },
+      502,
+      requestId,
+      0,
+      { "X-XGuard-Accounting": accounting },
+    );
   }
 
-  await earnGatewayFee(env.DB, {
+  if (!isBillableGatewayStatus(upstream.status)) {
+    const accounting = await releaseGatewayExecutionReservation(
+      env.DB,
+      merchantId,
+      reserved.eventKey,
+    );
+    return proxiedResponse(
+      upstream,
+      requestId,
+      0,
+      provider.id,
+      latencyMs,
+      accounting,
+    );
+  }
+
+  const accounting = await finalizeGatewayExecutionSuccess(env.DB, {
     merchantId,
     eventKey: reserved.eventKey,
     upstreamStatus: upstream.status,
@@ -253,9 +284,10 @@ async function billProviderProxy(
   return proxiedResponse(
     upstream,
     requestId,
-    feeMicroUsd,
+    accounting === "earned" ? feeMicroUsd : 0,
     provider.id,
     latencyMs,
+    accounting,
   );
 }
 
@@ -295,21 +327,43 @@ async function billDelegatedSourceSearch(
     target.search = `?query=${encodeURIComponent(query)}`;
     sourceResponse = await delegate(new Request(target.toString()));
   } catch {
-    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
-      () => undefined,
+    const accounting = await releaseGatewayExecutionReservation(
+      env.DB,
+      merchantId,
+      reserved.eventKey,
     );
     return gatewayResponse(
       { error: "source_search_unavailable" },
       503,
       requestId,
       0,
+      { "X-XGuard-Accounting": accounting },
     );
   }
 
   const latencyMs = Math.max(0, Date.now() - started);
+  if (isGatewayRedirectStatus(sourceResponse.status)) {
+    const accounting = await releaseGatewayExecutionReservation(
+      env.DB,
+      merchantId,
+      reserved.eventKey,
+    );
+    return gatewayResponse(
+      {
+        error: "source_redirect_rejected",
+        upstreamStatus: sourceResponse.status,
+      },
+      502,
+      requestId,
+      0,
+      { "X-XGuard-Accounting": accounting },
+    );
+  }
   if (!sourceResponse.ok) {
-    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
-      () => undefined,
+    const accounting = await releaseGatewayExecutionReservation(
+      env.DB,
+      merchantId,
+      reserved.eventKey,
     );
     return proxiedResponse(
       sourceResponse,
@@ -317,9 +371,10 @@ async function billDelegatedSourceSearch(
       0,
       "xguard-catalog",
       latencyMs,
+      accounting,
     );
   }
-  await earnGatewayFee(env.DB, {
+  const accounting = await finalizeGatewayExecutionSuccess(env.DB, {
     merchantId,
     eventKey: reserved.eventKey,
     upstreamStatus: sourceResponse.status,
@@ -329,9 +384,10 @@ async function billDelegatedSourceSearch(
   return proxiedResponse(
     sourceResponse,
     requestId,
-    feeMicroUsd,
+    accounting === "earned" ? feeMicroUsd : 0,
     "xguard-catalog",
     latencyMs,
+    accounting,
   );
 }
 
@@ -357,25 +413,38 @@ async function billLocalOperation(
   if (reserved instanceof Response) return reserved;
 
   const started = Date.now();
+  let result: Record<string, unknown>;
   try {
-    const result = await execute();
-    const latencyMs = Math.max(0, Date.now() - started);
-    await earnGatewayFee(env.DB, {
-      merchantId,
-      eventKey: reserved.eventKey,
-      upstreamStatus: 200,
-      latencyMs,
-      requestBytes: contentLength(request.headers),
-    });
-    return gatewayResponse(result, 200, requestId, feeMicroUsd, {
-      "X-XGuard-Gateway-Kind": kind.toLowerCase(),
-    });
+    result = await execute();
   } catch (error) {
-    await releaseGatewayFee(env.DB, merchantId, reserved.eventKey).catch(
-      () => undefined,
+    const accounting = await releaseGatewayExecutionReservation(
+      env.DB,
+      merchantId,
+      reserved.eventKey,
     );
-    return gatewayResponse({ error: errorCode(error) }, 400, requestId, 0);
+    return gatewayResponse({ error: errorCode(error) }, 400, requestId, 0, {
+      "X-XGuard-Accounting": accounting,
+    });
   }
+
+  const latencyMs = Math.max(0, Date.now() - started);
+  const accounting = await finalizeGatewayExecutionSuccess(env.DB, {
+    merchantId,
+    eventKey: reserved.eventKey,
+    upstreamStatus: 200,
+    latencyMs,
+    requestBytes: contentLength(request.headers),
+  });
+  return gatewayResponse(
+    result,
+    200,
+    requestId,
+    accounting === "earned" ? feeMicroUsd : 0,
+    {
+      "X-XGuard-Gateway-Kind": kind.toLowerCase(),
+      "X-XGuard-Accounting": accounting,
+    },
+  );
 }
 
 async function reserveOrResponse(
@@ -530,6 +599,49 @@ export function isBillableGatewayStatus(status: number): boolean {
   return Number.isInteger(status) && status >= 200 && status < 300;
 }
 
+export function isGatewayRedirectStatus(status: number): boolean {
+  return Number.isInteger(status) && status >= 300 && status < 400;
+}
+
+export type GatewayExecutionAccountingState =
+  "earned" | "released" | "pending-release";
+
+export async function finalizeGatewayExecutionSuccess(
+  db: D1Database,
+  input: {
+    merchantId: string;
+    eventKey: string;
+    upstreamStatus: number;
+    latencyMs: number;
+    requestBytes?: number;
+    responseBytes?: number;
+  },
+): Promise<GatewayExecutionAccountingState> {
+  try {
+    await earnGatewayFee(db, input);
+    return "earned";
+  } catch {
+    return releaseGatewayExecutionReservation(
+      db,
+      input.merchantId,
+      input.eventKey,
+    );
+  }
+}
+
+export async function releaseGatewayExecutionReservation(
+  db: D1Database,
+  merchantId: string,
+  eventKey: string,
+): Promise<Exclude<GatewayExecutionAccountingState, "earned">> {
+  try {
+    await releaseGatewayFee(db, merchantId, eventKey);
+    return "released";
+  } catch {
+    return "pending-release";
+  }
+}
+
 function upstreamUrl(baseUrl: string, suffix: string, search: string): string {
   const base = new URL(baseUrl);
   const basePath = base.pathname.endsWith("/")
@@ -578,6 +690,7 @@ function proxiedResponse(
   feeMicroUsd: number,
   provider: string,
   latencyMs: number,
+  accounting: GatewayExecutionAccountingState,
 ): Response {
   const headers = new Headers(upstream.headers);
   headers.delete("set-cookie");
@@ -585,6 +698,7 @@ function proxiedResponse(
   headers.set("X-XGuard-Fee-Micro-Usd", String(feeMicroUsd));
   headers.set("X-XGuard-Provider", provider);
   headers.set("X-XGuard-Upstream-Latency-Ms", String(latencyMs));
+  headers.set("X-XGuard-Accounting", accounting);
   headers.set("X-Content-Type-Options", "nosniff");
   return new Response(upstream.body, { status: upstream.status, headers });
 }
@@ -638,15 +752,49 @@ async function jsonObject(request: Request): Promise<Record<string, unknown>> {
     ?.toLowerCase();
   if (contentType !== "application/json")
     throw new Error("application_json_required");
-  const declared = contentLength(request.headers);
-  if (declared > MAX_JSON_BODY_BYTES) throw new Error("request_body_too_large");
-  const text = await request.text();
-  if (text.length > MAX_JSON_BODY_BYTES)
-    throw new Error("request_body_too_large");
+  const text = await boundedRequestText(request, MAX_JSON_BODY_BYTES);
   const value = JSON.parse(text) as unknown;
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error("json_object_required");
   return value as Record<string, unknown>;
+}
+
+async function boundedRequestText(
+  request: Request,
+  maxBytes: number,
+): Promise<string> {
+  const rawLength = request.headers.get("content-length");
+  if (rawLength !== null) {
+    if (!/^[0-9]+$/.test(rawLength)) throw new Error("invalid_content_length");
+    const declared = Number(rawLength);
+    if (!Number.isSafeInteger(declared) || declared < 0 || declared > maxBytes)
+      throw new Error("request_body_too_large");
+  }
+  if (request.body === null) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        void reader.cancel().catch(() => undefined);
+        throw new Error("request_body_too_large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function parseKind(value: unknown): GatewayEventKind {
