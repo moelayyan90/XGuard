@@ -30,6 +30,6 @@ jobs:
           echo '--- mainnet readyz ---'
           curl -sS --max-time 20 -w $'\nHTTP=%{http_code}\n' https://xguard-mainnet.maqamapp.workers.dev/readyz
           echo '--- watchdog OPEN breakers ---'
-          npx wrangler d1 execute xguard-watchdog --remote --command "SELECT route_key,state,reason,fingerprint,opened_at,expires_at,updated_at,failures,successes FROM watchdog_breakers WHERE state='OPEN' ORDER BY updated_at DESC LIMIT 20;"
+          npx wrangler d1 execute xguard-mainnet --remote --command "SELECT route_key,state,reason,fingerprint,opened_at,expires_at,updated_at,failures,successes FROM watchdog_breakers WHERE state='OPEN' ORDER BY updated_at DESC LIMIT 20;"
           echo '--- watchdog probe state ---'
-          npx wrangler d1 execute xguard-watchdog --remote --command "SELECT probe_key,consecutive_failures,consecutive_successes,last_status,last_error_code,last_checked_at FROM watchdog_probe_state ORDER BY probe_key;"
+          npx wrangler d1 execute xguard-mainnet --remote --command "SELECT probe_key,consecutive_failures,consecutive_successes,last_status,last_error_code,last_checked_at FROM watchdog_probe_state ORDER BY probe_key;"
