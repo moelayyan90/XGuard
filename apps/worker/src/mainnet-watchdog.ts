@@ -9,8 +9,13 @@ import {
   watchdogStatus,
 } from "./watchdog-store.js";
 
+interface ServiceFetcher {
+  fetch(request: Request): Promise<Response>;
+}
+
 interface WatchdogEnv {
   DB: D1Database;
+  MAINNET_SERVICE?: ServiceFetcher;
   WATCHDOG_PRODUCER?: string;
   WATCHDOG_MAINNET_URL?: string;
 }
@@ -180,7 +185,7 @@ async function runSyntheticProbes(
   const failures: string[] = [];
 
   for (const probe of probes) {
-    const result = await executeProbe(`${base}${probe.path}`);
+    const result = await executeProbe(env, `${base}${probe.path}`);
     const state = await recordProbeResult(env.DB, {
       key: probe.key,
       ok: result.ok,
@@ -233,13 +238,16 @@ async function runSyntheticProbes(
   );
 }
 
-async function executeProbe(url: string): Promise<{
+async function executeProbe(
+  env: WatchdogEnv,
+  url: string,
+): Promise<{
   ok: boolean;
   status: number | null;
   errorCode: string | null;
 }> {
   try {
-    const response = await fetch(url, {
+    const request = new Request(url, {
       method: "GET",
       headers: {
         "Cache-Control": "no-cache",
@@ -248,6 +256,9 @@ async function executeProbe(url: string): Promise<{
       redirect: "manual",
       signal: AbortSignal.timeout(10_000),
     });
+    const response = env.MAINNET_SERVICE
+      ? await env.MAINNET_SERVICE.fetch(request)
+      : await fetch(request);
     const ok = response.status >= 200 && response.status < 300;
     return {
       ok,
