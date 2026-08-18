@@ -198,7 +198,9 @@
 
     const pending = state.cart.slice(0, 5);
     const payees = state.payees.slice(0, 6);
-    const amount = signal.amount ? formatMoney(signal.amount, signal.currency) : "";
+    const amount = signal.amount
+      ? formatMoney(signal.amount, signal.currency)
+      : "";
     const pendingRows = pending
       .map(
         (item) =>
