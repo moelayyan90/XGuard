@@ -1,4 +1,4 @@
-name: XGuard adoption engine
+name: XGuard x402 adapter adoption engine
 
 on:
   pull_request:
@@ -26,20 +26,23 @@ on:
     - cron: "17 */6 * * *"
   workflow_dispatch:
 
-# Public metadata discovery, conversion planning, repository/file-level
-# migration/code analysis, and revenue-funnel measurement only; never executes
-# payments, synthetic settlements, third-party configuration changes,
-# pull requests, or bulk outreach.
+# Secondary acquisition channel for the x402 adapter only. The universal XGuard
+# Payment Layer is product-wide and must not be reduced to this protocol-specific
+# pipeline. This workflow performs public metadata discovery, conversion planning,
+# repository/file-level migration/code analysis, and revenue-funnel measurement
+# only; it never executes payments, synthetic settlements, third-party
+# configuration changes, pull requests, or bulk outreach.
 permissions:
   contents: read
   issues: write
 
 concurrency:
-  group: xguard-adoption-engine-${{ github.event.pull_request.number || github.ref }}
+  group: xguard-x402-adapter-adoption-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   discover:
+    name: Discover x402 adapter candidates
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -52,10 +55,10 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Self-test adoption, conversion, migration, code-switch, and revenue engines
+      - name: Self-test x402 adapter adoption, conversion, migration, code-switch, and revenue engines
         run: npm run adoption:self-test
 
-      - name: Discover, verify, rank, and build x402 conversion funnel
+      - name: Discover, verify, rank, and build x402 adapter conversion funnel
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -85,23 +88,23 @@ jobs:
               && grep -Fq '"event":"migration_queue_ready"' adoption-scan.log \
               && grep -Fq '"event":"code_switch_queue_ready"' adoption-scan.log \
               && grep -Fq '"event":"revenue_funnel_ready"' adoption-scan.log; then
-              echo "Primary adoption catalogs and revenue conversion funnel completed on attempt ${attempt}."
+              echo "x402 adapter catalogs and conversion funnel completed on attempt ${attempt}."
               exit 0
             fi
 
             if [[ "$attempt" -lt 3 ]]; then
               delay=$((attempt * 5))
-              echo "Primary adoption/conversion coverage incomplete on attempt ${attempt}; retrying in ${delay}s."
+              echo "x402 adapter conversion coverage incomplete on attempt ${attempt}; retrying in ${delay}s."
               sleep "$delay"
             fi
           done
 
-          echo "Primary adoption/conversion coverage remained incomplete; keeping the previous canonical queue unchanged."
+          echo "x402 adapter conversion coverage remained incomplete; keeping the previous canonical queue unchanged."
           exit 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xguard-adoption-conversion-migration-report
+          name: xguard-x402-adapter-conversion-report
           path: |
             adoption-report.json
             adoption-report.md
@@ -118,20 +121,20 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Update canonical adoption, conversion, migration, and revenue issue
+      - name: Update canonical x402 adapter adoption and revenue issue
         if: github.event_name != 'pull_request'
         uses: actions/github-script@v8
         with:
           script: |
             const fs = require("fs");
-            const title = "[adoption] XGuard public x402 candidate pipeline";
+            const title = "[x402-adapter] XGuard public candidate pipeline";
             const targets = fs.readFileSync("adoption-targets.md", "utf8");
             const conversion = fs.readFileSync("conversion-queue.md", "utf8");
             const migration = fs.readFileSync("migration-queue.md", "utf8");
             const codeSwitch = fs.readFileSync("code-switch-queue.md", "utf8");
             const revenue = fs.readFileSync("revenue-funnel.md", "utf8");
             const body = [
-              "This issue is maintained automatically by the XGuard adoption, conversion, migration, code-switch, and revenue-funnel engine.",
+              "This issue is maintained automatically for the XGuard x402 adapter acquisition channel. It is not the product-wide adoption definition for XGuard Payment Layer.",
               "",
               "It ranks distinct public x402 merchant/service targets, scans public repository trees to locate real facilitator-client switch points without depending on the tight GitHub code-search quota, measures the path from observed paid traffic to patch-ready migration, and produces repository/file-level side-effect-free switch packets. Public 402 observations are opportunities, never reported as earned XGuard revenue.",
               "",
@@ -162,12 +165,14 @@ jobs:
               state: "open",
               per_page: 100,
             });
-            const existing = issues.find((issue) => issue.title === title);
+            const oldTitle = "[adoption] XGuard public x402 candidate pipeline";
+            const existing = issues.find((issue) => issue.title === title || issue.title === oldTitle);
             if (existing) {
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: existing.number,
+                title,
                 body,
               });
             } else {
