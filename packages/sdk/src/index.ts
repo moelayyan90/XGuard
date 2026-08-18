@@ -28,7 +28,7 @@ export function createXGuardFacilitator(
   }
   const createAuthHeaders = async () => {
     const headers: Record<string, string> = {
-      "X-XGuard-SDK": options.clientVersion ?? "@xguard/sdk/0.1.0-alpha.0",
+      "X-XGuard-SDK": options.clientVersion ?? "@xguard/sdk/0.1.0-alpha.1",
     };
     if (options.apiKey !== undefined)
       headers.Authorization = `Bearer ${options.apiKey}`;

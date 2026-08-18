@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           CORE_TARBALL="$(find "$GITHUB_WORKSPACE/release-assets" -maxdepth 1 -name 'xguard-core-0.1.0-alpha.0.tgz' -print -quit)"
-          SDK_TARBALL="$(find "$GITHUB_WORKSPACE/release-assets" -maxdepth 1 -name 'xguard-sdk-0.1.0-alpha.0.tgz' -print -quit)"
+          SDK_TARBALL="$(find "$GITHUB_WORKSPACE/release-assets" -maxdepth 1 -name 'xguard-sdk-0.1.0-alpha.1.tgz' -print -quit)"
           test -n "$CORE_TARBALL"
           test -n "$SDK_TARBALL"
           mkdir -p /tmp/xguard-sdk-smoke
@@ -94,12 +94,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="xguard-packages-v0.1.0-alpha.0"
-          NOTES='Installable fallback artifacts for XGuard while first npm publication remains identity-gated. Includes @xguard/core, @xguard/sdk, xguard CLI, and SHA256 checksums. These artifacts are built and smoke-tested by GitHub Actions from protected main.'
+          TAG="xguard-packages-v0.1.0-alpha.1"
+          NOTES='Installable fallback artifacts for XGuard while first npm publication remains identity-gated. This bundle introduces @xguard/sdk 0.1.0-alpha.1 with embedded and hosted automated-payment guards; @xguard/core and xguard CLI remain 0.1.0-alpha.0. Includes SHA256 checksums. These artifacts are built and smoke-tested by GitHub Actions from protected main.'
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release-assets/* --clobber
           else
-            gh release create "$TAG" release-assets/* --title "XGuard installable packages v0.1.0-alpha.0" --notes "$NOTES" --prerelease
+            gh release create "$TAG" release-assets/* --title "XGuard installable packages v0.1.0-alpha.1" --notes "$NOTES" --prerelease
           fi
 
       - name: Verify CLI installs from the public GitHub Release
@@ -107,7 +107,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          URL="https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.0/xguard-0.1.0-alpha.0.tgz"
+          URL="https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.1/xguard-0.1.0-alpha.0.tgz"
           rm -rf /tmp/xguard-public-prefix
           for attempt in {1..12}; do
             if npm install --global --prefix /tmp/xguard-public-prefix "$URL"; then

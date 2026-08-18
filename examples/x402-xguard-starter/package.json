@@ -12,7 +12,7 @@
     "@x402/evm": "2.22.0",
     "@x402/express": "2.22.0",
     "@x402/extensions": "2.22.0",
-    "@xguard/sdk": "0.1.0-alpha.0",
+    "@xguard/sdk": "0.1.0-alpha.1",
     "express": "5.2.1"
   },
   "devDependencies": {

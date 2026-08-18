@@ -1,6 +1,6 @@
 {
   "name": "@xguard/sdk",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Drop-in x402 facilitator and headless automated-payment guard for XGuard",
   "license": "Apache-2.0",
   "repository": {
