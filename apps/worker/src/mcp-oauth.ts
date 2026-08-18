@@ -38,6 +38,7 @@ interface AuthorizationRequest {
   redirectUri: string;
   codeChallenge: string;
   scope: string;
+  resource: string;
   state: string | null;
 }
 
@@ -90,7 +91,10 @@ export async function mcpOAuthResponse(
 
   if (url.pathname === AUTHORIZE_PATH && request.method === "GET") {
     try {
-      const parsed = authorizationRequest(url.searchParams);
+      const parsed = authorizationRequest(
+        url.searchParams,
+        `${url.origin}${RESOURCE_PATH}`,
+      );
       await requireRegisteredRedirect(env.DB, parsed.clientId, parsed.redirectUri);
       return consentPage(parsed);
     } catch (error) {
@@ -103,7 +107,10 @@ export async function mcpOAuthResponse(
       const blocked = await oauthAbuseProtection(request, env, "authorize");
       if (blocked !== null) return blocked;
       const form = await readForm(request);
-      const parsed = authorizationRequest(form);
+      const parsed = authorizationRequest(
+        form,
+        `${url.origin}${RESOURCE_PATH}`,
+      );
       await requireRegisteredRedirect(env.DB, parsed.clientId, parsed.redirectUri);
       if (form.get("decision") !== "approve")
         return authorizationRedirect(parsed, { error: "access_denied" });
@@ -186,7 +193,10 @@ async function registerClient(
   );
 }
 
-function authorizationRequest(params: URLSearchParams): AuthorizationRequest {
+function authorizationRequest(
+  params: URLSearchParams,
+  expectedResource: string,
+): AuthorizationRequest {
   if (params.get("response_type") !== "code")
     throw new OAuthRequestError("unsupported_response_type");
 
@@ -202,17 +212,8 @@ function authorizationRequest(params: URLSearchParams): AuthorizationRequest {
   if (params.get("code_challenge_method") !== "S256")
     throw new OAuthRequestError("invalid_request");
 
-  const resource = params.get("resource");
-  if (resource !== null) {
-    let parsedResource: URL;
-    try {
-      parsedResource = new URL(resource);
-    } catch {
-      throw new OAuthRequestError("invalid_target");
-    }
-    if (parsedResource.pathname !== RESOURCE_PATH)
-      throw new OAuthRequestError("invalid_target");
-  }
+  const resource = params.get("resource") ?? expectedResource;
+  if (resource !== expectedResource) throw new OAuthRequestError("invalid_target");
 
   const requestedScope = (params.get("scope") ?? MCP_SCOPE).trim();
   const scopes = new Set(requestedScope.split(/\s+/).filter(Boolean));
@@ -228,6 +229,7 @@ function authorizationRequest(params: URLSearchParams): AuthorizationRequest {
     redirectUri,
     codeChallenge,
     scope: MCP_SCOPE,
+    resource,
     state,
   };
 }
@@ -267,10 +269,9 @@ function consentPage(input: AuthorizationRequest): Response {
     ["code_challenge", input.codeChallenge],
     ["code_challenge_method", "S256"],
     ["scope", input.scope],
-    ["resource", `${new URL(input.redirectUri).origin === "null" ? "" : ""}`],
+    ["resource", input.resource],
     ...(input.state === null ? [] : [["state", input.state]]),
   ]
-    .filter(([name]) => name !== "resource")
     .map(
       ([name, value]) =>
         `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}">`,
@@ -439,7 +440,11 @@ async function oauthAbuseProtection(
 }
 
 function parseRedirectUris(value: unknown): string[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_REDIRECT_URIS)
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAX_REDIRECT_URIS
+  )
     throw new OAuthRequestError("invalid_redirect_uris");
   const result: string[] = [];
   for (const item of value) {
@@ -471,7 +476,8 @@ function validateRedirectUri(value: string): void {
 
 function cleanClientName(value: unknown): string {
   if (value === undefined || value === null) return "MCP client";
-  if (typeof value !== "string") throw new OAuthRequestError("invalid_client_metadata");
+  if (typeof value !== "string")
+    throw new OAuthRequestError("invalid_client_metadata");
   const name = value.trim().replace(/\s+/g, " ");
   if (name.length < 1 || name.length > 80)
     throw new OAuthRequestError("invalid_client_metadata");
