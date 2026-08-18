@@ -35,7 +35,8 @@ embedXGuardAutomatedPayments(client, {
   budgets: [
     {
       network: "eip155:8453",
-      asset: "USDC",
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      // Base USDC has 6 decimals: 1_000_000 atomic units = 1 USDC.
       maxAtomicAmountPerPayment: "1000000",
       maxAtomicAmountPerWindow: "5000000",
     },
@@ -45,6 +46,8 @@ embedXGuardAutomatedPayments(client, {
 const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 const response = await fetchWithPayment("https://merchant.example/paid-api");
 ```
+
+The budget `asset` must match the exact x402 payment-requirements asset identifier, not merely a ticker symbol.
 
 The guard uses x402's payment-creation lifecycle hook. It runs before signing and can abort an automatic payment based on HTTPS requirements, network, scheme, payee, per-payment atomic caps, rolling-window attempt caps, or an optional asynchronous `authorize` callback.
 
