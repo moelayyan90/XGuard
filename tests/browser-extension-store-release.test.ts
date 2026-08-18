@@ -13,6 +13,7 @@ const manifest = JSON.parse(
   content_scripts?: Array<{
     matches?: string[];
     exclude_matches?: string[];
+    js?: string[];
   }>;
   icons?: Record<string, string>;
 };
@@ -24,12 +25,17 @@ describe("browser extension store release", () => {
     expect(manifest.host_permissions).toEqual(["https://xguardgate.com/*"]);
   });
 
-  it("detects checkout context on HTTPS pages only", () => {
+  it("detects payment context on HTTPS pages only and ships both user surfaces", () => {
     expect(manifest.content_scripts).toHaveLength(1);
     expect(manifest.content_scripts?.[0]?.matches).toEqual(["https://*/*"]);
     expect(manifest.content_scripts?.[0]?.exclude_matches).toContain(
       "https://xguardgate.com/*",
     );
+    expect(manifest.content_scripts?.[0]?.js).toEqual([
+      "universal-layer.js",
+      "surface-rail.js",
+    ]);
+    expect(existsSync(join(extension, "surface-rail.js"))).toBe(true);
   });
 
   it("ships the raster icons Chrome and Edge need", () => {
