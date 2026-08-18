@@ -1,0 +1,47 @@
+name: Format MCP OAuth temporary
+
+on:
+  pull_request:
+    paths:
+      - "apps/worker/src/mcp-oauth.ts"
+      - ".github/workflows/format-mcp-oauth-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Remove unused registration argument and format
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("apps/worker/src/mcp-oauth.ts")
+          s = p.read_text()
+          s = s.replace("return handleRegistration(request, env, url.origin);", "return handleRegistration(request, env);")
+          s = s.replace("async function handleRegistration(\n  request: Request,\n  env: McpOAuthEnv,\n  origin: string,\n): Promise<Response> {", "async function handleRegistration(\n  request: Request,\n  env: McpOAuthEnv,\n): Promise<Response> {")
+          p.write_text(s)
+          PY
+          npx prettier --write apps/worker/src/mcp-oauth.ts
+      - name: Commit formatted source
+        shell: bash
+        run: |
+          if git diff --quiet -- apps/worker/src/mcp-oauth.ts; then
+            exit 0
+          fi
+          git config user.name "xguard-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add apps/worker/src/mcp-oauth.ts
+          git commit -m "format MCP OAuth implementation"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
