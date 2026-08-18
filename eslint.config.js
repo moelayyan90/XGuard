@@ -32,18 +32,19 @@ export default tseslint.config(
       globals: {
         AbortSignal: "readonly",
         Buffer: "readonly",
-        chrome: "readonly",
-        clearTimeout: "readonly",
         console: "readonly",
-        crypto: "readonly",
-        document: "readonly",
         fetch: "readonly",
-        getComputedStyle: "readonly",
-        location: "readonly",
-        MutationObserver: "readonly",
         process: "readonly",
-        setTimeout: "readonly",
         URL: "readonly",
+      },
+    },
+  },
+  {
+    files: ["browser-extension/recovery-layer.js"],
+    languageOptions: {
+      globals: {
+        crypto: "readonly",
+        getComputedStyle: "readonly",
       },
     },
   },
