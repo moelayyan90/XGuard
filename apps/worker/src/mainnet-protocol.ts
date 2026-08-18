@@ -243,11 +243,11 @@ export async function fetchXPaySupported(
   _env: MainnetProtocolEnv,
 ): Promise<SupportedResponse> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5_000);
+  const timer = setTimeout(() => controller.abort(), 12_000);
   try {
     const response = await fetch(`${XPAY_URL}/supported`, {
       headers: { "User-Agent": "XGuard/0.1.0" },
-      redirect: "manual",
+      redirect: "follow",
       signal: controller.signal,
     });
     if (!response.ok)
@@ -261,20 +261,19 @@ export async function fetchXPaySupported(
         ),
       ),
     );
-    if (!Array.isArray(parsed.kinds))
-      throw new Error("upstream_supported_malformed");
-    const compatible = parsed.kinds.some((rawKind) => {
-      const kind = asRecord(rawKind);
-      return (
+    const normalized = normalizeSupportedResponse(parsed);
+    const compatible = normalized.kinds.some(
+      (kind) =>
         kind.x402Version === 2 &&
         kind.scheme === "exact" &&
-        kind.network === BASE_MAINNET
-      );
-    });
+        kind.network === BASE_MAINNET,
+    );
     if (!compatible) throw new Error("upstream_base_mainnet_not_supported");
-    if (!Array.isArray(parsed.extensions)) parsed.extensions = [];
-    if (parsed.signers === undefined) parsed.signers = {};
-    return parsed as unknown as SupportedResponse;
+    return normalized;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError")
+      throw new Error("upstream_supported_timeout");
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -318,6 +317,40 @@ async function xPayRequest(
   } finally {
     clearTimeout(timer);
   }
+}
+
+function normalizeSupportedResponse(
+  parsed: Record<string, unknown>,
+): SupportedResponse {
+  if (!Array.isArray(parsed.kinds) && Array.isArray(parsed.supportedNetworks)) {
+    parsed.kinds = parsed.supportedNetworks.flatMap((rawNetwork) => {
+      const network = asRecord(rawNetwork);
+      const networkId = network.networkId;
+      const version = network.version;
+      if (
+        typeof networkId !== "string" ||
+        (version !== "v2" && version !== 2)
+      )
+        return [];
+      return [
+        {
+          x402Version: 2,
+          scheme: "exact",
+          network: networkId,
+        },
+      ];
+    });
+  }
+  if (!Array.isArray(parsed.kinds))
+    throw new Error("upstream_supported_malformed");
+  if (!Array.isArray(parsed.extensions)) parsed.extensions = [];
+  if (
+    typeof parsed.signers !== "object" ||
+    parsed.signers === null ||
+    Array.isArray(parsed.signers)
+  )
+    parsed.signers = {};
+  return parsed as unknown as SupportedResponse;
 }
 
 function evmAddress(value: unknown, field: string): string {
