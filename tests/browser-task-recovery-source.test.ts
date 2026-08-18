@@ -20,7 +20,7 @@ describe("browser task recovery source", () => {
       "support",
       "generic",
     ]) {
-      expect(source).toContain(`\"${category}\"`);
+      expect(source).toContain(`"${category}"`);
     }
     expect(source).toContain("Task Control & Recovery");
     expect(source).toContain("احفظ نقطة رجوع");
