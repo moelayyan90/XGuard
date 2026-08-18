@@ -14,7 +14,9 @@ class FakeX402Client {
   }
 
   async attempt(
-    overrides: Partial<X402PaymentCreationContextLike["selectedRequirements"]> = {},
+    overrides: Partial<
+      X402PaymentCreationContextLike["selectedRequirements"]
+    > = {},
     resourceUrl = "https://merchant.example/paid-api",
   ) {
     if (!this.hook) throw new Error("hook not installed");
@@ -108,14 +110,18 @@ describe("XGuard headless automated payment guard", () => {
       budgets: [standardBudget],
     });
 
-    await expect(client.attempt({ network: "solana:mainnet" })).resolves.toEqual({
+    await expect(
+      client.attempt({ network: "solana:mainnet" }),
+    ).resolves.toEqual({
       abort: true,
       reason: "Network not allowed: solana:mainnet",
     });
     await expect(
       client.attempt({ payTo: "0x2222222222222222222222222222222222222222" }),
     ).resolves.toEqual({ abort: true, reason: "Payee is not allowlisted" });
-    await expect(client.attempt({}, "http://merchant.example/paid-api")).resolves.toEqual({
+    await expect(
+      client.attempt({}, "http://merchant.example/paid-api"),
+    ).resolves.toEqual({
       abort: true,
       reason: "XGuard requires an HTTPS x402 resource",
     });
@@ -152,9 +158,14 @@ describe("XGuard headless automated payment guard", () => {
 
   it("does not require or expose signing secrets", async () => {
     const source = await import("node:fs/promises").then(({ readFile }) =>
-      readFile(new URL("../packages/sdk/src/auto-pay.ts", import.meta.url), "utf8"),
+      readFile(
+        new URL("../packages/sdk/src/auto-pay.ts", import.meta.url),
+        "utf8",
+      ),
     );
-    expect(source).not.toMatch(/privateKey|seed phrase|mnemonic|signTransaction/i);
+    expect(source).not.toMatch(
+      /privateKey|seed phrase|mnemonic|signTransaction/i,
+    );
     expect(source).toContain("onBeforePaymentCreation");
     expect(source).toContain('mode: "auto"');
   });

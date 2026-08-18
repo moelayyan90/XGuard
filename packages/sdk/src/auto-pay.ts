@@ -106,7 +106,9 @@ export function embedXGuardAutomatedPayments(
     );
   }
   if (options.mode !== "auto") {
-    throw new TypeError("XGuard automated payment mode must be explicitly set to auto");
+    throw new TypeError(
+      "XGuard automated payment mode must be explicitly set to auto",
+    );
   }
 
   const budgets = (options.budgets ?? []).map(validateBudget);
@@ -121,7 +123,13 @@ export function embedXGuardAutomatedPayments(
 
   client.onBeforePaymentCreation(async (context) => {
     const intent = normalizeIntent(context);
-    let decision = evaluateStaticPolicy(intent, options, budgets, windows, now());
+    let decision = evaluateStaticPolicy(
+      intent,
+      options,
+      budgets,
+      windows,
+      now(),
+    );
 
     if (decision.allow && options.authorize) {
       try {
@@ -130,7 +138,9 @@ export function embedXGuardAutomatedPayments(
           typeof external === "boolean"
             ? {
                 allow: external,
-                ...(external ? {} : { reason: "XGuard authorization denied payment" }),
+                ...(external
+                  ? {}
+                  : { reason: "XGuard authorization denied payment" }),
               }
             : normalizeDecision(external);
       } catch (error) {
@@ -174,13 +184,18 @@ function evaluateStaticPolicy(
   windows: Map<string, WindowState>,
   timestamp: number,
 ): XGuardAutomatedPaymentDecision {
-  if ((options.requireHttpsResource ?? true) && !isHttpsUrl(intent.resourceUrl)) {
+  if (
+    (options.requireHttpsResource ?? true) &&
+    !isHttpsUrl(intent.resourceUrl)
+  ) {
     return { allow: false, reason: "XGuard requires an HTTPS x402 resource" };
   }
 
   if (
     options.allowedNetworks?.length &&
-    !options.allowedNetworks.some((pattern) => matchesPattern(intent.network, pattern))
+    !options.allowedNetworks.some((pattern) =>
+      matchesPattern(intent.network, pattern),
+    )
   ) {
     return { allow: false, reason: `Network not allowed: ${intent.network}` };
   }
@@ -205,7 +220,10 @@ function evaluateStaticPolicy(
   if (!budget) {
     return options.allowUnbudgetedAssets === true
       ? { allow: true }
-      : { allow: false, reason: "No XGuard budget matches this network and asset" };
+      : {
+          allow: false,
+          reason: "No XGuard budget matches this network and asset",
+        };
   }
 
   const amount = parseAtomic(intent.amountAtomic, "payment amount");
@@ -214,7 +232,10 @@ function evaluateStaticPolicy(
     "maxAtomicAmountPerPayment",
   );
   if (amount > perPayment) {
-    return { allow: false, reason: "Payment exceeds XGuard per-payment budget" };
+    return {
+      allow: false,
+      reason: "Payment exceeds XGuard per-payment budget",
+    };
   }
 
   if (budget.maxAtomicAmountPerWindow !== undefined) {
@@ -225,7 +246,10 @@ function evaluateStaticPolicy(
     const key = budgetKey(budget);
     const state = activeWindow(windows.get(key), budget, timestamp);
     if (state.amount + amount > maxWindow) {
-      return { allow: false, reason: "Payment exceeds XGuard rolling-window budget" };
+      return {
+        allow: false,
+        reason: "Payment exceeds XGuard rolling-window budget",
+      };
     }
   }
 
@@ -301,7 +325,9 @@ function validateBudget(
     value.windowMs !== undefined &&
     (!Number.isSafeInteger(value.windowMs) || value.windowMs <= 0)
   ) {
-    throw new TypeError("XGuard budget windowMs must be a positive safe integer");
+    throw new TypeError(
+      "XGuard budget windowMs must be a positive safe integer",
+    );
   }
   return {
     network,
@@ -320,7 +346,8 @@ function findBudget(
 ): XGuardAutomatedPaymentBudget | undefined {
   return budgets.find(
     (budget) =>
-      matchesPattern(intent.network, budget.network) && budget.asset === intent.asset,
+      matchesPattern(intent.network, budget.network) &&
+      budget.asset === intent.asset,
   );
 }
 
@@ -344,10 +371,13 @@ function isHttpsUrl(value: string): boolean {
 function parseAtomic(value: string, label: string): bigint {
   const normalized = String(value).trim();
   if (!/^[0-9]+$/.test(normalized)) {
-    throw new TypeError(`XGuard ${label} must be a non-negative integer string`);
+    throw new TypeError(
+      `XGuard ${label} must be a non-negative integer string`,
+    );
   }
   const amount = BigInt(normalized);
-  if (amount <= 0n) throw new TypeError(`XGuard ${label} must be greater than zero`);
+  if (amount <= 0n)
+    throw new TypeError(`XGuard ${label} must be greater than zero`);
   return amount;
 }
 
@@ -361,7 +391,10 @@ function normalizeDecision(
   value: XGuardAutomatedPaymentDecision,
 ): XGuardAutomatedPaymentDecision {
   if (!value || typeof value.allow !== "boolean") {
-    return { allow: false, reason: "XGuard authorization returned an invalid decision" };
+    return {
+      allow: false,
+      reason: "XGuard authorization returned an invalid decision",
+    };
   }
   return {
     allow: value.allow,
