@@ -170,7 +170,7 @@ export async function universalProtocolResponse(
     const body = JSON.stringify(discoveryDocument(url.origin));
     return new Response(request.method === "HEAD" ? null : body, {
       status: 200,
-      headers: publicJsonHeaders(),
+      headers: publicJsonHeaders(url.origin),
     });
   }
 
@@ -479,6 +479,24 @@ function discoveryDocument(origin: string): Record<string, unknown> {
     principle:
       "XGuard routes economic intent by protocol capability; it does not pretend that trust, commerce, agent transport, and settlement protocols are the same thing.",
     adapters: ADAPTERS,
+    discovery: {
+      paymentLayer: `${origin}/.well-known/xguard/payment-layer.json`,
+      actionRail: `${origin}/.well-known/xguard/actions.json`,
+      paymentManifest: `${origin}/.well-known/payment-manifest`,
+      openapi: `${origin}/openapi.json`,
+      agentCard: `${origin}/.well-known/agent-card.json`,
+      mcpServer: `${origin}/.well-known/mcp/server.json`,
+      llms: `${origin}/llms.txt`,
+      llmsFull: `${origin}/llms-full.txt`,
+      sitemap: `${origin}/sitemap.xml`,
+    },
+    crawlNext: [
+      `${origin}/.well-known/xguard/actions.json`,
+      `${origin}/openapi.json`,
+      `${origin}/.well-known/agent-card.json`,
+      `${origin}/.well-known/mcp/server.json`,
+      `${origin}/llms.txt`,
+    ],
     endpoints: {
       protocols: `${origin}${PROTOCOLS_PATH}`,
       verify: `${origin}/v1/transactions/verify`,
@@ -534,10 +552,17 @@ function normalizeProtocolId(value: unknown): XGuardProtocolId | null {
   return aliases[normalized] ?? null;
 }
 
-function publicJsonHeaders(): HeadersInit {
+function publicJsonHeaders(origin: string): HeadersInit {
   return {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "public, max-age=300",
+    "Access-Control-Allow-Origin": "*",
+    Link: [
+      `<${origin}/.well-known/xguard/actions.json>; rel="service-desc"; type="application/json"`,
+      `<${origin}/openapi.json>; rel="service-desc"; type="application/json"`,
+      `<${origin}/.well-known/agent-card.json>; rel="alternate"; type="application/json"`,
+      `<${origin}/.well-known/mcp/server.json>; rel="alternate"; type="application/json"`,
+    ].join(", "),
     "X-Content-Type-Options": "nosniff",
   };
 }

@@ -28,6 +28,8 @@ function sitemap(origin: string): string {
     "/install",
     "/.well-known/xguard/payment-layer.json",
     "/.well-known/xguard/protocols.json",
+    "/.well-known/xguard/actions.json",
+    "/.well-known/payment-manifest",
     "/docs",
     "/openapi.json",
     "/mcp",
@@ -46,7 +48,7 @@ function sitemap(origin: string): string {
 }
 
 function robots(origin: string): string {
-  return `User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap.xml\n\n# Primary XGuard Payment Layer\n# ${origin}/payment-layer\n# ${origin}/install\n# ${origin}/.well-known/xguard/payment-layer.json\n\n# Universal protocol and agent discovery\n# ${origin}/.well-known/xguard/protocols.json\n# ${origin}/openapi.json\n# ${origin}/mcp\n# ${origin}/.well-known/mcp/server.json\n# ${origin}/.well-known/agent-card.json\n# ${origin}/.well-known/agent-market.json\n# ${origin}/discovery/resources\n# ${origin}/discovery/search?query=payment\n# ${origin}/llms.txt\n# ${origin}/llms-full.txt\n\n# Protocol-specific adapter\n# ${origin}/.well-known/x402/facilitator.json\n`;
+  return `User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap.xml\n\n# Primary XGuard Payment Layer\n# ${origin}/payment-layer\n# ${origin}/install\n# ${origin}/.well-known/xguard/payment-layer.json\n\n# Universal protocol, action, and agent discovery\n# ${origin}/.well-known/xguard/protocols.json\n# ${origin}/.well-known/xguard/actions.json\n# ${origin}/.well-known/payment-manifest\n# ${origin}/openapi.json\n# ${origin}/mcp\n# ${origin}/.well-known/mcp/server.json\n# ${origin}/.well-known/agent-card.json\n# ${origin}/.well-known/agent-market.json\n# ${origin}/discovery/resources\n# ${origin}/discovery/search?query=payment\n# ${origin}/llms.txt\n# ${origin}/llms-full.txt\n\n# Protocol-specific adapter\n# ${origin}/.well-known/x402/facilitator.json\n`;
 }
 
 function typedResponse(
