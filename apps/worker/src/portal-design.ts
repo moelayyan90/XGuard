@@ -29,7 +29,7 @@ function htmlResponse(request: Request, html: string): Response {
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Content-Security-Policy":
-        "default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "default-src 'self'; img-src 'self' data: https://raw.githubusercontent.com; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     },
   });
 }
@@ -40,7 +40,7 @@ function landingPage(origin: string): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#f8fbfb">
   <title>XGuard — Payment execution safety</title>
   <meta name="description" content="A compact safety layer for x402 payment verification and settlement on Base.">
   <meta name="robots" content="index,follow">
@@ -51,7 +51,7 @@ function landingPage(origin: string): string {
 <body>
   <header class="site-header">
     <nav class="wrap nav" aria-label="Primary navigation">
-      <a class="brand" href="/" aria-label="XGuard home"><img src="/favicon.svg" width="28" height="28" alt=""><span>XGuard</span></a>
+      ${brand("XGuard home")}
       <div class="nav-links">
         <a href="#product">Product</a>
         <a href="/docs">Docs</a>
@@ -63,18 +63,22 @@ function landingPage(origin: string): string {
   </header>
 
   <main>
-    <section class="wrap hero">
-      <div class="hero-main">
-        <div class="status-line"><span></span>Live on Base mainnet</div>
-        <h1>A safer way to run x402 payments.</h1>
-        <p class="hero-lead">XGuard sits between a payment request and execution. It checks replay state, concurrency, finality and settlement truth — then returns one clear outcome.</p>
-        <div class="hero-actions">
-          <a class="button button-primary" href="#start">Create API key</a>
-          <a class="button button-quiet" href="/docs">View documentation <span>→</span></a>
+    <section class="hero-shell">
+      <div class="wrap hero">
+        <div class="hero-main">
+          <div class="status-line"><span></span>Live on Base mainnet</div>
+          <h1>Payment execution you can trust.</h1>
+          <p class="hero-lead">XGuard sits between a payment request and execution. It checks replay state, concurrency, finality and settlement truth — then returns one clear outcome.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#start">Create API key</a>
+            <a class="button button-quiet" href="/docs">View documentation <span>→</span></a>
+          </div>
+        </div>
+        <div class="hero-brand" aria-label="XGuard brand">
+          <img src="/logo.png" alt="XGuard">
         </div>
       </div>
-
-      <div class="facts" aria-label="XGuard production facts">
+      <div class="wrap facts" aria-label="XGuard production facts">
         <div><span>Protocol</span><strong>x402 v2</strong></div>
         <div><span>Network</span><strong>Base</strong></div>
         <div><span>Asset</span><strong>USDC</strong></div>
@@ -85,8 +89,8 @@ function landingPage(origin: string): string {
     <section id="product" class="wrap product-section">
       <div class="section-title">
         <span>What it does</span>
-        <h2>One small layer around the risky part.</h2>
-        <p>XGuard does not replace your payment flow. It makes execution easier to trust and easier to inspect.</p>
+        <h2>A small layer around the risky part.</h2>
+        <p>XGuard does not replace your payment flow. It makes execution easier to trust, inspect and recover.</p>
       </div>
 
       <div class="capability-list">
@@ -102,7 +106,7 @@ function landingPage(origin: string): string {
         <div class="flow-copy">
           <span class="section-label">How it works</span>
           <h2>Request in. Decision out.</h2>
-          <p>The integration stays intentionally boring. Your application sends the payment envelope it already understands.</p>
+          <p>The integration stays deliberately simple. Your application sends the payment envelope it already understands.</p>
         </div>
         <div class="flow-steps" aria-label="Payment flow">
           <div><b>1</b><span>Payment request</span></div>
@@ -147,7 +151,7 @@ function landingPage(origin: string): string {
     <section class="wrap resource-section">
       <div class="section-title compact">
         <span>Reference</span>
-        <h2>Everything useful, without a dashboard.</h2>
+        <h2>Useful endpoints. No dashboard noise.</h2>
       </div>
       <div class="resource-list">
         ${resourceLink("Documentation", "Integration guide", "/docs")}
@@ -170,7 +174,7 @@ function landingPage(origin: string): string {
 
   <footer>
     <div class="wrap footer-grid">
-      <a class="brand" href="/"><img src="/favicon.svg" width="24" height="24" alt=""><span>XGuard</span></a>
+      ${brand()}
       <p>Payment execution safety for x402.</p>
       <div><a href="/docs">Docs</a><a href="/status">Status</a><a href="https://github.com/moelayyan90/XGuard">GitHub</a></div>
     </div>
@@ -186,7 +190,7 @@ function docsPage(origin: string): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#f8fbfb">
   <title>XGuard Docs — Quick start</title>
   <meta name="description" content="Integrate XGuard with an x402 v2 application on Base mainnet.">
   <link rel="canonical" href="${origin}/docs">
@@ -196,7 +200,7 @@ function docsPage(origin: string): string {
 <body>
   <header class="site-header">
     <nav class="wrap nav" aria-label="Primary navigation">
-      <a class="brand" href="/"><img src="/favicon.svg" width="28" height="28" alt=""><span>XGuard</span></a>
+      ${brand("XGuard home")}
       <div class="nav-links"><a href="/">Home</a><a href="/status">Status</a><a href="/openapi.json">OpenAPI</a><a href="/.well-known/mcp/server.json">MCP</a></div>
     </nav>
   </header>
@@ -260,13 +264,18 @@ function docsPage(origin: string): string {
 
   <footer>
     <div class="wrap footer-grid">
-      <a class="brand" href="/"><img src="/favicon.svg" width="24" height="24" alt=""><span>XGuard</span></a>
+      ${brand()}
       <p>Payment execution safety for x402.</p>
       <div><a href="/">Home</a><a href="/status">Status</a><a href="https://github.com/moelayyan90/XGuard">GitHub</a></div>
     </div>
   </footer>
 </body>
 </html>`;
+}
+
+function brand(label?: string): string {
+  const aria = label ? ` aria-label="${label}"` : "";
+  return `<a class="brand" href="/"${aria}><img src="/brand-mark.png" width="42" height="23" alt=""><span>XGUARD</span></a>`;
 }
 
 function capability(index: string, title: string, description: string): string {
@@ -313,17 +322,20 @@ function styles(): string {
   :root{
     color-scheme:light;
     --bg:#ffffff;
-    --soft:#f7f8fa;
+    --soft:#f5f8f8;
+    --soft-2:#eef5f5;
     --surface:#ffffff;
-    --text:#111827;
-    --muted:#667085;
-    --subtle:#98a2b3;
-    --line:#e6e9ee;
-    --line-strong:#d7dce3;
-    --accent:#2563eb;
-    --accent-dark:#1d4ed8;
-    --accent-soft:#eff6ff;
-    --green:#16a34a;
+    --text:#2d3539;
+    --muted:#6f7b80;
+    --subtle:#99a2a6;
+    --line:#e2e8e9;
+    --line-strong:#d2dcde;
+    --accent:#5b9da6;
+    --accent-dark:#477b83;
+    --accent-bright:#5ec2cc;
+    --accent-soft:#eaf6f7;
+    --silver:#aab0b4;
+    --green:#2f9b68;
     --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
     --mono:"SFMono-Regular","Cascadia Mono","Roboto Mono",Consolas,monospace;
   }
@@ -332,106 +344,108 @@ function styles(): string {
   body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
   a{color:inherit}
   .wrap{width:min(1080px,calc(100% - 48px));margin-inline:auto}
-  .site-header{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.92);border-bottom:1px solid rgba(230,233,238,.9);backdrop-filter:blur(14px)}
-  .nav{height:64px;display:flex;align-items:center;justify-content:space-between;gap:24px}
-  .brand{display:inline-flex;align-items:center;gap:9px;text-decoration:none;font-weight:700;letter-spacing:-.02em}
-  .brand img{display:block;border-radius:7px}
-  .brand span{font-size:15px}
+  .site-header{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.94);border-bottom:1px solid rgba(226,232,233,.95);backdrop-filter:blur(14px)}
+  .nav{height:68px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+  .brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none}
+  .brand img{display:block;width:42px;height:23px;object-fit:contain}
+  .brand span{font-size:14px;font-weight:760;letter-spacing:.09em;background:linear-gradient(90deg,#cdd1d3,#8f989d);-webkit-background-clip:text;background-clip:text;color:transparent}
   .nav-links{display:flex;align-items:center;gap:24px}
-  .nav-links a,.footer-grid a{color:#606978;text-decoration:none;font-size:13px;font-weight:540}
+  .nav-links a,.footer-grid a{color:#657176;text-decoration:none;font-size:13px;font-weight:560}
   .nav-links a:hover,.footer-grid a:hover{color:var(--text)}
-  .nav-links .nav-cta{padding:8px 12px;border:1px solid var(--line-strong);border-radius:8px;background:#fff;color:var(--text)}
-  .nav-links .nav-cta:hover{border-color:#b9c0ca;background:var(--soft)}
+  .nav-links .nav-cta{padding:8px 13px;border:1px solid #c9d7d9;border-radius:8px;background:#fff;color:var(--accent-dark)}
+  .nav-links .nav-cta:hover{border-color:#a9c3c7;background:var(--soft)}
 
-  .hero{padding:116px 0 72px}
-  .hero-main{max-width:820px}
-  .status-line{display:inline-flex;align-items:center;gap:9px;margin-bottom:24px;color:#576071;font-size:13px;font-weight:560}
-  .status-line span{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px #ecfdf3}
+  .hero-shell{background:linear-gradient(180deg,#fbfdfd 0%,#fff 78%);border-bottom:1px solid var(--line)}
+  .hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(270px,.75fr);gap:72px;align-items:center;padding:104px 0 58px}
+  .hero-main{max-width:760px}
+  .status-line{display:inline-flex;align-items:center;gap:9px;margin-bottom:24px;color:#617076;font-size:13px;font-weight:600}
+  .status-line span{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px #eaf7f0}
   h1,h2,h3{margin-top:0;text-wrap:balance}
-  .hero h1{max-width:820px;margin-bottom:24px;font-size:clamp(50px,6vw,72px);line-height:1.02;font-weight:680;letter-spacing:-.055em}
-  .hero-lead{max-width:720px;margin:0;color:var(--muted);font-size:19px;line-height:1.65}
+  .hero h1{max-width:760px;margin-bottom:22px;font-size:clamp(48px,5.8vw,70px);line-height:1.02;font-weight:675;letter-spacing:-.052em}
+  .hero-lead{max-width:690px;margin:0;color:var(--muted);font-size:18px;line-height:1.68}
   .hero-actions{display:flex;align-items:center;gap:18px;margin-top:34px}
   .button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;text-decoration:none;font-size:13px;font-weight:650}
-  .button-primary{padding:0 17px;border-radius:8px;background:var(--text);color:#fff}
-  .button-primary:hover{background:#263142}
-  .button-quiet{color:#4f5b6c}
-  .button-quiet:hover{color:var(--accent)}
-  .facts{display:grid;grid-template-columns:repeat(4,1fr);margin-top:88px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-  .facts div{display:grid;gap:3px;padding:18px 18px 19px 0;border-right:1px solid var(--line)}
+  .button-primary{padding:0 18px;border-radius:8px;background:var(--accent-dark);color:#fff;box-shadow:0 1px 1px rgba(36,70,76,.12)}
+  .button-primary:hover{background:#3e6d74}
+  .button-quiet{color:#607177}
+  .button-quiet:hover{color:var(--accent-dark)}
+  .hero-brand{display:flex;align-items:center;justify-content:flex-end;min-height:300px}
+  .hero-brand img{display:block;width:min(100%,360px);height:auto;filter:drop-shadow(0 18px 26px rgba(68,94,98,.08))}
+  .facts{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line)}
+  .facts div{display:grid;gap:3px;padding:19px 18px 21px 0;border-right:1px solid var(--line)}
   .facts div:not(:first-child){padding-left:20px}
   .facts div:last-child{border-right:0}
   .facts span{color:var(--subtle);font-size:11px}
   .facts strong{font-size:13px;font-weight:650}
 
-  .product-section{padding:104px 0 110px}
+  .product-section{padding:100px 0 108px}
   .section-title{max-width:680px;margin-bottom:46px}
   .section-title.compact{margin-bottom:28px}
-  .section-title>span,.section-label,.docs-eyebrow{display:block;margin-bottom:12px;color:var(--accent);font-size:12px;font-weight:650}
-  .section-title h2,.flow-copy h2,.start-copy h2,.code-copy h2,.pricing h2{margin-bottom:14px;font-size:clamp(34px,4vw,48px);line-height:1.08;font-weight:650;letter-spacing:-.04em}
+  .section-title>span,.section-label,.docs-eyebrow{display:block;margin-bottom:12px;color:var(--accent-dark);font-size:12px;font-weight:680;letter-spacing:.01em}
+  .section-title h2,.flow-copy h2,.start-copy h2,.code-copy h2,.pricing h2{margin-bottom:14px;font-size:clamp(34px,4vw,47px);line-height:1.08;font-weight:650;letter-spacing:-.038em}
   .section-title p,.flow-copy p,.start-copy p,.code-copy p{margin:0;color:var(--muted);font-size:16px}
   .capability-list{border-top:1px solid var(--line)}
   .capability{display:grid;grid-template-columns:80px minmax(220px,.7fr) 1fr;gap:24px;align-items:start;padding:26px 0;border-bottom:1px solid var(--line)}
-  .capability>span{color:var(--subtle);font:500 11px var(--mono)}
+  .capability>span{color:var(--accent);font:600 11px var(--mono)}
   .capability h3{margin:0;font-size:18px;font-weight:630;letter-spacing:-.02em}
   .capability p{margin:0;color:var(--muted);font-size:14px;max-width:560px}
 
   .flow-section{background:var(--soft);border-block:1px solid var(--line)}
-  .flow{display:grid;grid-template-columns:.7fr 1.3fr;gap:78px;align-items:center;padding:88px 0}
+  .flow{display:grid;grid-template-columns:.7fr 1.3fr;gap:78px;align-items:center;padding:84px 0}
   .flow-steps{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:12px}
   .flow-steps>div{display:grid;gap:8px;min-height:110px;padding:18px;border:1px solid var(--line-strong);border-radius:10px;background:#fff}
   .flow-steps b{font:600 11px var(--mono);color:var(--subtle)}
   .flow-steps span{align-self:end;font-size:13px;font-weight:620}
-  .flow-steps i{color:#a5adba;font-style:normal}
-  .flow-steps .flow-focus{border-color:#b8ccfb;background:var(--accent-soft)}
-  .flow-steps .flow-focus b{color:var(--accent)}
+  .flow-steps i{color:#a6b0b3;font-style:normal}
+  .flow-steps .flow-focus{border-color:#a9ccd0;background:var(--accent-soft)}
+  .flow-steps .flow-focus b{color:var(--accent-dark)}
 
-  .start-section{display:grid;grid-template-columns:.72fr 1.28fr;gap:76px;align-items:start;padding:110px 0 94px}
-  .register-panel{padding:0}
-  .register-panel label{display:block;margin-bottom:8px;color:#4d5969;font-size:12px;font-weight:600}
+  .start-section{display:grid;grid-template-columns:.72fr 1.28fr;gap:76px;align-items:start;padding:106px 0 92px}
+  .register-panel label{display:block;margin-bottom:8px;color:#58676c;font-size:12px;font-weight:600}
   .input-row{display:grid;grid-template-columns:1fr auto;gap:8px}
   .input-row input{min-width:0;height:46px;padding:0 13px;border:1px solid var(--line-strong);border-radius:8px;background:#fff;color:var(--text);font:14px var(--sans);outline:none}
-  .input-row input:focus{border-color:#84a9ff;box-shadow:0 0 0 3px var(--accent-soft)}
-  .input-row button{height:46px;padding:0 17px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:650 13px var(--sans);cursor:pointer}
-  .input-row button:hover{background:var(--accent-dark)}
+  .input-row input:focus{border-color:#93bdc2;box-shadow:0 0 0 3px var(--accent-soft)}
+  .input-row button{height:46px;padding:0 17px;border:0;border-radius:8px;background:var(--accent-dark);color:#fff;font:650 13px var(--sans);cursor:pointer}
+  .input-row button:hover{background:#3e6d74}
   .input-row button:disabled{opacity:.55;cursor:default}
-  .register-panel pre,.docs-body pre,.code-block{margin:14px 0 0;padding:15px 16px;border:1px solid #202938;border-radius:9px;background:#111827;color:#e5e7eb;overflow:auto;white-space:pre;font:12px/1.7 var(--mono)}
+  .register-panel pre,.docs-body pre,.code-block{margin:14px 0 0;padding:15px 16px;border:1px solid #344449;border-radius:9px;background:#253237;color:#edf3f3;overflow:auto;white-space:pre;font:12px/1.7 var(--mono)}
   .register-panel small{display:block;margin-top:10px;color:var(--subtle);font-size:11px}
 
-  .code-section{display:grid;grid-template-columns:.75fr 1.25fr;gap:78px;align-items:center;padding:0 0 110px}
-  .code-copy a{display:inline-block;margin-top:20px;color:var(--accent);text-decoration:none;font-size:13px;font-weight:620}
+  .code-section{display:grid;grid-template-columns:.75fr 1.25fr;gap:78px;align-items:center;padding:0 0 108px}
+  .code-copy a{display:inline-block;margin-top:20px;color:var(--accent-dark);text-decoration:none;font-size:13px;font-weight:620}
   .code-copy a:hover{text-decoration:underline}
   .code-block{margin:0}
 
-  .resource-section{padding:0 0 105px}
+  .resource-section{padding:0 0 102px}
   .resource-list{border-top:1px solid var(--line)}
   .resource-row{display:flex;align-items:center;justify-content:space-between;gap:30px;padding:20px 0;border-bottom:1px solid var(--line);text-decoration:none}
   .resource-row>div{display:grid;grid-template-columns:180px 1fr;gap:24px;align-items:center}
   .resource-row strong{font-size:14px;font-weight:620}
   .resource-row span{color:var(--muted);font-size:13px}
-  .resource-row>b{color:#a0a7b3;font-size:16px;font-weight:500}
-  .resource-row:hover strong,.resource-row:hover>b{color:var(--accent)}
+  .resource-row>b{color:#a0a9ac;font-size:16px;font-weight:500}
+  .resource-row:hover strong,.resource-row:hover>b{color:var(--accent-dark)}
 
-  .pricing{display:grid;grid-template-columns:.6fr .8fr 1fr;gap:46px;align-items:start;padding:36px 0 100px;border-top:1px solid var(--line)}
+  .pricing{display:grid;grid-template-columns:.6fr .8fr 1fr;gap:46px;align-items:start;padding:36px 0 98px;border-top:1px solid var(--line)}
   .pricing h2{margin:0;font-size:34px}
   .price-line{display:grid;gap:5px}
-  .price-line strong{font-size:34px;font-weight:650;letter-spacing:-.04em}
+  .price-line strong{font-size:34px;font-weight:650;letter-spacing:-.04em;color:var(--accent-dark)}
   .price-line span,.pricing>p{margin:0;color:var(--muted);font-size:13px}
-  footer{padding:27px 0 34px;border-top:1px solid var(--line);background:#fff}
+  footer{padding:27px 0 34px;border-top:1px solid var(--line);background:#fbfdfd}
   .footer-grid{display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center}
   .footer-grid p{margin:0;text-align:center;color:var(--subtle);font-size:11px}
   .footer-grid>div{display:flex;justify-content:flex-end;gap:18px}
 
   .docs-layout{display:grid;grid-template-columns:190px minmax(0,760px);gap:82px;padding:80px 0 110px}
   .docs-nav{position:sticky;top:88px;height:max-content}
-  .docs-nav p{margin:20px 0 8px;color:#a0a7b3;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+  .docs-nav p{margin:20px 0 8px;color:#9aa5a8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
   .docs-nav p:first-child{margin-top:0}
-  .docs-nav a{display:block;padding:6px 0;color:#667085;text-decoration:none;font-size:12px}
-  .docs-nav a:hover{color:var(--accent)}
+  .docs-nav a{display:block;padding:6px 0;color:#6f7b80;text-decoration:none;font-size:12px}
+  .docs-nav a:hover{color:var(--accent-dark)}
   .docs-body>h1{margin:0 0 18px;font-size:clamp(46px,6vw,64px);line-height:1;font-weight:670;letter-spacing:-.05em}
   .docs-lead{margin:0 0 54px;color:var(--muted);font-size:16px}
   .docs-lead code,.doc-content code{font-family:var(--mono)}
   .doc-section{display:grid;grid-template-columns:62px minmax(0,1fr);padding:42px 0;border-top:1px solid var(--line)}
-  .doc-index{padding-top:5px;color:var(--accent);font:600 11px var(--mono)}
+  .doc-index{padding-top:5px;color:var(--accent-dark);font:600 11px var(--mono)}
   .doc-content h2{margin:0 0 13px;font-size:28px;line-height:1.15;font-weight:640;letter-spacing:-.03em}
   .doc-content p{margin:0 0 16px;color:var(--muted)}
   .doc-content pre{margin:18px 0}
@@ -440,12 +454,15 @@ function styles(): string {
   .note span{color:var(--muted);font-size:12px}
   .endpoint-list{border-top:1px solid var(--line)}
   .endpoint-list a{display:grid;grid-template-columns:1fr auto 18px;gap:16px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);text-decoration:none}
-  .endpoint-list a:hover span,.endpoint-list a:hover b{color:var(--accent)}
+  .endpoint-list a:hover span,.endpoint-list a:hover b{color:var(--accent-dark)}
   .endpoint-list span{font-size:13px}
-  .endpoint-list code{color:#9098a6;font-size:10px}
-  .endpoint-list b{color:#a3a9b4;font-weight:500}
+  .endpoint-list code{color:#909b9f;font-size:10px}
+  .endpoint-list b{color:#a3adaf;font-weight:500}
 
   @media(max-width:900px){
+    .hero{grid-template-columns:1fr;gap:30px;padding-top:84px}
+    .hero-brand{justify-content:flex-start;min-height:0}
+    .hero-brand img{width:min(320px,72vw)}
     .flow,.start-section,.code-section,.pricing{grid-template-columns:1fr;gap:38px}
     .flow-steps{max-width:680px}
     .capability{grid-template-columns:55px 1fr}
@@ -456,27 +473,30 @@ function styles(): string {
   }
   @media(max-width:680px){
     .wrap{width:min(100% - 28px,1080px)}
-    .nav{height:60px}
+    .nav{height:62px}
     .nav-links a:not(.nav-cta){display:none}
-    .hero{padding:72px 0 52px}
+    .brand img{width:36px;height:19px}
+    .brand span{font-size:12px}
+    .hero{padding:68px 0 44px}
     .hero h1{font-size:44px}
     .hero-lead{font-size:16px}
     .hero-actions{align-items:flex-start;flex-direction:column;gap:14px}
-    .facts{grid-template-columns:1fr 1fr;margin-top:60px}
+    .hero-brand img{width:min(280px,78vw)}
+    .facts{grid-template-columns:1fr 1fr}
     .facts div:nth-child(2){border-right:0}
     .facts div:nth-child(-n+2){border-bottom:1px solid var(--line)}
     .facts div:nth-child(3){padding-left:0}
-    .product-section{padding:76px 0}
+    .product-section{padding:74px 0}
     .capability{grid-template-columns:42px 1fr;gap:14px}
-    .flow{padding:72px 0}
+    .flow{padding:70px 0}
     .flow-steps{grid-template-columns:1fr}
     .flow-steps i{transform:rotate(90deg);justify-self:center}
-    .start-section{padding:78px 0 70px}
+    .start-section{padding:76px 0 68px}
     .input-row{grid-template-columns:1fr}
-    .code-section{padding-bottom:76px}
-    .resource-section{padding-bottom:76px}
+    .code-section{padding-bottom:74px}
+    .resource-section{padding-bottom:74px}
     .resource-row>div{grid-template-columns:1fr;gap:3px}
-    .pricing{padding-bottom:74px}
+    .pricing{padding-bottom:72px}
     .footer-grid{grid-template-columns:1fr;gap:18px;text-align:center}
     .footer-grid>div{justify-content:center}
     .doc-section{grid-template-columns:1fr;gap:9px;padding:34px 0}
