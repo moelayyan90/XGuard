@@ -16,7 +16,8 @@ async function challengeFor(verifier: string): Promise<string> {
     new TextEncoder().encode(verifier),
   );
   let binary = "";
-  for (const byte of new Uint8Array(digest)) binary += String.fromCharCode(byte);
+  for (const byte of new Uint8Array(digest))
+    binary += String.fromCharCode(byte);
   return btoa(binary)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
