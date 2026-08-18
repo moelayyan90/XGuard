@@ -22,13 +22,17 @@ if (
   throw new Error("OpenAPI document did not parse into the expected contract");
 for (const marker of [
   "openapi: 3.1.0",
+  "  /.well-known/payment-manifest:",
   "  /v1/register:",
   "  /v1/topups/intents:",
   "  /supported:",
   "  /verify:",
   "  /settle:",
-  "mode: { const: mainnet }",
+  "mode: { const: production }",
   'network: { const: "eip155:8453" }',
+  'amountUsd: { const: "0.03" }',
+  "amountMicroUsd: { const: 30000 }",
+  "event: { const: accepted_authenticated_economic_attempt }",
 ]) {
   if (!openapi.includes(marker))
     throw new Error(`OpenAPI mainnet boundary is missing: ${marker}`);
