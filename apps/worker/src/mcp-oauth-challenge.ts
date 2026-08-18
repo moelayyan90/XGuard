@@ -27,7 +27,8 @@ export async function mcpOAuthChallengeResponse(
         "Access-Control-Allow-Headers":
           "Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name, MCP-Session-Id",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Expose-Headers": "WWW-Authenticate, MCP-Protocol-Version",
+        "Access-Control-Expose-Headers":
+          "WWW-Authenticate, MCP-Protocol-Version",
         "X-Content-Type-Options": "nosniff",
       },
     },
@@ -36,7 +37,8 @@ export async function mcpOAuthChallengeResponse(
 
 async function requestedToolName(request: Request): Promise<string | null> {
   const headerName = request.headers.get("mcp-name");
-  if (headerName !== null && headerName !== "") return decodeHeaderValue(headerName);
+  if (headerName !== null && headerName !== "")
+    return decodeHeaderValue(headerName);
 
   const contentType =
     request.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase() ?? "";
