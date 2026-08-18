@@ -10,14 +10,12 @@ import {
   merchantBalance,
   reserveSettlementFee,
 } from "./mainnet-billing.js";
-import { authorizeMerchantScope } from "./mainnet-revenue-hardening.js";
-import { parseMainnetFacilitatorRequest } from "./mainnet-protocol.js";
 import {
-  XGUARD_ATTEMPT_EVENT,
   XGUARD_ATTEMPT_FEE_MICRO_USD,
   XGUARD_ATTEMPT_FEE_USD,
-  XGUARD_ATTEMPT_MODEL,
 } from "./public-payment-contract.js";
+import { authorizeMerchantScope } from "./mainnet-revenue-hardening.js";
+import { parseMainnetFacilitatorRequest } from "./mainnet-protocol.js";
 import {
   adaptCompatibilityResponse,
   normalizeX402CompatibilityRequest,
@@ -47,6 +45,7 @@ const delegateFetch = mainnetModern.fetch as unknown as CoreFetch;
 const legacyFetch = legacyMonetized.fetch as unknown as CoreFetch;
 const legacyScheduled = legacyMonetized.scheduled as unknown as CoreScheduled;
 const ATTEMPT_FEE_MICRO_USD = XGUARD_ATTEMPT_FEE_MICRO_USD;
+const ATTEMPT_FEE_USD = XGUARD_ATTEMPT_FEE_USD;
 const BILLABLE_DISCOVERY_PATHS = new Map<string, string>([
   ["/discovery/search", "discovery.search"],
   ["/discovery/resources", "discovery.resources"],
@@ -212,7 +211,7 @@ async function billExecution(input: {
       return jsonResponse(
         {
           error: "xguard_service_balance_required",
-          message: `A $${XGUARD_ATTEMPT_FEE_USD} prepaid XGuard attempt fee is required before accepted economic execution`,
+          message: `A $${ATTEMPT_FEE_USD} prepaid XGuard attempt fee is required before accepted economic execution`,
           requiredFeeMicroUsd: ATTEMPT_FEE_MICRO_USD,
           availableMicroUsd: balance?.availableMicroUsd ?? 0,
           topUpEndpoint: "/v1/topups/intents",
@@ -228,7 +227,7 @@ async function billExecution(input: {
 
   const response = await input.execute();
   const headers = new Headers(response.headers);
-  headers.set("X-XGuard-Attempt-Fee-USD", XGUARD_ATTEMPT_FEE_USD);
+  headers.set("X-XGuard-Attempt-Fee-USD", ATTEMPT_FEE_USD);
   headers.set(
     "X-XGuard-Attempt-Fee-Micro-USD",
     String(ATTEMPT_FEE_MICRO_USD),
@@ -280,10 +279,10 @@ async function rewritePublicPricing(
     try {
       const body = (await response.clone().json()) as Record<string, unknown>;
       body.price = {
-        amount: XGUARD_ATTEMPT_FEE_USD,
+        amount: ATTEMPT_FEE_USD,
         currency: "USD",
-        event: XGUARD_ATTEMPT_EVENT,
-        model: XGUARD_ATTEMPT_MODEL,
+        event: "accepted_authenticated_economic_attempt",
+        model: "merchant_prepaid_nonrefundable_attempt_fee",
         dedupe: "one fee per logicalPaymentKey",
       };
       return jsonFromResponse(response, body);
@@ -298,18 +297,17 @@ async function rewritePublicPricing(
       url.pathname === "/docs" ||
       url.pathname === "/quickstart")
   ) {
-    const fee = `$${XGUARD_ATTEMPT_FEE_USD}`;
     let html = await response.text();
     html = html
-      .replaceAll("$0.002", fee)
-      .replaceAll("$0.04", fee)
+      .replaceAll("$0.002", `$${ATTEMPT_FEE_USD}`)
+      .replaceAll("$0.04", `$${ATTEMPT_FEE_USD}`)
       .replace(
-        `Settlement fee</dt><dd>${fee}`,
-        `Attempt fee</dt><dd>${fee}`,
+        `Settlement fee</dt><dd>$${ATTEMPT_FEE_USD}`,
+        `Attempt fee</dt><dd>$${ATTEMPT_FEE_USD}`,
       )
       .replace(
         "Failed / malformed</dt><dd>$0",
-        `Downstream failure</dt><dd>${fee}`,
+        `Downstream failure</dt><dd>$${ATTEMPT_FEE_USD}`,
       )
       .replace(
         "Charge follows delivered value.",
@@ -317,7 +315,7 @@ async function rewritePublicPricing(
       )
       .replace(
         "No monthly plan is required for the settlement safety path.",
-        `The ${fee} attempt fee is earned once an authenticated, parseable economic request is accepted. Downstream failure does not refund it.`,
+        `The $${ATTEMPT_FEE_USD} attempt fee is earned once an authenticated, parseable economic request is accepted. Downstream failure does not refund it.`,
       )
       .replace(
         "SUCCESSFUL BILLABLE SETTLEMENT",
@@ -325,7 +323,7 @@ async function rewritePublicPricing(
       )
       .replace(
         "FAILED SETTLEMENT</span><b>$0",
-        `DOWNSTREAM FAILURE</span><b>${fee}`,
+        `DOWNSTREAM FAILURE</span><b>$${ATTEMPT_FEE_USD}`,
       )
       .replace(
         "MALFORMED REQUEST</span><b>$0",
@@ -336,8 +334,8 @@ async function rewritePublicPricing(
         "IDEMPOTENT RETRY</span><b>$0 ADDITIONAL",
       )
       .replace(
-        `${fee} for a successful billable settlement. Failed, malformed and duplicate traffic is not earned settlement revenue.`,
-        `${fee} once per authenticated, parseable economic attempt. Downstream failure does not refund the attempt fee. Malformed or unauthenticated requests and idempotent retries do not incur an additional attempt fee.`,
+        `$${ATTEMPT_FEE_USD} for a successful billable settlement. Failed, malformed and duplicate traffic is not earned settlement revenue.`,
+        `$${ATTEMPT_FEE_USD} once per authenticated, parseable economic attempt. Downstream failure does not refund the attempt fee. Malformed or unauthenticated requests and idempotent retries do not incur an additional attempt fee.`,
       );
     const headers = new Headers(response.headers);
     headers.delete("content-length");
@@ -366,18 +364,21 @@ function jsonFromResponse(
   });
 }
 
-function jsonResponse(value: unknown, status: number): Response {
+function jsonResponse(
+  value: Record<string, unknown>,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(value), {
     status,
     headers: {
-      "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
+      "Content-Type": "application/json; charset=utf-8",
+      ...extraHeaders,
     },
   });
 }
 
 function errorCode(error: unknown): string {
-  if (!(error instanceof Error)) return "unknown_error";
-  return error.message.slice(0, 96).replace(/[^a-zA-Z0-9_.:-]/g, "_");
+  return error instanceof Error && error.message ? error.message : "unknown_error";
 }
