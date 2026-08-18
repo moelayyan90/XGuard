@@ -1,148 +1,76 @@
 # XGuard Universal Billing & Trust Layer
 
-## Goal
+## Primary product
 
-XGuard should be invokable as a common billing and trust layer across heterogeneous payment rails without requiring each end merchant to learn, install, or directly integrate XGuard.
+XGuard's primary user-facing product is a **universal multi-merchant payment cart**.
+
+A payer can collect multiple independent Payment Claims, review one combined checkout, approve once, and let XGuard execute or orchestrate the allocations to their intended recipients.
+
+```text
+collect claims -> reserve -> review once -> approve once -> pay everyone -> unified receipt
+```
+
+See `docs/UNIVERSAL_MULTI_MERCHANT_CHECKOUT.md` and `specs/batch-payment-intent.schema.json`.
+
+## Universal payment event layer
+
+Under the checkout, each supported rail adapter converts native provider activity into one XGuard payment event envelope so XGuard can normalize verification, truth, billing, reconciliation, and receipts.
 
 The universal unit is a **payment event**, not a specific protocol request.
 
-Every supported rail adapter converts native provider events into one XGuard payment event envelope, then XGuard performs the same four logical stages:
+## Execution modes
 
-1. `observe` — bind the provider event to an immutable logical payment identity.
-2. `verify` — validate provider authenticity, amount, currency/asset, merchant/payee, and event transition.
-3. `resolve` — classify payment truth (`FINALIZED`, `PENDING`, `PROVEN_FAILED`, `CONFLICT`, or provider-specific reversible state mapped conservatively).
-4. `bill` — create one idempotent XGuard usage/billing event under the rail's commercial terms only when the configured billable condition is satisfied.
+### Atomic onchain batch
 
-The merchant-facing payment amount and recipient remain unchanged unless the payment rail itself explicitly supports a disclosed platform/application fee and the rail operator has authorized XGuard to participate in that fee model.
+For stablecoins and compatible wallet/agent rails, one signed batch intent binds all recipients, amounts, fees, expiry, and the claims commitment. A compatible router or signature-transfer mechanism executes the transfers atomically when the rail supports it.
 
-## Integration modes
+### Platform split
 
-XGuard cannot be magically inserted into unrelated payment traffic. The layer becomes universal by supporting all legitimate integration boundaries exposed by rails and platforms.
+For regulated marketplace/payment platforms that support multi-seller or split settlement, XGuard supplies the allocation plan while the PSP performs the customer charge and distribution to its onboarded recipient accounts.
 
-### Mode A — Inline rail hook
+### Coordinated child payments
 
-Best for programmable facilitators, wallets, processors, payment orchestrators, and x402-style rails.
+When unrelated rails cannot share one native transaction, XGuard may provide one approval UX that authorizes a bounded set of child payments. The receipt must clearly show that these are multiple underlying payment transactions, not misrepresent them as a single card/acquiring transaction.
 
-```text
-payer -> rail -> XGuard pre/settlement hook -> rail submit/capture -> XGuard truth/billing -> payee
-```
+## Payment Claim
 
-XGuard can participate before and after the rail's irreversible submit/capture boundary. This is the strongest mode for replay protection, duplicate-submit prevention, ambiguity recovery, and pre-execution policy.
+Each merchant/service exposes an authenticated claim with:
 
-### Mode B — Provider webhook/event stream
+- merchant/beneficiary;
+- amount and currency/asset;
+- destination rail;
+- invoice/order/resource reference;
+- expiry;
+- provider evidence or merchant signature.
 
-Best for card and wallet processors where the provider owns the payment execution path.
+Merchants do not need an XGuard account when their platform already exposes or translates the claim for them.
 
-```text
-payer -> processor -> merchant
-                 |
-                 +-> signed webhook/event -> XGuard -> truth + billing + reconciliation
-```
+## Settlement Truth and retry safety
 
-This does not intercept or modify the provider's transaction. XGuard is automatically invoked by provider events after one platform/account-level configuration.
+Settlement Truth Standard remains the common result/evidence model. Retry safety remains a supporting invariant: ambiguous child payments must not be blindly duplicated.
 
-Examples of provider event families include payment authorization, capture/success, pending, refund, reversal, dispute, and payout events.
+These are safety primitives supporting the universal cart, not the primary product story.
 
-### Mode C — Platform-level fan-in
+## Billing
 
-Best for marketplaces, payment platforms, Connect-style systems, and multi-merchant PSP accounts.
+Pricing is configured per rail and can include:
 
-A single platform integration receives events for many underlying merchants/connected accounts and forwards or routes them through XGuard. The goal is one integration covering many merchants rather than merchant-by-merchant onboarding.
-
-### Mode D — Ledger/reconciliation feed
-
-For rails that cannot invoke XGuard synchronously but can export authenticated settlement or reconciliation records, XGuard ingests signed/bounded records and supplies independent billing/truth reconciliation. This is weaker than inline mode and must never be advertised as pre-settlement protection.
-
-## Universal payment event envelope
-
-Each adapter must normalize native provider evidence into at least:
-
-- `railId`
-- `provider`
-- `providerEventId`
-- `logicalPaymentId`
-- `merchant/payee identity`
-- `payer identity` when legally and technically available
-- `amount`
-- `currency/asset`
-- `eventType`
-- `providerState`
-- `occurredAt`
-- `providerSignature/evidence reference`
-- `reversibleUntil` or finality evidence when applicable
-- `parent payment / refund / reversal / dispute relationship`
-
-Provider credentials and raw secrets must never be persisted in the envelope.
-
-## Payment truth is rail-specific
-
-`FINALIZED` must mean the strongest state the rail can actually prove; XGuard must not pretend card authorization equals final settlement or that a processor callback equals blockchain finality.
-
-Examples:
-
-- blockchain rail: independently confirmed expected transfer/finality.
-- card/wallet processor: captured/succeeded event may be `SETTLED_PROVIDER_CONFIRMED` internally but still reversible by refund/chargeback; finality policy must remain explicit.
-- asynchronous bank/open-banking rail: pending remains pending until the provider's final/settled state or reconciled bank evidence arrives.
-
-The portable external profile should preserve the core truth states while retaining provider-specific reversibility metadata.
-
-## Billing model
-
-Pricing is configured per rail and per event class.
-
-Supported commercial patterns:
-
-- per finalized/captured payment;
-- percentage or share of a platform/processor fee when contractually supported;
+- disclosed payer batch convenience fee;
+- platform/rail usage fee;
+- per-child settlement fee;
 - volume tiers;
-- monthly platform fee plus usage;
-- premium ambiguity/recovery/reconciliation fee;
-- no charge on failed/duplicate/replayed events unless the commercial contract explicitly prices a separate inspection service.
+- share of an existing platform fee where contractually supported.
 
-No universal fee is assumed.
+The buyer-approved merchant amounts and recipients must remain visible and bound to the authorization. XGuard must not silently divert funds.
 
-## Adapter contract
+## Necessary-layer thesis
 
-Each rail adapter should implement:
+The adoption loop is:
 
-```ts
-interface UniversalRailAdapter {
-  identifyRailPrincipal(input: unknown): Promise<RailPrincipal>;
-  authenticateEvent(input: unknown): Promise<AuthenticatedProviderEvent>;
-  normalize(input: AuthenticatedProviderEvent): Promise<UniversalPaymentEvent>;
-  resolveTruth(event: UniversalPaymentEvent): Promise<PaymentTruth>;
-  classifyBilling(event: UniversalPaymentEvent, truth: PaymentTruth): Promise<BillingDecision>;
-}
-```
+> **If a merchant wants to be payable inside the Pay-All experience, its platform exposes an XGuard-compatible Payment Claim. If a wallet wants one-click multi-service checkout, it implements XGuard Batch Payment Intents.**
 
-Inline-capable adapters may additionally expose `prepare`, `observeSubmission`, and `resolveSubmission` hooks from the Settlement Truth Standard.
+This is the target network effect: XGuard becomes the common cart and batch authorization layer between payable claims and heterogeneous payment rails.
 
-## Initial adapter families
+## Honest boundary
 
-1. x402/facilitator adapters — inline settlement-truth mode.
-2. Stripe platform/Connect webhook adapter — payment intent, charge, refund, dispute, payout evidence.
-3. PayPal REST webhook adapter — authorization/capture/pending/refund/reversal events.
-4. Adyen Standard webhook adapter — authorization, capture/settlement-related, refund, dispute and payout events.
-5. Generic signed webhook adapter for PSPs and wallets.
-6. Generic reconciliation-import adapter for processors/banks that expose reports rather than real-time hooks.
-
-Adapters are only production-supported after provider-native signature/authentication verification and conformance tests exist.
-
-## What 'called on every payment' means operationally
-
-For a given rail/platform, XGuard is considered universally invoked only when the integration boundary covers the entire relevant account/platform scope and every eligible payment event is routed through XGuard automatically. This can be:
-
-- an inline rail hook installed once by the processor/facilitator;
-- a company/platform-level webhook subscription;
-- a platform event stream covering all connected merchants;
-- an authenticated reconciliation feed covering the full payment population.
-
-It does **not** mean XGuard can observe or charge unrelated transactions from providers that have not integrated or authorized the layer.
-
-## Product invariant
-
-The long-term product is:
-
-> XGuard = one billing + trust control plane across payment rails.
-
-Merchants should not need separate XGuard integration when their payment platform has already embedded XGuard. Rails integrate once; XGuard normalizes truth, billing, reliability, and reconciliation across the payments behind them.
+XGuard cannot turn arbitrary unrelated card merchants into one native card transaction without a licensed marketplace/merchant-of-record/payment platform that supports that model. Where this is unavailable, XGuard must either use multiple child transactions with one explicit user mandate or not support that combination.
