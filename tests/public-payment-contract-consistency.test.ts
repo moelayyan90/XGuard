@@ -6,16 +6,38 @@ import {
   XGUARD_ATTEMPT_FEE_USD,
 } from "../apps/worker/src/public-payment-contract.js";
 
-const runtimeSource = readFileSync(
-  new URL("../apps/worker/src/monetized-mainnet.ts", import.meta.url),
-  "utf8",
-);
-const wranglerSource = readFileSync(
-  new URL("../apps/worker/wrangler.mainnet.jsonc", import.meta.url),
-  "utf8",
-);
-const pricingDocs = readFileSync(new URL("../PRICING.md", import.meta.url), "utf8");
-const billingDocs = readFileSync(new URL("../BILLING.md", import.meta.url), "utf8");
+function read(path: string): string {
+  return readFileSync(new URL(path, import.meta.url), "utf8");
+}
+
+const runtimeSource = read("../apps/worker/src/monetized-mainnet.ts");
+const discoverySource = read("../apps/worker/src/discovery.ts");
+const wranglerSource = read("../apps/worker/wrangler.mainnet.jsonc");
+const staticOpenApi = read("../docs/openapi.yaml");
+
+const canonicalPublicDocs = [
+  "../PRICING.md",
+  "../BILLING.md",
+  "../QUICKSTART.md",
+  "../UNIT_ECONOMICS.md",
+  "../TREASURY.md",
+  "../PAYOUTS.md",
+  "../DEPLOYMENT.md",
+  "../ARCHITECTURE.md",
+  "../RECONCILIATION.md",
+  "../SECURITY.md",
+  "../docs/API.md",
+  "../docs/PAYMENTS.md",
+  "../docs/FACILITATORS.md",
+].map(read);
+
+const forbiddenLegacyContractPhrases = [
+  "successful_billable_settlement",
+  "$0.002 per successful billable settlement",
+  "$0.04 per accepted authenticated economic attempt",
+  "Successful finalized x402 settlement | $0.0020",
+  "XGuard's canonical x402 economic-attempt fee is **$0.04**",
+];
 
 describe("canonical public payment contract consistency", () => {
   it("keeps runtime fee execution bound to the public contract constants", () => {
@@ -23,7 +45,9 @@ describe("canonical public payment contract consistency", () => {
     expect(runtimeSource).toContain("XGUARD_ATTEMPT_FEE_USD");
     expect(runtimeSource).toContain("XGUARD_ATTEMPT_EVENT");
     expect(runtimeSource).not.toContain("const ATTEMPT_FEE_MICRO_USD = 40_000");
-    expect(runtimeSource).not.toContain('headers.set("X-XGuard-Attempt-Fee-USD", "0.04")');
+    expect(runtimeSource).not.toContain(
+      'headers.set("X-XGuard-Attempt-Fee-USD", "0.04")',
+    );
   });
 
   it("keeps deployment configuration on the canonical micro-USD amount", () => {
@@ -37,12 +61,35 @@ describe("canonical public payment contract consistency", () => {
     );
   });
 
-  it("keeps pricing and billing documentation on the attempt-fee model", () => {
-    for (const document of [pricingDocs, billingDocs]) {
+  it("keeps public discovery generated from the canonical contract", () => {
+    expect(discoverySource).toContain("XGUARD_ATTEMPT_FEE_USD");
+    expect(discoverySource).toContain("XGUARD_ATTEMPT_EVENT");
+    expect(discoverySource).toContain("XGUARD_ATTEMPT_BILLING");
+    expect(discoverySource).toContain("XGUARD_ATTEMPT_MODEL");
+    expect(discoverySource).not.toContain('feeUsd: "0.002"');
+    expect(discoverySource).not.toContain(
+      'event: "successful_billable_settlement"',
+    );
+  });
+
+  it("keeps the static OpenAPI contract on the canonical x402 fee", () => {
+    expect(staticOpenApi).toContain('amountUsd: { const: "0.03" }');
+    expect(staticOpenApi).toContain("amountMicroUsd: { const: 30000 }");
+    expect(staticOpenApi).toContain(
+      "event: { const: accepted_authenticated_economic_attempt }",
+    );
+    expect(staticOpenApi).not.toContain("successful_billable_settlement");
+    expect(staticOpenApi).not.toContain(
+      'amount: { const: "0.002" }',
+    );
+  });
+
+  it("prevents canonical public docs from regressing to an older x402 contract", () => {
+    for (const document of canonicalPublicDocs) {
       expect(document).toContain(`$${XGUARD_ATTEMPT_FEE_USD}`);
-      expect(document).toContain("accepted authenticated");
-      expect(document).not.toContain("$0.002 per successful billable settlement");
-      expect(document).not.toContain("Successful finalized x402 settlement | $0.0020");
+      for (const legacy of forbiddenLegacyContractPhrases) {
+        expect(document).not.toContain(legacy);
+      }
     }
   });
 });
