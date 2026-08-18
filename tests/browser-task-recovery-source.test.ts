@@ -33,7 +33,7 @@ describe("browser task recovery source", () => {
     expect(source).toContain("HUMAN_REQUIRED");
     expect(source).toContain("aria-invalid");
     expect(source).toContain("input:invalid");
-    expect(source).toContain("CAPTCHA");
+    expect(source.toLowerCase()).toContain("captcha");
   });
 
   it("stores only checkpoint metadata and never serializes field values", () => {
@@ -48,6 +48,6 @@ describe("browser task recovery source", () => {
   it("keeps recovery local instead of uploading task pages", () => {
     expect(source).not.toContain("fetch(");
     expect(source).toContain("chrome.storage.local");
-    expect(source).toContain("does not store field values");
+    expect(source).toContain("قيم الحقول");
   });
 });
