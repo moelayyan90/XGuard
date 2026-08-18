@@ -2,6 +2,19 @@
   "name": "@xguard/sdk",
   "version": "0.1.0-alpha.1",
   "description": "Drop-in x402 facilitator and headless automated-payment guard for XGuard",
+  "keywords": [
+    "xguard",
+    "x402",
+    "mcp",
+    "ai-agents",
+    "payments",
+    "payment-safety",
+    "payment-guard",
+    "payment-coordination",
+    "facilitator",
+    "base",
+    "usdc"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
