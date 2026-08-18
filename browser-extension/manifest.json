@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "XGuard Payment Layer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A floating payment layer that remembers payees, defers bills, coordinates single or multi-payment sessions, and supports payment splitting without merchant integration.",
   "homepage_url": "https://xguardgate.com/",
   "permissions": ["storage"],

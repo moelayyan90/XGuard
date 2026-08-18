@@ -33,7 +33,7 @@ jobs:
           const manifest = JSON.parse(fs.readFileSync("browser-extension/manifest.json", "utf8"));
 
           if (manifest.manifest_version !== 3) throw new Error("Manifest V3 required");
-          if (manifest.version !== "0.2.0") throw new Error("Unexpected store version");
+          if (manifest.version !== "0.2.1") throw new Error("Unexpected store version");
           if (JSON.stringify(manifest.permissions) !== JSON.stringify(["storage"])) {
             throw new Error("Extension must keep the minimal storage permission only");
           }
