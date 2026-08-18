@@ -20,27 +20,43 @@ describe("buyer browser surface source invariants", () => {
     expect(source).not.toMatch(
       /querySelectorAll\([^)]*(?:password|cc-number|card-number|cvv|cvc)/i,
     );
-    expect(source).toContain("Use XGuard");
-    expect(source).toContain("Continue without XGuard");
+    expect(source).toContain("احجز هذه الدفعة");
+    expect(source).toContain("ادفع الكل");
+    expect(source).toContain("تحقق من هذه الدفعة عبر XGuard");
   });
 
-  it("sends payment context only from the explicit Use XGuard click path", async () => {
+  it("keeps Pay All local and sends payment-decision context only from explicit verification", async () => {
     const source = await readFile(contentPath, "utf8");
-    const sendIndex = source.indexOf("chrome.runtime.sendMessage");
-    const clickIndex = source.indexOf(
-      'shadow.querySelector(".use").addEventListener("click"',
+
+    const verifyFunctionIndex = source.indexOf(
+      "async function verifyCurrent()",
     );
-    expect(clickIndex).toBeGreaterThan(-1);
-    expect(sendIndex).toBeGreaterThan(clickIndex);
-    expect(source.slice(0, clickIndex)).not.toContain(
-      "chrome.runtime.sendMessage",
+    const decisionMessageIndex = source.indexOf(
+      'type: "XGUARD_PAYMENT_DECISION"',
     );
+    expect(verifyFunctionIndex).toBeGreaterThan(-1);
+    expect(decisionMessageIndex).toBeGreaterThan(verifyFunctionIndex);
+
+    const beforeVerify = source.slice(0, verifyFunctionIndex);
+    expect(beforeVerify).not.toContain('type: "XGUARD_PAYMENT_DECISION"');
+
+    expect(source).toContain('type: "XGUARD_PAY_ALL_ADD"');
+    expect(source).toContain('type: "XGUARD_PAY_ALL_START"');
+  });
+
+  it("keeps the Pay All cart in extension-local storage", async () => {
+    const worker = await readFile(workerPath, "utf8");
+    expect(worker).toContain('const CART_KEY = "xguardPayAllCart"');
+    expect(worker).toContain('const SESSION_KEY = "xguardPayAllSession"');
+    expect(worker).toContain("chrome.storage.local");
+    expect(worker).not.toContain("/v1/pay-all");
   });
 
   it("limits network host permission to XGuard while detecting checkout locally", async () => {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     expect(manifest.host_permissions).toEqual(["https://xguardgate.com/*"]);
     expect(manifest.content_scripts[0].all_frames).toBe(false);
+    expect(manifest.content_scripts[0].matches).toEqual(["https://*/*"]);
   });
 
   it("generates an idempotency request ID in the service worker", async () => {

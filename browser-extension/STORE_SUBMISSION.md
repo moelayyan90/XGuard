@@ -1,54 +1,53 @@
-# Browser Store Submission — XGuard Payment Decision 0.1.0
-
-This file contains the exact submission copy and privacy disclosures for the first public Chrome Web Store and Microsoft Edge Add-ons release.
+# Browser Store Submission — XGuard Pay All 0.1.0
 
 ## Package
 
-- Product name: **XGuard Payment Decision**
+- Product name: **XGuard Pay All**
 - Version: **0.1.0**
 - Manifest: **Manifest V3**
 - Homepage: `https://xguardgate.com/`
 - Privacy policy: `https://github.com/moelayyan90/XGuard/blob/main/browser-extension/PRIVACY.md`
 - Support/project URL: `https://github.com/moelayyan90/XGuard`
-- Runtime package artifact: `xguard-payment-decision-0.1.0.zip`
 
 ## Single purpose
 
-> Offer an optional buyer-side payment verification decision before checkout and return transaction evidence after the user explicitly opts in.
+> Provide a buyer-side floating payment cart on HTTPS checkout pages so a user can collect payments from multiple websites, review them in one place, coordinate a Pay All session, and optionally verify an individual payment with XGuard.
 
 ## Short description
 
-> Optional buyer-side payment verification and transaction evidence before checkout. Showing or skipping XGuard is free.
+> Save checkout payments from different sites into one floating XGuard cart and coordinate Pay All without merchant integration.
 
 ## Full description
 
-XGuard Payment Decision adds an optional buyer-side verification step before checkout. When a checkout-like HTTPS page is detected, the extension can show a small XGuard prompt. Detection happens locally in the browser.
+XGuard Pay All is a buyer-side browser layer. When the user reaches a likely checkout page, the extension detects checkout context locally and shows a small floating XGuard control.
 
-No checkout context is sent to XGuard merely because the prompt appears. If the user chooses **Continue without XGuard**, no checkout context is sent to XGuard and no XGuard decision fee is earned.
+The user can save the current payment into a local Pay All cart, continue browsing to other websites, add more payments, and then start one Pay All session. XGuard guides the user through the saved merchant checkouts in order and tracks the local child-payment sequence.
 
-If the user chooses **Use XGuard**, the extension sends a limited payment-intent record — such as the declared amount, currency, merchant hostname/origin, and detected provider — to `xguardgate.com`. XGuard returns an ALLOW, REVIEW, or BLOCK decision together with an evidence record. XGuard does not execute the merchant payment.
+The cart is stored in `chrome.storage.local`. The extension does not require the merchant to install XGuard, create an API key, or modify its checkout.
 
-The extension uses a dedicated Buyer Pass stored locally in the browser. It does not need a merchant API key and does not put its Buyer Pass into merchant pages. XGuard Payment Decision does not request a card number, CVV/CVC, PIN, banking password, wallet private key, seed phrase, or mnemonic.
+The current browser-only Pay All mode does not pretend that unrelated merchant card transactions have become one native bank debit. The underlying merchant payment remains the merchant's normal checkout and may still require the user's card/wallet action or bank authentication. A true one-debit/many-recipient mode requires an authorized payment rail that supports batch authorization.
 
-A prepaid XGuard service balance is used only for completed XGuard decision results. Showing the offer and skipping it are free.
+The extension also retains the optional XGuard payment-decision feature. When the user explicitly asks XGuard to verify the current payment, a limited payment-intent record is sent to `xguardgate.com` and XGuard returns a decision/evidence result.
+
+XGuard Pay All does not request the user's full card number, CVV/CVC, PIN, online-banking password, wallet private key, seed phrase, or mnemonic.
 
 ## Suggested category
 
-**Shopping** — payment/checkout utility.
+**Shopping** — checkout/payment utility.
 
 ## Permission justifications
 
 ### `storage`
 
-Required to store the browser's XGuard Buyer Pass, Buyer Pass identifier, and local service-balance/top-up state. This information is kept in extension-local storage and is not written into merchant pages.
+Required to store the local Pay All cart, active Pay All session, and the optional XGuard Buyer Pass used only for explicit XGuard service requests.
 
 ### `https://xguardgate.com/*`
 
-Required for the service worker and extension options page to create/use a Buyer Pass, request a payment decision, read the XGuard service balance, and verify XGuard balance top-ups.
+Required only for explicit XGuard service features such as payment verification, Buyer Pass creation, and service-balance operations.
 
 ### Checkout-page access: `https://*/*`
 
-Required because checkout pages can exist on any HTTPS merchant domain. The content script performs local checkout detection and shows the optional XGuard offer. Page context is not transmitted simply because a page is scanned or the offer is displayed. A limited payment-intent record is transmitted only after the user explicitly selects **Use XGuard**.
+Required because checkout pages can exist on any HTTPS merchant domain. The content script performs local checkout detection and renders the floating XGuard Pay All interface. Merchant pages do not need to integrate XGuard.
 
 The extension intentionally does **not** run on `http://*/*`.
 
@@ -56,50 +55,47 @@ The extension intentionally does **not** run on `http://*/*`.
 
 **No.** The extension package contains its executable JavaScript. It does not download or execute remote JavaScript, WebAssembly, or other remote code.
 
-## Data disclosure
+## Website content and data disclosure
 
-Disclose the following because they can be transmitted after explicit user opt-in:
+The extension locally inspects limited **Website content** needed to identify a checkout and visible payment total. The Pay All cart can locally store the exact checkout URL, merchant hostname, page title, amount, currency, provider label, and cart/session state.
 
-- **Website content** — limited checkout facts derived from the current page.
-- **Web history / current site information** — merchant hostname/origin associated with the opted-in checkout.
-- **Financial and payment information** — declared transaction amount/currency and, only for an XGuard service-balance top-up, a public Base transaction hash.
+The current Pay All cart is browser-local and is not uploaded to XGuard servers.
 
-Do **not** claim that the extension collects card numbers, CVV/CVC, PINs, banking passwords, wallet private keys, seed phrases, or mnemonics.
+Only after explicit use of the optional XGuard verification feature can a limited payment-intent record be sent to `xguardgate.com`, including amount/currency, merchant origin, detected provider, and detection confidence.
 
 ### Data use
 
 - App functionality: **Yes**
-- Fraud prevention / security / payment-safety decision: **Yes**
+- Payment safety / verification: **Yes, only when explicitly requested**
 - Analytics: **No**
 - Advertising: **No**
 - Personalized advertising: **No**
 - Sale of user data: **No**
 - Cross-site behavioral profiling: **No**
 
-Complete the Chrome Web Store Limited Use certification consistently with these disclosures.
+## Sensitive-data statement
 
-## Chrome Web Store assets
+The extension does not request, read, store, or transmit:
 
-- Store icon: `store-assets/icon128.png` — 128×128
-- Required screenshot: `store-assets/screenshot-1280x800.png` — 1280×800
-- Small promotional tile: `store-assets/small-promo-440x280.png` — 440×280
-- Optional marquee tile: `store-assets/large-promo-1400x560.png` — 1400×560
+- full card PAN;
+- CVV/CVC;
+- card PIN;
+- online banking credentials;
+- wallet private keys;
+- seed phrases or mnemonics.
 
-## Microsoft Edge Add-ons assets
+## Reviewer test path
 
-- Extension logo: `store-assets/edge-logo-300.png` — 300×300
-- Small promotional tile: `store-assets/small-promo-440x280.png` — 440×280
-- Large promotional tile: `store-assets/large-promo-1400x560.png` — 1400×560
-- Screenshot: `store-assets/screenshot-1280x800.png` — 1280×800
+1. Install the unpacked extension.
+2. Open a normal HTTPS checkout-like page.
+3. Confirm a floating **XGuard** button appears.
+4. Open the panel and choose **احجز هذه الدفعة / Add this payment**.
+5. Navigate to another checkout and add a second payment.
+6. Confirm the cart persists across the two merchant domains.
+7. Choose **ادفع الكل / Pay All**.
+8. Confirm XGuard starts a single local session and navigates the saved checkout sequence without reading payment credential fields.
+9. Optionally choose the XGuard verification action and confirm the explicit service request path still works.
 
-## Edge listing notes
+## Store-review note
 
-Use the full description above. It exceeds the Edge 250-character minimum and accurately states the extension's functionality and limitations.
-
-Privacy answer: **Yes, the extension accesses/transmits privacy-relevant information after explicit opt-in.**
-
-Remote code answer: **No.**
-
-## Submission boundary
-
-Store dashboards require the publisher's own developer-account enrollment and authenticated submission. The release artifact deliberately contains no store credentials, OAuth refresh tokens, or publisher secrets.
+XGuard Pay All is deliberately user-side. Merchant participation is not required for the floating cart UI. The extension does not bypass merchant checkout rules, bank authentication, or payment-provider security controls.
