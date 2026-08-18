@@ -22,6 +22,8 @@ export const XPAY_URL = "https://facilitator.xpay.sh";
 /** @deprecated Legacy source-level alias retained while persisted historical identifiers are migrated separately. */
 export const PAYAI_URL = XPAY_URL;
 export const MAX_HTTP_BODY_BYTES = 64 * 1024;
+const XPAY_SUPPORTED_TIMEOUT_MS = 10_000;
+const XPAY_HEALTH_TIMEOUT_MS = 5_000;
 
 export interface MainnetProtocolEnv {
   XPAY_API_KEY_ID?: string;
@@ -242,42 +244,62 @@ export async function xPaySettle(
 export async function fetchXPaySupported(
   _env: MainnetProtocolEnv,
 ): Promise<SupportedResponse> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5_000);
   try {
-    const response = await fetch(`${XPAY_URL}/supported`, {
-      headers: { "User-Agent": "XGuard/0.1.0" },
-      redirect: "manual",
-      signal: controller.signal,
-    });
-    if (!response.ok)
-      throw new Error(`upstream_supported_http_${response.status}`);
-    const parsed = asRecord(
-      parseJsonStrict(
-        await readHttpBodyTextCapped(
-          response,
-          MAX_HTTP_BODY_BYTES,
-          "xpay supported response",
-        ),
-      ),
+    return normalizeXPaySupportedResponse(
+      await xPayGetJson("supported", XPAY_SUPPORTED_TIMEOUT_MS),
     );
-    if (!Array.isArray(parsed.kinds))
-      throw new Error("upstream_supported_malformed");
-    const compatible = parsed.kinds.some((rawKind) => {
-      const kind = asRecord(rawKind);
-      return (
-        kind.x402Version === 2 &&
-        kind.scheme === "exact" &&
-        kind.network === BASE_MAINNET
-      );
-    });
-    if (!compatible) throw new Error("upstream_base_mainnet_not_supported");
+  } catch (supportedError) {
+    console.warn(
+      JSON.stringify({
+        event: "xpay_supported_probe_failed",
+        code: upstreamErrorCode(supportedError),
+      }),
+    );
+
+    const health = normalizeXPayHealthResponse(
+      await xPayGetJson("health", XPAY_HEALTH_TIMEOUT_MS),
+    );
+    if (health !== null) return health;
+    throw supportedError;
+  }
+}
+
+export function normalizeXPaySupportedResponse(
+  value: unknown,
+): SupportedResponse {
+  const parsed = upstreamRecord(value, "upstream_supported_malformed");
+
+  if (Array.isArray(parsed.kinds)) {
+    if (!parsed.kinds.some(isBaseMainnetExactV2Kind))
+      throw new Error("upstream_base_mainnet_not_supported");
     if (!Array.isArray(parsed.extensions)) parsed.extensions = [];
     if (parsed.signers === undefined) parsed.signers = {};
     return parsed as unknown as SupportedResponse;
-  } finally {
-    clearTimeout(timer);
   }
+
+  const networks = extractV2Networks(
+    parsed.supportedNetworks,
+    parsed.supportedVersions,
+  );
+  if (!networks.includes(BASE_MAINNET))
+    throw new Error("upstream_base_mainnet_not_supported");
+  return canonicalSupported(networks);
+}
+
+export function normalizeXPayHealthResponse(
+  value: unknown,
+): SupportedResponse | null {
+  const parsed = upstreamRecord(value, "upstream_health_malformed");
+  if (parsed.status !== "ok") throw new Error("upstream_health_unhealthy");
+
+  const networks = extractV2Networks(
+    parsed.supportedNetworks,
+    parsed.supportedVersions,
+  );
+  if (networks.length === 0) return null;
+  if (!networks.includes(BASE_MAINNET))
+    throw new Error("upstream_base_mainnet_not_supported");
+  return canonicalSupported(networks);
 }
 
 /** @deprecated Use xPayVerify; retained to avoid changing persisted production call sites in the same release. */
@@ -287,6 +309,37 @@ export const payAISettle = xPaySettle;
 /** @deprecated Use fetchXPaySupported; retained for source compatibility. */
 export const fetchPayAISupported = fetchXPaySupported;
 
+async function xPayGetJson(
+  path: "supported" | "health",
+  timeoutMs: number,
+): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    let response: Response;
+    try {
+      response = await fetch(`${XPAY_URL}/${path}`, {
+        headers: { "User-Agent": "XGuard/0.1.0" },
+        redirect: "manual",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (isAbortError(error)) throw new Error(`upstream_${path}_timeout`);
+      throw error;
+    }
+    if (!response.ok) throw new Error(`upstream_${path}_http_${response.status}`);
+    return parseJsonStrict(
+      await readHttpBodyTextCapped(
+        response,
+        MAX_HTTP_BODY_BYTES,
+        `xpay ${path} response`,
+      ),
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function xPayRequest(
   operation: "verify" | "settle",
   body: Record<string, unknown>,
@@ -295,17 +348,23 @@ async function xPayRequest(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`${XPAY_URL}/${operation}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": "XGuard/0.1.0",
-        "X-XGuard-Mode": "mainnet",
-      },
-      body: JSON.stringify(body),
-      redirect: "manual",
-      signal: controller.signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${XPAY_URL}/${operation}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "XGuard/0.1.0",
+          "X-XGuard-Mode": "mainnet",
+        },
+        body: JSON.stringify(body),
+        redirect: "manual",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (isAbortError(error)) throw new Error(`upstream_${operation}_timeout`);
+      throw error;
+    }
     if (!response.ok)
       throw new Error(`upstream_${operation}_http_${response.status}`);
     return parseJsonStrict(
@@ -318,6 +377,94 @@ async function xPayRequest(
   } finally {
     clearTimeout(timer);
   }
+}
+
+function canonicalSupported(networks: string[]): SupportedResponse {
+  return {
+    kinds: networks.map((network) => ({
+      x402Version: 2,
+      scheme: "exact",
+      network,
+    })),
+    extensions: [],
+    signers: {},
+  } as SupportedResponse;
+}
+
+function extractV2Networks(
+  rawNetworks: unknown,
+  rawVersions: unknown,
+): string[] {
+  if (!Array.isArray(rawNetworks)) return [];
+
+  const globalV2 =
+    Array.isArray(rawVersions) &&
+    rawVersions.some(
+      (version) => version === 2 || version === "2" || version === "v2",
+    );
+  const networks = new Set<string>();
+
+  for (const rawNetwork of rawNetworks) {
+    if (typeof rawNetwork === "string") {
+      if (globalV2) networks.add(rawNetwork);
+      continue;
+    }
+    const network = recordOrNull(rawNetwork);
+    if (network === null) continue;
+    const networkId =
+      typeof network.networkId === "string"
+        ? network.networkId
+        : typeof network.network === "string"
+          ? network.network
+          : null;
+    const version = network.version ?? network.x402Version;
+    if (
+      networkId !== null &&
+      (version === 2 || version === "2" || version === "v2")
+    )
+      networks.add(networkId);
+  }
+
+  return [...networks];
+}
+
+function isBaseMainnetExactV2Kind(value: unknown): boolean {
+  const kind = recordOrNull(value);
+  return (
+    kind !== null &&
+    kind.x402Version === 2 &&
+    kind.scheme === "exact" &&
+    kind.network === BASE_MAINNET
+  );
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "AbortError"
+  );
+}
+
+function upstreamErrorCode(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name;
+  return "unknown_upstream_error";
+}
+
+function upstreamRecord(
+  value: unknown,
+  errorCode: string,
+): Record<string, unknown> {
+  const record = recordOrNull(value);
+  if (record === null) throw new Error(errorCode);
+  return record;
+}
+
+function recordOrNull(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return null;
+  return value as Record<string, unknown>;
 }
 
 function evmAddress(value: unknown, field: string): string {
