@@ -56,16 +56,10 @@ export async function mcpOAuthResponse(
 ): Promise<Response | null> {
   const url = new URL(request.url);
 
-  if (
-    request.method === "GET" &&
-    AUTHORIZATION_SERVER_PATHS.has(url.pathname)
-  )
+  if (request.method === "GET" && AUTHORIZATION_SERVER_PATHS.has(url.pathname))
     return publicJson(authorizationServerMetadata(url.origin));
 
-  if (
-    request.method === "GET" &&
-    PROTECTED_RESOURCE_PATHS.has(url.pathname)
-  )
+  if (request.method === "GET" && PROTECTED_RESOURCE_PATHS.has(url.pathname))
     return publicJson(protectedResourceMetadata(url.origin));
 
   if (
@@ -74,14 +68,12 @@ export async function mcpOAuthResponse(
   )
     return cors(new Response(null, { status: 204 }));
 
-  if (url.pathname === REGISTER_PATH)
-    return handleRegistration(request, env, url.origin);
+  if (url.pathname === REGISTER_PATH) return handleRegistration(request, env);
 
   if (url.pathname === AUTHORIZE_PATH)
     return handleAuthorization(request, env, url);
 
-  if (url.pathname === TOKEN_PATH)
-    return handleToken(request, env, url.origin);
+  if (url.pathname === TOKEN_PATH) return handleToken(request, env, url.origin);
 
   return null;
 }
@@ -115,7 +107,6 @@ function protectedResourceMetadata(origin: string) {
 async function handleRegistration(
   request: Request,
   env: McpOAuthEnv,
-  origin: string,
 ): Promise<Response> {
   if (request.method !== "POST")
     return oauthJsonError("invalid_request", 405, "POST required", {
@@ -302,7 +293,11 @@ async function handleToken(
       .bind(new Date().toISOString(), codeHash, nowEpoch)
       .run();
     if ((consumed.meta.changes ?? 0) !== 1)
-      throw new OAuthError("invalid_grant", 400, "authorization code already used");
+      throw new OAuthError(
+        "invalid_grant",
+        400,
+        "authorization code already used",
+      );
 
     const client = await env.DB.prepare(
       "SELECT client_id,client_name,redirect_uris_json FROM oauth_clients WHERE client_id=?",
@@ -359,9 +354,15 @@ async function validateAuthorizationRequest(
     throw new OAuthError("invalid_request", 400, "unknown client_id");
 
   const redirectUri = requiredParam(params, "redirect_uri");
-  const registeredRedirects = parseRegisteredRedirects(client.redirect_uris_json);
+  const registeredRedirects = parseRegisteredRedirects(
+    client.redirect_uris_json,
+  );
   if (!registeredRedirects.includes(redirectUri))
-    throw new OAuthError("invalid_request", 400, "redirect_uri is not registered");
+    throw new OAuthError(
+      "invalid_request",
+      400,
+      "redirect_uri is not registered",
+    );
 
   const method = requiredParam(params, "code_challenge_method");
   if (method !== "S256")
@@ -377,7 +378,11 @@ async function validateAuthorizationRequest(
   const scope = normalizeScope(params.get("scope"));
   const resource = params.get("resource") ?? `${origin}/mcp`;
   if (resource !== `${origin}/mcp`)
-    throw new OAuthError("invalid_target", 400, "resource must be the XGuard MCP endpoint");
+    throw new OAuthError(
+      "invalid_target",
+      400,
+      "resource must be the XGuard MCP endpoint",
+    );
 
   const state = params.get("state");
   if (state !== null && state.length > 2048)
@@ -461,7 +466,11 @@ function assertCsrf(request: Request, submitted: string): void {
     submitted.length < 20 ||
     !constantTimeEqual(cookie, submitted)
   )
-    throw new OAuthError("invalid_request", 400, "authorization session expired");
+    throw new OAuthError(
+      "invalid_request",
+      400,
+      "authorization session expired",
+    );
 }
 
 function redirectWithOAuthResult(
@@ -471,7 +480,8 @@ function redirectWithOAuthResult(
 ): Response {
   const location = new URL(redirectUri);
   if (result.code !== undefined) location.searchParams.set("code", result.code);
-  if (result.error !== undefined) location.searchParams.set("error", result.error);
+  if (result.error !== undefined)
+    location.searchParams.set("error", result.error);
   if (state !== null && state !== "") location.searchParams.set("state", state);
   return new Response(null, {
     status: 303,
@@ -505,7 +515,15 @@ async function createOAuthBuyerPass(
       .prepare(
         "INSERT INTO buyer_passes(pass_id,merchant_id,token_hash,label,channel,active,created_at,last_used_at) VALUES(?,?,?,?,?,1,?,?)",
       )
-      .bind(passId, principalId, tokenHash, label, "agent", createdAt, createdAt),
+      .bind(
+        passId,
+        principalId,
+        tokenHash,
+        label,
+        "agent",
+        createdAt,
+        createdAt,
+      ),
   ]);
 
   return { token, passId, principalId };
@@ -553,7 +571,11 @@ async function cleanupOAuthState(db: D1Database): Promise<void> {
 }
 
 function validateRedirectUris(value: unknown): string[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_REDIRECT_URIS)
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAX_REDIRECT_URIS
+  )
     throw new OAuthError("invalid_redirect_uri", 400, "redirect_uris required");
   const unique = new Set<string>();
   for (const raw of value) {
@@ -582,7 +604,8 @@ function validateRedirectUris(value: unknown): string[] {
 }
 
 function normalizeClientName(value: unknown): string {
-  if (value === undefined || value === null || value === "") return "MCP Client";
+  if (value === undefined || value === null || value === "")
+    return "MCP Client";
   if (typeof value !== "string")
     throw new OAuthError("invalid_client_metadata", 400, "client_name invalid");
   const normalized = value.trim().replace(/\s+/g, " ");
@@ -606,7 +629,10 @@ function validateStringArrayEquals(value: unknown, expected: string[]): void {
 function parseRegisteredRedirects(raw: string): string[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string"))
+    if (
+      !Array.isArray(parsed) ||
+      parsed.some((item) => typeof item !== "string")
+    )
       return [];
     return parsed as string[];
   } catch {
@@ -622,7 +648,9 @@ function normalizeScope(value: string | null): string {
   return MCP_SCOPE;
 }
 
-async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
+async function readJsonObject(
+  request: Request,
+): Promise<Record<string, unknown>> {
   const text = await readBodyCapped(request, MAX_BODY_BYTES);
   let parsed: unknown;
   try {
@@ -653,7 +681,10 @@ async function readForm(
   return new URLSearchParams(await readBodyCapped(request, maxBytes));
 }
 
-async function readBodyCapped(request: Request, maxBytes: number): Promise<string> {
+async function readBodyCapped(
+  request: Request,
+  maxBytes: number,
+): Promise<string> {
   const declared = request.headers.get("content-length");
   if (declared !== null && Number(declared) > maxBytes)
     throw new OAuthError("invalid_request", 413, "request too large");
@@ -697,7 +728,9 @@ function randomToken(bytes: number): string {
 function randomHex(bytes: number): string {
   const value = new Uint8Array(bytes);
   crypto.getRandomValues(value);
-  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 function base64Url(value: Uint8Array): string {
@@ -744,11 +777,7 @@ function authorizationErrorResponse(error: unknown): Response {
 
 function oauthErrorResponse(error: unknown): Response {
   const normalized = normalizeOAuthError(error);
-  return oauthJsonError(
-    normalized.code,
-    normalized.status,
-    normalized.message,
-  );
+  return oauthJsonError(normalized.code, normalized.status, normalized.message);
 }
 
 function normalizeOAuthError(error: unknown): OAuthError {
@@ -756,7 +785,8 @@ function normalizeOAuthError(error: unknown): OAuthError {
   console.error(
     JSON.stringify({
       event: "mcp_oauth_error",
-      code: error instanceof Error ? error.message.slice(0, 96) : "unknown_error",
+      code:
+        error instanceof Error ? error.message.slice(0, 96) : "unknown_error",
     }),
   );
   return new OAuthError(
@@ -773,11 +803,10 @@ function oauthJsonError(
   extraHeaders: Record<string, string> = {},
 ): Response {
   return cors(
-    jsonResponse(
-      { error, error_description: description },
-      status,
-      { "Cache-Control": "no-store", ...extraHeaders },
-    ),
+    jsonResponse({ error, error_description: description }, status, {
+      "Cache-Control": "no-store",
+      ...extraHeaders,
+    }),
   );
 }
 
