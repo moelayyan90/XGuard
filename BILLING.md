@@ -2,29 +2,28 @@
 
 ## Model
 
-XGuard is a prepaid, per-successful-execution gateway. It does not silently divert money from a merchant's advertised payment. Service fees are separately disclosed and deducted from the merchant's prepaid XGuard service balance.
+XGuard uses a prepaid merchant service balance. It does not silently divert money from a merchant's advertised payment. Service fees are separately accounted for and deducted from the merchant's prepaid XGuard balance.
 
-Production pricing is configured in `apps/worker/wrangler.mainnet.jsonc`.
+Production prices are configured in `apps/worker/wrangler.mainnet.jsonc`. The public x402 payment contract is centralized in `apps/worker/src/public-payment-contract.ts` so the runtime and public manifests share one canonical price and billing event.
 
-Current mainnet prices:
+Current mainnet execution prices include:
 
-| Event                                |     Fee |
-| ------------------------------------ | ------: |
-| Model proxy execution                | $0.0001 |
-| Tool proxy execution                 | $0.0002 |
-| x402 verification execution          | $0.0002 |
-| Source discovery/search              | $0.0010 |
-| Security inspection                  | $0.0010 |
-| Analysis/ranking                     | $0.0020 |
-| Successful finalized x402 settlement | $0.0020 |
+| Event                                        |     Fee |
+| -------------------------------------------- | ------: |
+| Model proxy execution                        | $0.0001 |
+| Tool proxy execution                         | $0.0002 |
+| Source discovery/search                      | $0.0010 |
+| Security inspection                          | $0.0010 |
+| Analysis/ranking                             | $0.0020 |
+| Payment-decision execution                   | $0.0010 |
+| Accepted authenticated x402 economic attempt | $0.0300 |
 
 Merchant top-ups are prepaid service liabilities; they are not revenue when deposited.
 
 ## Free surface
 
-The following remain free because they are readiness or protocol metadata rather than value-producing execution:
+Readiness and protocol metadata remain free, including:
 
-- `GET /`
 - `GET /healthz`
 - `GET /readyz`
 - `GET /supported`
@@ -33,45 +32,53 @@ The following remain free because they are readiness or protocol metadata rather
 - MCP `tools/list`
 - MCP `ping`
 - MCP `xguard_status`
+- malformed or unauthenticated x402 traffic rejected before attempt acceptance
+- idempotent retries for a `logicalPaymentKey` whose fixed x402 attempt fee has already been earned
+
+Free discovery **metadata** must not be confused with value-producing discovery/search operations.
 
 ## Billable surface
 
-Successful execution is billable when it consumes XGuard execution value:
+Value-producing operations are billed according to their execution class. Examples include:
 
-- `POST /verify`
 - `GET /discovery/resources`
 - `GET /discovery/search`
 - `POST /v1/gateway/proxy/...`
 - `POST /v1/gateway/sources/search`
 - `POST /v1/gateway/analyze`
 - `POST /v1/gateway/security/inspect`
-- MCP `tools/call` except the explicitly free `xguard_status` tool
-- successful finalized `POST /settle`
+- payment-decision execution
+- MCP `tools/call` except explicitly free metadata/status tools
+- accepted authenticated x402 `/verify` or `/settle` execution
 
-Direct Bazaar catalog listing/search and MCP `xguard_discover` / `xguard_resource_details` are all billed as SOURCE events. This prevents bypassing the MCP paywall through the equivalent HTTP catalog endpoints. Future MCP execution tools default to TOOL billing unless classified more specifically.
+Direct Bazaar catalog listing/search and MCP `xguard_discover` / `xguard_resource_details` are SOURCE operations. This prevents bypassing SOURCE billing through an equivalent HTTP or MCP route.
 
-## Accounting state machine
+## x402 attempt accounting
 
-```mermaid
-stateDiagram-v2
-  [*] --> Available: finalized merchant top-up
-  Available --> Reserved: billable execution accepted
-  Reserved --> Earned: execution succeeds
-  Reserved --> Available: execution fails
-  Reserved --> Held: settlement outcome ambiguous
-  Held --> Earned: reconciliation proves settlement
-  Held --> Available: reconciliation proves no settlement
-```
+The public x402 path uses a fixed **$0.03 / 30,000 micro-USD non-refundable attempt fee**.
 
-For gateway, direct source discovery, MCP, and verify executions, XGuard reserves the configured fee before execution and earns it only after a successful result. Failed, malformed, rejected, or unavailable operations release the reservation.
+The sequence is:
 
-For x402 settlement, XGuard continues to use the stricter finality model: downstream success alone is not enough. The settlement fee becomes earned only after independent finalized Base USDC evidence.
+1. authenticate the merchant scope;
+2. parse and normalize the supported x402 request;
+3. derive the canonical `logicalPaymentKey`;
+4. reserve the fixed attempt fee from prepaid balance;
+5. earn that fee before downstream execution; and
+6. execute verification or settlement.
+
+Because earning happens before downstream execution, a downstream verification or settlement failure does **not** refund an already accepted x402 attempt.
+
+The fee is deduplicated by `logicalPaymentKey`. Verify → settle and repeated requests for the same logical payment do not create a second fixed attempt fee.
+
+## Other execution accounting
+
+Gateway, source, MCP, model, tool, analysis, security, and payment-decision operations retain their own configured fee classes and accounting rules. They must not be described as if they were the fixed x402 attempt fee.
 
 ## Mainnet implementation
 
 The live Cloudflare Worker maintains merchant billing state in D1 and coordinates settlement ownership with Durable Objects.
 
-Authenticated merchant endpoints:
+Authenticated merchant endpoints include:
 
 - `POST /v1/register`
 - `GET /v1/balance`
@@ -85,13 +92,13 @@ No simulated credit is accepted as a production top-up.
 ## Billing invariants
 
 - No billable execution runs when the prepaid service balance cannot cover its configured fee.
-- A successful gateway/direct-discovery/MCP/verify execution creates at most one earned usage event for a request id.
-- Failed execution releases the reserved fee.
+- The canonical public x402 attempt price is $0.03 / 30,000 micro-USD.
+- The x402 attempt fee is earned only after authentication, parsing, identity derivation, and successful reservation.
+- A downstream x402 failure does not refund an already accepted attempt.
+- One `logicalPaymentKey` creates at most one fixed x402 attempt fee.
 - Equivalent direct HTTP and MCP catalog access cannot bypass SOURCE billing.
-- Duplicate settlement retries do not create a second settlement fee.
-- Settlement revenue is recognized only after independent finalized Base USDC evidence.
 - Merchant top-up deposits are not counted as XGuard revenue.
-- Testnet traffic remains non-billable unless explicitly changed in the testnet configuration.
+- Testnet traffic remains non-billable unless explicitly changed in testnet configuration.
 - Usage history is immutable; corrections use compensating accounting entries rather than destructive edits.
 
 ## Insufficient balance
@@ -102,9 +109,7 @@ Requests without a valid merchant credential fail authentication before value-pr
 
 ## Settlement ambiguity and reconciliation
 
-Once an outbound blockchain settlement submission has started, XGuard does not blindly retry through another route. Network timeouts or uncertain downstream outcomes enter an ambiguous state. The reserved settlement fee remains held until independent evidence resolves whether the payment settled.
-
-This prevents duplicate blockchain submission and prevents revenue recognition that has not been proven earned.
+Settlement safety remains separate from the attempt-fee accounting event. Once an outbound blockchain settlement submission has started, XGuard does not blindly retry through another route. Network timeouts or uncertain downstream outcomes enter the settlement recovery/finality flow so duplicate money movement is not created.
 
 ## Auto-top-up
 

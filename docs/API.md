@@ -1,36 +1,43 @@
 # XGuard HTTP API
 
 **Production base URL:** `https://xguardgate.com`  
-**Production network:** Base mainnet native USDC, x402 v2 `exact`, EIP-3009 authorization
+**Production network:** Base mainnet (`eip155:8453`), native USDC, x402 v2 `exact`, EIP-3009 authorization
 
 A separate Base Sepolia testnet exists only for explicit non-billable integration testing. It is isolated from the production merchant billing path and is not the default API environment.
 
-The machine-readable production contract is [openapi.yaml](openapi.yaml). Current official x402 v2 types remain authoritative where the protocol evolves.
+The live machine-readable HTTP contract is `GET /openapi.json`. The canonical commercial/payment contract is `GET /.well-known/payment-manifest`. Current official x402 v2 types remain authoritative where the protocol evolves.
 
 ## Public mainnet endpoints
 
-| Method | Path           | Purpose                                                          |
-| ------ | -------------- | ---------------------------------------------------------------- |
-| GET    | `/`            | Release, network, pricing, billing model, and endpoint discovery |
-| GET    | `/healthz`     | Worker liveness                                                  |
-| GET    | `/readyz`      | D1 and fresh downstream facilitator readiness                    |
-| GET    | `/supported`   | Measured x402 v2 mainnet capabilities                            |
-| GET    | `/status`      | Gateway/facilitator health and open reconciliation count         |
-| POST   | `/v1/register` | Create a merchant and return a one-time API key                  |
+| Method | Path                                 | Purpose                                        |
+| ------ | ------------------------------------ | ---------------------------------------------- |
+| GET    | `/`                                  | Release/network/endpoint discovery             |
+| GET    | `/healthz`                           | Worker liveness                                |
+| GET    | `/readyz`                            | D1 and downstream route readiness              |
+| GET    | `/supported`                         | Authoritative live x402 capabilities           |
+| GET    | `/status`                            | Operational status                             |
+| GET    | `/.well-known/payment-manifest`      | Canonical payment/onboarding/pricing manifest  |
+| GET    | `/.well-known/x402/facilitator.json` | XGuard facilitator provider metadata           |
+| GET    | `/.well-known/agent-card.json`       | Agent/A2A discovery metadata                   |
+| GET    | `/.well-known/mcp/server.json`       | MCP server metadata                            |
+| GET    | `/openapi.json`                      | Live OpenAPI description                       |
+| POST   | `/v1/register`                       | Create a merchant and issue a one-time API key |
+
+Machine-readable discovery **metadata** is free. Value-producing `/discovery/resources` and `/discovery/search` operations use the separate SOURCE execution class and must not be confused with free metadata.
 
 ## Authenticated merchant endpoints
 
 Use `Authorization: Bearer <XGUARD_API_KEY>`.
 
-| Method | Path                                          | Purpose                                                                    |
-| ------ | --------------------------------------------- | -------------------------------------------------------------------------- |
-| GET    | `/v1/balance`                                 | Return available and held prepaid service balance                          |
-| POST   | `/v1/topups/intents`                          | Create a one-time exact native-USDC Base deposit intent                    |
-| POST   | `/v1/topups/claim`                            | Verify finality of a matching Base deposit and credit the merchant balance |
-| GET    | `/v1/settlements/{logicalPaymentKey}/truth`   | Read XGuard's independent settlement truth                                 |
-| POST   | `/v1/settlements/{logicalPaymentKey}/resolve` | Trigger an immediate independent finality/recovery check                   |
-| POST   | `/verify`                                     | Validate a complete x402 v2 payment request without submitting value       |
-| POST   | `/settle`                                     | Reserve the XGuard fee and submit one safe settlement route                |
+| Method | Path                                          | Purpose                                                 |
+| ------ | --------------------------------------------- | ------------------------------------------------------- |
+| GET    | `/v1/balance`                                 | Return prepaid service balance                          |
+| POST   | `/v1/topups/intents`                          | Create a one-time exact native-USDC Base deposit intent |
+| POST   | `/v1/topups/claim`                            | Verify and claim a matching finalized Base USDC deposit |
+| GET    | `/v1/settlements/{logicalPaymentKey}/truth`   | Read independent settlement truth                       |
+| POST   | `/v1/settlements/{logicalPaymentKey}/resolve` | Re-evaluate settlement truth without blind resubmission |
+| POST   | `/verify`                                     | Execute protected x402 verification                     |
+| POST   | `/settle`                                     | Execute protected guarded x402 settlement               |
 
 `POST` requests use `Content-Type: application/json`. Mainnet `/verify` and `/settle` require the official v2 facilitator envelope containing `x402Version`, `paymentPayload`, and `paymentRequirements`.
 
@@ -45,7 +52,7 @@ XGuard mainnet currently accepts only:
 - `assetTransferMethod: "eip3009"`;
 - authorization payment flow.
 
-Unsupported networks, assets, schemes, and transfer mechanisms fail before settlement routing.
+Unsupported networks, assets, schemes, and transfer mechanisms fail before accepted protected execution.
 
 ## Merchant registration
 
@@ -56,7 +63,7 @@ Content-Type: application/json
 {"name":"my-service"}
 ```
 
-The response includes `merchant`, a high-entropy `apiKey`, and the configured treasury/network/asset metadata. The API key is a bearer credential and should be stored only in a secret manager or deployment secret.
+The response includes the merchant identity, a high-entropy `apiKey`, and configured treasury/network/asset metadata. The API key is a bearer credential and should be kept only in a secret manager or deployment secret.
 
 ## Prepaid service balance
 
@@ -70,7 +77,7 @@ Content-Type: application/json
 {"amountUsd":"1.00"}
 ```
 
-The response gives a one-time `claimToken`, `treasuryAddress`, and `exactDepositUsdc`. Send exactly that amount as native USDC on Base to the returned treasury address, then claim the finalized transaction:
+The response gives a one-time `claimToken`, `treasuryAddress`, and exact native Base USDC amount. Send exactly that amount to the returned treasury address, then claim the finalized transfer:
 
 ```http
 POST /v1/topups/claim
@@ -80,81 +87,90 @@ Content-Type: application/json
 {"claimToken":"...","transactionHash":"0x..."}
 ```
 
-Top-up deposits are customer prepayments and are recorded as an unearned liability until service fees are earned.
+Top-up deposits are customer prepayments and remain a liability until XGuard service is earned.
+
+## Canonical x402 billing boundary
+
+The canonical fixed XGuard x402 service fee is **30,000 micro-USD (`$0.03`) once per accepted authenticated economic attempt**.
+
+The sequence is:
+
+1. authenticate the merchant scope;
+2. parse/normalize a supported economic x402 request;
+3. derive the canonical `logicalPaymentKey`;
+4. reserve `$0.03` from the merchant's prepaid XGuard service balance;
+5. earn that fee before downstream execution; and
+6. execute verification or settlement.
+
+The same `logicalPaymentKey` is idempotent: verify → settle and retries do not earn the fixed fee twice.
+
+Malformed or unsupported traffic rejected before acceptance, unauthenticated traffic, and idempotent retries do not incur an additional canonical attempt fee. Once an authenticated economic attempt has been accepted and earned, a later downstream verification/settlement failure does **not** refund that fixed attempt fee.
+
+Insufficient prepaid balance returns HTTP `402` with guidance to create a top-up intent.
+
+## Accepted-attempt response headers
+
+Protected x402 responses can include:
+
+- `X-XGuard-Attempt-Fee-USD: 0.03`;
+- `X-XGuard-Attempt-Fee-Micro-USD: 30000`;
+- `X-XGuard-Attempt-Fee-State: earned`;
+- `X-XGuard-Attempt-Fee-Refundable: false`;
+- `X-XGuard-Attempt-Key: <logicalPaymentKey>`.
+
+Settlement-specific responses may additionally include `X-XGuard-Payment-Key`, `X-XGuard-Truth-State`, `X-XGuard-Truth-Endpoint`, `X-XGuard-Resolve-Endpoint`, and `X-XGuard-Release-Safe`.
 
 ## Settlement Truth Layer
 
-A downstream facilitator response is not the same thing as independent settlement truth. XGuard therefore exposes a merchant-facing state derived from finalized Base evidence and, for ambiguous EIP-3009 submissions, authorization recovery evidence.
+A downstream response is not the same thing as independent settlement truth. XGuard therefore exposes a merchant-scoped state derived from Base evidence and recovery evidence.
 
-The states are:
+States include:
 
-- `FINALIZED`: XGuard independently proved the exact expected USDC transfer on finalized Base state. `authoritativeForRelease` is `true`.
-- `PENDING`: XGuard does not yet have sufficient final evidence. Do not resubmit the same authorization and do not treat this as a proven failure.
-- `PROVEN_FAILED`: finalized/recovery evidence proves the expected settlement did not complete correctly or the authorization can no longer settle.
-- `CONFLICT`: success and failure evidence disagree. XGuard fails closed and `authoritativeForRelease` remains `false`.
+- `FINALIZED`: the exact expected USDC transfer is independently proven on finalized Base state;
+- `PENDING`: evidence is not yet sufficient; do not blindly resubmit the authorization;
+- `PROVEN_FAILED`: evidence proves the expected settlement did not complete safely;
+- `CONFLICT`: success/failure evidence disagrees and XGuard fails closed.
 
-Read the current truth:
+Read truth:
 
 ```http
 GET /v1/settlements/{logicalPaymentKey}/truth
 Authorization: Bearer xg_live_...
 ```
 
-If the state is still `PENDING`, request an immediate resolution attempt instead of waiting for scheduled reconciliation:
+Request immediate re-evaluation without submitting a second settlement:
 
 ```http
 POST /v1/settlements/{logicalPaymentKey}/resolve
 Authorization: Bearer xg_live_...
 ```
 
-A pending response uses HTTP `202` and `Retry-After: 5`. Terminal truth responses use HTTP `200`. The response includes the expected payer, payee, amount, asset, network, transaction hash when known, evidence source, reason, and a SHA-256 `proofDigest` for terminal non-conflicting truth. The digest is an integrity identifier over invariant truth fields; it is not represented as an external signature or third-party attestation.
-
-The truth endpoint is merchant-scoped: an API key cannot query another merchant's settlement record.
-
-## Settlement billing boundary
-
-The configured XGuard service fee is `2,000` micro-USD (`$0.002`) per successful billable settlement.
-
-The lifecycle is:
-
-1. reserve `$0.002` from the merchant's available service balance;
-2. select one healthy compatible facilitator;
-3. start at most one outbound settlement submission;
-4. hold the fee after a downstream success while independent Base finality is checked;
-5. expose that distinction to the merchant as settlement truth;
-6. earn the fee only after finalized on-chain settlement is independently verified;
-7. release the fee after a definitive finality failure;
-8. keep ambiguity held for reconciliation without blind resubmission.
-
-Malformed requests, verification failures, settlement failures, ambiguity, duplicate/replay retrievals, health/readiness/status traffic, and testnet activity are non-billable.
-
-## Settlement response headers
-
-Settlement responses may include:
-
-- `X-XGuard-Replayed`: whether the result came from the durable replay cache;
-- `X-XGuard-Payment-Key`: an immutable logical authorization correlation identity;
-- `X-XGuard-Fee-State`: reservation/finality state for the XGuard service fee;
-- `X-XGuard-Truth-State`: `FINALIZED`, `PENDING`, `PROVEN_FAILED`, or `CONFLICT` when a truth record is available;
-- `X-XGuard-Truth-Endpoint`: merchant-scoped endpoint for the full truth record;
-- `X-XGuard-Resolve-Endpoint`: endpoint that triggers an immediate resolution attempt;
-- `X-XGuard-Release-Safe`: `true` only when XGuard's independent state is `FINALIZED`.
-
-The payment key is an operational correlation value, not a bearer credential. A downstream `success: true` can therefore coexist briefly with `X-XGuard-Truth-State: PENDING`; the latter explicitly means XGuard has not yet promoted the payment to independently verified finality.
+Settlement truth determines **whether the expected transfer occurred**. It is intentionally separate from the earlier accepted-attempt billing event and does not retroactively refund a canonical attempt solely because downstream execution later failed.
 
 ## Failure semantics
 
-- malformed or unsupported input fails before routing;
-- missing or invalid merchant authentication fails closed;
+- malformed or unsupported input fails before accepted execution;
+- missing/invalid merchant authentication fails closed;
 - verification does not submit value;
-- settlement selects one route and never fails over after outbound submission starts;
-- conflicting binding or an in-progress duplicate returns a conflict response;
-- a non-definitive post-submit outcome becomes `AMBIGUOUS`, opens reconciliation state, and is not automatically resubmitted;
+- settlement selects one route and does not fail over after outbound submission starts;
+- a non-definitive post-submit outcome becomes ambiguous/pending and is not blindly resubmitted;
 - settlement truth never converts missing evidence into success;
-- conflicting truth evidence produces `CONFLICT`, never `FINALIZED`;
-- insufficient service balance returns HTTP `402` with guidance to create a top-up intent;
-- unhealthy, stale, or economically ineligible downstream routing fails closed.
+- insufficient XGuard service balance returns HTTP `402`;
+- unhealthy, stale, or incompatible downstream routing fails closed.
 
-## Optional testnet API
+## Agent interfaces
 
-The separate Base Sepolia Worker remains non-billable at `https://xguard-testnet.maqamapp.workers.dev`. Use it only when a testnet environment is selected explicitly. Testnet behavior and capability are intentionally isolated from the mainnet merchant billing path.
+- A2A: `GET /.well-known/agent-card.json`, `POST /a2a`
+- MCP: `GET /.well-known/mcp/server.json`, `POST /mcp`
+- Bazaar/discovery: `GET /discovery/resources`, `GET /discovery/search`
+- OpenAPI: `GET /openapi.json`
+
+Equivalent value-producing HTTP/MCP operations should use the same configured execution class so an alternate interface does not become a billing bypass.
+
+## Source-of-truth rule
+
+Client integrations should not hard-code a second commercial contract. Use:
+
+1. `/.well-known/payment-manifest` for canonical onboarding, price, billing event, network and asset;
+2. `/supported` for current live x402 capability/signer information; and
+3. `/openapi.json` for the live HTTP interface.

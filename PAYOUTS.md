@@ -1,10 +1,10 @@
 # Owner payouts
 
-XGuard now has a technically live Base mainnet treasury path, but **treasury receipt is not the same as owner payout or owner profit**.
+XGuard has a technically live Base mainnet treasury receiving path, but **treasury receipt is not the same as owner payout or owner profit**.
 
-Merchant top-ups are sent as native Base USDC to the configured treasury address. Those deposits create merchant prepaid service balances and are customer liabilities. Only service fees that later satisfy the successful-settlement and independent-finality boundary become gross XGuard earned revenue.
+Merchant top-ups are native Base USDC deposits to the configured treasury address. Those deposits create merchant prepaid service balances and are customer liabilities. Only XGuard service fees that satisfy their configured billable event become gross earned revenue.
 
-## Current money flow
+## Current canonical x402 money flow
 
 ```text
 merchant Base USDC top-up
@@ -13,11 +13,15 @@ configured crypto treasury address
         ↓
 merchant prepaid liability in XGuard accounting
         ↓
-successful billable settlement reserves $0.002
+authenticated + supported x402 economic request
         ↓
-independent Base finality succeeds
+canonical logicalPaymentKey + sufficient prepaid balance
         ↓
-$0.002 becomes gross XGuard earned revenue
+$0.03 accepted-attempt fee earned once
+        ↓
+downstream verify / settlement execution
+        ↓
+independent settlement truth / reconciliation runs separately
         ↓
 downstream + infrastructure + other liabilities/costs
         ↓
@@ -26,50 +30,45 @@ required operating reserve
 owner distributable amount, if any
 ```
 
+The fixed x402 fee is **$0.03 / 30,000 micro-USD once per accepted authenticated economic attempt**. It is earned before downstream execution after authentication, supported-request parsing, canonical `logicalPaymentKey` derivation and successful prepaid-balance reservation. A downstream failure does not refund an accepted attempt, and an idempotent retry for the same logical payment key adds no second fixed fee.
+
+Independent Base finality remains authoritative for the **truth of the expected USDC settlement**, not for the timing of the canonical accepted-attempt fee.
+
 The physical USDC treasury can therefore contain a mixture of customer prepaid liabilities and earned XGuard funds. The entire wallet/exchange balance must never be treated as withdrawable owner profit.
 
 ## OKX treasury verification
 
-XGuard includes `npm run ops:okx-treasury-check` and the manual GitHub Actions workflow **Verify OKX treasury**. The check uses an authenticated, read-only OKX API key to prove all of the following before the treasury is described as OKX-linked:
+XGuard includes `npm run ops:okx-treasury-check` and the manual GitHub Actions workflow **Verify OKX treasury**. The check is intended to use an authenticated, read-only OKX API key to prove that the configured public Base USDC treasury address belongs to the authenticated account and that the relevant deposit route is available for that account/entity.
 
-- the configured `XGUARD_TREASURY_USDC_ADDRESS` is returned by the authenticated OKX account as a USDC deposit address on Base;
-- OKX reports USDC deposits on Base as currently available for that account/entity;
-- the API request is sent only to an allowlisted official OKX API domain;
-- no trading or withdrawal API permission is required by XGuard.
+The verification uses encrypted GitHub Actions secrets such as `OKX_API_KEY`, `OKX_API_SECRET`, `OKX_API_PASSPHRASE`, and the configured `XGUARD_TREASURY_USDC_ADDRESS`. Do not put exchange API credentials in source, logs, issues, pull requests, or example environment files. Receiving treasury funds does not require XGuard source code to possess exchange trading or withdrawal authority.
 
-The verification needs these encrypted GitHub Actions secrets: `OKX_API_KEY`, `OKX_API_SECRET`, `OKX_API_PASSPHRASE`, plus the already-required `XGUARD_TREASURY_USDC_ADDRESS`. Global OKX accounts default to `https://openapi.okx.com`; regional accounts can set the repository variable `OKX_API_BASE_URL` to the corresponding allowlisted OKX API domain.
-
-Do not put OKX API credentials in source files, logs, issues, pull requests, or `.env.example`. The API key used for this check should have read access only; XGuard does not need OKX trade or withdrawal authority to receive USDC deposits.
+A repository workflow or implementation is not evidence that the account has actually passed the external verification. The result of the authenticated check is the relevant evidence when it is run.
 
 ## Automatic owner payout status
 
-No automated regulated fiat/bank off-ramp connector is active. The codebase contains accounting and payout-policy primitives, but it does not have authority to move money from the owner's exchange account or bank account and does not store bank credentials in the repository.
+No automated regulated fiat/bank off-ramp connector is established merely by the existence of accounting or payout-policy code. A crypto treasury and earned XGuard revenue can exist while owner bank payout remains an external operational/compliance step.
 
-`AUTO_OWNER_PAYOUT=true`, where present in portable/reference components, expresses a desired policy only. It is not permission or a live transfer credential.
+`AUTO_OWNER_PAYOUT=true`, where present in portable/reference components, expresses a policy setting only. It is not a bank/exchange transfer credential and does not itself authorize money movement.
 
-## Safety gate for future automated payout
+## Safety gate for any future automated payout
 
-A future payout connector must not submit an owner distribution unless all of the following are proven:
+An owner-distribution connector should not submit a payout unless all relevant conditions are proven, including:
 
-- destination ownership and KYC/AML eligibility are verified by the selected regulated provider;
-- merchant customer liabilities remain fully covered;
-- pending/ambiguous settlements and payouts are excluded;
-- downstream and other operating liabilities are paid or reserved;
-- the operating reserve is fully funded;
-- the amount is derived from reconciled earned revenue, not gross treasury balance;
-- the provider transfer is idempotent and its final/returned status can be independently reconciled.
+- destination ownership and provider eligibility;
+- full coverage of merchant customer liabilities;
+- unpaid operating/downstream obligations accounted for;
+- pending or ambiguous owner payouts excluded;
+- the required operating reserve funded;
+- the payout amount derived from reconciled earned XGuard revenue rather than gross treasury balance;
+- idempotent transfer submission and independently reconcilable final/returned status.
 
-## Current off-ramp research
-
-Circle Mint was previously researched as a possible institutional off-ramp candidate. Country support or documentation is not account approval and does not establish that the owner, XGuard, or a particular bank account is eligible. A production provider must independently approve the account holder and issue scoped credentials before any automated bank payout can be activated.
-
-The current mainnet treasury receiving path can function without a bank payout connector because earned funds can remain in the configured crypto treasury. That does **not** resolve regulatory classification, tax obligations, exchange terms, or owner-distributable accounting.
+Settlement ambiguity can still affect treasury reconciliation or payout safety even though it does not retroactively refund an already accepted canonical x402 attempt fee.
 
 ## Current status
 
-- **Base USDC treasury receipt:** technically live.
-- **OKX treasury identity:** verifiable automatically once the read-only OKX API secrets are installed and the verification workflow passes.
-- **Merchant prepaid liability accounting:** implemented.
-- **Earned-fee finality boundary:** implemented.
-- **Automatic bank/off-ramp owner payout:** not active.
-- **Owner distributable profit:** must be computed from reconciled earned revenue minus liabilities, expenses, pending amounts, and reserve; it cannot be inferred from the exchange balance.
+- **Base USDC treasury receiving path:** implemented/configured for mainnet operation.
+- **Merchant prepaid liability accounting:** implemented in the production accounting path.
+- **Canonical public x402 fee:** $0.03 once per accepted authenticated economic attempt.
+- **Settlement truth/finality:** separate safety and reconciliation layer for the expected Base USDC transfer.
+- **Automatic regulated bank/off-ramp owner payout:** not established by the repository alone.
+- **Owner distributable amount:** must be computed from reconciled earned revenue minus customer liabilities, operating liabilities/costs, pending owner payouts and reserve; it cannot be inferred from the treasury balance.

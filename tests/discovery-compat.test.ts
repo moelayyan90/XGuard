@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { compatibilityDiscoveryResponse } from "../apps/worker/src/discovery-compat.js";
 import { discoveryResponse } from "../apps/worker/src/discovery.js";
+import {
+  XGUARD_ATTEMPT_BILLING,
+  XGUARD_ATTEMPT_EVENT,
+  XGUARD_ATTEMPT_FEE_USD,
+} from "../apps/worker/src/public-payment-contract.js";
 
 const ORIGIN = "https://xguardgate.com";
 
@@ -72,9 +77,9 @@ describe("mainnet discovery compatibility", () => {
     expect(body.manifest).toBe("xguard-monetization-v1");
     expect(body.pricing).toMatchObject({
       subscription: "none",
-      event: "successful_billable_settlement",
-      feeUsd: "0.002",
-      billing: "merchant_prepaid_service_balance",
+      event: XGUARD_ATTEMPT_EVENT,
+      feeUsd: XGUARD_ATTEMPT_FEE_USD,
+      billing: XGUARD_ATTEMPT_BILLING,
     });
     expect(body.x402).toEqual({
       providerManifest: `${ORIGIN}/.well-known/x402/facilitator.json`,

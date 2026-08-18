@@ -1,76 +1,77 @@
 # Architecture
 
-XGuard production runs on the `xguard-mainnet` Cloudflare Worker. It separates protocol validation, settlement serialization, discovery, operational projection, and reporting so a degraded non-financial path cannot create a second onchain submission.
+XGuard production runs on the `xguard-mainnet` Cloudflare Worker. The checked-in production entrypoint is `apps/worker/src/universal-mainnet.ts`, which composes public payment/protocol discovery with the monetized mainnet execution path and the modern settlement safety stack.
 
 ```mermaid
 flowchart TD
-  A["AI agent / x402 client"] --> R["Paid HTTP API or MCP tool"]
-  R --> X["XGuard mainnet edge"]
-  X --> V["Strict x402 v2 validation"]
-  V --> D["Durable Object per authorization"]
-  D --> F["One selected settlement facilitator"]
+  A["AI agent / x402 client"] --> U["universal-mainnet"]
+  U --> P["Canonical payment + protocol discovery"]
+  U --> M["Monetized x402 mainnet path"]
+  M --> V["Authentication + strict x402 validation"]
+  V --> FEE["One fixed attempt fee per logicalPaymentKey"]
+  FEE --> D["Durable settlement coordination"]
+  D --> F["One selected downstream facilitator"]
   D --> O["Durable outbox"]
-  O --> L["D1 financial projection + reconciliation"]
-  X --> B["Native Bazaar catalog"]
-  B --> Q["Discovery API + remote MCP"]
+  O --> L["D1 settlement truth + reconciliation"]
+  U --> B["Bazaar / MCP / A2A / universal gateway"]
 ```
 
 ## Trust boundaries
 
-1. **Public request boundary:** strict JSON parsing limits bytes, depth, key count, duplicate keys, dangerous prototype keys, schema shape, protocol version, amount, asset, recipient, network, expiry, and authorization mechanism.
-2. **Authorization identity:** XGuard derives an immutable key from the EIP-3009 contract/owner/nonce domain or the Permit2 chain/owner/nonce bitmap domain. The official Payment Identifier remains a separate TTL retry key; it is not the permanent settlement identity.
-3. **Settlement owner:** every immutable key maps to one SQLite-backed Durable Object. RPC calls serialize prepare/start/finalize transitions. At most one call can cross `OUTBOUND_STARTED` under XGuard control.
-4. **Facilitator boundary:** configured HTTPS origins are trusted configuration, not request data. Redirects and oversized responses are rejected. Conflicting, malformed, timed-out, or uncertain settle outcomes become `AMBIGUOUS`.
-5. **Financial projection:** settlement state is durable before XGuard treats an outcome as final. D1 usage, finality, and reconciliation records are idempotent projections and cannot authorize a second settlement.
-6. **Discovery boundary:** Bazaar metadata is untrusted public data. XGuard validates it against the supplied JSON Schema, sanitizes service metadata, requires public HTTPS resource URLs on mainnet, uses stable HTTP/MCP resource identities, and keeps catalog failure separate from settlement correctness.
+1. **Public request boundary:** strict parsing and schema/network/asset constraints protect financial execution.
+2. **Merchant boundary:** protected x402 execution requires the appropriate bearer scope before a request can become a chargeable accepted attempt.
+3. **Billing identity:** the canonical `logicalPaymentKey` deduplicates the fixed **$0.03 / 30,000 micro-USD** x402 attempt fee. Verify → settle and retries for the same logical payment do not earn that fixed fee twice.
+4. **Settlement owner:** every immutable payment identity maps to durable coordination so at most one call can cross the outbound settlement boundary under XGuard control.
+5. **Facilitator boundary:** configured HTTPS origins are trusted configuration, not request data. Redirects and malformed/oversized responses are rejected where the financial path requires it. Uncertain settle outcomes become ambiguous rather than blindly retried.
+6. **Financial projection:** D1 projects merchant balances, usage, settlement truth, finality and reconciliation with idempotent keys/constraints.
+7. **Discovery boundary:** public Bazaar/MCP/A2A/provider metadata is kept separate from settlement correctness and from protected merchant execution.
 
 ## Runtime surfaces
 
-| Surface                                 | Purpose                                                                 | Production role                                                          |
-| --------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `apps/worker/src/mainnet-modern.ts`     | Production `xguard-mainnet` entrypoint; HTTPS/security, MCP, discovery  | **Canonical production Worker entrypoint**                               |
-| `apps/worker/src/mainnet-supervisor.ts` | Merchant authorization, upstream quota protection, recovery/maintenance | Production supervision around the financial core                         |
-| `apps/worker/src/mainnet-edge.ts`       | Mainnet Bazaar discovery/MCP wrapper                                    | D1 discovery catalog; delegates financial decisions                      |
-| `apps/worker/src/mainnet.ts`            | Base mainnet financial core                                             | Durable Object settlement ownership + D1 billing/finality/reconciliation |
-| `apps/worker/src/index.ts`              | Separate Base Sepolia worker                                            | Manual, non-billable testnet only                                        |
-| `apps/gateway`                          | Legacy portable/local Node reference                                    | Local/test operations; not the `xguard-mainnet` deployment path          |
+| Surface                                      | Purpose                                                                           | Production role                                              |
+| -------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `apps/worker/src/universal-mainnet.ts`       | Production composition layer                                                      | **Canonical `xguard-mainnet` Worker entrypoint**             |
+| `apps/worker/src/public-payment-contract.ts` | Canonical public price, billing event, network/asset and payment manifest         | **Single public commercial-contract source**                 |
+| `apps/worker/src/monetized-mainnet.ts`       | Fixed x402 attempt-fee enforcement                                                | Protected `/verify` and `/settle` accounting wrapper         |
+| `apps/worker/src/mainnet-modern.ts`          | HTTPS/security, compatibility, universal gateway and settlement-truth integration | Modern protected execution layer                             |
+| `apps/worker/src/mainnet-supervisor.ts`      | Merchant authorization, upstream protection, recovery/maintenance                 | Production supervision around the financial core             |
+| `apps/worker/src/mainnet.ts`                 | Base mainnet settlement core                                                      | Durable settlement ownership + D1 finality/reconciliation    |
+| `apps/worker/src/index.ts`                   | Separate Base Sepolia worker                                                      | Manual, non-billable testnet only                            |
+| `apps/gateway`                               | Legacy portable/local Node reference                                              | Local/test operations; not the production mainnet entrypoint |
 
-The mainnet Worker currently supports x402 v2 `exact` payments using native USDC on Base mainnet. Merchant service fees are separately disclosed and funded through the prepaid XGuard service balance; they are not silently deducted from the seller's advertised payment amount.
+The mainnet Worker supports x402 v2 `exact` payments using native USDC on Base mainnet. Merchant service fees are separately disclosed and funded through the prepaid XGuard service balance; they are not silently deducted from the seller's advertised payment amount.
 
-Automatic deployment and live monitoring target `xguard-mainnet`. The separate Base Sepolia Worker remains available only through an explicit manual testnet workflow.
+## Billing versus settlement truth
+
+These are intentionally separate state machines:
+
+- **Billing:** after authentication, supported-request parsing, `logicalPaymentKey` derivation and successful prepaid-balance reservation, XGuard earns the fixed x402 attempt fee before downstream execution.
+- **Settlement truth:** after a settlement attempt crosses the outbound boundary, XGuard independently tracks whether the expected Base USDC transfer becomes `FINALIZED`, remains `PENDING`, is `PROVEN_FAILED`, or enters `CONFLICT`/reconciliation.
+
+A downstream failure does not refund an already accepted attempt. An idempotent retry does not create another fixed attempt fee. Finality determines transfer truth; it is not the trigger for the canonical attempt fee.
 
 ## Settlement routing
 
-Verification must match x402 version, scheme, network, capability, enabled state, and health. Verification may fail over because it does not submit value. Settlement chooses once. XGuard does not blindly retry after the outbound submission boundary.
+Verification must match x402 version, scheme, network, capability, enabled state and health. Verification may use safe compatible routing because it does not submit value. Settlement chooses one outbound owner. XGuard does not blindly retry after the submission boundary.
 
-Operational states are `HEALTHY`, `DEGRADED`, `OPEN`, `HALF_OPEN`, `QUARANTINED`, and `DISABLED`. Scheduled probes can recover an open route; malformed financial responses quarantine it.
+Operational degradation and reconciliation remain fail-closed around value movement even though the accepted-attempt service fee is non-refundable after billing acceptance.
 
-## Bazaar discovery
+## Bazaar and agent discovery
 
-The mainnet edge implements the x402 Bazaar discovery role natively:
+The production composition exposes machine-readable discovery for humans, clients and agents, including payment manifests, provider metadata, OpenAPI, MCP, A2A and Bazaar resources/search. Free discovery **metadata** must not be confused with value-producing discovery/search operations, which can use their separate SOURCE fee schedule.
 
-- successful verified x402 payloads with a valid `bazaar` extension may be cataloged;
-- MCP tools use `(resource URL, tool name)` as the stable catalog identity;
-- `/discovery/resources` provides machine-readable catalog listing and filtering;
-- `/discovery/search` provides bounded catalog search;
-- `/mcp` exposes stateless remote discovery tools for agents;
-- `EXTENSION-RESPONSES` reports Bazaar catalog success or rejection without changing the underlying settlement result.
+Catalog outages or malformed discovery metadata never authorize a second settlement submission.
 
-Catalog outages or malformed discovery metadata never convert a valid settlement into a second submission. Financial correctness remains owned by the mainnet core.
+## Correctness guarantees
 
-## Correctness guarantee
-
-No distributed service can truthfully promise exactly-once blockchain execution across arbitrary network failures. XGuard instead enforces:
+No distributed service can truthfully promise exactly-once blockchain execution across arbitrary network failures. XGuard instead aims to enforce:
 
 - at most one outbound settlement submission under XGuard control;
-- one logical billing event per immutable payment key;
-- no blind retry after the submission boundary;
-- cached replay after a known final result;
-- durable ambiguity plus reconciliation when the final result is unknown;
-- no XGuard fee earned for a definitive failure or duplicate cached replay.
+- one fixed x402 attempt fee per `logicalPaymentKey`;
+- no second fixed fee for idempotent retry of that key;
+- no blind settlement retry after the outbound boundary;
+- durable ambiguity plus reconciliation when transfer truth is unknown;
+- independent Base USDC finality for settlement truth;
+- no x402 attempt fee for traffic rejected before authenticated economic acceptance.
 
-## Mainnet safety boundary
-
-A mainnet settlement is not considered billable merely because the downstream facilitator returned success. XGuard persists a finality job and independently verifies the Base USDC transfer before moving held service fees to earned revenue. Uncertain post-submission outcomes remain ambiguous until reconciliation resolves them.
-
-Deployment applies D1 migrations before publishing the Worker and then runs live health, capability, discovery, Glama, MCP, and mainnet smoke tests. External legal, provider, and independent-review limitations remain documented in [DEPLOYMENT.md](DEPLOYMENT.md).
+Deployment applies D1 migrations before publishing the Worker and then runs release/live checks. External legal, provider and independent-review limitations remain documented in [DEPLOYMENT.md](DEPLOYMENT.md).
