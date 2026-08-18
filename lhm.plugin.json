@@ -108,7 +108,14 @@
             }
           }
         },
-        "required": ["requestId", "rail", "provider", "amount", "currency", "payee"],
+        "required": [
+          "requestId",
+          "rail",
+          "provider",
+          "amount",
+          "currency",
+          "payee"
+        ],
         "additionalProperties": false
       }
     },
