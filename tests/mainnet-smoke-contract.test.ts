@@ -7,9 +7,15 @@ describe("mainnet smoke contract", () => {
 
     expect(source).toContain('const health = await json("/healthz")');
     expect(source).toContain('const status = await json("/status")');
-    expect(source).toContain('const actions = await json("/.well-known/xguard/actions.json")');
-    expect(source).toContain('actions.body.name === "XGuard Universal Action Rail"');
-    expect(source).toContain('actions.body.category === "universal-action-gateway"');
+    expect(source).toContain(
+      'const actions = await json("/.well-known/xguard/actions.json")',
+    );
+    expect(source).toContain(
+      'actions.body.name === "XGuard Universal Action Rail"',
+    );
+    expect(source).toContain(
+      'actions.body.category === "universal-action-gateway"',
+    );
     expect(source).toContain("universalActionRail: true");
 
     expect(source).not.toContain('root.body.mode === "mainnet"');
