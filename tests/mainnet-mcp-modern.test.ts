@@ -70,7 +70,7 @@ describe("MCP 2026-07-28 mainnet surface", () => {
       _meta: {
         "io.modelcontextprotocol/serverInfo": {
           name: "xguard-mainnet",
-          version: "0.6.0",
+          version: "0.6.1",
         },
       },
     });
@@ -118,10 +118,9 @@ describe("MCP 2026-07-28 mainnet surface", () => {
       idempotentHint: true,
       openWorldHint: true,
     });
-    expect(decision?.description).toContain("Paid only when XGuard completes");
-    expect(decision?.description).toContain(
-      "never executes the underlying payment",
-    );
+    expect(decision?.description).toContain("idempotent ALLOW/REVIEW/BLOCK");
+    expect(decision?.description).toContain("never executes the payment");
+    expect(decision?.description).toContain("Example:");
     const readOnlyTools = tools.filter((tool) =>
       ["xguard_discover", "xguard_resource_details", "xguard_status"].includes(
         tool.name,
