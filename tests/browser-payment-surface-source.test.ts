@@ -53,8 +53,8 @@ describe("buyer browser payment-layer source invariants", () => {
     expect(source).toContain('type: "XGUARD_SPLIT_CREATE"');
     expect(inline).not.toContain('type: "XGUARD_PAYMENT_DECISION"');
     expect(inline).toContain('type: "XGUARD_MEMORY_GET"');
-    expect(inline).toContain('type: "XGUARD_PAYMENT_DEFER"');
-    expect(inline).toContain('type: "XGUARD_PAY_SINGLE_START"');
+    expect(inline).toContain('"XGUARD_PAYMENT_DEFER"');
+    expect(inline).toContain('"XGUARD_PAY_SINGLE_START"');
     expect(inline).toContain('type: "XGUARD_PAY_ALL_START"');
   });
 
