@@ -1,0 +1,46 @@
+{
+  "profile": "xguard-safe-settlement/1",
+  "version": 1,
+  "requiredBehaviors": [
+    {
+      "id": "finalized-is-idempotent",
+      "given": "the same immutable logical payment is observed repeatedly after independent finality",
+      "must": "return FINALIZED without creating a second earned settlement event or second value-moving submission"
+    },
+    {
+      "id": "timeout-is-not-failure",
+      "given": "the downstream submit boundary was crossed and the facilitator response times out",
+      "must": "return PENDING unless independent evidence proves a terminal state"
+    },
+    {
+      "id": "pending-blocks-blind-resubmit",
+      "given": "truth state is PENDING",
+      "must": "forbid blind automatic creation of a second value-moving submission for the same logical payment"
+    },
+    {
+      "id": "conflicting-intent-is-conflict",
+      "given": "an existing logical payment identity is presented with different recipient, asset, or authorized amount",
+      "must": "return or persist CONFLICT and fail closed"
+    },
+    {
+      "id": "proven-failure-requires-evidence",
+      "given": "a rail wants to classify a payment as PROVEN_FAILED",
+      "must": "require independently queryable evidence sufficient for the rail-specific retry policy"
+    },
+    {
+      "id": "merchant-contract-preserved",
+      "given": "a buyer-authorized exact payment enters the safety layer",
+      "must": "preserve the authorized recipient and amount"
+    },
+    {
+      "id": "one-finalized-accounting-event",
+      "given": "webhook, polling, reconciliation, and client retries all observe the same finalized payment",
+      "must": "produce at most one finalized accounting event for that logical payment"
+    },
+    {
+      "id": "evidence-exportable",
+      "given": "an operator requests reconciliation evidence for a bounded range",
+      "must": "export truth state and non-secret evidence without exposing private credentials"
+    }
+  ]
+}
