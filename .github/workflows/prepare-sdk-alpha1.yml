@@ -1,0 +1,80 @@
+name: Prepare SDK Alpha 1
+
+on:
+  push:
+    branches:
+      - release/sdk-alpha.1
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: release/sdk-alpha.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Bump SDK and internal consumers
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          old = '0.1.0-alpha.0'
+          new = '0.1.0-alpha.1'
+
+          sdk = Path('packages/sdk/package.json')
+          data = json.loads(sdk.read_text())
+          data['version'] = new
+          sdk.write_text(json.dumps(data, indent=2) + '\n')
+
+          for path in Path('.').rglob('package.json'):
+              if 'node_modules' in path.parts or path == sdk:
+                  continue
+              data = json.loads(path.read_text())
+              changed = False
+              for section in ('dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'):
+                  deps = data.get(section)
+                  if isinstance(deps, dict) and deps.get('@xguard/sdk') == old:
+                      deps['@xguard/sdk'] = new
+                      changed = True
+              if changed:
+                  path.write_text(json.dumps(data, indent=2) + '\n')
+
+          index = Path('packages/sdk/src/index.ts')
+          source = index.read_text()
+          source = source.replace('@xguard/sdk/0.1.0-alpha.0', '@xguard/sdk/0.1.0-alpha.1')
+          index.write_text(source)
+
+          workflow = Path('.github/workflows/github-release-packages.yml')
+          source = workflow.read_text()
+          source = source.replace("xguard-sdk-0.1.0-alpha.0.tgz", "xguard-sdk-0.1.0-alpha.1.tgz")
+          source = source.replace("xguard-packages-v0.1.0-alpha.0", "xguard-packages-v0.1.0-alpha.1")
+          source = source.replace("XGuard installable packages v0.1.0-alpha.0", "XGuard installable packages v0.1.0-alpha.1")
+          source = source.replace(
+              "Installable fallback artifacts for XGuard while first npm publication remains identity-gated. Includes @xguard/core, @xguard/sdk, xguard CLI, and SHA256 checksums.",
+              "Installable fallback artifacts for XGuard while first npm publication remains identity-gated. This bundle introduces @xguard/sdk 0.1.0-alpha.1 with embedded and hosted automated-payment guards; @xguard/core and xguard CLI remain 0.1.0-alpha.0. Includes SHA256 checksums."
+          )
+          workflow.write_text(source)
+          PY
+      - name: Refresh lockfile
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Format release metadata
+        run: npx prettier --write packages/sdk/package.json packages/sdk/src/index.ts apps/mcp-example/package.json examples/x402-xguard-starter/package.json .github/workflows/github-release-packages.yml package-lock.json
+      - name: Commit release preparation
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/sdk/package.json packages/sdk/src/index.ts apps/mcp-example/package.json examples/x402-xguard-starter/package.json .github/workflows/github-release-packages.yml package-lock.json
+          git commit -m "Prepare @xguard/sdk 0.1.0-alpha.1"
+          git push origin HEAD:release/sdk-alpha.1
