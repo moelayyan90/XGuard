@@ -1,5 +1,5 @@
-export const XGUARD_ATTEMPT_FEE_USD = "0.04";
-export const XGUARD_ATTEMPT_FEE_MICRO_USD = 40_000;
+export const XGUARD_ATTEMPT_FEE_USD = "0.03";
+export const XGUARD_ATTEMPT_FEE_MICRO_USD = 30_000;
 
 const MACHINE_PATHS = new Set([
   "/.well-known/payment-manifest",
@@ -17,6 +17,7 @@ const NORMALIZE_PATHS = new Set([
   "/llms.txt",
   "/llms-full.txt",
   "/provider.json",
+  "/.well-known/x402",
   "/.well-known/x402.json",
   "/.well-known/x402/facilitator.json",
   "/.well-known/agent-market.json",
@@ -153,7 +154,7 @@ function normalizeJson(value: unknown, key = ""): unknown {
   }
   if (typeof value === "string") {
     if (
-      value === "0.002" &&
+      (value === "0.002" || value === "0.04") &&
       ["amount", "feeUsd", "price", "settlementFeeUsd", "amountUsd"].includes(
         key,
       )
@@ -170,6 +171,8 @@ function normalizeText(value: string): string {
   return value
     .replaceAll("$0.002", `$${XGUARD_ATTEMPT_FEE_USD}`)
     .replaceAll("0.002 USD", `${XGUARD_ATTEMPT_FEE_USD} USD`)
+    .replaceAll("$0.04", `$${XGUARD_ATTEMPT_FEE_USD}`)
+    .replaceAll("0.04 USD", `${XGUARD_ATTEMPT_FEE_USD} USD`)
     .replaceAll(
       "successful billable settlement",
       "accepted authenticated economic attempt",
