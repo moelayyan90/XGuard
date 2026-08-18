@@ -4,11 +4,21 @@ const PUBLIC_DISCOVERY_PREFLIGHT_PATHS = new Set([
   "/.well-known/agent-market.json",
   "/.well-known/x402/facilitator.json",
   "/.well-known/x402.json",
+  "/.well-known/xguard/payment-layer.json",
+  "/.well-known/xguard/protocols.json",
+  "/.well-known/xguard/actions.json",
+  "/.well-known/payment-manifest",
+  "/.well-known/mcp/server.json",
+  "/.well-known/xguard",
+  "/v1/protocols",
+  "/v1/actions",
+  "/v1/actions/capabilities",
   "/provider.json",
   "/openapi.json",
   "/llms.txt",
   "/llms-full.txt",
   "/robots.txt",
+  "/sitemap.xml",
 ]);
 
 export function publicDiscoveryPreflight(request: Request): Response | null {
