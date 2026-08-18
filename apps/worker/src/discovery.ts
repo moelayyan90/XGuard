@@ -1,3 +1,12 @@
+import {
+  XGUARD_ATTEMPT_BILLING,
+  XGUARD_ATTEMPT_EVENT,
+  XGUARD_ATTEMPT_FEE_USD,
+  XGUARD_ATTEMPT_MODEL,
+  XGUARD_MAINNET_NETWORK,
+  XGUARD_MAINNET_USDC_CONTRACT,
+} from "./public-payment-contract.js";
+
 const XGUARD_VERSION = "0.4.0";
 const AGENT_CARD_ETAG = '"xguard-agent-card-0.4.0"';
 const PROVIDER_MANIFEST_ETAG = '"xguard-provider-manifest-0.4.0"';
@@ -104,7 +113,7 @@ function buildAgentMarket(origin: string): Record<string, unknown> {
     description:
       "Machine-discoverable x402 v2 verification and settlement gateway for autonomous agents and applications.",
     protocol: "x402-v2",
-    network: "eip155:8453",
+    network: XGUARD_MAINNET_NETWORK,
     asset: "USDC",
     discovery: {
       provider: `${origin}/.well-known/x402/facilitator.json`,
@@ -118,9 +127,12 @@ function buildAgentMarket(origin: string): Record<string, unknown> {
       readiness: `${origin}/readyz`,
     },
     commercialModel: {
-      event: "successful_billable_settlement",
-      feeUsd: "0.002",
-      billing: "merchant_prepaid_service_balance",
+      event: XGUARD_ATTEMPT_EVENT,
+      feeUsd: XGUARD_ATTEMPT_FEE_USD,
+      billing: XGUARD_ATTEMPT_BILLING,
+      model: XGUARD_ATTEMPT_MODEL,
+      refundableAfterAcceptance: false,
+      dedupe: "one fee per logicalPaymentKey",
     },
     authentication: {
       type: "http-bearer",
@@ -157,11 +169,11 @@ function buildProviderManifest(origin: string): Record<string, unknown> {
       supported: `${origin}/supported`,
       verify: `${origin}/verify`,
       settle: `${origin}/settle`,
-      network: "eip155:8453",
+      network: XGUARD_MAINNET_NETWORK,
       scheme: "exact",
       asset: {
         symbol: "USDC",
-        address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        address: XGUARD_MAINNET_USDC_CONTRACT,
         transferMethod: "eip3009",
       },
       clientConfig: {
@@ -180,18 +192,22 @@ function buildProviderManifest(origin: string): Record<string, unknown> {
     },
     pricing: {
       subscription: "none",
-      event: "successful_billable_settlement",
-      feeUsd: "0.002",
-      billing: "merchant_prepaid_service_balance",
+      event: XGUARD_ATTEMPT_EVENT,
+      feeUsd: XGUARD_ATTEMPT_FEE_USD,
+      billing: XGUARD_ATTEMPT_BILLING,
+      model: XGUARD_ATTEMPT_MODEL,
+      refundableAfterAcceptance: false,
+      dedupe: "one fee per logicalPaymentKey",
       freeOperations: [
         "supported",
         "health",
+        "readiness",
         "status",
-        "discovery",
-        "mcp_discovery",
-        "failed_verification",
-        "failed_settlement",
-        "duplicate_retry",
+        "discovery_metadata",
+        "mcp_discovery_metadata",
+        "malformed_request",
+        "unauthenticated_request",
+        "idempotent_retry",
       ],
     },
     safety: {
@@ -206,7 +222,7 @@ function buildProviderManifest(origin: string): Record<string, unknown> {
       mode: "routed",
       currentDownstream: "xpay",
       signerAttribution: "Use the live /supported response as authoritative.",
-      note: "XGuard is the merchant-facing facilitator-compatible gateway and safety layer. The current downstream transaction submitter is xpay; XGuard independently verifies finality before recording earned service revenue.",
+      note: "XGuard is the merchant-facing facilitator-compatible gateway and safety layer. The current downstream transaction submitter is xpay. XGuard independently verifies settlement finality for settlement truth; the fixed attempt fee is a separate accounting event earned before downstream execution after authenticated request acceptance.",
     },
     discovery: {
       agentCard: `${origin}/.well-known/agent-card.json`,
@@ -409,6 +425,7 @@ function buildOpenApi(origin: string): Record<string, unknown> {
             "200": { description: "x402 verification result" },
             "400": { description: "Malformed or unsupported payment request" },
             "401": { description: "Missing or invalid merchant API key" },
+            "402": { description: "Merchant service balance is insufficient" },
             "503": { description: "No healthy facilitator route is available" },
           },
         },
@@ -455,7 +472,9 @@ function buildLlms(origin: string): string {
 
 > XGuard is a guarded x402 v2 verification and settlement gateway for autonomous agents and applications on Base mainnet USDC.
 
-XGuard charges $0.002 only for a successful billable settlement. Verification, malformed requests, failed settlements, duplicates, replays, and discovery requests are not billable.
+XGuard charges $${XGUARD_ATTEMPT_FEE_USD} once per accepted authenticated economic attempt. The fee is earned before downstream execution after XGuard authenticates and accepts a parseable economic request. A downstream failure does not refund an accepted attempt. Malformed or unauthenticated requests and idempotent retries do not incur an additional attempt fee.
+
+Machine-readable discovery metadata is free. Value-producing discovery/search operations such as /discovery/resources and /discovery/search use their separate SOURCE fee schedule.
 
 ## Discovery
 - [Provider manifest](${origin}/.well-known/x402/facilitator.json): machine-readable facilitator identity, integration, pricing, onboarding, and safety metadata
@@ -478,7 +497,7 @@ XGuard charges $0.002 only for a successful billable settlement. Verification, m
 Protected merchant and payment endpoints use Authorization: Bearer <merchant-api-key>.
 
 ## Protocol
-x402 version 2; Base mainnet (eip155:8453); exact scheme; native USDC.
+x402 version 2; Base mainnet (${XGUARD_MAINNET_NETWORK}); exact scheme; native USDC.
 `;
 }
 
@@ -493,10 +512,13 @@ function buildLlmsFull(origin: string): string {
 Use ${origin}/.well-known/x402/facilitator.json when a catalog, agent, or integration tool needs XGuard provider metadata. Use ${origin}/supported as the authoritative live x402 capability and signer response. The provider manifest is XGuard-specific metadata and does not claim to be part of the x402 protocol specification.
 
 ## Settlement safety semantics
-XGuard derives stable payment identities, rejects conflicting active authorizations, coordinates settlement durably, prevents automatic retries when downstream outcome is ambiguous, tracks Base USDC finality, and earns its service fee only after successful finality confirmation.
+XGuard derives stable payment identities, rejects conflicting active authorizations, coordinates settlement durably, prevents automatic retries when downstream outcome is ambiguous, and tracks Base USDC finality. These settlement-safety semantics are separate from the fixed x402 attempt-fee accounting event.
+
+## Billing semantics
+The fixed x402 attempt fee is $${XGUARD_ATTEMPT_FEE_USD} / ${XGUARD_ATTEMPT_FEE_MICRO_USD} micro-USD once per logicalPaymentKey. It is earned after authenticated request acceptance and before downstream execution. Downstream failure does not refund it. Malformed or unauthenticated requests and idempotent retries do not add another fixed attempt fee.
 
 ## Settlement execution
-XGuard is the merchant-facing facilitator-compatible gateway. The current downstream transaction submitter is xpay. XGuard independently verifies finalized Base USDC settlement evidence before recognizing its service fee.
+XGuard is the merchant-facing facilitator-compatible gateway. The current downstream transaction submitter is xpay. XGuard independently verifies finalized Base USDC settlement evidence for settlement truth and recovery; this finality check must not be confused with the earlier attempt-fee accounting event.
 
 ## HTTP behavior
 - 200: successful discovery/verification/settlement response
