@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { discoveryResponse } from "../apps/worker/src/discovery.js";
+import {
+  XGUARD_ATTEMPT_BILLING,
+  XGUARD_ATTEMPT_EVENT,
+  XGUARD_ATTEMPT_FEE_MICRO_USD,
+  XGUARD_ATTEMPT_FEE_USD,
+  XGUARD_ATTEMPT_MODEL,
+  XGUARD_MAINNET_NETWORK,
+  buildPaymentManifest,
+} from "../apps/worker/src/public-payment-contract.js";
 
 const ORIGIN = "https://xguardgate.com";
 
@@ -68,7 +77,15 @@ describe("mainnet discovery", () => {
         packageInstallationRequired: boolean;
         apiKeyRequiredForVerifyAndSettle: boolean;
       };
-      pricing: { feeUsd: string; subscription: string };
+      pricing: {
+        feeUsd: string;
+        subscription: string;
+        event: string;
+        billing: string;
+        model: string;
+        refundableAfterAcceptance: boolean;
+        freeOperations: string[];
+      };
       settlementExecution: {
         mode: string;
         currentDownstream: string;
@@ -82,7 +99,7 @@ describe("mainnet discovery", () => {
     expect(provider.facilitator.supported).toBe(`${ORIGIN}/supported`);
     expect(provider.facilitator.verify).toBe(`${ORIGIN}/verify`);
     expect(provider.facilitator.settle).toBe(`${ORIGIN}/settle`);
-    expect(provider.facilitator.network).toBe("eip155:8453");
+    expect(provider.facilitator.network).toBe(XGUARD_MAINNET_NETWORK);
     expect(provider.facilitator.scheme).toBe("exact");
     expect(provider.facilitator.clientConfig).toEqual({
       type: "HTTPFacilitatorClient",
@@ -91,13 +108,88 @@ describe("mainnet discovery", () => {
     });
     expect(provider.onboarding.packageInstallationRequired).toBe(false);
     expect(provider.onboarding.apiKeyRequiredForVerifyAndSettle).toBe(true);
-    expect(provider.pricing.feeUsd).toBe("0.002");
+    expect(provider.pricing.feeUsd).toBe(XGUARD_ATTEMPT_FEE_USD);
+    expect(provider.pricing.event).toBe(XGUARD_ATTEMPT_EVENT);
+    expect(provider.pricing.billing).toBe(XGUARD_ATTEMPT_BILLING);
+    expect(provider.pricing.model).toBe(XGUARD_ATTEMPT_MODEL);
+    expect(provider.pricing.refundableAfterAcceptance).toBe(false);
+    expect(provider.pricing.freeOperations).not.toContain("failed_settlement");
+    expect(provider.pricing.freeOperations).not.toContain("failed_verification");
+    expect(provider.pricing.freeOperations).toContain("idempotent_retry");
     expect(provider.pricing.subscription).toBe("none");
     expect(provider.settlementExecution.mode).toBe("routed");
     expect(provider.settlementExecution.currentDownstream).toBe("xpay");
     expect(provider.settlementExecution.signerAttribution).toContain(
       "/supported",
     );
+  });
+
+  it("keeps every public commercial list on the canonical x402 contract", async () => {
+    const payment = buildPaymentManifest(ORIGIN, {}) as {
+      network: string;
+      pricing: {
+        amountUsd: string;
+        amountMicroUsd: number;
+        event: string;
+        billing: string;
+        model: string;
+      };
+    };
+
+    const providerResponse = discoveryResponse(
+      new Request(`${ORIGIN}/.well-known/x402/facilitator.json`),
+    );
+    const provider = (await providerResponse?.json()) as {
+      facilitator: { network: string };
+      pricing: { feeUsd: string; event: string; billing: string; model: string };
+    };
+
+    const marketResponse = discoveryResponse(
+      new Request(`${ORIGIN}/.well-known/agent-market.json`),
+    );
+    const market = (await marketResponse?.json()) as {
+      network: string;
+      commercialModel: {
+        feeUsd: string;
+        event: string;
+        billing: string;
+        model: string;
+      };
+    };
+
+    expect(payment.network).toBe(XGUARD_MAINNET_NETWORK);
+    expect(payment.pricing.amountUsd).toBe(XGUARD_ATTEMPT_FEE_USD);
+    expect(payment.pricing.amountMicroUsd).toBe(XGUARD_ATTEMPT_FEE_MICRO_USD);
+    expect(payment.pricing.event).toBe(XGUARD_ATTEMPT_EVENT);
+    expect(payment.pricing.billing).toBe(XGUARD_ATTEMPT_BILLING);
+    expect(payment.pricing.model).toBe(XGUARD_ATTEMPT_MODEL);
+
+    expect(provider.facilitator.network).toBe(payment.network);
+    expect(provider.pricing.feeUsd).toBe(payment.pricing.amountUsd);
+    expect(provider.pricing.event).toBe(payment.pricing.event);
+    expect(provider.pricing.billing).toBe(payment.pricing.billing);
+    expect(provider.pricing.model).toBe(payment.pricing.model);
+
+    expect(market.network).toBe(payment.network);
+    expect(market.commercialModel.feeUsd).toBe(payment.pricing.amountUsd);
+    expect(market.commercialModel.event).toBe(payment.pricing.event);
+    expect(market.commercialModel.billing).toBe(payment.pricing.billing);
+    expect(market.commercialModel.model).toBe(payment.pricing.model);
+  });
+
+  it("publishes llms pricing from the same canonical contract", async () => {
+    const llms = await discoveryResponse(
+      new Request(`${ORIGIN}/llms.txt`),
+    )?.text();
+    const llmsFull = await discoveryResponse(
+      new Request(`${ORIGIN}/llms-full.txt`),
+    )?.text();
+
+    expect(llms).toContain(`$${XGUARD_ATTEMPT_FEE_USD}`);
+    expect(llms).toContain("accepted authenticated economic attempt");
+    expect(llms).not.toContain("$0.002");
+    expect(llmsFull).toContain(String(XGUARD_ATTEMPT_FEE_MICRO_USD));
+    expect(llmsFull).not.toContain("successful finality confirmation");
   });
 
   it("supports conditional agent-card requests", () => {
