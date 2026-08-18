@@ -1,5 +1,13 @@
 export const XGUARD_ATTEMPT_FEE_USD = "0.03";
 export const XGUARD_ATTEMPT_FEE_MICRO_USD = 30_000;
+export const XGUARD_ATTEMPT_EVENT =
+  "accepted_authenticated_economic_attempt";
+export const XGUARD_ATTEMPT_BILLING = "merchant_prepaid_service_balance";
+export const XGUARD_ATTEMPT_MODEL =
+  "merchant_prepaid_nonrefundable_attempt_fee";
+export const XGUARD_MAINNET_NETWORK = "eip155:8453";
+export const XGUARD_MAINNET_USDC_CONTRACT =
+  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
 const MACHINE_PATHS = new Set([
   "/.well-known/payment-manifest",
@@ -51,10 +59,10 @@ function manifest(origin: string, env: PaymentEnv): Record<string, unknown> {
     manifest: "xguard-payment-manifest-v1",
     name: "XGuard",
     mode: "production",
-    network: "eip155:8453",
+    network: XGUARD_MAINNET_NETWORK,
     asset: {
       symbol: "USDC",
-      contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      contract: XGUARD_MAINNET_USDC_CONTRACT,
       ...(env.XGUARD_TREASURY_USDC_ADDRESS
         ? { treasury: env.XGUARD_TREASURY_USDC_ADDRESS }
         : {}),
@@ -62,8 +70,9 @@ function manifest(origin: string, env: PaymentEnv): Record<string, unknown> {
     pricing: {
       amountUsd: XGUARD_ATTEMPT_FEE_USD,
       amountMicroUsd: XGUARD_ATTEMPT_FEE_MICRO_USD,
-      event: "accepted_authenticated_economic_attempt",
-      billing: "merchant_prepaid_service_balance",
+      event: XGUARD_ATTEMPT_EVENT,
+      billing: XGUARD_ATTEMPT_BILLING,
+      model: XGUARD_ATTEMPT_MODEL,
       refundableAfterAcceptance: false,
       dedupe:
         "one fee per logicalPaymentKey; idempotent retries add no second attempt fee",
@@ -161,7 +170,7 @@ function normalizeJson(value: unknown, key = ""): unknown {
     )
       return XGUARD_ATTEMPT_FEE_USD;
     if (value === "successful_billable_settlement")
-      return "accepted_authenticated_economic_attempt";
+      return XGUARD_ATTEMPT_EVENT;
     return normalizeText(value);
   }
   return value;
