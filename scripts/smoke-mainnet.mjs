@@ -3,7 +3,6 @@ const baseUrl = new URL(
 );
 
 const BASE_MAINNET = "eip155:8453";
-const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const MONITOR_HEADER = "github-actions-mainnet-smoke";
 
 async function json(path, init = {}) {
@@ -26,9 +25,10 @@ function assert(condition, message) {
 
 const root = await json("/");
 assert(root.response.status === 200, "mainnet root endpoint is unavailable");
-assert(root.body.mode === "mainnet", "root is not mainnet");
-assert(root.body.network === BASE_MAINNET, "root network is not Base mainnet");
-assert(root.body.asset === BASE_USDC, "root asset is not native Base USDC");
+assert(
+  typeof root.body.name === "string" && root.body.name.startsWith("XGuard"),
+  "root is not an XGuard product surface",
+);
 
 const health = await json("/healthz");
 assert(health.response.status === 200, "mainnet health check failed");
@@ -55,6 +55,29 @@ assert(
         kind?.network === BASE_MAINNET,
     ),
   "mainnet Base x402 v2 exact capability is missing",
+);
+
+const actions = await json("/.well-known/xguard/actions.json");
+assert(actions.response.status === 200, "Universal Action Rail is unavailable");
+assert(
+  actions.body.name === "XGuard Universal Action Rail" &&
+    actions.body.category === "universal-action-gateway",
+  "Universal Action Rail identity changed",
+);
+assert(
+  typeof actions.body.execute === "string" &&
+    actions.body.execute.endsWith("/v1/actions/execute"),
+  "Universal Action Rail execution endpoint is missing",
+);
+assert(
+  actions.body.discovery?.machineReadable === true &&
+    actions.body.discovery?.localInstallRequired === false,
+  "Universal Action Rail discovery contract changed",
+);
+assert(
+  actions.body.billing?.kind === "TOOL" &&
+    actions.body.billing?.model === "prepaid-per-successful-upstream-action",
+  "Universal Action Rail billing contract changed",
 );
 
 const capabilities = await json("/v1/gateway/capabilities");
@@ -218,6 +241,7 @@ console.log(
     live: true,
     ready: true,
     mainnet: true,
+    universalActionRail: true,
     universalGateway: true,
     universalWebhookIngress: true,
     directDiscoveryPaywalled: true,
