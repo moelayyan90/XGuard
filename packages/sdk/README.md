@@ -55,6 +55,53 @@ The guard uses x402's payment-creation lifecycle hook. It runs before signing an
 
 Window accounting is intentionally conservative: an allowed payment-creation attempt consumes the configured window budget even if a later transport or settlement step fails. Applications can inspect or reset the in-process attempt accounting through the returned guard handle.
 
+## Hosted XGuard decision on every automated payment
+
+The local guard can be connected to XGuard's hosted Payment Decision service once at startup. After that, automated x402 payment attempts can receive an XGuard `ALLOW`, `REVIEW`, or `BLOCK` decision before the payment payload is created.
+
+```ts
+import {
+  createXGuardHostedPaymentAuthorizer,
+  embedXGuardAutomatedPayments,
+} from "@xguard/sdk";
+
+const hostedDecision = createXGuardHostedPaymentAuthorizer({
+  accessToken: process.env.XGUARD_BUYER_PASS!, // Buyer Pass or billing-scoped merchant key
+  assets: [
+    {
+      network: "eip155:8453",
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      currency: "USDC",
+      decimals: 6,
+    },
+  ],
+  // Supply the application's logical payment ID when one exists. XGuard can
+  // then detect reuse after that reference has been reported as settled.
+  paymentReference: () => "order:12345678",
+});
+
+embedXGuardAutomatedPayments(client, {
+  mode: "auto",
+  allowedNetworks: ["eip155:8453"],
+  allowedSchemes: ["exact"],
+  budgets: [
+    {
+      network: "eip155:8453",
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      maxAtomicAmountPerPayment: "1000000",
+      maxAtomicAmountPerWindow: "5000000",
+    },
+  ],
+  authorize: hostedDecision,
+});
+```
+
+The hosted authorizer converts x402 atomic amounts to exact decimal amounts using the supplied asset definition and submits only payment-intent metadata to `/v1/payment/decision`. It does not receive signing keys or signed payment payloads.
+
+`ALLOW` permits the local x402 client to continue. `REVIEW` and `BLOCK` are fail-closed by default; `REVIEW` can be deliberately permitted with `allowReview: true`. HTTP errors, invalid receipts, timeouts, missing asset metadata, insufficient XGuard service balance, and invalid credentials do not silently fall through to payment.
+
+The hosted Payment Decision service is separately metered according to the service policy exposed by XGuard. A completed decision creates a durable decision/evidence record; showing an offer, skipping XGuard, and incomplete XGuard service do not earn the decision fee under the current server policy.
+
 ## Mainnet economics
 
 Mainnet uses x402 v2 `exact` on Base (`eip155:8453`) with native USDC. XGuard charges `$0.002` only for a successful billable settlement after the service's earned-finality checks; malformed requests, failed settlements, duplicate retries for the same logical payment, health/discovery calls, and testnet traffic are not billed.
