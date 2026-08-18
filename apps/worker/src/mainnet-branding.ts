@@ -31,12 +31,12 @@ export function mainnetBrandingResponse(request: Request): Response | null {
   if (url.pathname === "/logo.svg" || url.pathname === "/xguard-logo.svg")
     return svgResponse(XGUARD_LOGO_SVG, request.method === "HEAD");
 
-  // The public portal historically referenced these PNG-looking paths. Keep them
-  // working while serving the new vector artwork with the correct response type.
-  if (url.pathname === "/logo.png" || url.pathname === "/brand-mark.png" || url.pathname === "/xguard-mark.png")
-    return svgResponse(url.pathname === "/logo.png" ? XGUARD_LOGO_SVG : XGUARD_MARK_SVG, request.method === "HEAD");
+  if (url.pathname === "/logo.png")
+    return svgResponse(XGUARD_LOGO_SVG, request.method === "HEAD");
 
-  // Preserve the legacy raster alias for clients that explicitly require PNG.
+  if (url.pathname === "/brand-mark.png" || url.pathname === "/xguard-mark.png")
+    return svgResponse(XGUARD_MARK_SVG, request.method === "HEAD");
+
   if (url.pathname === "/xguard-logo.png")
     return new Response(null, {
       status: 302,
