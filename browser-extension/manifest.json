@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "XGuard Pay All",
-  "version": "0.1.0",
-  "description": "A floating buyer-side payment cart that collects checkout payments across websites, coordinates Pay All, and can verify a payment with XGuard.",
+  "name": "XGuard Payment Layer",
+  "version": "0.2.0",
+  "description": "A floating payment layer that remembers payees, defers bills, coordinates single or multi-payment sessions, and supports payment splitting without merchant integration.",
   "homepage_url": "https://xguardgate.com/",
   "permissions": ["storage"],
   "host_permissions": ["https://xguardgate.com/*"],
@@ -17,7 +17,7 @@
         "https://xguardgate.com/*",
         "https://www.xguardgate.com/*"
       ],
-      "js": ["content.js"],
+      "js": ["universal-layer.js"],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -30,7 +30,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "XGuard Pay All",
+    "default_title": "XGuard Payment Layer",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-const contentPath = new URL("../browser-extension/content.js", import.meta.url);
+const contentPath = new URL(
+  "../browser-extension/universal-layer.js",
+  import.meta.url,
+);
 const workerPath = new URL(
   "../browser-extension/service-worker.js",
   import.meta.url,
@@ -11,7 +14,7 @@ const manifestPath = new URL(
   import.meta.url,
 );
 
-describe("buyer browser surface source invariants", () => {
+describe("buyer browser payment-layer source invariants", () => {
   it("does not read common sensitive payment input values", async () => {
     const source = await readFile(contentPath, "utf8");
     expect(source).not.toMatch(
@@ -20,14 +23,14 @@ describe("buyer browser surface source invariants", () => {
     expect(source).not.toMatch(
       /querySelectorAll\([^)]*(?:password|cc-number|card-number|cvv|cvc)/i,
     );
-    expect(source).toContain("احجز هذه الدفعة");
-    expect(source).toContain("ادفع الكل");
-    expect(source).toContain("تحقق من هذه الدفعة عبر XGuard");
+    expect(source).toContain("ترحيل لغايات الدفع");
+    expect(source).toContain("دفع كل الفواتير");
+    expect(source).toContain("تقسيم الفواتير");
+    expect(source).toContain("دفع هذه فقط");
   });
 
-  it("keeps Pay All local and sends payment-decision context only from explicit verification", async () => {
+  it("keeps payment memory local and sends server context only from explicit verification", async () => {
     const source = await readFile(contentPath, "utf8");
-
     const verifyFunctionIndex = source.indexOf(
       "async function verifyCurrent()",
     );
@@ -36,30 +39,34 @@ describe("buyer browser surface source invariants", () => {
     );
     expect(verifyFunctionIndex).toBeGreaterThan(-1);
     expect(decisionMessageIndex).toBeGreaterThan(verifyFunctionIndex);
-
-    const beforeVerify = source.slice(0, verifyFunctionIndex);
-    expect(beforeVerify).not.toContain('type: "XGUARD_PAYMENT_DECISION"');
-
-    expect(source).toContain('type: "XGUARD_PAY_ALL_ADD"');
+    expect(source.slice(0, verifyFunctionIndex)).not.toContain(
+      'type: "XGUARD_PAYMENT_DECISION"',
+    );
+    expect(source).toContain('type: "XGUARD_PAYMENT_DEFER"');
+    expect(source).toContain('type: "XGUARD_PAY_SINGLE_START"');
     expect(source).toContain('type: "XGUARD_PAY_ALL_START"');
+    expect(source).toContain('type: "XGUARD_SPLIT_CREATE"');
   });
 
-  it("keeps the Pay All cart in extension-local storage", async () => {
+  it("stores payees, pending bills, sessions, and history in extension-local storage", async () => {
     const worker = await readFile(workerPath, "utf8");
     expect(worker).toContain('const CART_KEY = "xguardPayAllCart"');
     expect(worker).toContain('const SESSION_KEY = "xguardPayAllSession"');
+    expect(worker).toContain('const PAYEES_KEY = "xguardSavedPayees"');
+    expect(worker).toContain('const HISTORY_KEY = "xguardPaymentHistory"');
     expect(worker).toContain("chrome.storage.local");
     expect(worker).not.toContain("/v1/pay-all");
   });
 
-  it("limits network host permission to XGuard while detecting checkout locally", async () => {
+  it("limits network host permission to XGuard while detecting payment surfaces locally", async () => {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     expect(manifest.host_permissions).toEqual(["https://xguardgate.com/*"]);
     expect(manifest.content_scripts[0].all_frames).toBe(false);
     expect(manifest.content_scripts[0].matches).toEqual(["https://*/*"]);
+    expect(manifest.content_scripts[0].js).toEqual(["universal-layer.js"]);
   });
 
-  it("generates an idempotency request ID in the service worker", async () => {
+  it("generates idempotency IDs for explicit XGuard server-side decisions", async () => {
     const source = await readFile(workerPath, "utf8");
     expect(source).toContain("crypto.randomUUID()");
     expect(source).toContain("/v1/payment/decision");

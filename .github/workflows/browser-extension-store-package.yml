@@ -33,7 +33,7 @@ jobs:
           const manifest = JSON.parse(fs.readFileSync("browser-extension/manifest.json", "utf8"));
 
           if (manifest.manifest_version !== 3) throw new Error("Manifest V3 required");
-          if (manifest.version !== "0.1.0") throw new Error("Unexpected store version");
+          if (manifest.version !== "0.2.0") throw new Error("Unexpected store version");
           if (JSON.stringify(manifest.permissions) !== JSON.stringify(["storage"])) {
             throw new Error("Extension must keep the minimal storage permission only");
           }
@@ -43,7 +43,10 @@ jobs:
 
           const scripts = manifest.content_scripts ?? [];
           if (scripts.length !== 1 || JSON.stringify(scripts[0].matches) !== JSON.stringify(["https://*/*"])) {
-            throw new Error("Checkout detection must be HTTPS-only");
+            throw new Error("Payment-surface detection must be HTTPS-only");
+          }
+          if (JSON.stringify(scripts[0].js) !== JSON.stringify(["universal-layer.js"])) {
+            throw new Error("Universal payment layer must be the active content script");
           }
 
           for (const size of ["16", "32", "48", "128"]) {
@@ -73,7 +76,7 @@ jobs:
             }
           }
 
-          for (const file of ["content.js", "service-worker.js", "options.js"]) {
+          for (const file of ["universal-layer.js", "service-worker.js", "options.js"]) {
             const source = fs.readFileSync(path.join("browser-extension", file), "utf8");
             if (/\beval\s*\(|\bnew\s+Function\s*\(/.test(source)) {
               throw new Error(`Remote/dynamic execution primitive found in ${file}`);
@@ -99,7 +102,7 @@ jobs:
           OUT="${RUNNER_TEMP}/xguard-extension"
           mkdir -p "${OUT}/icons" dist/browser-extension
           cp browser-extension/manifest.json "${OUT}/"
-          cp browser-extension/content.js "${OUT}/"
+          cp browser-extension/universal-layer.js "${OUT}/"
           cp browser-extension/service-worker.js "${OUT}/"
           cp browser-extension/options.html "${OUT}/"
           cp browser-extension/options.js "${OUT}/"
@@ -109,11 +112,11 @@ jobs:
           cp browser-extension/icons/icon128.png "${OUT}/icons/"
           (
             cd "${OUT}"
-            zip -X -r "${GITHUB_WORKSPACE}/dist/browser-extension/xguard-payment-decision-${VERSION}.zip" .
+            zip -X -r "${GITHUB_WORKSPACE}/dist/browser-extension/xguard-payment-layer-${VERSION}.zip" .
           )
           (
             cd dist/browser-extension
-            sha256sum "xguard-payment-decision-${VERSION}.zip" > SHA256SUMS.txt
+            sha256sum "xguard-payment-layer-${VERSION}.zip" > SHA256SUMS.txt
             sha256sum -c SHA256SUMS.txt
           )
 
@@ -121,8 +124,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="$(find dist/browser-extension -name 'xguard-payment-decision-*.zip' -print -quit)"
+          ZIP="$(find dist/browser-extension -name 'xguard-payment-layer-*.zip' -print -quit)"
           unzip -Z1 "${ZIP}" | grep -qx 'manifest.json'
+          unzip -Z1 "${ZIP}" | grep -qx 'universal-layer.js'
           ! unzip -Z1 "${ZIP}" | grep -E '(^|/)(PRIVACY|STORE_SUBMISSION|README).*\.md$'
           ! unzip -Z1 "${ZIP}" | grep -E '\.(map|pem|key|env)$'
           (
