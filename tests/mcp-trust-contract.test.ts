@@ -92,7 +92,9 @@ describe("VerifyMCP trust contract", () => {
     const decision = body.result.tools.find(
       (tool) => tool.name === "xguard_payment_decision",
     );
-    expect(Object.keys(decision?.inputSchema.properties ?? {})).toHaveLength(11);
+    expect(Object.keys(decision?.inputSchema.properties ?? {})).toHaveLength(
+      11,
+    );
   });
 
   it("adds a discoverable OAuth challenge to an unauthenticated paid MCP call", async () => {

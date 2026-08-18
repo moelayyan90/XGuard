@@ -23,10 +23,7 @@ export async function normalizeMcpPublicResponse(
     !hasBearer(request)
   ) {
     const headers = new Headers(normalized.headers);
-    headers.set(
-      "WWW-Authenticate",
-      mcpProtectedResourceChallenge(url.origin),
-    );
+    headers.set("WWW-Authenticate", mcpProtectedResourceChallenge(url.origin));
     exposeHeader(headers, "WWW-Authenticate");
     normalized = new Response(normalized.body, {
       status: normalized.status,
@@ -49,7 +46,11 @@ async function compactToolList(response: Response): Promise<Response> {
   } catch {
     return response;
   }
-  if (!isRecord(body) || !isRecord(body.result) || !Array.isArray(body.result.tools))
+  if (
+    !isRecord(body) ||
+    !isRecord(body.result) ||
+    !Array.isArray(body.result.tools)
+  )
     return response;
 
   body.result.tools = body.result.tools.map((value) => {
@@ -144,7 +145,14 @@ function toolContract(name: string): JsonRecord | null {
             description: "Provider reference used for duplicate checks.",
           },
         },
-        required: ["requestId", "rail", "provider", "amount", "currency", "payee"],
+        required: [
+          "requestId",
+          "rail",
+          "provider",
+          "amount",
+          "currency",
+          "payee",
+        ],
         additionalProperties: false,
       },
     };

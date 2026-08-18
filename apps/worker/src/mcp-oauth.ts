@@ -2,8 +2,7 @@ import { buyerPassResponse, type BuyerPassEnv } from "./buyer-pass.js";
 
 const RESOURCE_PATH = "/mcp";
 const PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";
-const PROTECTED_RESOURCE_MCP_PATH =
-  "/.well-known/oauth-protected-resource/mcp";
+const PROTECTED_RESOURCE_MCP_PATH = "/.well-known/oauth-protected-resource/mcp";
 const AUTH_SERVER_METADATA_PATH = "/.well-known/oauth-authorization-server";
 const REGISTER_PATH = "/oauth/register";
 const AUTHORIZE_PATH = "/oauth/authorize";
@@ -65,10 +64,7 @@ export async function mcpOAuthResponse(
     return publicJson(protectedResourceMetadata(url.origin));
   }
 
-  if (
-    request.method === "GET" &&
-    url.pathname === AUTH_SERVER_METADATA_PATH
-  ) {
+  if (request.method === "GET" && url.pathname === AUTH_SERVER_METADATA_PATH) {
     return publicJson(authorizationServerMetadata(url.origin));
   }
 
@@ -95,7 +91,11 @@ export async function mcpOAuthResponse(
         url.searchParams,
         `${url.origin}${RESOURCE_PATH}`,
       );
-      await requireRegisteredRedirect(env.DB, parsed.clientId, parsed.redirectUri);
+      await requireRegisteredRedirect(
+        env.DB,
+        parsed.clientId,
+        parsed.redirectUri,
+      );
       return consentPage(parsed);
     } catch (error) {
       return oauthError(error);
@@ -111,7 +111,11 @@ export async function mcpOAuthResponse(
         form,
         `${url.origin}${RESOURCE_PATH}`,
       );
-      await requireRegisteredRedirect(env.DB, parsed.clientId, parsed.redirectUri);
+      await requireRegisteredRedirect(
+        env.DB,
+        parsed.clientId,
+        parsed.redirectUri,
+      );
       if (form.get("decision") !== "approve")
         return authorizationRedirect(parsed, { error: "access_denied" });
       return await issueAuthorizationCode(env.DB, parsed);
@@ -213,7 +217,8 @@ function authorizationRequest(
     throw new OAuthRequestError("invalid_request");
 
   const resource = params.get("resource") ?? expectedResource;
-  if (resource !== expectedResource) throw new OAuthRequestError("invalid_target");
+  if (resource !== expectedResource)
+    throw new OAuthRequestError("invalid_target");
 
   const requestedScope = (params.get("scope") ?? MCP_SCOPE).trim();
   const scopes = new Set(requestedScope.split(/\s+/).filter(Boolean));
@@ -396,11 +401,14 @@ async function exchangeAuthorizationCode(
   const headers = new Headers({ "Content-Type": "application/json" });
   const clientIp = request.headers.get("cf-connecting-ip");
   if (clientIp !== null) headers.set("cf-connecting-ip", clientIp);
-  const passRequest = new Request(`${new URL(request.url).origin}/v1/buyer-pass`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ channel: "agent", label: "MCP OAuth" }),
-  });
+  const passRequest = new Request(
+    `${new URL(request.url).origin}/v1/buyer-pass`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ channel: "agent", label: "MCP OAuth" }),
+    },
+  );
   const passResponse = await buyerPassResponse(passRequest, env);
   if (passResponse === null || passResponse.status !== 201)
     throw new OAuthRequestError("temporarily_unavailable", 503);
@@ -484,7 +492,9 @@ function cleanClientName(value: unknown): string {
   return name;
 }
 
-async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
+async function readJsonObject(
+  request: Request,
+): Promise<Record<string, unknown>> {
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
   if (!contentType.startsWith("application/json"))
     throw new OAuthRequestError("invalid_client_metadata");
@@ -579,7 +589,10 @@ function oauthError(error: unknown): Response {
     {
       error: normalized.code,
       ...(normalized.status >= 500
-        ? { error_description: "XGuard OAuth service is temporarily unavailable" }
+        ? {
+            error_description:
+              "XGuard OAuth service is temporarily unavailable",
+          }
         : {}),
     },
     normalized.status,
@@ -633,7 +646,10 @@ function oauthCors(response: Response): Response {
 
 function secureResponse(response: Response): Response {
   const headers = new Headers(response.headers);
-  headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  headers.set(
+    "Strict-Transport-Security",
+    "max-age=31536000; includeSubDomains",
+  );
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("X-Frame-Options", "DENY");
   headers.set("Referrer-Policy", "no-referrer");
