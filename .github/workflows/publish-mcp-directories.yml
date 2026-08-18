@@ -9,6 +9,7 @@ on:
       - "lhm.plugin.json"
       - "llms-install.md"
       - "SKILL.md"
+      - "README.md"
       - "DISTRIBUTION.md"
       - ".github/xguard-directory-status.json"
       - "apps/worker/src/a2a-agent.ts"
@@ -44,6 +45,7 @@ jobs:
           const runtime = fs.readFileSync('apps/worker/src/mainnet-mcp-modern.ts', 'utf8');
           const llms = fs.readFileSync('llms-install.md', 'utf8');
           const skill = fs.readFileSync('SKILL.md', 'utf8');
+          const readme = fs.readFileSync('README.md', 'utf8');
           const distribution = fs.readFileSync('DISTRIBUTION.md', 'utf8');
 
           const runtimeVersion = runtime.match(/XGUARD_MCP_VERSION\s*=\s*"([^"]+)"/)?.[1];
@@ -63,6 +65,7 @@ jobs:
             if (!runtime.includes(`name: "${tool}"`)) throw new Error(`Runtime no longer exposes ${tool}`);
             if (!lhmNames.has(tool)) throw new Error(`LHM manifest is missing ${tool}`);
             if (!llms.includes(`\`${tool}\``)) throw new Error(`llms-install.md is missing ${tool}`);
+            if (!readme.includes(`\`${tool}\``)) throw new Error(`README.md is missing ${tool}`);
           }
 
           for (const tool of ['xguard_payment_offer', 'xguard_payment_decision']) {
@@ -70,6 +73,9 @@ jobs:
             if (!distribution.includes(`\`${tool}\``)) throw new Error(`DISTRIBUTION.md is missing ${tool}`);
           }
 
+          if (readme.includes('three read-only catalog/status tools')) {
+            throw new Error('README.md still advertises the obsolete three-tool discovery-only MCP surface');
+          }
           if (!String(server.description || '').toLowerCase().includes('payment')) {
             throw new Error('Registry description must classify XGuard as a payment capability');
           }
