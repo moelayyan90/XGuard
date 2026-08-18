@@ -1,0 +1,78 @@
+name: One-time dummy x402 payment probe
+
+on:
+  push:
+    branches:
+      - "test/dummy-payment-probe-20260818"
+    paths:
+      - ".github/workflows/dummy-payment-once.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Send zero-money dummy x402 payment attempt to XGuard testnet
+        shell: bash
+        run: |
+          node <<'NODE'
+          const base = 'https://xguard-testnet.maqamapp.workers.dev';
+          const now = Math.floor(Date.now() / 1000);
+          const requirements = {
+            scheme: 'exact',
+            network: 'eip155:84532',
+            asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+            amount: '1000',
+            payTo: '0x2222222222222222222222222222222222222222',
+            maxTimeoutSeconds: 60,
+            extra: { assetTransferMethod: 'eip3009', paymentFlow: 'authorization' }
+          };
+          const body = {
+            x402Version: 2,
+            paymentPayload: {
+              x402Version: 2,
+              resource: {
+                url: 'https://xguardgate.com/test/dummy-payment',
+                description: 'XGuard zero-money dummy payment probe',
+                mimeType: 'application/json'
+              },
+              accepted: requirements,
+              payload: {
+                signature: `0x${'ab'.repeat(65)}`,
+                authorization: {
+                  from: '0x1111111111111111111111111111111111111111',
+                  to: requirements.payTo,
+                  value: requirements.amount,
+                  validAfter: '0',
+                  validBefore: String(now + 3600),
+                  nonce: `0x${'12'.repeat(32)}`
+                }
+              }
+            },
+            paymentRequirements: requirements
+          };
+
+          async function post(path) {
+            const r = await fetch(base + path, {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'x-xguard-test': 'dummy-payment-2026-08-18'
+              },
+              body: JSON.stringify(body)
+            });
+            const text = await r.text();
+            console.log(`${path} -> HTTP ${r.status}`);
+            console.log(text.slice(0, 4000));
+          }
+
+          const health = await fetch(base + '/status');
+          console.log(`/status -> HTTP ${health.status}`);
+          console.log((await health.text()).slice(0, 2000));
+          await post('/verify');
+          await post('/settle');
+          NODE
