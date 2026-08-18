@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-17T09:45:00Z",
+  "updatedAt": "2026-08-17T20:54:47Z",
   "entries": {
     "officialMcpRegistry": {
       "status": "listed",
@@ -39,9 +39,10 @@
       "evidence": "XGuard is absent from the public AgentNDX index; attempted machine submissions returned redirects/HTTP 405, so no successful submission is claimed and the interactive curated-review flow is not bypassed"
     },
     "mcpSo": {
-      "status": "account_required",
-      "checkedAt": "2026-08-17",
-      "evidence": "the current free submission client requires an authenticated mcp.so session before POSTing marketplace submissions; no sign-in credential is fabricated or bypassed"
+      "status": "public_free_submission_available",
+      "checkedAt": "2026-08-17T20:54:47Z",
+      "submissionUrl": "https://mcp.so/submit?type=server",
+      "evidence": "MCP.so now exposes a public Free submission option for MCP servers using a repository URL and project name, with queued review and no paid plan required. Public search found no XGuard/moelayyan90 listing, but this runtime cannot submit arbitrary third-party web forms, so user action is required."
     },
     "a2aRegistry": {
       "status": "listed",
