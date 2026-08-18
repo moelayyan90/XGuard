@@ -3,10 +3,12 @@ const API_ORIGIN = "https://xguardgate.com";
 const PASS_KEY = "xguardBuyerPass";
 const CART_KEY = "xguardPayAllCart";
 const SESSION_KEY = "xguardPayAllSession";
+const PAYEES_KEY = "xguardSavedPayees";
+const HISTORY_KEY = "xguardPaymentHistory";
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const { cart } = await getPayAllState();
-  await updateBadge(cart);
+  const state = await getState();
+  await updateBadge(state.cart);
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -14,20 +16,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     switch (message?.type) {
       case "XGUARD_PAYMENT_DECISION":
         return { record: await runDecision(message.intent) };
+      case "XGUARD_MEMORY_GET":
       case "XGUARD_PAY_ALL_GET":
-        return getPayAllState();
+        return getState();
+      case "XGUARD_PAYMENT_DEFER":
       case "XGUARD_PAY_ALL_ADD":
-        return addPayAllItem(message.payment);
+        return addPayment(message.payment);
+      case "XGUARD_PAY_SINGLE_START":
+        return startSingle(message.payment);
       case "XGUARD_PAY_ALL_REMOVE":
-        return removePayAllItem(message.id);
+        return removePayment(message.id);
       case "XGUARD_PAY_ALL_CLEAR":
-        return clearPayAll();
+        return clearPending();
       case "XGUARD_PAY_ALL_START":
-        return startPayAll();
+        return startAll();
       case "XGUARD_PAY_ALL_NEXT":
-        return advancePayAll(message.outcome || "PAID");
+        return advance(message.outcome || "PAID");
       case "XGUARD_PAY_ALL_STOP":
-        return stopPayAll();
+        return stopSession();
+      case "XGUARD_SPLIT_CREATE":
+        return createSplit(message.allocations, message.currency);
       default:
         throw new Error("Unsupported XGuard extension request");
     }
@@ -37,22 +45,29 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
-async function getPayAllState() {
-  const stored = await chrome.storage.local.get([CART_KEY, SESSION_KEY]);
+async function getState() {
+  const stored = await chrome.storage.local.get([
+    CART_KEY,
+    SESSION_KEY,
+    PAYEES_KEY,
+    HISTORY_KEY,
+  ]);
   return {
     cart: Array.isArray(stored[CART_KEY]) ? stored[CART_KEY] : [],
     session: stored[SESSION_KEY] ?? null,
+    payees: Array.isArray(stored[PAYEES_KEY]) ? stored[PAYEES_KEY] : [],
+    history: Array.isArray(stored[HISTORY_KEY]) ? stored[HISTORY_KEY] : [],
   };
 }
 
-async function saveCart(cart) {
-  await chrome.storage.local.set({ [CART_KEY]: cart });
-  await updateBadge(cart);
-}
-
-async function saveSession(session) {
-  if (session === null) await chrome.storage.local.remove(SESSION_KEY);
-  else await chrome.storage.local.set({ [SESSION_KEY]: session });
+async function saveState({ cart, session, payees, history }) {
+  const payload = {};
+  if (cart !== undefined) payload[CART_KEY] = cart;
+  if (session !== undefined) payload[SESSION_KEY] = session;
+  if (payees !== undefined) payload[PAYEES_KEY] = payees;
+  if (history !== undefined) payload[HISTORY_KEY] = history;
+  await chrome.storage.local.set(payload);
+  if (cart !== undefined) await updateBadge(cart);
 }
 
 async function updateBadge(cart) {
@@ -61,134 +76,262 @@ async function updateBadge(cart) {
   if (count) await chrome.action.setBadgeBackgroundColor({ color: "#0d918c" });
 }
 
-function normalizePayAllItem(value) {
+function normalizePayment(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Invalid Pay All payment");
+    throw new Error("Invalid payment");
 
   const url = new URL(String(value.url || ""));
-  if (url.protocol !== "https:")
-    throw new Error("Pay All requires an HTTPS checkout URL");
-  if (
-    url.hostname === "xguardgate.com" ||
-    url.hostname === "www.xguardgate.com"
-  )
-    throw new Error(
-      "XGuard service pages cannot be added as merchant payments",
-    );
+  if (url.protocol !== "https:") throw new Error("XGuard requires an HTTPS payment URL");
+  if (["xguardgate.com", "www.xguardgate.com"].includes(url.hostname))
+    throw new Error("XGuard service pages cannot be saved as payments");
 
   const amount = Number(value.amount);
   if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000_000)
-    throw new Error("Invalid Pay All amount");
+    throw new Error("Invalid payment amount");
 
-  const currency = String(value.currency || "USD")
+  const currency = String(value.currency || "USD").trim().toUpperCase();
+  if (!/^[A-Z0-9]{3,8}$/.test(currency)) throw new Error("Invalid currency");
+
+  const provider = String(value.provider || "generic_http").slice(0, 60);
+  const origin = url.origin;
+  const payeeName = String(value.payeeName || url.hostname)
     .trim()
-    .toUpperCase();
-  if (!/^[A-Z0-9]{3,8}$/.test(currency))
-    throw new Error("Invalid Pay All currency");
+    .slice(0, 120);
+  const paymentName = String(value.paymentName || value.title || "Payment")
+    .trim()
+    .slice(0, 140);
 
   return {
     id: crypto.randomUUID(),
+    payeeId: stablePayeeId(origin, provider),
+    payeeName,
+    paymentName,
     merchant: url.hostname.replace(/^www\./, "").slice(0, 180),
-    title: String(value.title || url.hostname)
-      .trim()
-      .slice(0, 180),
+    title: String(value.title || paymentName).trim().slice(0, 180),
     url: url.href,
-    origin: url.origin,
+    origin,
+    provider,
+    rail: String(value.rail || provider || "card").slice(0, 60),
     amount: amount.toFixed(2),
     currency,
-    provider: String(value.provider || "generic_http").slice(0, 60),
     createdAt: new Date().toISOString(),
   };
 }
 
-async function addPayAllItem(value) {
-  const item = normalizePayAllItem(value);
-  const { cart, session } = await getPayAllState();
-  const existing = cart.findIndex(
-    (entry) =>
-      entry.url === item.url &&
-      entry.amount === item.amount &&
-      entry.currency === item.currency,
+function stablePayeeId(origin, provider) {
+  return `payee:${String(provider).replace(/[^a-z0-9_-]/gi, "_")}:${String(origin)
+    .replace(/^https?:\/\//, "")
+    .replace(/[^a-z0-9._-]/gi, "_")}`.slice(0, 220);
+}
+
+function rememberPayee(payees, payment) {
+  const now = new Date().toISOString();
+  const index = payees.findIndex((payee) => payee.id === payment.payeeId);
+  const memory = {
+    id: payment.payeeId,
+    displayName: payment.payeeName,
+    origin: payment.origin,
+    provider: payment.provider,
+    rail: payment.rail,
+    lastUrl: payment.url,
+    lastPaymentName: payment.paymentName,
+    lastAmount: payment.amount,
+    lastCurrency: payment.currency,
+    lastSeenAt: now,
+    paymentCount: index >= 0 ? Number(payees[index].paymentCount || 0) : 0,
+    lastPaidAt: index >= 0 ? payees[index].lastPaidAt || null : null,
+  };
+  if (index >= 0) payees[index] = { ...payees[index], ...memory };
+  else payees.unshift(memory);
+  return payees
+    .sort((a, b) => String(b.lastSeenAt).localeCompare(String(a.lastSeenAt)))
+    .slice(0, 200);
+}
+
+async function addPayment(value) {
+  const payment = normalizePayment(value);
+  const state = await getState();
+  const duplicate = state.cart.findIndex(
+    (item) =>
+      item.payeeId === payment.payeeId &&
+      item.paymentName === payment.paymentName &&
+      item.amount === payment.amount &&
+      item.currency === payment.currency,
   );
 
-  if (existing >= 0) {
-    cart[existing] = {
-      ...cart[existing],
-      title: item.title,
-      createdAt: item.createdAt,
+  if (duplicate >= 0) {
+    state.cart[duplicate] = {
+      ...state.cart[duplicate],
+      url: payment.url,
+      title: payment.title,
+      createdAt: payment.createdAt,
     };
   } else {
-    cart.push(item);
+    state.cart.push(payment);
   }
-  await saveCart(cart);
-  return { cart, session, item: existing >= 0 ? cart[existing] : item };
+  state.payees = rememberPayee(state.payees, payment);
+  await saveState({ cart: state.cart, payees: state.payees });
+  return {
+    ...state,
+    item: duplicate >= 0 ? state.cart[duplicate] : payment,
+  };
 }
 
-async function removePayAllItem(id) {
-  const { cart, session } = await getPayAllState();
-  const next = cart.filter((item) => item.id !== id);
-  await saveCart(next);
-  return { cart: next, session };
+async function startSingle(value) {
+  const added = await addPayment(value);
+  const item = added.item;
+  const session = createSession([item]);
+  await saveState({ session });
+  return { ...added, session, nextUrl: item.url };
 }
 
-async function clearPayAll() {
-  await saveCart([]);
-  await saveSession(null);
-  return { cart: [], session: null };
+async function removePayment(id) {
+  const state = await getState();
+  state.cart = state.cart.filter((item) => item.id !== id);
+  await saveState({ cart: state.cart });
+  return state;
 }
 
-async function startPayAll() {
-  const { cart } = await getPayAllState();
-  if (!cart.length) throw new Error("Pay All cart is empty");
+async function clearPending() {
+  const state = await getState();
+  state.cart = [];
+  state.session = null;
+  await saveState({ cart: [], session: null });
+  return state;
+}
 
-  const session = {
+function createSession(items) {
+  const snapshot = {};
+  for (const item of items) snapshot[item.id] = item;
+  return {
     id: crypto.randomUUID(),
     status: "ACTIVE",
-    itemIds: cart.map((item) => item.id),
+    itemIds: items.map((item) => item.id),
     index: 0,
     outcomes: {},
+    snapshot,
     approvedAt: new Date().toISOString(),
   };
-  await saveSession(session);
-  return { cart, session, nextUrl: cart[0].url };
 }
 
-async function advancePayAll(outcome) {
-  const { cart, session } = await getPayAllState();
-  if (!session || session.status !== "ACTIVE")
-    throw new Error("No active Pay All session");
+async function startAll() {
+  const state = await getState();
+  if (!state.cart.length) throw new Error("No deferred payments");
+  state.session = createSession(state.cart);
+  await saveState({ session: state.session });
+  return { ...state, nextUrl: state.cart[0].url };
+}
+
+async function advance(outcome) {
+  const state = await getState();
+  const session = state.session;
+  if (!session || session.status !== "ACTIVE") throw new Error("No active payment session");
 
   const currentId = session.itemIds[session.index];
-  session.outcomes[currentId] = {
-    status: String(outcome).slice(0, 24),
-    at: new Date().toISOString(),
-  };
+  const current =
+    state.cart.find((item) => item.id === currentId) || session.snapshot?.[currentId];
+  if (!current) throw new Error("Current payment is missing");
+
+  const status = String(outcome).slice(0, 24).toUpperCase();
+  const now = new Date().toISOString();
+  session.outcomes[currentId] = { status, at: now };
+
+  if (status === "PAID") {
+    state.history.unshift({
+      id: crypto.randomUUID(),
+      payeeId: current.payeeId,
+      payeeName: current.payeeName,
+      paymentName: current.paymentName,
+      amount: current.amount,
+      currency: current.currency,
+      provider: current.provider,
+      origin: current.origin,
+      paidAt: now,
+    });
+    state.history = state.history.slice(0, 500);
+    const payee = state.payees.find((entry) => entry.id === current.payeeId);
+    if (payee) {
+      payee.paymentCount = Number(payee.paymentCount || 0) + 1;
+      payee.lastPaidAt = now;
+      payee.lastAmount = current.amount;
+      payee.lastCurrency = current.currency;
+      payee.lastPaymentName = current.paymentName;
+      payee.lastUrl = current.url;
+    }
+    state.cart = state.cart.filter((item) => item.id !== currentId);
+  }
 
   const nextIndex = session.index + 1;
   if (nextIndex >= session.itemIds.length) {
     session.status = "COMPLETED";
-    session.completedAt = new Date().toISOString();
-    await saveSession(session);
-    return { cart, session, done: true, nextUrl: null };
+    session.completedAt = now;
+    state.session = session;
+    await saveState({
+      cart: state.cart,
+      session,
+      payees: state.payees,
+      history: state.history,
+    });
+    return { ...state, done: true, nextUrl: null };
   }
 
   session.index = nextIndex;
+  state.session = session;
   const nextId = session.itemIds[nextIndex];
-  const nextPayment = cart.find((item) => item.id === nextId);
-  if (!nextPayment)
-    throw new Error("Next Pay All payment is no longer in the cart");
-  await saveSession(session);
-  return { cart, session, done: false, nextUrl: nextPayment.url };
+  const next =
+    state.cart.find((item) => item.id === nextId) || session.snapshot?.[nextId];
+  if (!next) throw new Error("Next payment is missing");
+  await saveState({
+    cart: state.cart,
+    session,
+    payees: state.payees,
+    history: state.history,
+  });
+  return { ...state, done: false, nextUrl: next.url };
 }
 
-async function stopPayAll() {
-  const { cart, session } = await getPayAllState();
-  if (session) {
-    session.status = "STOPPED";
-    session.stoppedAt = new Date().toISOString();
-    await saveSession(session);
+async function stopSession() {
+  const state = await getState();
+  if (state.session) {
+    state.session.status = "STOPPED";
+    state.session.stoppedAt = new Date().toISOString();
+    await saveState({ session: state.session });
   }
-  return { cart, session };
+  return state;
+}
+
+async function createSplit(allocationsValue, currencyValue) {
+  if (!Array.isArray(allocationsValue)) throw new Error("Invalid split");
+  const state = await getState();
+  const currency = String(currencyValue || "USD").trim().toUpperCase();
+  const allocations = allocationsValue
+    .map((entry) => ({
+      payeeId: String(entry?.payeeId || ""),
+      amount: Number(entry?.amount),
+    }))
+    .filter((entry) => entry.payeeId && Number.isFinite(entry.amount) && entry.amount > 0);
+  if (allocations.length < 2) throw new Error("Split requires at least two payees");
+
+  const groupId = crypto.randomUUID();
+  for (const allocation of allocations) {
+    const payee = state.payees.find((entry) => entry.id === allocation.payeeId);
+    if (!payee?.lastUrl) throw new Error("A selected payee has no reusable payment destination");
+    const payment = normalizePayment({
+      title: `Split payment — ${payee.displayName}`,
+      paymentName: `تقسيم دفعة · ${payee.displayName}`,
+      payeeName: payee.displayName,
+      url: payee.lastUrl,
+      provider: payee.provider,
+      rail: payee.rail,
+      amount: allocation.amount,
+      currency,
+    });
+    payment.splitGroupId = groupId;
+    state.cart.push(payment);
+    state.payees = rememberPayee(state.payees, payment);
+  }
+  await saveState({ cart: state.cart, payees: state.payees });
+  return state;
 }
 
 async function runDecision(intent) {
@@ -200,11 +343,7 @@ async function runDecision(intent) {
       Authorization: `Bearer ${buyerPass}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      requestId,
-      channel: "browser",
-      ...sanitizeIntent(intent),
-    }),
+    body: JSON.stringify({ requestId, channel: "browser", ...sanitizeIntent(intent) }),
   });
 
   let body;
@@ -217,21 +356,13 @@ async function runDecision(intent) {
     if (response.status === 402) {
       await chrome.storage.local.set({ xguardNeedsTopUp: true });
       await chrome.runtime.openOptionsPage();
-      throw new Error(
-        "XGuard is connected, but its service balance needs a top-up. The underlying payment was not changed.",
-      );
+      throw new Error("XGuard service balance needs a top-up. The payment was not changed.");
     }
     if (response.status === 401) {
       await chrome.storage.local.remove(PASS_KEY);
-      throw new Error(
-        "This Buyer Pass is no longer valid. Choose Use XGuard again to create a replacement.",
-      );
+      throw new Error("This Buyer Pass is no longer valid.");
     }
-    throw new Error(
-      typeof body?.error === "string"
-        ? body.error
-        : `XGuard returned HTTP ${response.status}`,
-    );
+    throw new Error(typeof body?.error === "string" ? body.error : `XGuard returned HTTP ${response.status}`);
   }
   await chrome.storage.local.set({ xguardNeedsTopUp: false });
   return body;
@@ -258,9 +389,7 @@ async function getOrCreateBuyerPass() {
 }
 
 function isBuyerPass(value) {
-  return (
-    typeof value === "string" && /^xg_pass_[A-Za-z0-9_-]{40,64}$/.test(value)
-  );
+  return typeof value === "string" && /^xg_pass_[A-Za-z0-9_-]{40,64}$/.test(value);
 }
 
 function sanitizeIntent(value) {
@@ -282,8 +411,7 @@ function sanitizeIntent(value) {
     "metadata",
   ];
   const out = {};
-  for (const key of allowed)
-    if (value[key] !== undefined) out[key] = value[key];
+  for (const key of allowed) if (value[key] !== undefined) out[key] = value[key];
   return out;
 }
 
