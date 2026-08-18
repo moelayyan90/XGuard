@@ -7,6 +7,7 @@ import { a2aGatewayV1Response } from "./a2a-gateway-v1.js";
 import { buyerPassResponse } from "./buyer-pass.js";
 import { buyerPortalResponse } from "./buyer-portal.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
+import { mcpOAuthChallengeResponse } from "./mcp-oauth-challenge.js";
 import { mcpOAuthResponse } from "./mcp-oauth.js";
 import { paymentDecisionResponse } from "./payment-decision.js";
 import {
@@ -114,6 +115,9 @@ export default {
 
     const mcpOAuth = await mcpOAuthResponse(standardRequest, env);
     if (mcpOAuth !== null) return mcpOAuth;
+
+    const mcpOAuthChallenge = await mcpOAuthChallengeResponse(standardRequest);
+    if (mcpOAuthChallenge !== null) return mcpOAuthChallenge;
 
     const paymentContract = publicPaymentContractResponse(standardRequest, env);
     if (paymentContract !== null) return paymentContract;
