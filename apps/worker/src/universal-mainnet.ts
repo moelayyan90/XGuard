@@ -7,6 +7,8 @@ import { a2aGatewayV1Response } from "./a2a-gateway-v1.js";
 import { buyerPassResponse } from "./buyer-pass.js";
 import { buyerPortalResponse } from "./buyer-portal.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
+import { mcpOAuthResponse } from "./mcp-oauth.js";
+import { normalizeMcpPublicResponse } from "./mcp-public-contract.js";
 import { paymentDecisionResponse } from "./payment-decision.js";
 import {
   normalizePublicPaymentContract,
@@ -107,6 +109,14 @@ async function buyerPassCreationGuard(
 export default {
   async fetch(request, env, ctx): Promise<Response> {
     const standardRequest = request as unknown as Request;
+    const standardUrl = new URL(standardRequest.url);
+    const mcpSnapshot =
+      standardUrl.pathname === "/mcp" && standardRequest.method === "POST"
+        ? standardRequest.clone()
+        : null;
+
+    const oauth = await mcpOAuthResponse(standardRequest, env);
+    if (oauth !== null) return oauth;
 
     const discoveryPreflight = publicDiscoveryPreflight(standardRequest);
     if (discoveryPreflight !== null) return discoveryPreflight;
@@ -164,7 +174,13 @@ export default {
     if (genericHttp !== null) return genericHttp;
 
     const response = await mainnetFetch(standardRequest, env, ctx);
-    return normalizePublicPaymentContract(standardRequest, response);
+    const normalized = await normalizePublicPaymentContract(
+      standardRequest,
+      response,
+    );
+    return mcpSnapshot === null
+      ? normalized
+      : normalizeMcpPublicResponse(mcpSnapshot, normalized);
   },
 
   async scheduled(controller, env, ctx): Promise<void> {
