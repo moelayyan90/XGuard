@@ -154,8 +154,17 @@ jobs:
             [[ "${code}" == "401" ]] || { echo "::error::Expected ${path} to require auth, got ${code}."; exit 1; }
           done
 
-          verify_code="$(curl -sS -o /tmp/xguard-verify.json -w '%{http_code}' --max-time 15 -X POST -H 'Content-Type: application/json' --data '{}' "${BASE_URL}/verify")"
-          [[ "${verify_code}" == "401" ]] || { echo "::error::Expected /verify to require auth, got ${verify_code}."; exit 1; }
+          verify_code="$(curl -sS -D /tmp/xguard-verify.headers -o /tmp/xguard-verify.json -w '%{http_code}' --max-time 15 -X POST -H 'Content-Type: application/json' --data '{}' "${BASE_URL}/verify")"
+          if [[ "${verify_code}" == "401" ]]; then
+            :
+          elif [[ "${verify_code}" == "503" ]] \
+            && grep -qi '^X-XGuard-Watchdog: circuit-open' /tmp/xguard-verify.headers \
+            && node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/xguard-verify.json","utf8"));if(x.error!=="xguard_watchdog_circuit_open"||x.safety!=="request_not_executed")process.exit(1)'; then
+            echo "::notice::/verify is safely blocked by the XGuard watchdog circuit."
+          else
+            echo "::error::Expected /verify to require auth or fail closed under the watchdog, got ${verify_code}."
+            exit 1
+          fi
 
           status_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' "${BASE_URL}/status?deploy=${VERIFY_TOKEN}")"
           printf '%s' "${status_body}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet"||x.facilitator!=="HEALTHY")process.exit(1)})'
