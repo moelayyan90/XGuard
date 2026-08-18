@@ -1,59 +1,70 @@
-# XGuard Pay All — Privacy Policy
+# XGuard Payment Layer — Privacy Policy
 
 **Effective date:** August 18, 2026  
-**Extension:** XGuard Pay All  
+**Extension:** XGuard Payment Layer  
 **Service:** https://xguardgate.com
 
-XGuard Pay All is a buyer-side browser layer that detects likely checkout pages, lets the user save several payments from different websites into one local cart, coordinates a Pay All session, and can optionally request an XGuard payment-decision result.
+XGuard is a buyer-side floating payment layer. It can detect likely payment, billing, checkout, and transfer surfaces on HTTPS pages; let the user defer a payment for later; remember payees and payment names; coordinate one-payment or multi-payment sessions; create local split-payment plans; and optionally request an XGuard payment-verification result.
 
-## Local checkout detection
+## Local payment-surface detection
 
-The extension may inspect the current HTTPS page locally for checkout-related signals such as:
+The extension may inspect the current HTTPS page locally for limited payment-related signals such as:
 
-- page hostname, path, and current checkout URL;
-- visible checkout/payment button labels;
-- visible total/amount and currency;
+- page hostname, path, and current payment URL;
+- visible payment, checkout, transfer, beneficiary, or recipient labels;
+- visible amount/total and currency;
 - payment-provider hints such as Stripe, PayPal, Coinbase, Shopify, Adyen, or Checkout.com.
 
-This detection happens in the browser. XGuard does not transmit raw page HTML, full page text, card fields, or passwords merely because the floating layer appears.
+Detection happens in the browser. Merely showing the floating XGuard layer does not transmit raw page HTML, full page text, card fields, or passwords to XGuard.
 
-## Pay All cart data
+## Local payment memory
 
-When the user chooses **Add this payment** / **احجز هذه الدفعة**, the extension stores the following in `chrome.storage.local`:
+When the user chooses **ترحيل لغايات الدفع / Defer for payment**, XGuard can store in `chrome.storage.local`:
 
-- exact checkout URL so the browser can return to that payment;
-- merchant hostname and page title;
+- the exact payment URL needed to return to that payment;
+- the user-visible name of the payment;
+- the saved payee/recipient name;
+- merchant hostname/origin and detected provider;
 - amount and currency;
-- detected provider label;
-- local cart/session identifiers and timestamps.
+- local pending-payment, session, split-group, and timestamp information.
 
-Checkout URLs can contain provider session identifiers. They remain in browser-local storage in this version and are used only to return the user to saved checkout pages. They are not sent to XGuard servers as part of the Pay All cart.
+XGuard also keeps a local payee memory containing the payee name, last payment name, last amount/currency, last usable payment URL, payment count, and last-paid time. This lets the user reuse a known recipient instead of registering it again.
 
-The Pay All session records which child payment the user is currently completing and the local outcome the user selected before moving to the next saved checkout.
+Completed-payment history is stored locally so XGuard can show the user which named payments were completed and to whom.
 
-## Optional XGuard payment decision
+These local pending payments, payee records, and history records are not uploaded to XGuard servers by the browser-memory feature.
 
-Only after the user explicitly selects **Verify this payment with XGuard** does the extension send a limited payment-intent record to `https://xguardgate.com`. Depending on what is available, that record can include:
+## Single, Pay All, and split sessions
+
+The browser layer can coordinate:
+
+- one saved payment;
+- several deferred payments in a Pay All sequence;
+- a split plan that creates child payments for two or more saved payees.
+
+The current browser-only implementation does not claim to convert unrelated card transactions into one native bank debit. Each underlying merchant or transfer destination remains subject to its own payment controls and any bank, wallet, 3-D Secure, or provider authentication. A true one-debit/many-recipient settlement mode requires an authorized payment rail that supports that capability.
+
+## Optional XGuard server-side verification
+
+Only after the user explicitly chooses the XGuard verification action does the extension send a limited payment-intent record to `https://xguardgate.com`. Depending on what is available, that record can include:
 
 - amount and currency;
-- merchant hostname/origin;
+- payee name or merchant origin;
 - detected payment provider or rail;
-- a local detection-confidence value;
-- a request identifier generated for the XGuard decision.
+- local detection-confidence metadata;
+- an idempotency request identifier.
 
-XGuard returns a payment decision and evidence record. The extension does not send the user's card number or banking credentials to XGuard.
+XGuard returns a payment decision/evidence result. The extension does not send the user's card number or banking credentials to XGuard.
 
-Users can simply use the Pay All cart or **Continue without XGuard** verification; doing so does not send a payment-decision request to the XGuard service.
+Users can use local payment memory and **Continue without XGuard** verification; doing so does not send a payment-decision request to the XGuard service.
 
 ## Authentication data stored in the browser
 
-When the optional server-side XGuard decision service is first used, the extension can create a dedicated XGuard Buyer Pass. The pass and related state are stored in `chrome.storage.local` and are sent only to `https://xguardgate.com` for XGuard API requests.
-
-The Buyer Pass is not inserted into merchant pages or checkout forms.
+When the optional server-side verification service is first used, the extension can create a dedicated XGuard Buyer Pass. The pass and related state are stored in `chrome.storage.local` and sent only to `https://xguardgate.com` for XGuard API requests. The Buyer Pass is not inserted into merchant pages or payment forms.
 
 ## Data the extension does not request
 
-XGuard Pay All does not request or accept the user's:
+XGuard does not request or accept the user's:
 
 - full payment-card number (card number / PAN);
 - CVV/CVC;
@@ -62,34 +73,11 @@ XGuard Pay All does not request or accept the user's:
 - wallet private key;
 - seed phrase or mnemonic.
 
-The extension does not sell user data, use checkout data for advertising, or use it for cross-site behavioral profiling.
-
-## Payment execution boundary
-
-The browser extension does not claim to turn unrelated merchant card transactions into one native bank debit by itself. In the current browser-only mode, one XGuard Pay All approval starts a coordinated sequence of the original merchant checkout pages. The user still completes the underlying merchant payment controls and any bank, wallet, or 3-D Secure authentication required by those payment providers.
-
-A future one-debit/many-recipient mode would require an authorized issuer, wallet, marketplace PSP, stablecoin batch router, or another payment rail that supports batch authorization.
-
-## Server-side use and retention
-
-Information sent after an explicit XGuard verification request is used to provide the requested payment decision, create evidence records, prevent duplicate billing, operate service accounting, and protect the service against abuse. Pay All cart URLs and cart contents are not uploaded by the current browser-cart implementation.
-
-## Service providers and disclosure
-
-The extension communicates with XGuard over HTTPS only for features the user explicitly invokes that require the XGuard service. XGuard does not disclose checkout context to advertisers or data brokers.
+The extension does not sell user data, use payment-memory data for advertising, or use it for cross-site behavioral profiling.
 
 ## User controls
 
-Users can:
-
-- remove individual saved payments from the Pay All cart;
-- clear the entire local Pay All cart;
-- stop an active Pay All session;
-- use the cart without requesting an XGuard server-side payment decision;
-- choose **Continue without XGuard** verification;
-- clear extension local storage or uninstall the extension.
-
-Uninstalling the extension removes its local browser state but does not retroactively delete server-side decision/evidence records that were explicitly requested earlier.
+Users can remove individual deferred payments, stop a payment session, clear browser-local XGuard data, or uninstall the extension. Uninstalling removes local extension state but does not retroactively delete server-side verification/evidence records that the user explicitly requested earlier.
 
 ## Security
 
