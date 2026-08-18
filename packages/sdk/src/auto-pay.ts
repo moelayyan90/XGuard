@@ -162,6 +162,7 @@ export function embedXGuardAutomatedPayments(
         reason: decision.reason ?? "XGuard blocked automated payment",
       };
     }
+    return undefined;
   });
 
   return {
