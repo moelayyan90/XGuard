@@ -114,7 +114,9 @@ describe("mainnet discovery", () => {
     expect(provider.pricing.model).toBe(XGUARD_ATTEMPT_MODEL);
     expect(provider.pricing.refundableAfterAcceptance).toBe(false);
     expect(provider.pricing.freeOperations).not.toContain("failed_settlement");
-    expect(provider.pricing.freeOperations).not.toContain("failed_verification");
+    expect(provider.pricing.freeOperations).not.toContain(
+      "failed_verification",
+    );
     expect(provider.pricing.freeOperations).toContain("idempotent_retry");
     expect(provider.pricing.subscription).toBe("none");
     expect(provider.settlementExecution.mode).toBe("routed");
@@ -141,7 +143,12 @@ describe("mainnet discovery", () => {
     );
     const provider = (await providerResponse?.json()) as {
       facilitator: { network: string };
-      pricing: { feeUsd: string; event: string; billing: string; model: string };
+      pricing: {
+        feeUsd: string;
+        event: string;
+        billing: string;
+        model: string;
+      };
     };
 
     const marketResponse = discoveryResponse(

@@ -82,9 +82,7 @@ describe("canonical public payment contract consistency", () => {
       "event: { const: accepted_authenticated_economic_attempt }",
     );
     expect(staticOpenApi).not.toContain("successful_billable_settlement");
-    expect(staticOpenApi).not.toContain(
-      'amount: { const: "0.002" }',
-    );
+    expect(staticOpenApi).not.toContain('amount: { const: "0.002" }');
   });
 
   it("prevents canonical public docs from regressing to an older x402 contract", () => {

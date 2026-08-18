@@ -8,14 +8,14 @@ Production prices are configured in `apps/worker/wrangler.mainnet.jsonc`. The pu
 
 Current mainnet execution prices include:
 
-| Event | Fee |
-| --- | ---: |
-| Model proxy execution | $0.0001 |
-| Tool proxy execution | $0.0002 |
-| Source discovery/search | $0.0010 |
-| Security inspection | $0.0010 |
-| Analysis/ranking | $0.0020 |
-| Payment-decision execution | $0.0010 |
+| Event                                        |     Fee |
+| -------------------------------------------- | ------: |
+| Model proxy execution                        | $0.0001 |
+| Tool proxy execution                         | $0.0002 |
+| Source discovery/search                      | $0.0010 |
+| Security inspection                          | $0.0010 |
+| Analysis/ranking                             | $0.0020 |
+| Payment-decision execution                   | $0.0010 |
 | Accepted authenticated x402 economic attempt | $0.0300 |
 
 Merchant top-ups are prepaid service liabilities; they are not revenue when deposited.

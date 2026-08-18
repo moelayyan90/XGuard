@@ -1,7 +1,6 @@
 export const XGUARD_ATTEMPT_FEE_USD = "0.03";
 export const XGUARD_ATTEMPT_FEE_MICRO_USD = 30_000;
-export const XGUARD_ATTEMPT_EVENT =
-  "accepted_authenticated_economic_attempt";
+export const XGUARD_ATTEMPT_EVENT = "accepted_authenticated_economic_attempt";
 export const XGUARD_ATTEMPT_BILLING = "merchant_prepaid_service_balance";
 export const XGUARD_ATTEMPT_MODEL =
   "merchant_prepaid_nonrefundable_attempt_fee";
@@ -169,8 +168,7 @@ function normalizeJson(value: unknown, key = ""): unknown {
       )
     )
       return XGUARD_ATTEMPT_FEE_USD;
-    if (value === "successful_billable_settlement")
-      return XGUARD_ATTEMPT_EVENT;
+    if (value === "successful_billable_settlement") return XGUARD_ATTEMPT_EVENT;
     return normalizeText(value);
   }
   return value;

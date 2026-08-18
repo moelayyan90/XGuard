@@ -28,16 +28,16 @@ flowchart TD
 
 ## Runtime surfaces
 
-| Surface | Purpose | Production role |
-| --- | --- | --- |
-| `apps/worker/src/universal-mainnet.ts` | Production composition layer | **Canonical `xguard-mainnet` Worker entrypoint** |
-| `apps/worker/src/public-payment-contract.ts` | Canonical public price, billing event, network/asset and payment manifest | **Single public commercial-contract source** |
-| `apps/worker/src/monetized-mainnet.ts` | Fixed x402 attempt-fee enforcement | Protected `/verify` and `/settle` accounting wrapper |
-| `apps/worker/src/mainnet-modern.ts` | HTTPS/security, compatibility, universal gateway and settlement-truth integration | Modern protected execution layer |
-| `apps/worker/src/mainnet-supervisor.ts` | Merchant authorization, upstream protection, recovery/maintenance | Production supervision around the financial core |
-| `apps/worker/src/mainnet.ts` | Base mainnet settlement core | Durable settlement ownership + D1 finality/reconciliation |
-| `apps/worker/src/index.ts` | Separate Base Sepolia worker | Manual, non-billable testnet only |
-| `apps/gateway` | Legacy portable/local Node reference | Local/test operations; not the production mainnet entrypoint |
+| Surface                                      | Purpose                                                                           | Production role                                              |
+| -------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `apps/worker/src/universal-mainnet.ts`       | Production composition layer                                                      | **Canonical `xguard-mainnet` Worker entrypoint**             |
+| `apps/worker/src/public-payment-contract.ts` | Canonical public price, billing event, network/asset and payment manifest         | **Single public commercial-contract source**                 |
+| `apps/worker/src/monetized-mainnet.ts`       | Fixed x402 attempt-fee enforcement                                                | Protected `/verify` and `/settle` accounting wrapper         |
+| `apps/worker/src/mainnet-modern.ts`          | HTTPS/security, compatibility, universal gateway and settlement-truth integration | Modern protected execution layer                             |
+| `apps/worker/src/mainnet-supervisor.ts`      | Merchant authorization, upstream protection, recovery/maintenance                 | Production supervision around the financial core             |
+| `apps/worker/src/mainnet.ts`                 | Base mainnet settlement core                                                      | Durable settlement ownership + D1 finality/reconciliation    |
+| `apps/worker/src/index.ts`                   | Separate Base Sepolia worker                                                      | Manual, non-billable testnet only                            |
+| `apps/gateway`                               | Legacy portable/local Node reference                                              | Local/test operations; not the production mainnet entrypoint |
 
 The mainnet Worker supports x402 v2 `exact` payments using native USDC on Base mainnet. Merchant service fees are separately disclosed and funded through the prepaid XGuard service balance; they are not silently deducted from the seller's advertised payment amount.
 

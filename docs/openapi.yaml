@@ -147,9 +147,15 @@ paths:
       responses:
         "200":
           description: Verification result; an accepted attempt can carry XGuard attempt-fee headers
-        "400": { description: Malformed or unsupported request rejected before accepted execution }
+        "400":
+          {
+            description: Malformed or unsupported request rejected before accepted execution,
+          }
         "401": { description: Missing or invalid merchant API key }
-        "402": { description: Prepaid XGuard service balance cannot cover the fixed attempt fee }
+        "402":
+          {
+            description: Prepaid XGuard service balance cannot cover the fixed attempt fee,
+          }
         "429": { description: Rate or concurrency limit exceeded }
         "503": { description: Protected execution dependency unavailable }
   /settle:
@@ -181,12 +187,24 @@ paths:
               schema: { type: string, const: "false" }
             X-XGuard-Attempt-Key:
               schema: { type: string }
-        "400": { description: Malformed or unsupported request rejected before accepted execution }
+        "400":
+          {
+            description: Malformed or unsupported request rejected before accepted execution,
+          }
         "401": { description: Missing or invalid merchant API key }
-        "402": { description: Prepaid XGuard service balance cannot cover the fixed attempt fee }
-        "409": { description: Conflicting, duplicate, or in-progress settlement state }
+        "402":
+          {
+            description: Prepaid XGuard service balance cannot cover the fixed attempt fee,
+          }
+        "409":
+          {
+            description: Conflicting,
+            duplicate,
+            or in-progress settlement state,
+          }
         "429": { description: Rate or concurrency limit exceeded }
-        "503": { description: Route unavailable or settlement outcome uncertain }
+        "503":
+          { description: Route unavailable or settlement outcome uncertain }
   /v1/settlements/{logicalPaymentKey}/truth:
     get:
       tags: [Settlement Truth]
@@ -211,7 +229,8 @@ paths:
       parameters:
         - $ref: "#/components/parameters/LogicalPaymentKey"
       responses:
-        "200": { description: Resolution reached a terminal/conflicting truth state }
+        "200":
+          { description: Resolution reached a terminal/conflicting truth state }
         "202": { description: Final evidence is still pending }
         "401": { description: Missing or invalid merchant API key }
         "404": { description: No merchant-owned settlement truth record }
@@ -234,7 +253,8 @@ components:
   schemas:
     PaymentManifest:
       type: object
-      required: [manifest, name, mode, network, asset, pricing, onboarding, execution]
+      required:
+        [manifest, name, mode, network, asset, pricing, onboarding, execution]
       properties:
         manifest: { const: xguard-payment-manifest-v1 }
         name: { const: XGuard }
@@ -249,7 +269,15 @@ components:
             treasury: { type: string }
         pricing:
           type: object
-          required: [amountUsd, amountMicroUsd, event, billing, model, refundableAfterAcceptance]
+          required:
+            [
+              amountUsd,
+              amountMicroUsd,
+              event,
+              billing,
+              model,
+              refundableAfterAcceptance,
+            ]
           properties:
             amountUsd: { const: "0.03" }
             amountMicroUsd: { const: 30000 }

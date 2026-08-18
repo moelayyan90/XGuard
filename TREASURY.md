@@ -2,15 +2,15 @@
 
 XGuard treats merchant prepaid funds as customer service liabilities until a billable XGuard service event is earned. Gross revenue is never called profit.
 
-| Measure | Meaning |
-| --- | --- |
-| `CUSTOMER_BALANCES` / `MERCHANT_PREPAID_LIABILITY` | prepaid service value XGuard still owes merchants |
-| `EARNED_REVENUE` / `XGUARD_SERVICE_REVENUE` | XGuard service fees already earned under the applicable billing event |
-| `OPERATING_EXPENSE` | facilitator, compute, database, network, monitoring, off-ramp and other attributable cost |
-| `FACILITATOR_PAYABLE` | incurred but unpaid downstream liability |
-| `OPERATING_RESERVE` | earned funds retained for continuity |
-| `OWNER_DISTRIBUTABLE` | final funds remaining after liabilities, costs, pending payouts and reserve |
-| `PAID_TO_OWNER` / `OWNER_DISTRIBUTIONS` | distributions proven paid |
+| Measure                                            | Meaning                                                                                   |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `CUSTOMER_BALANCES` / `MERCHANT_PREPAID_LIABILITY` | prepaid service value XGuard still owes merchants                                         |
+| `EARNED_REVENUE` / `XGUARD_SERVICE_REVENUE`        | XGuard service fees already earned under the applicable billing event                     |
+| `OPERATING_EXPENSE`                                | facilitator, compute, database, network, monitoring, off-ramp and other attributable cost |
+| `FACILITATOR_PAYABLE`                              | incurred but unpaid downstream liability                                                  |
+| `OPERATING_RESERVE`                                | earned funds retained for continuity                                                      |
+| `OWNER_DISTRIBUTABLE`                              | final funds remaining after liabilities, costs, pending payouts and reserve               |
+| `PAID_TO_OWNER` / `OWNER_DISTRIBUTIONS`            | distributions proven paid                                                                 |
 
 ## Canonical x402 revenue event
 

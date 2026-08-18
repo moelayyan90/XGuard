@@ -9,19 +9,19 @@ The live machine-readable HTTP contract is `GET /openapi.json`. The canonical co
 
 ## Public mainnet endpoints
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/` | Release/network/endpoint discovery |
-| GET | `/healthz` | Worker liveness |
-| GET | `/readyz` | D1 and downstream route readiness |
-| GET | `/supported` | Authoritative live x402 capabilities |
-| GET | `/status` | Operational status |
-| GET | `/.well-known/payment-manifest` | Canonical payment/onboarding/pricing manifest |
-| GET | `/.well-known/x402/facilitator.json` | XGuard facilitator provider metadata |
-| GET | `/.well-known/agent-card.json` | Agent/A2A discovery metadata |
-| GET | `/.well-known/mcp/server.json` | MCP server metadata |
-| GET | `/openapi.json` | Live OpenAPI description |
-| POST | `/v1/register` | Create a merchant and issue a one-time API key |
+| Method | Path                                 | Purpose                                        |
+| ------ | ------------------------------------ | ---------------------------------------------- |
+| GET    | `/`                                  | Release/network/endpoint discovery             |
+| GET    | `/healthz`                           | Worker liveness                                |
+| GET    | `/readyz`                            | D1 and downstream route readiness              |
+| GET    | `/supported`                         | Authoritative live x402 capabilities           |
+| GET    | `/status`                            | Operational status                             |
+| GET    | `/.well-known/payment-manifest`      | Canonical payment/onboarding/pricing manifest  |
+| GET    | `/.well-known/x402/facilitator.json` | XGuard facilitator provider metadata           |
+| GET    | `/.well-known/agent-card.json`       | Agent/A2A discovery metadata                   |
+| GET    | `/.well-known/mcp/server.json`       | MCP server metadata                            |
+| GET    | `/openapi.json`                      | Live OpenAPI description                       |
+| POST   | `/v1/register`                       | Create a merchant and issue a one-time API key |
 
 Machine-readable discovery **metadata** is free. Value-producing `/discovery/resources` and `/discovery/search` operations use the separate SOURCE execution class and must not be confused with free metadata.
 
@@ -29,15 +29,15 @@ Machine-readable discovery **metadata** is free. Value-producing `/discovery/res
 
 Use `Authorization: Bearer <XGUARD_API_KEY>`.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/v1/balance` | Return prepaid service balance |
-| POST | `/v1/topups/intents` | Create a one-time exact native-USDC Base deposit intent |
-| POST | `/v1/topups/claim` | Verify and claim a matching finalized Base USDC deposit |
-| GET | `/v1/settlements/{logicalPaymentKey}/truth` | Read independent settlement truth |
-| POST | `/v1/settlements/{logicalPaymentKey}/resolve` | Re-evaluate settlement truth without blind resubmission |
-| POST | `/verify` | Execute protected x402 verification |
-| POST | `/settle` | Execute protected guarded x402 settlement |
+| Method | Path                                          | Purpose                                                 |
+| ------ | --------------------------------------------- | ------------------------------------------------------- |
+| GET    | `/v1/balance`                                 | Return prepaid service balance                          |
+| POST   | `/v1/topups/intents`                          | Create a one-time exact native-USDC Base deposit intent |
+| POST   | `/v1/topups/claim`                            | Verify and claim a matching finalized Base USDC deposit |
+| GET    | `/v1/settlements/{logicalPaymentKey}/truth`   | Read independent settlement truth                       |
+| POST   | `/v1/settlements/{logicalPaymentKey}/resolve` | Re-evaluate settlement truth without blind resubmission |
+| POST   | `/verify`                                     | Execute protected x402 verification                     |
+| POST   | `/settle`                                     | Execute protected guarded x402 settlement               |
 
 `POST` requests use `Content-Type: application/json`. Mainnet `/verify` and `/settle` require the official v2 facilitator envelope containing `x402Version`, `paymentPayload`, and `paymentRequirements`.
 
