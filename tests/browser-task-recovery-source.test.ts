@@ -39,7 +39,9 @@ describe("browser task recovery source", () => {
   it("stores only checkpoint metadata and never serializes field values", () => {
     expect(source).toContain('const STORAGE_KEY = "xguardTaskRecoveryState"');
     expect(source).toContain("requiredCount: model.task.requiredCount");
-    expect(source).toContain("incompleteRequired: model.task.incompleteRequired");
+    expect(source).toContain(
+      "incompleteRequired: model.task.incompleteRequired",
+    );
     expect(source).not.toContain("fieldValues");
     expect(source).not.toContain("innerHTML: document");
     expect(source).not.toContain("outerHTML");
