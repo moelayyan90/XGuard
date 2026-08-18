@@ -266,7 +266,7 @@ function resourceOrigin(value: string): string {
 }
 
 function normalizeGateway(value: string): string {
-  const raw = String(value).trim().replace(/\/+$/, "");
+  const raw = String(value).trim();
   let url: URL;
   try {
     url = new URL(raw);
