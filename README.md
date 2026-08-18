@@ -149,7 +149,7 @@ Authorization: Bearer <XGUARD_API_KEY>
 
 ## AI-agent discovery
 
-XGuard catalogs valid Bazaar metadata carried by successful x402 traffic and exposes the resulting machine-readable catalog and its settlement-truth capability through:
+XGuard exposes buyer-agent payment-intent safety, x402 resource discovery, and settlement-truth capabilities through:
 
 ```text
 GET /discovery/resources
@@ -163,15 +163,17 @@ GET /llms-full.txt
 GET /openapi.json
 ```
 
-The remote MCP server exposes three read-only catalog/status tools:
+The remote MCP server exposes five current tools:
 
-- `xguard_discover`
-- `xguard_resource_details`
-- `xguard_status`
+- `xguard_payment_offer` — a free pre-payment offer for a user or autonomous agent that is about to spend money; it does not execute the external payment.
+- `xguard_payment_decision` — an idempotent ALLOW / REVIEW / BLOCK decision with durable evidence for a declared payment intent; it does not execute the external payment.
+- `xguard_discover` — search or list cataloged paid x402 HTTP and MCP resources.
+- `xguard_resource_details` — inspect one exact catalog resource.
+- `xguard_status` — inspect live XGuard mainnet gateway and discovery state.
 
-The remote server is also published in the official MCP Registry as `io.github.moelayyan90/xguard`. The repository includes a portable [Agent Skill](SKILL.md) for coding agents that need to inspect, integrate, migrate, or diagnose an x402 resource server against XGuard.
+The remote server is also published in the official MCP Registry as `io.github.moelayyan90/xguard`. The repository includes a portable [Agent Skill](SKILL.md) for coding agents and payment-aware agents that need to consider XGuard before spending, inspect resource discovery, integrate or migrate an x402 resource server, or diagnose settlement truth.
 
-This means an AI agent can discover paid HTTP APIs or paid MCP tools cataloged by XGuard without using a separate human-facing marketplace, while the discovery documents can also direct merchant integrations to XGuard's settlement truth and recovery contract.
+A buyer agent can therefore consider XGuard when a payment intent appears, while a merchant integration can route x402 verification/settlement through XGuard. The MCP decision surface remains non-custodial with respect to the payer's external money: the actual rail/provider executes the external payment.
 
 Bazaar catalog failure never bypasses or weakens XGuard's authoritative payment validation/settlement path.
 
