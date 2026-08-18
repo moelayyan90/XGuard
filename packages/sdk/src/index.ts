@@ -1,5 +1,7 @@
 import { HTTPFacilitatorClient, type FacilitatorClient } from "@x402/core/http";
 
+export * from "./auto-pay.js";
+
 export interface XGuardClientOptions {
   /** XGuard gateway origin, without /verify or /settle. */
   url: string;
