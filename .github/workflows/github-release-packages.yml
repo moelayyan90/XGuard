@@ -64,7 +64,7 @@ jobs:
           /tmp/xguard-cli-prefix/bin/xguard init --help | tee /tmp/xguard-init.txt
           /tmp/xguard-cli-prefix/bin/xguard doctor --help | tee /tmp/xguard-doctor.txt
           grep -qi 'xguard' /tmp/xguard-help.txt
-          grep -Fq 'https://xguard-mainnet.maqamapp.workers.dev' /tmp/xguard-init.txt
+          grep -Fq 'https://xguardgate.com' /tmp/xguard-init.txt
           grep -qi 'doctor' /tmp/xguard-doctor.txt
 
       - name: Verify SDK and core install together from local tarballs
@@ -79,7 +79,7 @@ jobs:
           cd /tmp/xguard-sdk-smoke
           npm init -y >/dev/null
           npm install "$CORE_TARBALL" "$SDK_TARBALL"
-          node --input-type=module -e 'import { createXGuardFacilitator } from "@xguard/sdk"; if(typeof createXGuardFacilitator!=="function") process.exit(1)'
+          node --input-type=module -e 'import { createXGuardFacilitator, embedXGuardAutomatedPayments } from "@xguard/sdk"; if(typeof createXGuardFacilitator!=="function" || typeof embedXGuardAutomatedPayments!=="function") process.exit(1)'
 
       - uses: actions/upload-artifact@v4
         with:
@@ -115,7 +115,7 @@ jobs:
               /tmp/xguard-public-prefix/bin/xguard init --help | tee /tmp/xguard-public-init.txt
               /tmp/xguard-public-prefix/bin/xguard doctor --help | tee /tmp/xguard-public-doctor.txt
               grep -qi 'xguard' /tmp/xguard-public-help.txt
-              grep -Fq 'https://xguard-mainnet.maqamapp.workers.dev' /tmp/xguard-public-init.txt
+              grep -Fq 'https://xguardgate.com' /tmp/xguard-public-init.txt
               grep -qi 'doctor' /tmp/xguard-public-doctor.txt
               exit 0
             fi
