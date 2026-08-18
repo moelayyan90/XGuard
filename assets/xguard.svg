@@ -1,10 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 190" role="img" aria-labelledby="title desc">
   <title id="title">XGuard</title>
-  <desc id="desc">Official XGuard shield and wordmark on red</desc>
-  <rect width="1254" height="1254" fill="#ff1017"/>
-  <path d="M627 155 930 252c24 8 39 30 39 55v255c0 196-122 312-342 405-220-93-342-209-342-405V307c0-25 15-47 39-55L627 155Z" fill="#050505"/>
-  <path d="M627 194 899 281c13 4 21 16 21 30v242c0 165-102 264-293 349-191-85-293-184-293-349V311c0-14 8-26 21-30L627 194Z" fill="none" stroke="#ffffff" stroke-width="48" stroke-linejoin="round"/>
-  <text x="470" y="700" fill="#ffffff" font-family="Arial Black,Segoe UI Black,sans-serif" font-size="420" font-weight="900" transform="skewX(-7)">X</text>
-  <text x="610" y="700" fill="#ffffff" font-family="Arial Black,Segoe UI Black,sans-serif" font-size="410" font-weight="900">G</text>
-  <text x="627" y="1110" text-anchor="middle" fill="#ffffff" font-family="Arial Black,Segoe UI Black,Eurostile,sans-serif" font-size="132" font-weight="900" letter-spacing="9">XGUARD</text>
+  <desc id="desc">XGuard angular mark and wordmark</desc>
+  <defs>
+    <linearGradient id="silver" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d4d7d9"/>
+      <stop offset="1" stop-color="#91999e"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#5ec2cc"/>
+      <stop offset="1" stop-color="#557f87"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(70 8) scale(2.85)">
+    <path d="M2 3h20l22 22L65 3h53l-12 12H71L52 34l31 31H61L2 6Z" fill="url(#silver)"/>
+    <path d="M73 28h39v39H82V54h16V42H84Z" fill="url(#silver)"/>
+    <path d="M3 68 23 48l13 13-8 7Z" fill="url(#teal)"/>
+  </g>
+  <text x="280" y="176" text-anchor="middle" fill="url(#silver)" font-family="Arial,Helvetica,sans-serif" font-size="54" font-weight="800" letter-spacing="4">XGUARD</text>
 </svg>
