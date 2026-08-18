@@ -2,13 +2,26 @@ import {
   buildPaymentManifest,
   XGUARD_ATTEMPT_FEE_USD,
 } from "./public-payment-contract.js";
+import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 
 const CARD_PATHS = new Set([
   "/.well-known/agent-card.json",
   "/.well-known/agent.json",
 ]);
+const ACTION_METHODS = new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+]);
 type Delegate = (request: Request) => Promise<Response>;
-type A2AEnv = { XGUARD_TREASURY_USDC_ADDRESS?: string };
+type A2AEnv = {
+  DB: D1Database;
+  XGUARD_TREASURY_USDC_ADDRESS?: string;
+  XGUARD_TOOL_FEE_MICRO_USD?: string;
+};
 
 export async function a2aGatewayV1Response(
   request: Request,
@@ -29,6 +42,7 @@ export async function a2aGatewayV1Response(
       supportedVersions: ["1.0", "0.3"],
       endpoint: `${url.origin}/a2a`,
       agentCard: `${url.origin}/.well-known/agent-card.json`,
+      universalActions: `${url.origin}/.well-known/xguard/actions.json`,
     });
   if (request.method !== "POST")
     return rpcError(null, -32600, "POST required", 405);
@@ -87,7 +101,7 @@ function agentCard(origin: string): Record<string, unknown> {
   return {
     name: "XGuard",
     description:
-      "Economic safety, payment discovery, verification, settlement and universal execution gateway for autonomous agents.",
+      "Universal guarded action execution for public HTTPS APIs, autonomous agents, webhooks and workflows, plus payment discovery, verification and x402 settlement.",
     version: "1.0.0",
     provider: {
       organization: "XGuard",
@@ -114,6 +128,27 @@ function agentCard(origin: string): Record<string, unknown> {
     defaultOutputModes: ["text/plain", "application/json"],
     skills: [
       {
+        id: "universal-actions",
+        name: "Execute guarded API actions",
+        description:
+          "Route an authorized public HTTPS API action through XGuard and meter the successful execution. Useful for agent tools, workflows, bookings, orders, CRM, messaging, fulfillment, webhooks and other API transactions without installing an XGuard SDK.",
+        tags: [
+          "api",
+          "automation",
+          "agent-tool",
+          "workflow",
+          "webhook",
+          "transaction",
+          "integration",
+          "booking",
+          "order",
+        ],
+        examples: [
+          "execute-action against a public HTTPS API",
+          `${origin}/.well-known/xguard/actions.json`,
+        ],
+      },
+      {
         id: "payments",
         name: "Discover and fund XGuard",
         description: "Payment manifest, registration, balance and top-up.",
@@ -130,6 +165,12 @@ function agentCard(origin: string): Record<string, unknown> {
         description: "Status, capabilities, quotes and security inspection.",
       },
     ],
+    xguardDiscovery: {
+      actions: `${origin}/.well-known/xguard/actions.json`,
+      execute: `${origin}/v1/actions/execute`,
+      protocols: `${origin}/.well-known/xguard/protocols.json`,
+      mcp: `${origin}/mcp`,
+    },
   };
 }
 
@@ -214,10 +255,13 @@ async function executeAction(
       ),
       name,
     );
+  if (name === "execute-action")
+    return executeUniversalAction(action, incoming, env);
   return {
     ok: false,
     error: "unsupported_a2a_action",
     supportedActions: [
+      "execute-action",
       "payment-manifest",
       "status",
       "capabilities",
@@ -230,6 +274,76 @@ async function executeAction(
       "quote",
       "security-inspect",
     ],
+  };
+}
+
+async function executeUniversalAction(
+  action: Record<string, unknown>,
+  incoming: Request,
+  env: A2AEnv,
+): Promise<Record<string, unknown>> {
+  const target = typeof action.target === "string" ? action.target.trim() : "";
+  const method =
+    typeof action.method === "string" ? action.method.toUpperCase() : "POST";
+  if (target === "")
+    return { ok: false, action: "execute-action", error: "target_required" };
+  if (!ACTION_METHODS.has(method))
+    return {
+      ok: false,
+      action: "execute-action",
+      error: "action_method_not_supported",
+    };
+
+  const url = new URL(incoming.url);
+  url.pathname = "/v1/gateway/http";
+  url.search = "";
+  const headers = new Headers({ accept: "application/json" });
+  for (const header of [
+    "authorization",
+    "x-xguard-upstream-key",
+    "x-xguard-upstream-auth-header",
+    "x-xguard-upstream-auth-scheme",
+  ]) {
+    const value = incoming.headers.get(header);
+    if (value !== null) headers.set(header, value);
+  }
+  headers.set("x-xguard-upstream-url", target);
+  if (typeof action.idempotencyKey === "string" && action.idempotencyKey !== "")
+    headers.set("idempotency-key", action.idempotencyKey.slice(0, 256));
+
+  let body: BodyInit | null = null;
+  if (method !== "GET" && method !== "HEAD") {
+    if (typeof action.payload === "string") {
+      body = action.payload;
+      headers.set("content-type", "text/plain; charset=utf-8");
+    } else if (action.payload !== undefined) {
+      body = JSON.stringify(action.payload);
+      headers.set("content-type", "application/json; charset=utf-8");
+    }
+  }
+
+  const response = await genericHttpConnectorResponse(
+    new Request(url.toString(), { method, headers, body, redirect: "manual" }),
+    env,
+  );
+  if (response === null)
+    return {
+      ok: false,
+      action: "execute-action",
+      error: "action_connector_unavailable",
+    };
+
+  const type = response.headers.get("content-type")?.toLowerCase() ?? "";
+  const result = type.includes("application/json")
+    ? await response.json()
+    : await response.text();
+  return {
+    ok: response.ok,
+    action: "execute-action",
+    httpStatus: response.status,
+    feeMicroUsd: Number(response.headers.get("x-xguard-fee-micro-usd") ?? "0"),
+    accounting: response.headers.get("x-xguard-accounting"),
+    result,
   };
 }
 
@@ -271,11 +385,13 @@ async function delegated(
 }
 
 function answerText(text: string, origin: string): string {
+  if (text.includes("action") || text.includes("api") || text.includes("tool"))
+    return `XGuard can execute authorized public HTTPS API actions through its universal action rail. Discovery: ${origin}/.well-known/xguard/actions.json.`;
   if (text.includes("price") || text.includes("fee"))
-    return `XGuard x402 attempt fee is $${XGUARD_ATTEMPT_FEE_USD}. Machine payment discovery: ${origin}/.well-known/payment-manifest.`;
+    return `XGuard x402 attempt fee is $${XGUARD_ATTEMPT_FEE_USD}. Universal action pricing is machine-readable at ${origin}/v1/gateway/quote.`;
   if (text.includes("pay") || text.includes("onboard"))
     return `Robot: ${origin}/.well-known/payment-manifest. Human: ${origin}/pay.`;
-  return `XGuard A2A is online. Use a structured data part with an action. Start at ${origin}/.well-known/agent-card.json.`;
+  return `XGuard A2A is online. Use a structured data part with an action. Start at ${origin}/.well-known/agent-card.json or ${origin}/.well-known/xguard/actions.json.`;
 }
 
 function rpcResult(
