@@ -1,3 +1,5 @@
+import { XGUARD_MCP_VERSION } from "./mainnet-mcp-modern.js";
+
 const CACHE_CONTROL = "public, max-age=3600, stale-while-revalidate=86400";
 
 export function mcpubDiscoveryResponse(request: Request): Response | null {
@@ -9,12 +11,21 @@ export function mcpubDiscoveryResponse(request: Request): Response | null {
   const body = {
     name: "XGuard",
     description:
-      "Remote MCP server and x402 economic firewall for payment discovery, verification, and guarded settlement routing.",
-    version: "0.5.1",
+      "Payment coordination and safety MCP for AI agents, with pre-payment decisions, x402 discovery, and settlement evidence.",
+    version: XGUARD_MCP_VERSION,
     transport: "streamable-http",
     mcp: `${url.origin}/mcp`,
     repository: "https://github.com/moelayyan90/XGuard",
     registryName: "io.github.moelayyan90/xguard",
+    capabilities: {
+      paymentIntent: true,
+      paymentOffer: "xguard_payment_offer",
+      paymentDecision: "xguard_payment_decision",
+      x402Discovery: "xguard_discover",
+      resourceDetails: "xguard_resource_details",
+      status: "xguard_status",
+      externalPaymentExecution: false,
+    },
   };
 
   return new Response(
