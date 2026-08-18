@@ -45,8 +45,8 @@ jobs:
           if (scripts.length !== 1 || JSON.stringify(scripts[0].matches) !== JSON.stringify(["https://*/*"])) {
             throw new Error("Payment-surface detection must be HTTPS-only");
           }
-          if (JSON.stringify(scripts[0].js) !== JSON.stringify(["universal-layer.js"])) {
-            throw new Error("Universal payment layer must be the active content script");
+          if (JSON.stringify(scripts[0].js) !== JSON.stringify(["universal-layer.js", "surface-rail.js"])) {
+            throw new Error("Universal and inline payment layers must both be active");
           }
 
           for (const size of ["16", "32", "48", "128"]) {
@@ -76,7 +76,7 @@ jobs:
             }
           }
 
-          for (const file of ["universal-layer.js", "service-worker.js", "options.js"]) {
+          for (const file of ["universal-layer.js", "surface-rail.js", "service-worker.js", "options.js"]) {
             const source = fs.readFileSync(path.join("browser-extension", file), "utf8");
             if (/\beval\s*\(|\bnew\s+Function\s*\(/.test(source)) {
               throw new Error(`Remote/dynamic execution primitive found in ${file}`);
@@ -103,6 +103,7 @@ jobs:
           mkdir -p "${OUT}/icons" dist/browser-extension
           cp browser-extension/manifest.json "${OUT}/"
           cp browser-extension/universal-layer.js "${OUT}/"
+          cp browser-extension/surface-rail.js "${OUT}/"
           cp browser-extension/service-worker.js "${OUT}/"
           cp browser-extension/options.html "${OUT}/"
           cp browser-extension/options.js "${OUT}/"
@@ -127,6 +128,7 @@ jobs:
           ZIP="$(find dist/browser-extension -name 'xguard-payment-layer-*.zip' -print -quit)"
           unzip -Z1 "${ZIP}" | grep -qx 'manifest.json'
           unzip -Z1 "${ZIP}" | grep -qx 'universal-layer.js'
+          unzip -Z1 "${ZIP}" | grep -qx 'surface-rail.js'
           ! unzip -Z1 "${ZIP}" | grep -E '(^|/)(PRIVACY|STORE_SUBMISSION|README).*\.md$'
           ! unzip -Z1 "${ZIP}" | grep -E '\.(map|pem|key|env)$'
           (
