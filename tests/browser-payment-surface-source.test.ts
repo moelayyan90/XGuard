@@ -68,12 +68,13 @@ describe("buyer browser payment-layer source invariants", () => {
     expect(worker).not.toContain("/v1/pay-all");
   });
 
-  it("limits network host permission to XGuard while detecting payment surfaces locally", async () => {
+  it("limits network host permission to XGuard while keeping payment controls as recovery adapters", async () => {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     expect(manifest.host_permissions).toEqual(["https://xguardgate.com/*"]);
     expect(manifest.content_scripts[0].all_frames).toBe(false);
     expect(manifest.content_scripts[0].matches).toEqual(["https://*/*"]);
     expect(manifest.content_scripts[0].js).toEqual([
+      "recovery-layer.js",
       "universal-layer.js",
       "surface-rail.js",
     ]);
