@@ -14,9 +14,7 @@ describe("Payment Layer-first indexing", () => {
     expect(response?.headers.get("content-type")).toContain("application/xml");
     expect(xml).toContain(`${ORIGIN}/payment-layer`);
     expect(xml).toContain(`${ORIGIN}/install`);
-    expect(xml).toContain(
-      `${ORIGIN}/.well-known/xguard/payment-layer.json`,
-    );
+    expect(xml).toContain(`${ORIGIN}/.well-known/xguard/payment-layer.json`);
     expect(xml).toContain(`${ORIGIN}/.well-known/xguard/protocols.json`);
     expect(xml).toContain(`${ORIGIN}/.well-known/x402/facilitator.json`);
     expect(xml.indexOf(`${ORIGIN}/payment-layer`)).toBeLessThan(
