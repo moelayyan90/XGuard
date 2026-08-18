@@ -14,6 +14,7 @@ on:
       - ".github/xguard-directory-status.json"
       - "apps/worker/src/a2a-agent.ts"
       - "apps/worker/src/a2a-discovery.ts"
+      - "apps/worker/src/a2a-gateway-v1.ts"
       - "apps/worker/src/agent-discovery-modern.ts"
       - "apps/worker/src/mainnet-mcp-modern.ts"
       - "apps/worker/src/mainnet-modern.ts"
