@@ -2,12 +2,12 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard",
   "title": "XGuard — Universal Action Gateway",
-  "description": "Hosted universal action execution for public HTTPS APIs, AI agent tools, webhooks, workflows and application transactions, with guarded per-success metering plus x402 payment coordination and discovery.",
+  "description": "Universal action execution and payment coordination for AI agents over public HTTPS and x402.",
   "repository": {
     "url": "https://github.com/moelayyan90/XGuard",
     "source": "github"
   },
-  "version": "0.6.0",
+  "version": "0.6.1",
   "remotes": [
     {
       "type": "streamable-http",
