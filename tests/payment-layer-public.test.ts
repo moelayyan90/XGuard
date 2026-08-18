@@ -53,13 +53,15 @@ describe("universal payment-layer public surface", () => {
 
     expect(manifest?.status).toBe(200);
     expect(manifest?.headers.get("access-control-allow-origin")).toBe("*");
-    expect((await install?.text())).toContain("Download ZIP");
+    expect(await install?.text()).toContain("Download ZIP");
   });
 
   it("does not intercept mutating or unrelated routes", () => {
     expect(
       paymentLayerPublicResponse(new Request(`${ORIGIN}/`, { method: "POST" })),
     ).toBeNull();
-    expect(paymentLayerPublicResponse(new Request(`${ORIGIN}/status`))).toBeNull();
+    expect(
+      paymentLayerPublicResponse(new Request(`${ORIGIN}/status`)),
+    ).toBeNull();
   });
 });

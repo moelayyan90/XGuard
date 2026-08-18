@@ -44,7 +44,8 @@ export function paymentLayerPublicResponse(request: Request): Response | null {
     });
   }
 
-  const html = url.pathname === "/install" ? installPage(origin) : landingPage(origin);
+  const html =
+    url.pathname === "/install" ? installPage(origin) : landingPage(origin);
   return new Response(headOnly ? null : html, {
     status: 200,
     headers: {
@@ -52,7 +53,8 @@ export function paymentLayerPublicResponse(request: Request): Response | null {
       "Cache-Control": "public, max-age=120, stale-while-revalidate=600",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
-      "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+      "Content-Security-Policy":
+        "default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     },
   });
 }
@@ -62,7 +64,8 @@ function paymentLayerMetadata(origin: string): Record<string, unknown> {
     name: "XGuard Payment Layer",
     version: PAYMENT_LAYER_VERSION,
     product: "universal-payment-control-layer",
-    primaryUse: "buyer-side payment memory and control across HTTPS payment and transfer surfaces",
+    primaryUse:
+      "buyer-side payment memory and control across HTTPS payment and transfer surfaces",
     merchantIntegrationRequiredForBrowserLayer: false,
     capabilities: [
       "inline-payment-rail",
@@ -187,7 +190,9 @@ function releaseAssetUrl(): string {
 }
 
 function acceptsHtml(request: Request): boolean {
-  return (request.headers.get("accept") ?? "").toLowerCase().includes("text/html");
+  return (request.headers.get("accept") ?? "")
+    .toLowerCase()
+    .includes("text/html");
 }
 
 function styles(): string {
