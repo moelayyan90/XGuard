@@ -1,3 +1,4 @@
+export * from "./batch-payment.js";
 export * from "./canonical.js";
 export * from "./coordinator.js";
 export * from "./economic-intent.js";
