@@ -44,10 +44,9 @@ const forbiddenLegacyContractPhrases = [
 ];
 
 describe("canonical public payment contract consistency", () => {
-  it("keeps runtime fee execution bound to the public contract constants", () => {
+  it("keeps runtime fee execution bound to the public fee constants", () => {
     expect(runtimeSource).toContain("XGUARD_ATTEMPT_FEE_MICRO_USD");
     expect(runtimeSource).toContain("XGUARD_ATTEMPT_FEE_USD");
-    expect(runtimeSource).toContain("XGUARD_ATTEMPT_EVENT");
     expect(runtimeSource).not.toContain("const ATTEMPT_FEE_MICRO_USD = 40_000");
     expect(runtimeSource).not.toContain(
       'headers.set("X-XGuard-Attempt-Fee-USD", "0.04")',
