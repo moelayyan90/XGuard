@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xguardgate.com/specs/settlement-truth/v1/schema.json",
+  "title": "Settlement Truth Record",
+  "description": "Vendor-neutral settlement-truth artifact. XGuard is a reference implementation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "logicalPaymentId", "state", "railId", "evidence"],
+  "properties": {
+    "version": { "const": 1 },
+    "logicalPaymentId": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 256
+    },
+    "state": {
+      "enum": ["FINALIZED", "PENDING", "PROVEN_FAILED", "CONFLICT"]
+    },
+    "railId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network"],
+      "properties": {
+        "network": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "transaction": { "type": "string", "maxLength": 256 },
+        "ledgerPosition": { "type": "string", "maxLength": 256 },
+        "asset": { "type": "string", "maxLength": 256 },
+        "payer": { "type": "string", "maxLength": 256 },
+        "payTo": { "type": "string", "maxLength": 256 },
+        "amount": { "type": "string", "pattern": "^[0-9]+$" },
+        "confirmations": { "type": "integer", "minimum": 0 },
+        "source": { "type": "string", "maxLength": 256 },
+        "observedAtEpochSeconds": { "type": "integer", "minimum": 0 },
+        "resolvedAtEpochSeconds": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
