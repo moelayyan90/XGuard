@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xguardgate.com/specs/universal-payment-event.schema.json",
+  "title": "XGuard Universal Payment Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "railId",
+    "provider",
+    "providerEventId",
+    "logicalPaymentId",
+    "payee",
+    "amount",
+    "currencyOrAsset",
+    "eventType",
+    "providerState",
+    "occurredAt",
+    "evidence"
+  ],
+  "properties": {
+    "version": { "const": "xguard-payment-event/1" },
+    "railId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "provider": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "providerEventId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "logicalPaymentId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "payee": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "payer": { "type": ["string", "null"], "maxLength": 256 },
+    "amount": { "type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+)?$" },
+    "currencyOrAsset": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "AUTHORIZATION",
+        "CAPTURE",
+        "PAYMENT_SUCCEEDED",
+        "PAYMENT_PENDING",
+        "PAYMENT_FAILED",
+        "SETTLEMENT",
+        "REFUND",
+        "REVERSAL",
+        "DISPUTE",
+        "PAYOUT",
+        "OTHER"
+      ]
+    },
+    "providerState": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "parentLogicalPaymentId": { "type": ["string", "null"], "maxLength": 256 },
+    "reversibleUntil": { "type": ["string", "null"], "format": "date-time" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reference"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["PROVIDER_SIGNATURE", "WEBHOOK_SIGNATURE", "ONCHAIN", "RECONCILIATION_RECORD", "OTHER"]
+        },
+        "reference": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "digest": { "type": ["string", "null"], "maxLength": 256 }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+    }
+  }
+}
