@@ -66,21 +66,32 @@ function normalizePayAllItem(value) {
     throw new Error("Invalid Pay All payment");
 
   const url = new URL(String(value.url || ""));
-  if (url.protocol !== "https:") throw new Error("Pay All requires an HTTPS checkout URL");
-  if (url.hostname === "xguardgate.com" || url.hostname === "www.xguardgate.com")
-    throw new Error("XGuard service pages cannot be added as merchant payments");
+  if (url.protocol !== "https:")
+    throw new Error("Pay All requires an HTTPS checkout URL");
+  if (
+    url.hostname === "xguardgate.com" ||
+    url.hostname === "www.xguardgate.com"
+  )
+    throw new Error(
+      "XGuard service pages cannot be added as merchant payments",
+    );
 
   const amount = Number(value.amount);
   if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000_000)
     throw new Error("Invalid Pay All amount");
 
-  const currency = String(value.currency || "USD").trim().toUpperCase();
-  if (!/^[A-Z0-9]{3,8}$/.test(currency)) throw new Error("Invalid Pay All currency");
+  const currency = String(value.currency || "USD")
+    .trim()
+    .toUpperCase();
+  if (!/^[A-Z0-9]{3,8}$/.test(currency))
+    throw new Error("Invalid Pay All currency");
 
   return {
     id: crypto.randomUUID(),
     merchant: url.hostname.replace(/^www\./, "").slice(0, 180),
-    title: String(value.title || url.hostname).trim().slice(0, 180),
+    title: String(value.title || url.hostname)
+      .trim()
+      .slice(0, 180),
     url: url.href,
     origin: url.origin,
     amount: amount.toFixed(2),
@@ -101,7 +112,11 @@ async function addPayAllItem(value) {
   );
 
   if (existing >= 0) {
-    cart[existing] = { ...cart[existing], title: item.title, createdAt: item.createdAt };
+    cart[existing] = {
+      ...cart[existing],
+      title: item.title,
+      createdAt: item.createdAt,
+    };
   } else {
     cart.push(item);
   }
@@ -140,7 +155,8 @@ async function startPayAll() {
 
 async function advancePayAll(outcome) {
   const { cart, session } = await getPayAllState();
-  if (!session || session.status !== "ACTIVE") throw new Error("No active Pay All session");
+  if (!session || session.status !== "ACTIVE")
+    throw new Error("No active Pay All session");
 
   const currentId = session.itemIds[session.index];
   session.outcomes[currentId] = {
@@ -159,7 +175,8 @@ async function advancePayAll(outcome) {
   session.index = nextIndex;
   const nextId = session.itemIds[nextIndex];
   const nextPayment = cart.find((item) => item.id === nextId);
-  if (!nextPayment) throw new Error("Next Pay All payment is no longer in the cart");
+  if (!nextPayment)
+    throw new Error("Next Pay All payment is no longer in the cart");
   await saveSession(session);
   return { cart, session, done: false, nextUrl: nextPayment.url };
 }
