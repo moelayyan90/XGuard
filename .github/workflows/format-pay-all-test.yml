@@ -21,7 +21,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npx prettier --write tests/browser-payment-surface-source.test.ts
+      - name: Format Pay All security test
+        run: npx prettier --write tests/browser-payment-surface-source.test.ts
       - name: Commit formatting if needed
         shell: bash
         run: |
