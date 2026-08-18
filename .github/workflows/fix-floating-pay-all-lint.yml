@@ -1,6 +1,7 @@
 name: Fix Floating Pay All Lint
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - feature/floating-pay-all
