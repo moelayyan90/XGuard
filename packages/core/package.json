@@ -2,6 +2,18 @@
   "name": "@xguard/core",
   "version": "0.1.0-alpha.0",
   "description": "Safety, routing, replay protection, and financial accounting primitives for x402 v2",
+  "keywords": [
+    "xguard",
+    "x402",
+    "payments",
+    "payment-safety",
+    "payment-routing",
+    "replay-protection",
+    "settlement",
+    "facilitator",
+    "base",
+    "usdc"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
