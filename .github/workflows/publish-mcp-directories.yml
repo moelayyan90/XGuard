@@ -6,6 +6,11 @@ on:
     branches: [main]
     paths:
       - "server.json"
+      - "lhm.plugin.json"
+      - "llms-install.md"
+      - "SKILL.md"
+      - "DISTRIBUTION.md"
+      - ".github/xguard-directory-status.json"
       - "apps/worker/src/a2a-agent.ts"
       - "apps/worker/src/a2a-discovery.ts"
       - "apps/worker/src/agent-discovery-modern.ts"
@@ -20,7 +25,59 @@ permissions:
   contents: read
 
 jobs:
+  consistency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Verify payment-tool discovery metadata is synchronized
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const server = JSON.parse(fs.readFileSync('server.json', 'utf8'));
+          const lhm = JSON.parse(fs.readFileSync('lhm.plugin.json', 'utf8'));
+          const runtime = fs.readFileSync('apps/worker/src/mainnet-mcp-modern.ts', 'utf8');
+          const llms = fs.readFileSync('llms-install.md', 'utf8');
+          const skill = fs.readFileSync('SKILL.md', 'utf8');
+          const distribution = fs.readFileSync('DISTRIBUTION.md', 'utf8');
+
+          const runtimeVersion = runtime.match(/XGUARD_MCP_VERSION\s*=\s*"([^"]+)"/)?.[1];
+          if (!runtimeVersion) throw new Error('Could not read XGUARD_MCP_VERSION from runtime');
+          if (server.version !== runtimeVersion) throw new Error(`server.json ${server.version} != runtime ${runtimeVersion}`);
+          if (lhm.version !== runtimeVersion) throw new Error(`lhm.plugin.json ${lhm.version} != runtime ${runtimeVersion}`);
+
+          const requiredTools = [
+            'xguard_payment_offer',
+            'xguard_payment_decision',
+            'xguard_discover',
+            'xguard_resource_details',
+            'xguard_status',
+          ];
+          const lhmNames = new Set(Array.isArray(lhm.tools) ? lhm.tools.map(t => t?.name) : []);
+          for (const tool of requiredTools) {
+            if (!runtime.includes(`name: "${tool}"`)) throw new Error(`Runtime no longer exposes ${tool}`);
+            if (!lhmNames.has(tool)) throw new Error(`LHM manifest is missing ${tool}`);
+            if (!llms.includes(`\`${tool}\``)) throw new Error(`llms-install.md is missing ${tool}`);
+          }
+
+          for (const tool of ['xguard_payment_offer', 'xguard_payment_decision']) {
+            if (!skill.includes(`\`${tool}\``)) throw new Error(`SKILL.md is missing ${tool}`);
+            if (!distribution.includes(`\`${tool}\``)) throw new Error(`DISTRIBUTION.md is missing ${tool}`);
+          }
+
+          if (!String(server.description || '').toLowerCase().includes('payment')) {
+            throw new Error('Registry description must classify XGuard as a payment capability');
+          }
+          console.log(`XGuard discovery metadata synchronized at MCP ${runtimeVersion}`);
+          NODE
+
   mcprepository:
+    needs: consistency
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -56,6 +113,7 @@ jobs:
           '
 
   mcpub:
+    needs: consistency
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -77,7 +135,7 @@ jobs:
           submit="$(curl -sS --max-time 30 --retry 4 --retry-all-errors --retry-delay 2 -w $'\n%{http_code}' \
             -X POST 'https://mcpub.dev/mcp' \
             -H 'Content-Type: application/json' \
-            --data '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"submit","arguments":{"url":"https://xguardgate.com","description":"XGuard universal transaction safety and evidence gateway for buyer/agent pre-payment decisions, MCP tools, API and webhook execution, and independent x402 settlement truth."}}}')"
+            --data '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"submit","arguments":{"url":"https://xguardgate.com","description":"XGuard payment coordination, transaction safety and evidence gateway for buyer/agent pre-payment decisions, MCP tools, API execution, and independent x402 settlement truth."}}}')"
           submit_code="${submit##*$'\n'}"
           submit_body="${submit%$'\n'*}"
           printf '%s\n' "${submit_body}"
@@ -98,6 +156,7 @@ jobs:
           echo "XGuard mcpub refresh verified."
 
   a2aregistry:
+    needs: consistency
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
