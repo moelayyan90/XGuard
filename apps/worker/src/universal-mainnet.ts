@@ -19,6 +19,7 @@ import {
   WebhookDeliveryQueue,
   resilientWebhookIngressResponse,
 } from "./resilient-webhook-ingress.js";
+import { universalActionRailResponse } from "./universal-action-rail.js";
 import { universalProtocolResponse } from "./universal-protocol-router.js";
 import { universalSecurityGuardResponse } from "./universal-security-guard.js";
 import { universalWebhookResponse } from "./universal-webhook-ingress.js";
@@ -164,6 +165,9 @@ export default {
       env,
     );
     if (webhookResponse !== null) return webhookResponse;
+
+    const actionRail = await universalActionRailResponse(standardRequest, env);
+    if (actionRail !== null) return actionRail;
 
     const genericHttp = await genericHttpConnectorResponse(
       standardRequest,
