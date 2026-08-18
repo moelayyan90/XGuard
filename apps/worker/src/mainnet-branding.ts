@@ -1,10 +1,15 @@
 const BRAND_CACHE = "public, max-age=31536000, immutable";
-const XGUARD_LOGO_PNG_URL =
+const XGUARD_LEGACY_PNG_URL =
   "https://raw.githubusercontent.com/moelayyan90/XGuard/main/assets/xguard.png";
 
-const XGUARD_MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title"><title id="title">XGuard</title><rect x="1" y="1" width="62" height="62" rx="15" fill="#111827"/><path d="M23 23 41 41M41 23 23 41" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/></svg>`;
+const SILVER_GRADIENT = `<linearGradient id="silver" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d6dadd"/><stop offset=".55" stop-color="#b9bec1"/><stop offset="1" stop-color="#929a9f"/></linearGradient>`;
+const TEAL_GRADIENT = `<linearGradient id="teal" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#60c6d0"/><stop offset="1" stop-color="#527d86"/></linearGradient>`;
+const XGUARD_SILVER_PATH = `M1279,986 L1279,1246 L1407,1245 L1437,1238 L1459,1226 L1473,1212 L1486,1190 L1494,1165 L1498,1138 L1499,1105 L1496,1072 L1489,1045 L1478,1024 L1462,1007 L1453,1001 L1438,994 L1415,988 L1399,986ZM1348,1042 L1385,1042 L1398,1044 L1411,1050 L1418,1057 L1423,1066 L1426,1075 L1429,1096 L1429,1131 L1427,1150 L1422,1166 L1417,1174 L1409,1182 L1402,1186 L1391,1189 L1347,1188ZM1042,986 L1042,1246 L1110,1246 L1111,1167 L1150,1167 L1152,1169 L1177,1246 L1247,1246 L1214,1154 L1214,1151 L1222,1146 L1236,1130 L1244,1112 L1248,1092 L1249,1075 L1246,1043 L1239,1023 L1231,1011 L1222,1003 L1208,995 L1192,990 L1175,987ZM1111,1040 L1156,1041 L1166,1045 L1172,1050 L1176,1056 L1179,1066 L1179,1085 L1175,1098 L1166,1108 L1155,1112 L1110,1111ZM848,986 L785,1246 L852,1246 L862,1206 L864,1203 L940,1203 L943,1210 L952,1246 L1021,1246 L958,986ZM897,1040 L910,1041 L932,1145 L931,1149 L873,1148ZM560,986 L560,1170 L564,1195 L574,1217 L587,1231 L600,1239 L620,1246 L645,1250 L687,1250 L702,1248 L725,1242 L742,1233 L754,1222 L761,1212 L768,1195 L772,1174 L772,986 L704,986 L704,1167 L699,1181 L693,1187 L683,1192 L668,1194 L650,1192 L641,1188 L633,1180 L629,1170 L628,986ZM97,986 L161,1118 L161,1122 L97,1246 L168,1246 L206,1165 L209,1168 L244,1246 L316,1246 L256,1119 L254,1111 L318,986 L250,986 L207,1070 L169,986ZM358,998 L344,1010 L337,1019 L329,1034 L323,1052 L318,1083 L317,1133 L320,1165 L328,1196 L339,1216 L347,1225 L364,1237 L386,1245 L403,1248 L451,1249 L490,1245 L527,1239 L527,1100 L440,1100 L440,1150 L463,1151 L462,1191 L429,1193 L418,1191 L405,1185 L396,1175 L392,1167 L388,1150 L386,1128 L386,1102 L389,1072 L394,1058 L404,1047 L417,1041 L430,1039 L471,1040 L525,1045 L526,993 L499,987 L462,982 L415,981 L393,984 L378,988ZM0,0 L839,835 L1499,835 L1499,331 L976,331 L1140,496 L1314,496 L1314,640 L957,640 L730,413 L952,191 L1407,191 L1596,1 L835,1 L575,261 L320,0Z`;
+const XGUARD_TEAL_PATH = `M458,686 L292,539 L0,831 L314,831Z`;
 
-const XGUARD_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 104" role="img" aria-labelledby="title desc"><title id="title">XGuard</title><desc id="desc">XGuard wordmark</desc><rect x="2" y="2" width="100" height="100" rx="24" fill="#111827"/><path d="M35 35 69 69M69 35 35 69" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><text x="128" y="69" fill="#111827" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica Neue,Arial,sans-serif" font-size="50" font-weight="650" letter-spacing="-2">XGuard</text></svg>`;
+const XGUARD_MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1597 850" role="img" aria-labelledby="title desc"><title id="title">XGuard</title><desc id="desc">XGuard angular mark</desc><defs>${SILVER_GRADIENT}${TEAL_GRADIENT}</defs><path d="${XGUARD_SILVER_PATH}" fill="url(#silver)" fill-rule="evenodd"/><path d="${XGUARD_TEAL_PATH}" fill="url(#teal)" fill-rule="evenodd"/></svg>`;
+
+const XGUARD_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1597 1251" role="img" aria-labelledby="title desc"><title id="title">XGuard</title><desc id="desc">XGuard wordmark</desc><defs>${SILVER_GRADIENT}${TEAL_GRADIENT}</defs><path d="${XGUARD_SILVER_PATH}" fill="url(#silver)" fill-rule="evenodd"/><path d="${XGUARD_TEAL_PATH}" fill="url(#teal)" fill-rule="evenodd"/></svg>`;
 
 export function mainnetBrandingResponse(request: Request): Response | null {
   if (request.method !== "GET" && request.method !== "HEAD") return null;
@@ -14,7 +19,7 @@ export function mainnetBrandingResponse(request: Request): Response | null {
     return new Response(null, {
       status: 302,
       headers: {
-        Location: `${url.origin}/favicon.svg`,
+        Location: `${url.origin}/favicon.svg?v=20260818`,
         "Cache-Control": BRAND_CACHE,
       },
     });
@@ -26,11 +31,17 @@ export function mainnetBrandingResponse(request: Request): Response | null {
   if (url.pathname === "/logo.svg" || url.pathname === "/xguard-logo.svg")
     return svgResponse(XGUARD_LOGO_SVG, request.method === "HEAD");
 
-  if (url.pathname === "/logo.png" || url.pathname === "/xguard-logo.png")
+  if (url.pathname === "/logo.png")
+    return svgResponse(XGUARD_LOGO_SVG, request.method === "HEAD");
+
+  if (url.pathname === "/brand-mark.png" || url.pathname === "/xguard-mark.png")
+    return svgResponse(XGUARD_MARK_SVG, request.method === "HEAD");
+
+  if (url.pathname === "/xguard-logo.png")
     return new Response(null, {
       status: 302,
       headers: {
-        Location: XGUARD_LOGO_PNG_URL,
+        Location: XGUARD_LEGACY_PNG_URL,
         "Cache-Control": BRAND_CACHE,
       },
     });
