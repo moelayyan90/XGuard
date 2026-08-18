@@ -327,10 +327,7 @@ function normalizeSupportedResponse(
       const network = asRecord(rawNetwork);
       const networkId = network.networkId;
       const version = network.version;
-      if (
-        typeof networkId !== "string" ||
-        (version !== "v2" && version !== 2)
-      )
+      if (typeof networkId !== "string" || (version !== "v2" && version !== 2))
         return [];
       return [
         {
