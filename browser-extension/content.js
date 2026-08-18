@@ -1,4 +1,4 @@
-/* global chrome, document, MutationObserver, HTMLInputElement, location, setTimeout, clearTimeout */
+/* global chrome, document, MutationObserver, HTMLInputElement, location, setTimeout, clearTimeout, setInterval */
 (() => {
   const PAYMENT_WORDS =
     /\b(pay(?:ment)?|pay now|buy now|place order|complete order|complete purchase|confirm payment|checkout|subscribe|purchase)\b|ادفع|الدفع|إتمام الطلب|تأكيد الطلب|الشراء/i;
@@ -6,8 +6,6 @@
     /(checkout|payment|pay|order\/confirm|subscribe|purchase|billing|cart)/i;
   const TOTAL_WORDS =
     /\b(grand total|order total|amount due|total due|total)\b|الإجمالي|المجموع|المبلغ المستحق/i;
-  const SUCCESS_WORDS =
-    /\b(payment complete|payment successful|order confirmed|thank you for your order|purchase complete)\b|تمت الدفعة|تم الدفع|تم تأكيد الطلب|شكراً لطلبك/i;
   const PROVIDERS = [
     ["stripe", /stripe/i],
     ["paypal", /paypal/i],
