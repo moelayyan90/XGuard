@@ -1,87 +1,82 @@
-# XGuard Payment Layer — Privacy Policy
+# XGuard Task Recovery — Privacy Policy
 
 **Effective date:** August 18, 2026  
-**Extension:** XGuard Payment Layer  
+**Extension:** XGuard Task Recovery 0.3.0  
 **Service:** https://xguardgate.com
 
-XGuard is a buyer-side floating payment layer. It can detect likely payment, billing, checkout, and transfer surfaces on HTTPS pages; let the user defer a payment for later; remember payees and payment names; coordinate one-payment or multi-payment sessions; create local split-payment plans; and optionally request an XGuard payment-verification result.
+XGuard is a browser-side task continuity and recovery layer. It can detect likely web-task surfaces such as sign-in and registration, bookings, applications, uploads, checkout/payment, transfers, settings, support forms, and other multi-step HTTPS workflows. It can preserve a local checkpoint, surface visible validation or failure states, identify when human verification is required, and help the user resume from the current task instead of restarting it.
 
-## Local payment-surface detection
+## Local task detection
 
-The extension may inspect the current HTTPS page locally for limited payment-related signals such as:
+The extension may inspect the current HTTPS page locally for limited workflow signals such as:
 
-- page hostname, path, and current payment URL;
-- visible payment, checkout, transfer, beneficiary, or recipient labels;
-- visible amount/total and currency;
-- payment-provider hints such as Stripe, PayPal, Coinbase, Shopify, Adyen, or Checkout.com.
+- page hostname, path, URL, and document title;
+- visible headings and action labels such as Continue, Submit, Book, Upload, Save, Pay, or their Arabic equivalents;
+- the presence and completion state of required fields;
+- `aria-invalid`, disabled-action, alert, error, warning, CAPTCHA, MFA/OTP, availability, and retry signals;
+- the presence of file-upload controls;
+- payment-specific amount/currency/provider hints for the existing payment adapter.
 
-Detection happens in the browser. Merely showing the floating XGuard layer does not transmit raw page HTML, full page text, card fields, or passwords to XGuard.
+Detection happens in the browser. Merely showing XGuard does not transmit raw page HTML, full page text, form field values, passwords, authentication codes, or payment credentials to XGuard.
 
-## Local payment memory
+## Local recovery checkpoints
 
-When the user chooses **ترحيل لغايات الدفع / Defer for payment**, XGuard can store in `chrome.storage.local`:
+When the user chooses **احفظ نقطة رجوع / Save checkpoint**, XGuard can store in `chrome.storage.local`:
 
-- the exact payment URL needed to return to that payment;
-- the user-visible name of the payment;
-- the saved payee/recipient name;
-- merchant hostname/origin and detected provider;
-- amount and currency;
-- local pending-payment, session, split-group, and timestamp information.
+- the HTTPS page URL and origin needed to return to the task;
+- page title and detected task category;
+- the visible label of the likely primary action;
+- non-sensitive counts such as required fields, incomplete required fields, and upload controls;
+- checkpoint status and timestamps.
 
-XGuard also keeps a local payee memory containing the payee name, last payment name, last amount/currency, last usable payment URL, payment count, and last-paid time. This lets the user reuse a known recipient instead of registering it again.
+XGuard recovery checkpoints do **not** store field values. They do not store passwords, one-time verification codes, card details, bank credentials, uploaded document contents, or private keys.
 
-Completed-payment history is stored locally so XGuard can show the user which named payments were completed and to whom.
+Checkpoints are automatically bounded in number and age. They exist to help the user return to a task and identify the next incomplete or invalid step.
 
-These local pending payments, payee records, and history records are not uploaded to XGuard servers by the browser-memory feature.
+## Recovery behavior
 
-## Single, Pay All, and split sessions
+XGuard can scroll to and focus the first visible invalid field, incomplete required field, error/alert location, or primary action. It does not bypass CAPTCHA, MFA, identity verification, merchant controls, bank authentication, access controls, or website authorization requirements. When those are detected, XGuard labels the state as requiring human intervention and preserves continuity so the user can resume afterward.
 
-The browser layer can coordinate:
+XGuard does not automatically submit forms, approve purchases, change bookings, transfer funds, accept terms, or make other consequential decisions merely because a failure was detected.
 
-- one saved payment;
-- several deferred payments in a Pay All sequence;
-- a split plan that creates child payments for two or more saved payees.
+## Existing local payment memory
 
-The current browser-only implementation does not claim to convert unrelated card transactions into one native bank debit. Each underlying merchant or transfer destination remains subject to its own payment controls and any bank, wallet, 3-D Secure, or provider authentication. A true one-debit/many-recipient settlement mode requires an authorized payment rail that supports that capability.
+The extension retains its payment-specific adapter for users who choose to use it. That adapter can locally store deferred-payment URLs, payment names, payee names, amount/currency, pending-payment state, saved payee memory, and completed-payment history. These payment-memory records remain in `chrome.storage.local` and are not uploaded to XGuard servers by the local memory feature.
 
-## Optional XGuard server-side verification
+The browser-only payment adapter does not claim to convert unrelated merchant transactions into one native bank debit. Each underlying payment remains subject to its merchant, bank, wallet, or payment-provider controls.
 
-Only after the user explicitly chooses the XGuard verification action does the extension send a limited payment-intent record to `https://xguardgate.com`. Depending on what is available, that record can include:
+## Optional XGuard server-side payment verification
 
-- amount and currency;
-- payee name or merchant origin;
-- detected payment provider or rail;
-- local detection-confidence metadata;
-- an idempotency request identifier.
+Only after the user explicitly chooses the XGuard payment-verification action can the payment adapter send a limited payment-intent record to `https://xguardgate.com`. Depending on what is available, that record can include amount/currency, payee or merchant origin, detected provider/rail, detection-confidence metadata, and an idempotency identifier.
 
-XGuard returns a payment decision/evidence result. The extension does not send the user's card number or banking credentials to XGuard.
-
-Users can use local payment memory and **Continue without XGuard** verification; doing so does not send a payment-decision request to the XGuard service.
+Users can **Continue without XGuard** server-side verification. Task recovery and local checkpoints do not require a server request.
 
 ## Authentication data stored in the browser
 
-When the optional server-side verification service is first used, the extension can create a dedicated XGuard Buyer Pass. The pass and related state are stored in `chrome.storage.local` and sent only to `https://xguardgate.com` for XGuard API requests. The Buyer Pass is not inserted into merchant pages or payment forms.
+When optional server-side payment verification is first used, the extension can create a dedicated XGuard Buyer Pass. The pass is stored in `chrome.storage.local` and sent only to `https://xguardgate.com` for explicit XGuard API requests. It is not inserted into merchant pages or forms.
 
 ## Data the extension does not request
 
-XGuard does not request or accept the user's:
+XGuard does not request, read for storage, or transmit the user's:
 
-- full payment-card number (card number / PAN);
-- CVV/CVC;
-- card PIN;
+- full payment card number / card number / PAN;
+- CVV/CVC or card PIN;
 - online-banking password;
+- password-manager secrets;
+- one-time authentication or MFA codes for storage;
 - wallet private key;
-- seed phrase or mnemonic.
+- seed phrase or mnemonic;
+- uploaded document contents as part of the local checkpoint feature.
 
-The extension does not sell user data, use payment-memory data for advertising, or use it for cross-site behavioral profiling.
+The extension does not sell user data, use task/recovery data for advertising, or use it for cross-site behavioral profiling.
 
 ## User controls
 
-Users can remove individual deferred payments, stop a payment session, clear browser-local XGuard data, or uninstall the extension. Uninstalling removes local extension state but does not retroactively delete server-side verification/evidence records that the user explicitly requested earlier.
+Users can mark a recovery task complete, replace a checkpoint, remove payment-memory items, stop payment sessions, clear browser-local XGuard data, or uninstall the extension. Uninstalling removes local extension state but does not retroactively delete server-side payment-verification/evidence records that the user explicitly requested earlier.
 
 ## Security
 
-XGuard API communication uses HTTPS. The extension does not load remote executable code. Sensitive payment credential fields are not collected or persisted by the extension.
+XGuard API communication uses HTTPS. The extension does not load remote executable code. Task recovery is designed to work locally and to avoid persisting sensitive form field values.
 
 ## Changes to this policy
 
@@ -91,4 +86,4 @@ If the extension's data practices change, this policy and the browser-store disc
 
 Project and privacy questions: https://github.com/moelayyan90/XGuard
 
-Do not post payment secrets, private keys, seed phrases, card credentials, or banking passwords in a public issue.
+Do not post passwords, authentication codes, payment secrets, private keys, seed phrases, card credentials, banking passwords, or private documents in a public issue.

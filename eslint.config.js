@@ -39,4 +39,13 @@ export default tseslint.config(
       },
     },
   },
+  {
+    files: ["browser-extension/recovery-layer.js"],
+    languageOptions: {
+      globals: {
+        crypto: "readonly",
+        getComputedStyle: "readonly",
+      },
+    },
+  },
 );
