@@ -44,13 +44,14 @@ for (const link of [
     throw new Error(`README link is missing: ${link}`);
 }
 for (const marker of [
+  "# XGuard Payment Layer",
   "https://xguardgate.com",
-  "$0.002",
-  "XGUARD_API_KEY",
-  "Merchant top-ups are customer prepayments, not revenue",
+  "/.well-known/xguard/payment-layer.json",
+  "The Payment Layer is the product; protocols are ways to connect it.",
+  "x402 adapter",
 ]) {
   if (!readme.includes(marker))
-    throw new Error(`README mainnet boundary is missing: ${marker}`);
+    throw new Error(`README universal product boundary is missing: ${marker}`);
 }
 
 console.log("Documentation contract check passed.");
