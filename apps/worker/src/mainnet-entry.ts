@@ -4,6 +4,7 @@ import mainnetHandler, {
 } from "./mainnet.js";
 import { discoveryResponse } from "./discovery.js";
 import { writeEndpointDiscoveryResponse } from "./mainnet-endpoint-discovery.js";
+import { paymentLayerPublicResponse } from "./payment-layer-public.js";
 import { portalDesignResponse } from "./portal-design.js";
 import { searchIndexResponse } from "./search-indexing.js";
 
@@ -85,6 +86,9 @@ const handler: ExportedHandler<PublicMainnetEnv> = {
     const writeEndpointDiscovery = writeEndpointDiscoveryResponse(request);
     if (writeEndpointDiscovery !== null) return writeEndpointDiscovery;
 
+    const paymentLayer = paymentLayerPublicResponse(request);
+    if (paymentLayer !== null) return paymentLayer;
+
     const portal = portalDesignResponse(request);
     if (portal !== null) return portal;
 
@@ -102,6 +106,7 @@ const handler: ExportedHandler<PublicMainnetEnv> = {
         body: null,
       });
       const response =
+        paymentLayerPublicResponse(discoveryRequest) ??
         searchIndexResponse(discoveryRequest) ??
         (await mainnetFetch(discoveryRequest, env, executionCtx));
       const headers = new Headers(response.headers);
