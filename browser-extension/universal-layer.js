@@ -1,8 +1,11 @@
 /* global chrome, document, location, MutationObserver, HTMLInputElement, setTimeout, clearTimeout, setInterval */
 (() => {
-  const PAYMENT_WORDS = /\b(pay|payment|pay now|buy now|checkout|purchase|subscribe|transfer|send money|remit|beneficiary|recipient)\b|ادفع|الدفع|تحويل|حوّل|ارسل|أرسل|مستفيد|المستفيد|دفع الفاتورة|سداد/i;
-  const PAYMENT_PATH = /(checkout|payment|pay|billing|purchase|subscribe|transfer|send|remit|beneficiary|invoice|bill)/i;
-  const TOTAL_WORDS = /\b(total|amount due|amount|balance due|grand total)\b|الإجمالي|المجموع|المبلغ|المستحق/i;
+  const PAYMENT_WORDS =
+    /\b(pay|payment|pay now|buy now|checkout|purchase|subscribe|transfer|send money|remit|beneficiary|recipient)\b|ادفع|الدفع|تحويل|حوّل|ارسل|أرسل|مستفيد|المستفيد|دفع الفاتورة|سداد/i;
+  const PAYMENT_PATH =
+    /(checkout|payment|pay|billing|purchase|subscribe|transfer|send|remit|beneficiary|invoice|bill)/i;
+  const TOTAL_WORDS =
+    /\b(total|amount due|amount|balance due|grand total)\b|الإجمالي|المجموع|المبلغ|المستحق/i;
   const PROVIDERS = [
     ["stripe", /stripe/i],
     ["paypal", /paypal/i],
@@ -41,7 +44,9 @@
   function detectPaymentSurface() {
     let confidence = PAYMENT_PATH.test(location.pathname) ? 2 : 0;
     const candidates = Array.from(
-      document.querySelectorAll("button,[role='button'],input[type='submit'],a[href]"),
+      document.querySelectorAll(
+        "button,[role='button'],input[type='submit'],a[href]",
+      ),
     ).slice(0, 350);
     let trigger = null;
     for (const element of candidates) {
@@ -100,7 +105,10 @@
     ).slice(0, 20);
     for (const node of priceNodes) {
       const amount = normalizeAmount(
-        node.getAttribute("content") || node.getAttribute("value") || node.textContent || "",
+        node.getAttribute("content") ||
+          node.getAttribute("value") ||
+          node.textContent ||
+          "",
       );
       if (!amount) continue;
       const currency =
@@ -130,10 +138,12 @@
         // Ignore unsupported selectors.
       }
     }
-    document.querySelectorAll("strong,b,dt,dd,th,td,[role='row']").forEach((node) => {
-      const text = (node.textContent || "").trim();
-      if (text.length < 240 && TOTAL_WORDS.test(text)) nodes.add(node);
-    });
+    document
+      .querySelectorAll("strong,b,dt,dd,th,td,[role='row']")
+      .forEach((node) => {
+        const text = (node.textContent || "").trim();
+        if (text.length < 240 && TOTAL_WORDS.test(text)) nodes.add(node);
+      });
     if (trigger) {
       const context = trigger.closest("form,section,main,aside");
       if (context) nodes.add(context);
@@ -169,7 +179,8 @@
   }
 
   function detectProvider(haystack) {
-    for (const [name, pattern] of PROVIDERS) if (pattern.test(haystack)) return name;
+    for (const [name, pattern] of PROVIDERS)
+      if (pattern.test(haystack)) return name;
     return "generic_http";
   }
 
@@ -199,13 +210,15 @@
     const comma = normalized.lastIndexOf(",");
     const dot = normalized.lastIndexOf(".");
     if (comma >= 0 && dot >= 0) {
-      normalized = comma > dot
-        ? normalized.replace(/\./g, "").replace(",", ".")
-        : normalized.replace(/,/g, "");
+      normalized =
+        comma > dot
+          ? normalized.replace(/\./g, "").replace(",", ".")
+          : normalized.replace(/,/g, "");
     } else if (comma >= 0) {
-      normalized = normalized.length - comma - 1 === 2
-        ? normalized.replace(",", ".")
-        : normalized.replace(/,/g, "");
+      normalized =
+        normalized.length - comma - 1 === 2
+          ? normalized.replace(",", ".")
+          : normalized.replace(/,/g, "");
     }
     const amount = Number(normalized);
     return Number.isFinite(amount) && amount > 0 ? amount.toFixed(2) : null;
@@ -222,7 +235,12 @@
   }
 
   function shouldShow() {
-    return Boolean(signal || state.cart.length || state.payees.length || state.session?.status === "ACTIVE");
+    return Boolean(
+      signal ||
+      state.cart.length ||
+      state.payees.length ||
+      state.session?.status === "ACTIVE",
+    );
   }
 
   function render() {
@@ -288,12 +306,20 @@
     bind("verify", verifyCurrent);
     bind("next", nextPayment);
     bind("stop", stopSession);
-    shadow.querySelectorAll("[data-remove]").forEach((button) =>
-      button.addEventListener("click", () => removeItem(button.dataset.remove)),
-    );
-    shadow.querySelectorAll("[data-use-payee]").forEach((button) =>
-      button.addEventListener("click", () => usePayee(button.dataset.usePayee)),
-    );
+    shadow
+      .querySelectorAll("[data-remove]")
+      .forEach((button) =>
+        button.addEventListener("click", () =>
+          removeItem(button.dataset.remove),
+        ),
+      );
+    shadow
+      .querySelectorAll("[data-use-payee]")
+      .forEach((button) =>
+        button.addEventListener("click", () =>
+          usePayee(button.dataset.usePayee),
+        ),
+      );
   }
 
   function bind(id, handler) {
@@ -302,13 +328,20 @@
 
   function formPayment() {
     if (!signal) return null;
-    const amount = normalizeAmount(shadow.getElementById("amountInput")?.value || signal.amount || "");
-    const currency = shadow.getElementById("currencyInput")?.value || signal.currency || "USD";
+    const amount = normalizeAmount(
+      shadow.getElementById("amountInput")?.value || signal.amount || "",
+    );
+    const currency =
+      shadow.getElementById("currencyInput")?.value || signal.currency || "USD";
     if (!amount) throw new Error("أدخل مبلغًا صحيحًا.");
     return {
       title: signal.title,
-      paymentName: (shadow.getElementById("paymentName")?.value || suggestPaymentName()).trim(),
-      payeeName: (shadow.getElementById("payeeName")?.value || suggestPayeeName()).trim(),
+      paymentName: (
+        shadow.getElementById("paymentName")?.value || suggestPaymentName()
+      ).trim(),
+      payeeName: (
+        shadow.getElementById("payeeName")?.value || suggestPayeeName()
+      ).trim(),
       url: location.href,
       origin: location.origin,
       provider: signal.provider,
@@ -320,7 +353,10 @@
 
   async function deferCurrent() {
     try {
-      const response = await send({ type: "XGUARD_PAYMENT_DEFER", payment: formPayment() });
+      const response = await send({
+        type: "XGUARD_PAYMENT_DEFER",
+        payment: formPayment(),
+      });
       state = response;
       open = true;
       render();
@@ -331,7 +367,10 @@
 
   async function startSingle() {
     try {
-      const response = await send({ type: "XGUARD_PAY_SINGLE_START", payment: formPayment() });
+      const response = await send({
+        type: "XGUARD_PAY_SINGLE_START",
+        payment: formPayment(),
+      });
       state = response;
       open = true;
       render();
@@ -344,7 +383,8 @@
     try {
       const response = await send({ type: "XGUARD_PAY_ALL_START" });
       state = response;
-      if (response.nextUrl && response.nextUrl !== location.href) location.href = response.nextUrl;
+      if (response.nextUrl && response.nextUrl !== location.href)
+        location.href = response.nextUrl;
       else render();
     } catch (error) {
       showError(error);
@@ -353,7 +393,10 @@
 
   async function nextPayment() {
     try {
-      const response = await send({ type: "XGUARD_PAY_ALL_NEXT", outcome: "PAID" });
+      const response = await send({
+        type: "XGUARD_PAY_ALL_NEXT",
+        outcome: "PAID",
+      });
       state = response;
       if (response.done) {
         open = true;
@@ -386,24 +429,37 @@
     if (payeeInput) payeeInput.value = payee.displayName;
     if (paymentInput) paymentInput.value = payee.lastPaymentName || "دفعة";
     if (amountInput && payee.lastAmount) amountInput.value = payee.lastAmount;
-    if (currencyInput && payee.lastCurrency) currencyInput.value = payee.lastCurrency;
+    if (currencyInput && payee.lastCurrency)
+      currencyInput.value = payee.lastCurrency;
   }
 
   async function createSplit() {
     try {
       const currency = shadow.getElementById("splitCurrency")?.value || "USD";
-      const total = normalizeAmount(shadow.getElementById("splitTotal")?.value || "");
-      const allocations = Array.from(shadow.querySelectorAll("[data-split-payee]"))
+      const total = normalizeAmount(
+        shadow.getElementById("splitTotal")?.value || "",
+      );
+      const allocations = Array.from(
+        shadow.querySelectorAll("[data-split-payee]"),
+      )
         .map((input) => ({
           payeeId: input.dataset.splitPayee,
           amount: normalizeAmount(input.value || ""),
         }))
         .filter((entry) => entry.amount);
-      if (allocations.length < 2) throw new Error("أدخل مبلغًا لمستفيدين اثنين على الأقل.");
-      const sum = allocations.reduce((acc, item) => acc + Number(item.amount), 0);
+      if (allocations.length < 2)
+        throw new Error("أدخل مبلغًا لمستفيدين اثنين على الأقل.");
+      const sum = allocations.reduce(
+        (acc, item) => acc + Number(item.amount),
+        0,
+      );
       if (total && Math.abs(sum - Number(total)) > 0.009)
         throw new Error("مجموع التقسيم لا يساوي المبلغ الكلي.");
-      state = await send({ type: "XGUARD_SPLIT_CREATE", allocations, currency });
+      state = await send({
+        type: "XGUARD_SPLIT_CREATE",
+        allocations,
+        currency,
+      });
       splitOpen = false;
       render();
     } catch (error) {
@@ -441,16 +497,24 @@
   function currentSessionItem() {
     if (!state.session || state.session.status !== "ACTIVE") return null;
     const id = state.session.itemIds?.[state.session.index];
-    return state.cart.find((item) => item.id === id) || state.session.snapshot?.[id] || null;
+    return (
+      state.cart.find((item) => item.id === id) ||
+      state.session.snapshot?.[id] ||
+      null
+    );
   }
 
   function suggestPayeeName() {
-    const existing = state.payees.find((payee) => payee.origin === location.origin);
+    const existing = state.payees.find(
+      (payee) => payee.origin === location.origin,
+    );
     return existing?.displayName || signal?.payee || "";
   }
 
   function suggestPaymentName() {
-    const existing = state.payees.find((payee) => payee.origin === location.origin);
+    const existing = state.payees.find(
+      (payee) => payee.origin === location.origin,
+    );
     return existing?.lastPaymentName || signal?.title?.slice(0, 80) || "دفعة";
   }
 
@@ -490,7 +554,10 @@
   }
 
   const observer = new MutationObserver(scheduleScan);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
   setInterval(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;

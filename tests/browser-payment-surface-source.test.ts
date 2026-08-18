@@ -31,7 +31,9 @@ describe("buyer browser payment-layer source invariants", () => {
 
   it("keeps payment memory local and sends server context only from explicit verification", async () => {
     const source = await readFile(contentPath, "utf8");
-    const verifyFunctionIndex = source.indexOf("async function verifyCurrent()");
+    const verifyFunctionIndex = source.indexOf(
+      "async function verifyCurrent()",
+    );
     const decisionMessageIndex = source.indexOf(
       'type: "XGUARD_PAYMENT_DECISION"',
     );

@@ -81,7 +81,8 @@ function normalizePayment(value) {
     throw new Error("Invalid payment");
 
   const url = new URL(String(value.url || ""));
-  if (url.protocol !== "https:") throw new Error("XGuard requires an HTTPS payment URL");
+  if (url.protocol !== "https:")
+    throw new Error("XGuard requires an HTTPS payment URL");
   if (["xguardgate.com", "www.xguardgate.com"].includes(url.hostname))
     throw new Error("XGuard service pages cannot be saved as payments");
 
@@ -89,7 +90,9 @@ function normalizePayment(value) {
   if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000_000)
     throw new Error("Invalid payment amount");
 
-  const currency = String(value.currency || "USD").trim().toUpperCase();
+  const currency = String(value.currency || "USD")
+    .trim()
+    .toUpperCase();
   if (!/^[A-Z0-9]{3,8}$/.test(currency)) throw new Error("Invalid currency");
 
   const provider = String(value.provider || "generic_http").slice(0, 60);
@@ -107,7 +110,9 @@ function normalizePayment(value) {
     payeeName,
     paymentName,
     merchant: url.hostname.replace(/^www\./, "").slice(0, 180),
-    title: String(value.title || paymentName).trim().slice(0, 180),
+    title: String(value.title || paymentName)
+      .trim()
+      .slice(0, 180),
     url: url.href,
     origin,
     provider,
@@ -119,7 +124,9 @@ function normalizePayment(value) {
 }
 
 function stablePayeeId(origin, provider) {
-  return `payee:${String(provider).replace(/[^a-z0-9_-]/gi, "_")}:${String(origin)
+  return `payee:${String(provider).replace(/[^a-z0-9_-]/gi, "_")}:${String(
+    origin,
+  )
     .replace(/^https?:\/\//, "")
     .replace(/[^a-z0-9._-]/gi, "_")}`.slice(0, 220);
 }
@@ -225,11 +232,13 @@ async function startAll() {
 async function advance(outcome) {
   const state = await getState();
   const session = state.session;
-  if (!session || session.status !== "ACTIVE") throw new Error("No active payment session");
+  if (!session || session.status !== "ACTIVE")
+    throw new Error("No active payment session");
 
   const currentId = session.itemIds[session.index];
   const current =
-    state.cart.find((item) => item.id === currentId) || session.snapshot?.[currentId];
+    state.cart.find((item) => item.id === currentId) ||
+    session.snapshot?.[currentId];
   if (!current) throw new Error("Current payment is missing");
 
   const status = String(outcome).slice(0, 24).toUpperCase();
@@ -303,19 +312,26 @@ async function stopSession() {
 async function createSplit(allocationsValue, currencyValue) {
   if (!Array.isArray(allocationsValue)) throw new Error("Invalid split");
   const state = await getState();
-  const currency = String(currencyValue || "USD").trim().toUpperCase();
+  const currency = String(currencyValue || "USD")
+    .trim()
+    .toUpperCase();
   const allocations = allocationsValue
     .map((entry) => ({
       payeeId: String(entry?.payeeId || ""),
       amount: Number(entry?.amount),
     }))
-    .filter((entry) => entry.payeeId && Number.isFinite(entry.amount) && entry.amount > 0);
-  if (allocations.length < 2) throw new Error("Split requires at least two payees");
+    .filter(
+      (entry) =>
+        entry.payeeId && Number.isFinite(entry.amount) && entry.amount > 0,
+    );
+  if (allocations.length < 2)
+    throw new Error("Split requires at least two payees");
 
   const groupId = crypto.randomUUID();
   for (const allocation of allocations) {
     const payee = state.payees.find((entry) => entry.id === allocation.payeeId);
-    if (!payee?.lastUrl) throw new Error("A selected payee has no reusable payment destination");
+    if (!payee?.lastUrl)
+      throw new Error("A selected payee has no reusable payment destination");
     const payment = normalizePayment({
       title: `Split payment — ${payee.displayName}`,
       paymentName: `تقسيم دفعة · ${payee.displayName}`,
@@ -343,7 +359,11 @@ async function runDecision(intent) {
       Authorization: `Bearer ${buyerPass}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ requestId, channel: "browser", ...sanitizeIntent(intent) }),
+    body: JSON.stringify({
+      requestId,
+      channel: "browser",
+      ...sanitizeIntent(intent),
+    }),
   });
 
   let body;
@@ -356,13 +376,19 @@ async function runDecision(intent) {
     if (response.status === 402) {
       await chrome.storage.local.set({ xguardNeedsTopUp: true });
       await chrome.runtime.openOptionsPage();
-      throw new Error("XGuard service balance needs a top-up. The payment was not changed.");
+      throw new Error(
+        "XGuard service balance needs a top-up. The payment was not changed.",
+      );
     }
     if (response.status === 401) {
       await chrome.storage.local.remove(PASS_KEY);
       throw new Error("This Buyer Pass is no longer valid.");
     }
-    throw new Error(typeof body?.error === "string" ? body.error : `XGuard returned HTTP ${response.status}`);
+    throw new Error(
+      typeof body?.error === "string"
+        ? body.error
+        : `XGuard returned HTTP ${response.status}`,
+    );
   }
   await chrome.storage.local.set({ xguardNeedsTopUp: false });
   return body;
@@ -389,7 +415,9 @@ async function getOrCreateBuyerPass() {
 }
 
 function isBuyerPass(value) {
-  return typeof value === "string" && /^xg_pass_[A-Za-z0-9_-]{40,64}$/.test(value);
+  return (
+    typeof value === "string" && /^xg_pass_[A-Za-z0-9_-]{40,64}$/.test(value)
+  );
 }
 
 function sanitizeIntent(value) {
@@ -411,7 +439,8 @@ function sanitizeIntent(value) {
     "metadata",
   ];
   const out = {};
-  for (const key of allowed) if (value[key] !== undefined) out[key] = value[key];
+  for (const key of allowed)
+    if (value[key] !== undefined) out[key] = value[key];
   return out;
 }
 
