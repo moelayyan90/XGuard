@@ -48,6 +48,13 @@ describe("MCP OAuth", () => {
       scopes_supported: ["xguard:mcp"],
     });
 
+    const rfcAuthorization = await mcpOAuthResponse(
+      new Request(`${ORIGIN}/.well-known/oauth-authorization-server/mcp`),
+      oauthEnv(),
+    );
+    expect(rfcAuthorization?.status).toBe(200);
+    expect(await rfcAuthorization?.json()).toMatchObject({ issuer: ORIGIN });
+
     const resource = await mcpOAuthResponse(
       new Request(`${ORIGIN}/.well-known/oauth-protected-resource/mcp`),
       oauthEnv(),
