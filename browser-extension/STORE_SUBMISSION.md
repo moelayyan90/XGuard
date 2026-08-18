@@ -1,9 +1,9 @@
-# Browser Store Submission — XGuard Pay All 0.1.0
+# Browser Store Submission — XGuard Payment Layer 0.2.0
 
 ## Package
 
-- Product name: **XGuard Pay All**
-- Version: **0.1.0**
+- Product name: **XGuard Payment Layer**
+- Version: **0.2.0**
 - Manifest: **Manifest V3**
 - Homepage: `https://xguardgate.com/`
 - Privacy policy: `https://github.com/moelayyan90/XGuard/blob/main/browser-extension/PRIVACY.md`
@@ -11,43 +11,49 @@
 
 ## Single purpose
 
-> Provide a buyer-side floating payment cart on HTTPS checkout pages so a user can collect payments from multiple websites, review them in one place, coordinate a Pay All session, and optionally verify an individual payment with XGuard.
+> Provide a buyer-side floating payment layer on HTTPS payment surfaces so users can name and defer payments, remember payees, reuse previous recipients, coordinate one or many payments, create split-payment plans, and optionally verify a payment with XGuard without merchant integration.
 
 ## Short description
 
-> Save checkout payments from different sites into one floating XGuard cart and coordinate Pay All without merchant integration.
+> A floating payment memory layer for single payments, deferred bills, Pay All, saved payees, history, and payment splitting.
 
 ## Full description
 
-XGuard Pay All is a buyer-side browser layer. When the user reaches a likely checkout page, the extension detects checkout context locally and shows a small floating XGuard control.
+XGuard Payment Layer runs on the buyer side. When the user reaches a likely checkout, billing, payment, beneficiary, or transfer page, XGuard detects limited payment context locally and shows a small floating XGuard control.
 
-The user can save the current payment into a local Pay All cart, continue browsing to other websites, add more payments, and then start one Pay All session. XGuard guides the user through the saved merchant checkouts in order and tracks the local child-payment sequence.
+The user can name a payment and its recipient, choose **ترحيل لغايات الدفع / Defer for payment**, and continue browsing. XGuard remembers the payee, payment label, last amount/currency, and the last payment destination locally so the recipient can be reused without registering it again.
 
-The cart is stored in `chrome.storage.local`. The extension does not require the merchant to install XGuard, create an API key, or modify its checkout.
+The same layer supports:
 
-The current browser-only Pay All mode does not pretend that unrelated merchant card transactions have become one native bank debit. The underlying merchant payment remains the merchant's normal checkout and may still require the user's card/wallet action or bank authentication. A true one-debit/many-recipient mode requires an authorized payment rail that supports batch authorization.
+- **دفع هذه فقط / Pay this only** for a single tracked payment;
+- **دفع كل الفواتير / Pay all bills** for a local multi-payment session;
+- **تقسيم الفواتير / Split bills** to create child payments for multiple saved payees;
+- local completed-payment history;
+- optional XGuard payment verification.
 
-The extension also retains the optional XGuard payment-decision feature. When the user explicitly asks XGuard to verify the current payment, a limited payment-intent record is sent to `xguardgate.com` and XGuard returns a decision/evidence result.
+The payment queue, saved payees, and payment history are stored in `chrome.storage.local`. Merchant participation is not required for the floating interface.
 
-XGuard Pay All does not request the user's full card number, CVV/CVC, PIN, online-banking password, wallet private key, seed phrase, or mnemonic.
+The browser-only layer does not pretend that unrelated merchant card transactions become one native bank debit. Underlying payments remain subject to each merchant, bank, wallet, or payment provider. A true one-debit/many-recipient settlement mode requires an authorized rail that supports batch authorization and distribution.
+
+XGuard does not request the user's full card number, CVV/CVC, PIN, online-banking password, wallet private key, seed phrase, or mnemonic.
 
 ## Suggested category
 
-**Shopping** — checkout/payment utility.
+**Shopping** — payment/checkout utility.
 
 ## Permission justifications
 
 ### `storage`
 
-Required to store the local Pay All cart, active Pay All session, and the optional XGuard Buyer Pass used only for explicit XGuard service requests.
+Required to store the local deferred-payment queue, active payment session, saved payee memory, completed-payment history, and the optional XGuard Buyer Pass used only for explicit XGuard server requests.
 
 ### `https://xguardgate.com/*`
 
 Required only for explicit XGuard service features such as payment verification, Buyer Pass creation, and service-balance operations.
 
-### Checkout-page access: `https://*/*`
+### Payment-page access: `https://*/*`
 
-Required because checkout pages can exist on any HTTPS merchant domain. The content script performs local checkout detection and renders the floating XGuard Pay All interface. Merchant pages do not need to integrate XGuard.
+Payment and transfer pages can exist on any HTTPS domain. The content script performs local payment-surface detection and renders the floating XGuard interface. Merchant pages do not need to integrate XGuard.
 
 The extension intentionally does **not** run on `http://*/*`.
 
@@ -57,11 +63,11 @@ The extension intentionally does **not** run on `http://*/*`.
 
 ## Website content and data disclosure
 
-The extension locally inspects limited **Website content** needed to identify a checkout and visible payment total. The Pay All cart can locally store the exact checkout URL, merchant hostname, page title, amount, currency, provider label, and cart/session state.
+The extension locally inspects limited **Website content** needed to identify a payment surface and visible amount/currency. It can locally store the exact payment URL, payment name, payee name, merchant origin, amount, currency, provider label, pending-payment state, saved-payee memory, and completed-payment history.
 
-The current Pay All cart is browser-local and is not uploaded to XGuard servers.
+The local payment-memory database is not uploaded to XGuard servers by these features.
 
-Only after explicit use of the optional XGuard verification feature can a limited payment-intent record be sent to `xguardgate.com`, including amount/currency, merchant origin, detected provider, and detection confidence.
+Only after explicit use of the optional XGuard verification feature can a limited payment-intent record be sent to `xguardgate.com`, including amount/currency, payee or merchant origin, detected provider, and detection confidence.
 
 ### Data use
 
@@ -75,27 +81,22 @@ Only after explicit use of the optional XGuard verification feature can a limite
 
 ## Sensitive-data statement
 
-The extension does not request, read, store, or transmit:
-
-- full card PAN;
-- CVV/CVC;
-- card PIN;
-- online banking credentials;
-- wallet private keys;
-- seed phrases or mnemonics.
+The extension does not request, read, store, or transmit full card PAN, CVV/CVC, card PIN, online banking credentials, wallet private keys, seed phrases, or mnemonics.
 
 ## Reviewer test path
 
 1. Install the unpacked extension.
-2. Open a normal HTTPS checkout-like page.
+2. Open a normal HTTPS checkout, billing, or transfer-like page.
 3. Confirm a floating **XGuard** button appears.
-4. Open the panel and choose **احجز هذه الدفعة / Add this payment**.
-5. Navigate to another checkout and add a second payment.
-6. Confirm the cart persists across the two merchant domains.
-7. Choose **ادفع الكل / Pay All**.
-8. Confirm XGuard starts a single local session and navigates the saved checkout sequence without reading payment credential fields.
-9. Optionally choose the XGuard verification action and confirm the explicit service request path still works.
+4. Open the panel and name the payment and payee.
+5. Choose **ترحيل لغايات الدفع** and confirm the payment appears in the deferred queue.
+6. Visit another payment page and defer another payment.
+7. Confirm the first recipient appears under saved payees and can be reused.
+8. Choose **دفع كل الفواتير** and confirm XGuard starts a local sequence.
+9. Complete/mark a child payment and confirm it moves into local history.
+10. Open **تقسيم الفواتير**, enter allocations for two saved payees, and confirm child payments are added to the queue.
+11. Optionally choose the XGuard verification action and confirm the explicit service request path works.
 
 ## Store-review note
 
-XGuard Pay All is deliberately user-side. Merchant participation is not required for the floating cart UI. The extension does not bypass merchant checkout rules, bank authentication, or payment-provider security controls.
+XGuard is deliberately user-side. Merchant participation is not required for the floating layer. The extension does not bypass merchant checkout rules, bank authentication, or payment-provider security controls.
