@@ -23,10 +23,13 @@ describe("MCP OAuth challenge", () => {
 
     expect(response?.status).toBe(401);
     expect(response?.headers.get("www-authenticate")).toBe(
-      `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/mcp", scope="xguard:mcp"`,
+      `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource", scope="xguard:mcp"`,
     );
     expect(response?.headers.get("access-control-expose-headers")).toContain(
       "WWW-Authenticate",
+    );
+    expect(response?.headers.get("strict-transport-security")).toBe(
+      "max-age=31536000; includeSubDomains",
     );
   });
 
