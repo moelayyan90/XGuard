@@ -153,6 +153,18 @@ POST /mcp
 
 The discovery surfaces should describe protocol-specific capabilities without collapsing the whole XGuard product into one protocol.
 
+### Remote MCP tools
+
+The public Streamable HTTP MCP endpoint currently exposes the same five tools described by `lhm.plugin.json`:
+
+- `xguard_payment_offer` — return a free pre-payment XGuard offer without executing or charging the underlying payment;
+- `xguard_payment_decision` — evaluate a declared payment intent and return an `ALLOW`, `REVIEW`, or `BLOCK` decision with idempotent evidence, without executing the payment itself;
+- `xguard_discover` — search or list XGuard x402 HTTP and MCP resources;
+- `xguard_resource_details` — inspect one exact catalog resource by URL or key;
+- `xguard_status` — return live gateway, payment-decision, and discovery status.
+
+The payment-decision tools require declared payment metadata only; callers must not send card credentials, online-banking passwords, wallet private keys, seed phrases, or mnemonics.
+
 ## Security and operations
 
 - [Security policy](SECURITY.md)
