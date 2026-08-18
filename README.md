@@ -97,7 +97,7 @@ Protocol-specific adapters are enumerated separately at:
 GET /.well-known/xguard/protocols.json
 ```
 
-This separation is deliberate: **the Payment Layer is the product; protocols are ways to connect it.**
+This separation is deliberate: **The Payment Layer is the product; protocols are ways to connect it.**
 
 ## x402 adapter: settlement safety and recovery
 
@@ -120,7 +120,7 @@ GET  /v1/settlements/{logicalPaymentKey}/truth
 POST /v1/settlements/{logicalPaymentKey}/resolve
 ```
 
-The x402 integration currently targets Base mainnet native USDC with the exact/EIP-3009 authorization scheme. That restriction belongs to the **x402 adapter**, not to the buyer-side Payment Layer.
+The x402 integration currently targets Base mainnet native USDC with the exact/EIP-3009 authorization scheme. That restriction belongs to the **x402 adapter**, not to the buyer-side Payment Layer. For protocol-specific facilitator behavior and route details, see [facilitators](docs/FACILITATORS.md).
 
 ## Developer installation
 
@@ -174,7 +174,7 @@ npm run smoke:mainnet
 
 ## Documentation
 
-[Quickstart](QUICKSTART.md) · [API](docs/API.md) · [OpenAPI](docs/openapi.yaml) · [Pricing](PRICING.md) · [Billing](BILLING.md) · [Deployment](DEPLOYMENT.md) · [Browser Store Submission](browser-extension/STORE_SUBMISSION.md)
+[Quickstart](QUICKSTART.md) · [API](docs/API.md) · [facilitators](docs/FACILITATORS.md) · [OpenAPI](docs/openapi.yaml) · [Pricing](PRICING.md) · [Billing](BILLING.md) · [Deployment](DEPLOYMENT.md) · [Browser Store Submission](browser-extension/STORE_SUBMISSION.md)
 
 XGuard is an independent project and is not an official product of the x402 Foundation, Coinbase, Cloudflare, Base, Circle, xpay, PayAI, OKX, Google or Microsoft.
 
