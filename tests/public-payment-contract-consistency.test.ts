@@ -37,6 +37,10 @@ const forbiddenLegacyContractPhrases = [
   "$0.04 per accepted authenticated economic attempt",
   "Successful finalized x402 settlement | $0.0020",
   "XGuard's canonical x402 economic-attempt fee is **$0.04**",
+  "successful settlement reaches independent finalized on-chain confirmation",
+  "fees earned from final successful billable settlements",
+  "successful-settlement and independent-finality boundary",
+  "earns its service fee only after successful finality confirmation",
 ];
 
 describe("canonical public payment contract consistency", () => {
