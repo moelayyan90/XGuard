@@ -7,6 +7,7 @@ import { a2aGatewayV1Response } from "./a2a-gateway-v1.js";
 import { buyerPassResponse } from "./buyer-pass.js";
 import { buyerPortalResponse } from "./buyer-portal.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
+import { mcpOAuthResponse } from "./mcp-oauth.js";
 import { paymentDecisionResponse } from "./payment-decision.js";
 import {
   normalizePublicPaymentContract,
@@ -110,6 +111,9 @@ export default {
 
     const discoveryPreflight = publicDiscoveryPreflight(standardRequest);
     if (discoveryPreflight !== null) return discoveryPreflight;
+
+    const mcpOAuth = await mcpOAuthResponse(standardRequest, env);
+    if (mcpOAuth !== null) return mcpOAuth;
 
     const paymentContract = publicPaymentContractResponse(standardRequest, env);
     if (paymentContract !== null) return paymentContract;
