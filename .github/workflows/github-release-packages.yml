@@ -79,7 +79,7 @@ jobs:
           cd /tmp/xguard-sdk-smoke
           npm init -y >/dev/null
           npm install "$CORE_TARBALL" "$SDK_TARBALL"
-          node --input-type=module -e 'import { createXGuardFacilitator, embedXGuardAutomatedPayments } from "@xguard/sdk"; if(typeof createXGuardFacilitator!=="function" || typeof embedXGuardAutomatedPayments!=="function") process.exit(1)'
+          node --input-type=module -e 'import { createXGuardFacilitator, embedXGuardAutomatedPayments, createXGuardHostedPaymentAuthorizer } from "@xguard/sdk"; if(typeof createXGuardFacilitator!=="function" || typeof embedXGuardAutomatedPayments!=="function" || typeof createXGuardHostedPaymentAuthorizer!=="function") process.exit(1)'
 
       - uses: actions/upload-artifact@v4
         with:
