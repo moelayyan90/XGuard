@@ -180,7 +180,10 @@ export default {
     );
     return mcpSnapshot === null
       ? normalized
-      : normalizeMcpPublicResponse(mcpSnapshot, normalized);
+      : normalizeMcpPublicResponse(
+          mcpSnapshot as unknown as Request,
+          normalized,
+        );
   },
 
   async scheduled(controller, env, ctx): Promise<void> {

@@ -267,7 +267,7 @@ async function requireRegisteredRedirect(
 }
 
 function consentPage(input: AuthorizationRequest): Response {
-  const hidden = [
+  const fields: Array<[string, string]> = [
     ["response_type", "code"],
     ["client_id", input.clientId],
     ["redirect_uri", input.redirectUri],
