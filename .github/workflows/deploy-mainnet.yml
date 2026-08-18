@@ -128,12 +128,17 @@ jobs:
 
           ready=0
           for attempt in {1..18}; do
-            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/readyz?deploy=${VERIFY_TOKEN}&attempt=${attempt}" || true)"
-            code="${response##*$'\n'}"
-            body="${response%$'\n'*}"
-            if [[ "${code}" == "200" ]] && printf '%s' "${body}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ready"||x.mainnet!==true||x.facilitator!=="operational")process.exit(1)})'; then
-              ready=1
-              break
+            status_response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/status?deploy=${VERIFY_TOKEN}&attempt=${attempt}" || true)"
+            status_code="${status_response##*$'\n'}"
+            status_body="${status_response%$'\n'*}"
+            if [[ "${status_code}" == "200" ]] && printf '%s' "${status_body}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet"||x.facilitator!=="HEALTHY")process.exit(1)})'; then
+              ready_response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/readyz?deploy=${VERIFY_TOKEN}&attempt=${attempt}" || true)"
+              ready_code="${ready_response##*$'\n'}"
+              ready_body="${ready_response%$'\n'*}"
+              if [[ "${ready_code}" == "200" ]] && printf '%s' "${ready_body}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ready"||x.mainnet!==true||x.facilitator!=="operational")process.exit(1)})'; then
+                ready=1
+                break
+              fi
             fi
             sleep 5
           done
