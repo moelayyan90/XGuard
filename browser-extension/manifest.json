@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "XGuard Payment Layer",
-  "version": "0.2.1",
-  "description": "A floating payment layer that remembers payees, defers bills, coordinates single or multi-payment sessions, and supports payment splitting without merchant integration.",
+  "name": "XGuard Task Recovery",
+  "version": "0.3.0",
+  "description": "A local task-control and recovery layer for web workflows that detects task surfaces, preserves checkpoints, surfaces failures, and helps users resume safely without storing sensitive field values.",
   "homepage_url": "https://xguardgate.com/",
   "permissions": ["storage"],
   "host_permissions": ["https://xguardgate.com/*"],
@@ -17,7 +17,7 @@
         "https://xguardgate.com/*",
         "https://www.xguardgate.com/*"
       ],
-      "js": ["universal-layer.js", "surface-rail.js"],
+      "js": ["recovery-layer.js", "universal-layer.js", "surface-rail.js"],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -30,7 +30,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "XGuard Payment Layer",
+    "default_title": "XGuard Task Recovery",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
