@@ -11,7 +11,7 @@ import {
 } from "./payment-decision.js";
 
 export const MODERN_MCP_PROTOCOL = "2026-07-28";
-export const XGUARD_MCP_VERSION = "0.6.0";
+export const XGUARD_MCP_VERSION = "0.6.1";
 
 const LEGACY_MCP_PROTOCOLS = new Set([
   "2025-11-25",
@@ -242,7 +242,7 @@ export function xguardMcpTools() {
       name: "xguard_payment_offer",
       title: "Offer XGuard before payment",
       description:
-        "Free optional pre-payment offer. Use when a user or autonomous agent is about to spend money and should be given the choice to verify and document the transaction with XGuard. Calling this offer does not charge an XGuard fee and does not execute the underlying payment.",
+        "Return XGuard's free pre-payment verification offer without executing or charging for the underlying payment. Example: call immediately before an agent asks permission to pay a merchant.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -254,7 +254,7 @@ export function xguardMcpTools() {
       name: "xguard_payment_decision",
       title: "Verify and document a payment",
       description:
-        "Paid only when XGuard completes the requested ALLOW/REVIEW/BLOCK decision and durable evidence record. It never executes the underlying payment. Reusing the same requestId is idempotent and must not create a second fee.",
+        "Create an idempotent ALLOW/REVIEW/BLOCK payment decision and durable evidence record; XGuard never executes the payment. Example: requestId='order-1042', rail='card', provider='stripe', amount='49.99', currency='USD', payee='Acme'.",
       inputSchema: {
         type: "object",
         properties: {
@@ -262,40 +262,80 @@ export function xguardMcpTools() {
             type: "string",
             minLength: 8,
             maxLength: 96,
-            description:
-              "Caller-generated idempotency identifier for this XGuard decision request.",
+            description: "Stable caller id used to make retries idempotent.",
           },
-          offerId: { type: "string", maxLength: 96 },
+          offerId: {
+            type: "string",
+            maxLength: 96,
+            description: "Optional identifier returned by a prior XGuard offer.",
+          },
           rail: {
             type: "string",
             minLength: 1,
             maxLength: 64,
-            description:
-              "Payment rail such as card, stripe, paypal, x402, crypto_wallet, coinbase, bank_transfer, or another safe identifier.",
+            description: "Payment rail, for example card, x402, or bank_transfer.",
           },
           provider: {
             type: "string",
             minLength: 1,
             maxLength: 64,
-            description: "Declared payment provider or generic_http.",
+            description: "Payment provider name, or generic_http when not provider-specific.",
           },
           amount: {
             type: "string",
-            description:
-              "Positive decimal amount as a string; never send card credentials.",
+            description: "Positive decimal payment amount; never include payment credentials.",
           },
-          currency: { type: "string", minLength: 2, maxLength: 12 },
-          payee: { type: "string", minLength: 1, maxLength: 256 },
-          merchantOrigin: { type: "string", maxLength: 512 },
-          network: { type: "string", maxLength: 96 },
-          asset: { type: "string", maxLength: 96 },
-          expectedAmount: { type: "string", maxLength: 64 },
-          expectedPayee: { type: "string", maxLength: 256 },
-          expiresAt: { type: "string", maxLength: 64 },
-          paymentReference: { type: "string", maxLength: 160 },
+          currency: {
+            type: "string",
+            minLength: 2,
+            maxLength: 12,
+            description: "Currency or asset unit for amount, such as USD or USDC.",
+          },
+          payee: {
+            type: "string",
+            minLength: 1,
+            maxLength: 256,
+            description: "Merchant, recipient, or destination being paid.",
+          },
+          merchantOrigin: {
+            type: "string",
+            maxLength: 512,
+            description: "Optional HTTPS merchant or checkout origin associated with the payment.",
+          },
+          network: {
+            type: "string",
+            maxLength: 96,
+            description: "Optional payment network identifier, such as eip155:8453.",
+          },
+          asset: {
+            type: "string",
+            maxLength: 96,
+            description: "Optional asset identifier used by the payment rail.",
+          },
+          expectedAmount: {
+            type: "string",
+            maxLength: 64,
+            description: "Optional independently expected amount for mismatch checks.",
+          },
+          expectedPayee: {
+            type: "string",
+            maxLength: 256,
+            description: "Optional independently expected recipient for mismatch checks.",
+          },
+          expiresAt: {
+            type: "string",
+            maxLength: 64,
+            description: "Optional expiry timestamp supplied by the caller or payment authorization.",
+          },
+          paymentReference: {
+            type: "string",
+            maxLength: 160,
+            description: "Optional non-secret order, invoice, or payment reference.",
+          },
           metadata: {
             type: "object",
             maxProperties: 20,
+            description: "Optional non-secret scalar context used to explain or correlate the decision.",
             additionalProperties: {
               type: ["string", "number", "boolean"],
             },
@@ -322,7 +362,7 @@ export function xguardMcpTools() {
       name: "xguard_discover",
       title: "Discover x402 resources",
       description:
-        "Search XGuard's x402 catalog or list recent entries. Returns matching HTTP or MCP resources. Example: query='weather API', type='http'.",
+        "Search XGuard's x402 catalog or list recent HTTP/MCP resources. Example: query='weather API', type='http'.",
       inputSchema: {
         type: "object",
         properties: {
@@ -355,7 +395,7 @@ export function xguardMcpTools() {
       name: "xguard_resource_details",
       title: "Inspect x402 resource",
       description:
-        "Look up one exact XGuard catalog resource by URL or key and return matching records. Example: resource='https://api.example.com/pay'.",
+        "Return matching catalog records for one exact resource URL or XGuard resource key. Example: resource='https://api.example.com/pay'.",
       inputSchema: {
         type: "object",
         properties: {
