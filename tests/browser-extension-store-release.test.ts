@@ -8,6 +8,9 @@ const manifest = JSON.parse(
   readFileSync(join(extension, "manifest.json"), "utf8"),
 ) as {
   manifest_version: number;
+  name?: string;
+  version?: string;
+  description?: string;
   permissions?: string[];
   host_permissions?: string[];
   content_scripts?: Array<{
@@ -25,17 +28,27 @@ describe("browser extension store release", () => {
     expect(manifest.host_permissions).toEqual(["https://xguardgate.com/*"]);
   });
 
-  it("detects payment context on HTTPS pages only and ships both user surfaces", () => {
+  it("makes task recovery the primary HTTPS surface while retaining payment adapters", () => {
+    expect(manifest.name).toBe("XGuard Task Recovery");
+    expect(manifest.version).toBe("0.3.0");
+    expect(manifest.description).toContain("task-control and recovery");
     expect(manifest.content_scripts).toHaveLength(1);
     expect(manifest.content_scripts?.[0]?.matches).toEqual(["https://*/*"]);
     expect(manifest.content_scripts?.[0]?.exclude_matches).toContain(
       "https://xguardgate.com/*",
     );
     expect(manifest.content_scripts?.[0]?.js).toEqual([
+      "recovery-layer.js",
       "universal-layer.js",
       "surface-rail.js",
     ]);
-    expect(existsSync(join(extension, "surface-rail.js"))).toBe(true);
+    for (const file of [
+      "recovery-layer.js",
+      "universal-layer.js",
+      "surface-rail.js",
+    ]) {
+      expect(existsSync(join(extension, file))).toBe(true);
+    }
   });
 
   it("ships the raster icons Chrome and Edge need", () => {
@@ -54,8 +67,10 @@ describe("browser extension store release", () => {
     );
     expect(privacy).toContain("Continue without XGuard");
     expect(privacy).toContain("does not sell user data");
+    expect(privacy).toContain("field values");
     expect(privacy).toContain("card number");
     expect(listing).toContain("Single purpose");
+    expect(listing).toContain("task continuity and recovery");
     expect(listing).toContain("Remote code");
     expect(listing).toContain("Website content");
   });
