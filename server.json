@@ -2,12 +2,12 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard",
   "title": "XGuard",
-  "description": "Paid MCP execution gateway for AI tools, security checks, analysis, and x402 settlement.",
+  "description": "Payment coordination, safety, settlement evidence, and x402 discovery for AI agents.",
   "repository": {
     "url": "https://github.com/moelayyan90/XGuard",
     "source": "github"
   },
-  "version": "0.5.1",
+  "version": "0.6.0",
   "remotes": [
     {
       "type": "streamable-http",

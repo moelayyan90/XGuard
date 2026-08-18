@@ -2,6 +2,18 @@
   "name": "xguard",
   "version": "0.1.0-alpha.0",
   "description": "Safe migration and diagnostics CLI for XGuard and x402 v2",
+  "keywords": [
+    "xguard",
+    "x402",
+    "cli",
+    "payments",
+    "payment-safety",
+    "facilitator",
+    "migration",
+    "diagnostics",
+    "base",
+    "usdc"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
