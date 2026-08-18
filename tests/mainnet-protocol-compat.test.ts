@@ -3,6 +3,8 @@ import {
   BASE_MAINNET,
   BASE_USDC,
   enforceBaseMainnetUsdc,
+  normalizeXPayHealthResponse,
+  normalizeXPaySupportedResponse,
 } from "../apps/worker/src/mainnet-protocol.js";
 import { fixturePayment } from "./fixtures.js";
 
@@ -32,5 +34,54 @@ describe("mainnet x402 v2 compatibility", () => {
     expect(() => enforceBaseMainnetUsdc(payload, requirements)).toThrow(
       "XGuard mainnet requires exact EIP-3009 authorization payments",
     );
+  });
+
+  it("accepts the canonical x402 supported response", () => {
+    const supported = normalizeXPaySupportedResponse({
+      kinds: [
+        { x402Version: 2, scheme: "exact", network: BASE_MAINNET },
+      ],
+      extensions: [],
+      signers: {},
+    });
+
+    expect(supported.kinds).toContainEqual({
+      x402Version: 2,
+      scheme: "exact",
+      network: BASE_MAINNET,
+    });
+  });
+
+  it("normalizes the XPay documented supportedNetworks response", () => {
+    const supported = normalizeXPaySupportedResponse({
+      supportedNetworks: [
+        { networkId: BASE_MAINNET, version: "v2" },
+        { networkId: "eip155:84532", version: "v2" },
+        { networkId: "base", version: "v1" },
+      ],
+    });
+
+    expect(supported.kinds).toEqual([
+      { x402Version: 2, scheme: "exact", network: BASE_MAINNET },
+      { x402Version: 2, scheme: "exact", network: "eip155:84532" },
+    ]);
+  });
+
+  it("derives canonical capabilities from XPay health metadata", () => {
+    const supported = normalizeXPayHealthResponse({
+      status: "ok",
+      supportedNetworks: [BASE_MAINNET, "eip155:84532"],
+      supportedVersions: [1, 2],
+    });
+
+    expect(supported?.kinds).toContainEqual({
+      x402Version: 2,
+      scheme: "exact",
+      network: BASE_MAINNET,
+    });
+  });
+
+  it("does not invent capabilities when health omits support metadata", () => {
+    expect(normalizeXPayHealthResponse({ status: "ok" })).toBeNull();
   });
 });
