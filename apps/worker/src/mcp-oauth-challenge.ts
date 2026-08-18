@@ -11,7 +11,7 @@ export async function mcpOAuthChallengeResponse(
   const toolName = await requestedToolName(request);
   if (toolName === null || !PROTECTED_MCP_TOOLS.has(toolName)) return null;
 
-  const resourceMetadata = `${url.origin}/.well-known/oauth-protected-resource/mcp`;
+  const resourceMetadata = `${url.origin}/.well-known/oauth-protected-resource`;
   return new Response(
     JSON.stringify({
       error: "unauthorized",
@@ -29,6 +29,7 @@ export async function mcpOAuthChallengeResponse(
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Expose-Headers":
           "WWW-Authenticate, MCP-Protocol-Version",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
         "X-Content-Type-Options": "nosniff",
       },
     },
