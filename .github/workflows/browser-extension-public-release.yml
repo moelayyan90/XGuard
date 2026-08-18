@@ -1,0 +1,124 @@
+name: Publish XGuard Payment Layer
+
+on:
+  pull_request:
+    paths:
+      - "browser-extension/**"
+      - ".github/workflows/browser-extension-public-release.yml"
+  push:
+    branches: [main]
+    paths:
+      - "browser-extension/**"
+      - ".github/workflows/browser-extension-public-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: xguard-payment-layer-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate browser payment layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("fs");
+          const manifest = JSON.parse(fs.readFileSync("browser-extension/manifest.json", "utf8"));
+          if (manifest.manifest_version !== 3) throw new Error("Manifest V3 required");
+          if (manifest.name !== "XGuard Payment Layer") throw new Error("Unexpected product name");
+          if (!Array.isArray(manifest.content_scripts) || manifest.content_scripts.length !== 1) throw new Error("Expected one content-script bundle");
+          const script = manifest.content_scripts[0];
+          if (JSON.stringify(script.matches) !== JSON.stringify(["https://*/*"])) throw new Error("Universal HTTPS payment-surface coverage missing");
+          if (JSON.stringify(script.js) !== JSON.stringify(["universal-layer.js", "surface-rail.js"])) throw new Error("Universal and inline rails must both ship");
+          NODE
+
+      - name: Build public runtime ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p 'require("./browser-extension/manifest.json").version')"
+          OUT="${RUNNER_TEMP}/xguard-payment-layer"
+          mkdir -p "${OUT}/icons" release-assets
+          cp browser-extension/manifest.json "${OUT}/"
+          cp browser-extension/universal-layer.js "${OUT}/"
+          cp browser-extension/surface-rail.js "${OUT}/"
+          cp browser-extension/service-worker.js "${OUT}/"
+          cp browser-extension/options.html "${OUT}/"
+          cp browser-extension/options.js "${OUT}/"
+          cp browser-extension/icons/icon16.png "${OUT}/icons/"
+          cp browser-extension/icons/icon32.png "${OUT}/icons/"
+          cp browser-extension/icons/icon48.png "${OUT}/icons/"
+          cp browser-extension/icons/icon128.png "${OUT}/icons/"
+          (
+            cd "${OUT}"
+            zip -X -r "${GITHUB_WORKSPACE}/release-assets/xguard-payment-layer-${VERSION}.zip" .
+          )
+          (
+            cd release-assets
+            sha256sum "xguard-payment-layer-${VERSION}.zip" > SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+          )
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: xguard-payment-layer
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish stable public GitHub release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p 'require("./browser-extension/manifest.json").version')"
+          TAG="xguard-payment-layer-v${VERSION}"
+          NOTES=$(cat <<'EOF'
+          XGuard Payment Layer is the buyer-side universal payment-control surface.
+
+          It runs on HTTPS payment and transfer surfaces and ships the inline XGuard rail plus the full local payment-memory layer: Defer for payment, Pay this only, Pay all bills, saved-payee reuse, history and bill splitting.
+
+          Merchant integration is not required for the browser layer. Underlying banks, merchants, wallets and payment providers still execute their own payments and authentication.
+
+          This is the public early-access runtime package. Browser-store publication is tracked separately and is not claimed by this release.
+          EOF
+          )
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber
+            gh release edit "$TAG" --title "XGuard Payment Layer v${VERSION}" --notes "$NOTES"
+          else
+            gh release create "$TAG" release-assets/* --title "XGuard Payment Layer v${VERSION}" --notes "$NOTES" --prerelease
+          fi
+
+      - name: Verify public release asset
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p 'require("./browser-extension/manifest.json").version')"
+          TAG="xguard-payment-layer-v${VERSION}"
+          EXPECTED="xguard-payment-layer-${VERSION}.zip"
+          for attempt in {1..12}; do
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "$EXPECTED"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Public XGuard Payment Layer release asset was not observable"
+          exit 1
