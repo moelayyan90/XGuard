@@ -23,6 +23,15 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function assertAuthenticationOrWatchdogFailClosed(result, message) {
+  const watchdogFailClosed =
+    result.response.status === 503 &&
+    result.response.headers.get("x-xguard-watchdog") === "circuit-open" &&
+    result.body?.error === "xguard_watchdog_circuit_open" &&
+    result.body?.safety === "request_not_executed";
+  assert(result.response.status === 401 || watchdogFailClosed, message);
+}
+
 const root = await json("/");
 assert(root.response.status === 200, "mainnet root endpoint is unavailable");
 assert(
@@ -146,9 +155,9 @@ const unauthenticatedVerify = await json("/verify", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({}),
 });
-assert(
-  unauthenticatedVerify.response.status === 401,
-  "verify did not fail closed without merchant authentication",
+assertAuthenticationOrWatchdogFailClosed(
+  unauthenticatedVerify,
+  "verify neither required authentication nor failed closed under the watchdog",
 );
 
 const mcpInitialize = await json("/mcp", {
