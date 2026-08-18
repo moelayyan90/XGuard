@@ -74,7 +74,10 @@ describe("XGuard hosted automated payment authorizer", () => {
   it("blocks REVIEW by default and can deliberately allow it", async () => {
     const response = () =>
       new Response(
-        JSON.stringify({ decision: "REVIEW", reasonCodes: ["network_not_declared"] }),
+        JSON.stringify({
+          decision: "REVIEW",
+          reasonCodes: ["network_not_declared"],
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     const blocked = createXGuardHostedPaymentAuthorizer({
@@ -103,14 +106,18 @@ describe("XGuard hosted automated payment authorizer", () => {
     const authorize = createXGuardHostedPaymentAuthorizer({
       accessToken: token,
       assets: [asset],
-      fetch: vi.fn<typeof fetch>(async () =>
-        new Response(
-          JSON.stringify({
-            decision: "BLOCK",
-            reasonCodes: ["expected_payee_mismatch", "payment_intent_expired"],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
+      fetch: vi.fn<typeof fetch>(
+        async () =>
+          new Response(
+            JSON.stringify({
+              decision: "BLOCK",
+              reasonCodes: [
+                "expected_payee_mismatch",
+                "payment_intent_expired",
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
       ),
     });
     await expect(authorize(intent())).resolves.toEqual({
@@ -124,26 +131,38 @@ describe("XGuard hosted automated payment authorizer", () => {
     const insufficient = createXGuardHostedPaymentAuthorizer({
       accessToken: token,
       assets: [asset],
-      fetch: vi.fn<typeof fetch>(async () =>
-        new Response(JSON.stringify({ error: "insufficient_xguard_balance" }), {
-          status: 402,
-          headers: { "Content-Type": "application/json" },
-        }),
+      fetch: vi.fn<typeof fetch>(
+        async () =>
+          new Response(
+            JSON.stringify({ error: "insufficient_xguard_balance" }),
+            {
+              status: 402,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
       ),
     });
-    await expect(insufficient(intent())).rejects.toThrow(/balance is insufficient/i);
+    await expect(insufficient(intent())).rejects.toThrow(
+      /balance is insufficient/i,
+    );
 
     const unauthorized = createXGuardHostedPaymentAuthorizer({
       accessToken: token,
       assets: [asset],
-      fetch: vi.fn<typeof fetch>(async () =>
-        new Response(JSON.stringify({ error: "xguard_access_key_required" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        }),
+      fetch: vi.fn<typeof fetch>(
+        async () =>
+          new Response(
+            JSON.stringify({ error: "xguard_access_key_required" }),
+            {
+              status: 401,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
       ),
     });
-    await expect(unauthorized(intent())).rejects.toThrow(/token is invalid or expired/i);
+    await expect(unauthorized(intent())).rejects.toThrow(
+      /token is invalid or expired/i,
+    );
   });
 
   it("does not call the hosted service for unknown asset metadata", async () => {
@@ -154,10 +173,13 @@ describe("XGuard hosted automated payment authorizer", () => {
       fetch: fetchMock,
     });
     await expect(
-      authorize(intent({ asset: "0x2222222222222222222222222222222222222222" })),
+      authorize(
+        intent({ asset: "0x2222222222222222222222222222222222222222" }),
+      ),
     ).resolves.toEqual({
       allow: false,
-      reason: "XGuard hosted authorization has no asset metadata for this payment",
+      reason:
+        "XGuard hosted authorization has no asset metadata for this payment",
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -199,7 +221,10 @@ describe("XGuard hosted automated payment authorizer", () => {
       }),
     ).toThrow(/must use HTTPS/i);
     expect(() =>
-      createXGuardHostedPaymentAuthorizer({ accessToken: "short", assets: [asset] }),
+      createXGuardHostedPaymentAuthorizer({
+        accessToken: "short",
+        assets: [asset],
+      }),
     ).toThrow(/accessToken is invalid/i);
     expect(() =>
       createXGuardHostedPaymentAuthorizer({

@@ -61,10 +61,14 @@ export function createXGuardHostedPaymentAuthorizer(
   const accessToken = requiredToken(options.accessToken);
   const assets = options.assets.map(validateAssetDefinition);
   if (!assets.length)
-    throw new TypeError("XGuard hosted authorization requires at least one asset definition");
+    throw new TypeError(
+      "XGuard hosted authorization requires at least one asset definition",
+    );
   const timeoutMs = options.timeoutMs ?? 5000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 60_000)
-    throw new TypeError("XGuard hosted authorization timeoutMs must be 1..60000");
+    throw new TypeError(
+      "XGuard hosted authorization timeoutMs must be 1..60000",
+    );
   const fetchImpl = options.fetch ?? globalThis.fetch;
   if (typeof fetchImpl !== "function")
     throw new TypeError("XGuard hosted authorization requires fetch");
@@ -75,7 +79,8 @@ export function createXGuardHostedPaymentAuthorizer(
     if (!asset)
       return {
         allow: false,
-        reason: "XGuard hosted authorization has no asset metadata for this payment",
+        reason:
+          "XGuard hosted authorization has no asset metadata for this payment",
       };
 
     const amount = atomicToDecimal(intent.amountAtomic, asset.decimals);
@@ -85,7 +90,9 @@ export function createXGuardHostedPaymentAuthorizer(
     if (paymentReference !== undefined && paymentReference !== null) {
       const value = String(paymentReference).trim();
       if (!value || value.length > 160)
-        throw new TypeError("XGuard paymentReference must be 1..160 characters");
+        throw new TypeError(
+          "XGuard paymentReference must be 1..160 characters",
+        );
     }
 
     const merchantOrigin = resourceOrigin(intent.resourceUrl);
@@ -126,38 +133,57 @@ export function createXGuardHostedPaymentAuthorizer(
     } catch (error) {
       if (controller.signal.aborted)
         throw new Error("XGuard hosted authorization timed out");
-      throw new Error(`XGuard hosted authorization request failed: ${safeError(error)}`);
+      throw new Error(
+        `XGuard hosted authorization request failed: ${safeError(error)}`,
+      );
     } finally {
       clearTimeout(timeout);
     }
 
-    const receipt = (await response.json().catch(() => null)) as
-      | XGuardHostedPaymentReceipt
-      | null;
+    const receipt = (await response
+      .json()
+      .catch(() => null)) as XGuardHostedPaymentReceipt | null;
     if (!response.ok) {
       const code = errorCode(receipt);
       if (response.status === 402)
-        throw new Error("XGuard service balance is insufficient for automated payment authorization");
+        throw new Error(
+          "XGuard service balance is insufficient for automated payment authorization",
+        );
       if (response.status === 401)
-        throw new Error("XGuard automated payment access token is invalid or expired");
+        throw new Error(
+          "XGuard automated payment access token is invalid or expired",
+        );
       if (response.status === 403)
-        throw new Error("XGuard automated payment credential lacks billing scope");
+        throw new Error(
+          "XGuard automated payment credential lacks billing scope",
+        );
       throw new Error(
         `XGuard hosted authorization returned HTTP ${response.status}${code ? `: ${code}` : ""}`,
       );
     }
     if (!receipt || typeof receipt.decision !== "string")
-      throw new Error("XGuard hosted authorization returned an invalid decision receipt");
+      throw new Error(
+        "XGuard hosted authorization returned an invalid decision receipt",
+      );
 
     await options.onReceipt?.(receipt, intent);
     const decision = receipt.decision.toUpperCase();
     if (decision === "ALLOW") return { allow: true };
     if (decision === "REVIEW" && options.allowReview === true)
-      return { allow: true, reason: receiptReason(receipt, "XGuard returned REVIEW") };
+      return {
+        allow: true,
+        reason: receiptReason(receipt, "XGuard returned REVIEW"),
+      };
     if (decision === "REVIEW")
-      return { allow: false, reason: receiptReason(receipt, "XGuard requires review") };
+      return {
+        allow: false,
+        reason: receiptReason(receipt, "XGuard requires review"),
+      };
     if (decision === "BLOCK")
-      return { allow: false, reason: receiptReason(receipt, "XGuard blocked automated payment") };
+      return {
+        allow: false,
+        reason: receiptReason(receipt, "XGuard blocked automated payment"),
+      };
     return { allow: false, reason: `Unknown XGuard decision: ${decision}` };
   };
 }
@@ -167,11 +193,21 @@ function validateAssetDefinition(
 ): XGuardHostedAssetDefinition {
   const network = requiredString(value.network, "asset network", 96);
   const asset = requiredString(value.asset, "asset identifier", 128);
-  const currency = requiredString(value.currency, "asset currency", 12).toUpperCase();
+  const currency = requiredString(
+    value.currency,
+    "asset currency",
+    12,
+  ).toUpperCase();
   if (!/^[A-Z0-9][A-Z0-9._-]{1,11}$/.test(currency))
     throw new TypeError("XGuard asset currency is invalid");
-  if (!Number.isSafeInteger(value.decimals) || value.decimals < 0 || value.decimals > 30)
-    throw new TypeError("XGuard asset decimals must be an integer from 0 to 30");
+  if (
+    !Number.isSafeInteger(value.decimals) ||
+    value.decimals < 0 ||
+    value.decimals > 30
+  )
+    throw new TypeError(
+      "XGuard asset decimals must be an integer from 0 to 30",
+    );
   return { network, asset, currency, decimals: value.decimals };
 }
 
@@ -182,8 +218,7 @@ function findAsset(
 ): XGuardHostedAssetDefinition | undefined {
   return assets.find(
     (entry) =>
-      entry.network === network &&
-      sameAsset(network, entry.asset, asset),
+      entry.network === network && sameAsset(network, entry.asset, asset),
   );
 }
 
@@ -196,10 +231,14 @@ function sameAsset(network: string, left: string, right: string): boolean {
 function atomicToDecimal(value: string, decimals: number): string {
   const normalized = String(value).trim();
   if (!/^[0-9]+$/.test(normalized))
-    throw new TypeError("XGuard atomic payment amount must be an integer string");
+    throw new TypeError(
+      "XGuard atomic payment amount must be an integer string",
+    );
   const amount = BigInt(normalized);
   if (amount <= 0n)
-    throw new TypeError("XGuard atomic payment amount must be greater than zero");
+    throw new TypeError(
+      "XGuard atomic payment amount must be greater than zero",
+    );
   if (decimals === 0) return amount.toString();
   const scale = 10n ** BigInt(decimals);
   const whole = amount / scale;
@@ -220,7 +259,9 @@ function resourceOrigin(value: string): string {
     throw new TypeError("XGuard automated payment resource URL is invalid");
   }
   if (url.protocol !== "https:")
-    throw new TypeError("XGuard hosted automated payment resources must use HTTPS");
+    throw new TypeError(
+      "XGuard hosted automated payment resources must use HTTPS",
+    );
   return url.origin;
 }
 
@@ -236,7 +277,9 @@ function normalizeGateway(value: string): string {
   if (url.protocol !== "https:" && !(local && url.protocol === "http:"))
     throw new TypeError("XGuard hosted authorization gateway must use HTTPS");
   if (url.pathname !== "/" || url.search || url.hash)
-    throw new TypeError("XGuard hosted authorization gateway must be an origin");
+    throw new TypeError(
+      "XGuard hosted authorization gateway must be an origin",
+    );
   return url.origin;
 }
 
@@ -281,7 +324,9 @@ function receiptReason(
   fallback: string,
 ): string {
   const codes = Array.isArray(receipt.reasonCodes)
-    ? receipt.reasonCodes.filter((value) => typeof value === "string").slice(0, 5)
+    ? receipt.reasonCodes
+        .filter((value) => typeof value === "string")
+        .slice(0, 5)
     : [];
   return codes.length ? `${fallback}: ${codes.join(", ")}` : fallback;
 }
