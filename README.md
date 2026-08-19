@@ -74,13 +74,13 @@ The child-safety product is billed **per analyzed safety event** from the existi
 
 Initial prices:
 
-| Event | Price |
-| --- | ---: |
-| Single message | $0.005 |
-| Chat window | $0.010 |
-| Ad text | $0.010 |
+| Event                   |  Price |
+| ----------------------- | -----: |
+| Single message          | $0.005 |
+| Chat window             | $0.010 |
+| Ad text                 | $0.010 |
 | Image-description event | $0.015 |
-| Video-transcript event | $0.020 |
+| Video-transcript event  | $0.020 |
 
 The event id is idempotent per merchant. Retries do not create duplicate scan charges.
 

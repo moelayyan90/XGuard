@@ -69,13 +69,13 @@ XGuard is commercial infrastructure. API clients prepay the existing XGuard merc
 
 Initial prices:
 
-| Event | Price |
-| --- | ---: |
-| Single message | $0.005 |
-| Chat window | $0.010 |
-| Ad text | $0.010 |
+| Event                   |  Price |
+| ----------------------- | -----: |
+| Single message          | $0.005 |
+| Chat window             | $0.010 |
+| Ad text                 | $0.010 |
 | Image-description event | $0.015 |
-| Video-transcript event | $0.020 |
+| Video-transcript event  | $0.020 |
 
 The event id is idempotent per merchant so network retries do not create duplicate scan charges.
 

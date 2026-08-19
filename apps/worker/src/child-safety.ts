@@ -15,12 +15,7 @@ const SCAN_FEES_MICRO_USD = {
 type ContentKind = keyof typeof SCAN_FEES_MICRO_USD;
 type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 type PrimaryAction =
-  | "ALLOW"
-  | "WARN"
-  | "BLUR"
-  | "BLOCK"
-  | "FREEZE_CHAT"
-  | "ESCALATE";
+  "ALLOW" | "WARN" | "BLUR" | "BLOCK" | "FREEZE_CHAT" | "ESCALATE";
 
 type Category =
   | "grooming"
@@ -202,7 +197,8 @@ export async function childSafetyResponse(
   if (request.method === "GET" && url.pathname === "/v1/child-safety/catalog") {
     return json({
       product: "XGuard Child Safety Control Layer",
-      buyer: "Online platforms, schools, games, communities, telecom products, ad-tech and government/NGO child-safety programmes",
+      buyer:
+        "Online platforms, schools, games, communities, telecom products, ad-tech and government/NGO child-safety programmes",
       billingModel: "per analyzed safety event",
       pricing: Object.entries(SCAN_FEES_MICRO_USD).map(([kind, microUsd]) => ({
         contentKind: kind,
@@ -239,7 +235,10 @@ export async function childSafetyResponse(
     return scan(request, env);
   }
 
-  if (request.method === "OPTIONS" && url.pathname.startsWith("/v1/child-safety/")) {
+  if (
+    request.method === "OPTIONS" &&
+    url.pathname.startsWith("/v1/child-safety/")
+  ) {
     return new Response(null, { status: 204, headers: apiHeaders() });
   }
 
@@ -290,7 +289,10 @@ async function scan(request: Request, env: ChildSafetyEnv): Promise<Response> {
         402,
       );
     }
-    return json({ error: "billing_unavailable", detail: errorCode(error) }, 503);
+    return json(
+      { error: "billing_unavailable", detail: errorCode(error) },
+      503,
+    );
   }
 
   if (charge.state === "EARNED") {
@@ -335,12 +337,15 @@ async function scan(request: Request, env: ChildSafetyEnv): Promise<Response> {
       priorHighRiskEventsInSession: priorHighRisk,
       feeUsd: (feeMicroUsd / 1_000_000).toFixed(3),
       rawContentStored: false,
-      reporting: decision.riskLevel === "CRITICAL" ? globalReportingLinks() : undefined,
+      reporting:
+        decision.riskLevel === "CRITICAL" ? globalReportingLinks() : undefined,
       integrationNote:
         "FREEZE_CHAT/BLOCK/BLUR actions are control decisions. The integrated host platform must enforce them in its own product.",
     });
   } catch (error) {
-    await releaseCharge(env.DB, merchant.merchantId, eventId).catch(() => undefined);
+    await releaseCharge(env.DB, merchant.merchantId, eventId).catch(
+      () => undefined,
+    );
     console.error(
       JSON.stringify({
         event: "child_safety_scan_failed",
@@ -370,7 +375,15 @@ childLikely=${input.childLikely === true}
 childAgeBand=${clean(input.childAgeBand, 40) || "unknown"}
 language=${clean(input.language, 80) || "unknown"}
 priorHighRiskEventsInSession=${priorHighRisk}
-signals=${Array.isArray(input.signals) ? input.signals.slice(0, 20).map((v) => clean(v, 120)).filter(Boolean).join(", ") : "none"}
+signals=${
+    Array.isArray(input.signals)
+      ? input.signals
+          .slice(0, 20)
+          .map((v) => clean(v, 120))
+          .filter(Boolean)
+          .join(", ")
+      : "none"
+  }
 
 Content:
 ${clean(input.text, MAX_TEXT)}
@@ -450,8 +463,10 @@ function deterministicPolicy(
       freezeConversation: riskLevel === "CRITICAL",
       preventFurtherContact: riskLevel === "CRITICAL",
       suppressAd: categories.has("sexualized_ad") && riskLevel !== "LOW",
-      disableAutoplay: categories.has("explicit_sexual_content") && riskLevel !== "LOW",
-      requireHumanSafetyReview: riskLevel === "HIGH" || riskLevel === "CRITICAL",
+      disableAutoplay:
+        categories.has("explicit_sexual_content") && riskLevel !== "LOW",
+      requireHumanSafetyReview:
+        riskLevel === "HIGH" || riskLevel === "CRITICAL",
       surfaceReportFlow: riskLevel === "HIGH" || riskLevel === "CRITICAL",
       preserveClientSideEvidence: riskLevel === "CRITICAL",
     },
@@ -481,12 +496,14 @@ function globalReportingLinks(): Array<Record<string, string>> {
     },
     {
       name: "INHOPE",
-      purpose: "Find a country hotline to report suspected child sexual abuse material",
+      purpose:
+        "Find a country hotline to report suspected child sexual abuse material",
       url: "https://www.inhope.org/",
     },
     {
       name: "NCMEC CyberTipline",
-      purpose: "Report suspected child sexual exploitation; reports can be referred internationally",
+      purpose:
+        "Report suspected child sexual exploitation; reports can be referred internationally",
       url: "https://report.cybertip.org/",
     },
   ];
@@ -503,7 +520,10 @@ async function authenticateRequest(
 }
 
 async function readScanInput(request: Request): Promise<ScanInput | Response> {
-  const length = Number.parseInt(request.headers.get("content-length") ?? "0", 10);
+  const length = Number.parseInt(
+    request.headers.get("content-length") ?? "0",
+    10,
+  );
   if (Number.isFinite(length) && length > 80_000)
     return json({ error: "request_too_large" }, 413);
   try {
@@ -749,7 +769,9 @@ function parseDecision(raw: string): AiDecision {
     riskLevel,
     confidence,
     categories: categories.length ? categories : ["unknown"],
-    rationale: clean(parsed.rationale, 500) || "Risk classification generated from the supplied event.",
+    rationale:
+      clean(parsed.rationale, 500) ||
+      "Risk classification generated from the supplied event.",
   };
 }
 
@@ -761,12 +783,22 @@ function aiText(result: unknown): string {
 }
 
 function maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
-  const rank: Record<RiskLevel, number> = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
+  const rank: Record<RiskLevel, number> = {
+    LOW: 0,
+    MEDIUM: 1,
+    HIGH: 2,
+    CRITICAL: 3,
+  };
   return rank[a] >= rank[b] ? a : b;
 }
 
 function isRiskLevel(value: unknown): value is RiskLevel {
-  return value === "LOW" || value === "MEDIUM" || value === "HIGH" || value === "CRITICAL";
+  return (
+    value === "LOW" ||
+    value === "MEDIUM" ||
+    value === "HIGH" ||
+    value === "CRITICAL"
+  );
 }
 
 function isCategory(value: unknown): value is Category {

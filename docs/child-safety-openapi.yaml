@@ -59,9 +59,13 @@ paths:
                 $ref: "#/components/schemas/ScanResponse"
         "400": { description: Invalid event or content kind }
         "401": { description: Missing or invalid merchant API key }
-        "402": { description: Merchant prepaid balance cannot cover the scan fee }
+        "402":
+          { description: Merchant prepaid balance cannot cover the scan fee }
         "409": { description: Conflicting or released event id }
-        "503": { description: Safety classification or billing dependency unavailable }
+        "503":
+          {
+            description: Safety classification or billing dependency unavailable,
+          }
 components:
   securitySchemes:
     merchantBearer:
