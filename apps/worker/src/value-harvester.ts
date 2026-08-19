@@ -219,7 +219,10 @@ async function ingestOpportunity(
 
   const normalized = normalizeOpportunity(raw);
   if ("error" in normalized) {
-    return jsonResponse({ error: "invalid_opportunity", details: normalized.error }, 400);
+    return jsonResponse(
+      { error: "invalid_opportunity", details: normalized.error },
+      400,
+    );
   }
 
   const now = new Date().toISOString();
@@ -292,7 +295,8 @@ function normalizeOpportunity(
   if (!legalBasis) errors.push("legalBasis is required");
 
   const grossMicros = amountToMicros(raw.grossValue);
-  const costMicros = raw.estimatedCost === undefined ? 0 : amountToMicros(raw.estimatedCost);
+  const costMicros =
+    raw.estimatedCost === undefined ? 0 : amountToMicros(raw.estimatedCost);
   if (grossMicros === null || grossMicros <= 0) {
     errors.push("grossValue must be a positive finite amount");
   }
@@ -313,11 +317,20 @@ function normalizeOpportunity(
     errors.push("claim must be an object when provided");
   }
   const metadata = readRecord(raw.metadata);
-  if (raw.metadata !== undefined && raw.metadata !== null && metadata === null) {
+  if (
+    raw.metadata !== undefined &&
+    raw.metadata !== null &&
+    metadata === null
+  ) {
     errors.push("metadata must be an object when provided");
   }
 
-  if (errors.length > 0 || grossMicros === null || costMicros === null || confidence === null) {
+  if (
+    errors.length > 0 ||
+    grossMicros === null ||
+    costMicros === null ||
+    confidence === null
+  ) {
     return { error: errors };
   }
 
@@ -392,18 +405,26 @@ async function listOpportunities(
         )
         .bind(status, limit)
     : db
-        .prepare(`SELECT * FROM value_opportunities ORDER BY updated_at DESC LIMIT ?`)
+        .prepare(
+          `SELECT * FROM value_opportunities ORDER BY updated_at DESC LIMIT ?`,
+        )
         .bind(limit);
 
   const result = await statement.all<Record<string, unknown>>();
   const rows = (result.results ?? []).map(serializeRow);
-  return new Response(request.method === "HEAD" ? null : JSON.stringify({ opportunities: rows }), {
-    status: 200,
-    headers: jsonHeaders(),
-  });
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify({ opportunities: rows }),
+    {
+      status: 200,
+      headers: jsonHeaders(),
+    },
+  );
 }
 
-async function summaryResponse(request: Request, db: D1Database): Promise<Response> {
+async function summaryResponse(
+  request: Request,
+  db: D1Database,
+): Promise<Response> {
   const result = await db
     .prepare(
       `SELECT
@@ -422,7 +443,9 @@ async function summaryResponse(request: Request, db: D1Database): Promise<Respon
     eligible: Number(result?.eligible_count ?? 0),
     claimed: Number(result?.claimed_count ?? 0),
     recovered: Number(result?.recovered_count ?? 0),
-    eligibleExpectedNetValue: microsToAmount(Number(result?.eligible_net_micros ?? 0)),
+    eligibleExpectedNetValue: microsToAmount(
+      Number(result?.eligible_net_micros ?? 0),
+    ),
     recoveredValue: microsToAmount(Number(result?.recovered_micros ?? 0)),
     unit: "currency-specific; do not add mixed currencies without normalization",
   };
@@ -449,17 +472,16 @@ async function transitionOpportunity(
   if (!target) return jsonResponse({ error: "status_required" }, 400);
 
   const current = await db
-    .prepare(`SELECT status, currency, recovered_micros FROM value_opportunities WHERE id = ?`)
+    .prepare(
+      `SELECT status, currency, recovered_micros FROM value_opportunities WHERE id = ?`,
+    )
     .bind(id)
     .first<Record<string, unknown>>();
   if (!current) return jsonResponse({ error: "opportunity_not_found" }, 404);
 
   const currentStatus = String(current.status ?? "").toUpperCase();
   if (TERMINAL_STATUSES.has(currentStatus)) {
-    return jsonResponse(
-      { error: "terminal_status", currentStatus },
-      409,
-    );
+    return jsonResponse({ error: "terminal_status", currentStatus }, 409);
   }
   if (!ALLOWED_TRANSITIONS[currentStatus]?.has(target)) {
     return jsonResponse(
@@ -576,13 +598,16 @@ function discoveryResponse(request: Request, origin: string): Response {
     },
   };
 
-  return new Response(request.method === "HEAD" ? null : JSON.stringify(body, null, 2), {
-    status: 200,
-    headers: {
-      ...jsonHeaders(),
-      "Cache-Control": "public, max-age=300",
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify(body, null, 2),
+    {
+      status: 200,
+      headers: {
+        ...jsonHeaders(),
+        "Cache-Control": "public, max-age=300",
+      },
     },
-  });
+  );
 }
 
 function amountToMicros(value: unknown): number | null {
@@ -601,7 +626,11 @@ function readText(value: unknown, maxLength: number): string {
   return value.trim().slice(0, maxLength);
 }
 
-function readStringArray(value: unknown, maxItems: number, maxLength: number): string[] {
+function readStringArray(
+  value: unknown,
+  maxItems: number,
+  maxLength: number,
+): string[] {
   if (!Array.isArray(value)) return [];
   const items: string[] = [];
   for (const item of value.slice(0, maxItems)) {
