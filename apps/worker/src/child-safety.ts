@@ -516,7 +516,9 @@ async function authenticateRequest(
   const authorization = request.headers.get("authorization") ?? "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) return null;
-  return authenticateMerchant(db, match[1].trim());
+  const token = match[1];
+  if (!token) return null;
+  return authenticateMerchant(db, token.trim());
 }
 
 async function readScanInput(request: Request): Promise<ScanInput | Response> {
