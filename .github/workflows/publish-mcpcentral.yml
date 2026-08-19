@@ -3,6 +3,7 @@ name: Publish XGuard to MCP Central
 on:
   push:
     branches:
+      - main
       - distribution/mcpcentral
     paths:
       - server.json
