@@ -1,0 +1,171 @@
+openapi: 3.1.0
+info:
+  title: XGuard Migration Assistance API
+  version: 0.1.0
+  description: >-
+    Multilingual administrative assistance for migrants, refugees, asylum seekers,
+    displaced people, regular migrants, and people without regular immigration
+    documentation. Paid assistance operations use a USD 3.00 anchor price per
+    completed operation. Country-specific legal or administrative plans require
+    verified official-source grounding.
+  license:
+    name: Apache-2.0
+servers:
+  - url: https://xguardgate.com
+    description: XGuard production Worker
+tags:
+  - name: Migration Discovery
+  - name: Migration Assistance
+paths:
+  /v1/migration/catalog:
+    get:
+      tags: [Migration Discovery]
+      summary: Read supported migration assistance operations and pricing
+      responses:
+        "200":
+          description: Migration assistance catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [product, pricing, paidOperations, freeOperations]
+                properties:
+                  product: { const: XGuard Migration Assistance }
+                  mission: { type: string }
+                  pricing:
+                    $ref: "#/components/schemas/PricingContract"
+                  paidOperations:
+                    type: array
+                    items: { $ref: "#/components/schemas/OperationCatalogItem" }
+                  freeOperations:
+                    type: array
+                    items: { $ref: "#/components/schemas/OperationCatalogItem" }
+  /v1/migration/official-help:
+    get:
+      tags: [Migration Discovery]
+      summary: Read global official-help starting points
+      responses:
+        "200":
+          description: Global official-help anchors and verification notice
+  /v1/migration/quote:
+    post:
+      tags: [Migration Assistance]
+      summary: Quote a migration assistance operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [operation]
+              properties:
+                operation: { $ref: "#/components/schemas/Operation" }
+      responses:
+        "200":
+          description: Billable/free status and price for the requested operation
+        "400": { description: Unsupported operation }
+  /v1/migration/assist:
+    post:
+      tags: [Migration Assistance]
+      summary: Execute a migration assistance operation
+      description: >-
+        Paid operations require a Buyer Pass and a stable X-XGuard-Operation-Id.
+        The USD 3.00 fee is reserved before generation, earned only on successful
+        completion, and released if generation fails. First-line official-help,
+        protection, and legal-aid routing are free. Country-specific personalized
+        plans require verified official-source excerpts.
+      parameters:
+        - name: X-XGuard-Operation-Id
+          in: header
+          required: false
+          description: >-
+            Required for paid operations. Stable URL-safe id used to prevent
+            retry-based double charging.
+          schema:
+            type: string
+            minLength: 16
+            maxLength: 100
+            pattern: "^[A-Za-z0-9_-]{16,100}$"
+      security:
+        - buyerPassAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistanceRequest"
+      responses:
+        "200":
+          description: Completed paid operation or free first-line routing result
+        "400": { description: Invalid or unsupported request }
+        "402": { description: Buyer Pass or sufficient prepaid balance required }
+        "409": { description: Operation id conflict or already completed operation }
+        "422":
+          description: Verified official source required for a personalized plan
+        "502": { description: Assistance generation failed; reserved charge released }
+        "503": { description: Assistance or charging dependency unavailable }
+components:
+  securitySchemes:
+    buyerPassAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: XGuard Buyer Pass
+  schemas:
+    Operation:
+      type: string
+      enum:
+        - explain_letter
+        - translate_document
+        - prepare_document_packet
+        - check_completeness
+        - build_personalized_plan
+        - find_official_help
+        - safety_and_legal_aid
+    OperationCatalogItem:
+      type: object
+      required: [id, name]
+      properties:
+        id: { $ref: "#/components/schemas/Operation" }
+        name: { type: string }
+        priceUsd:
+          type: string
+          pattern: "^[0-9]+\\.[0-9]{2}$"
+    PricingContract:
+      type: object
+      required: [usd, microUsd, model]
+      properties:
+        usd: { const: "3.00" }
+        microUsd: { const: 3000000 }
+        model: { const: per_completed_paid_operation }
+        localCurrency: { type: string }
+        failurePolicy: { type: string }
+    OfficialSource:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string, maxLength: 240 }
+        url:
+          type: string
+          format: uri
+          pattern: "^https://"
+        excerpt: { type: string, maxLength: 8000 }
+    AssistanceRequest:
+      type: object
+      additionalProperties: false
+      required: [operation]
+      properties:
+        operation: { $ref: "#/components/schemas/Operation" }
+        language: { type: string, maxLength: 80 }
+        currentCountry: { type: string, maxLength: 120 }
+        nationality: { type: string, maxLength: 120 }
+        migrationStatus: { type: string, maxLength: 160 }
+        familyContext: { type: string, maxLength: 1000 }
+        goal: { type: string, maxLength: 2000 }
+        text: { type: string, maxLength: 24000 }
+        requirements: { type: string, maxLength: 24000 }
+        officialSources:
+          type: array
+          maxItems: 12
+          items: { $ref: "#/components/schemas/OfficialSource" }
