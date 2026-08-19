@@ -2,7 +2,7 @@
   "name": "xguard-monorepo",
   "version": "0.1.0-alpha.0",
   "private": true,
-  "description": "XGuard: safety and health-aware facilitator routing for x402 v2",
+  "description": "XGuard: hosted universal value-harvesting and recovery layer; protocols and payment rails are connectors, not the product boundary",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
