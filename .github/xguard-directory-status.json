@@ -1,12 +1,14 @@
 {
-  "updatedAt": "2026-08-19T02:24:29Z",
+  "updatedAt": "2026-08-19T14:20:51Z",
   "entries": {
     "officialMcpRegistry": {
       "status": "listed",
       "name": "io.github.moelayyan90/xguard",
       "version": "0.6.1",
-      "checkedAt": "2026-08-19T02:24:29Z",
-      "evidence": "PR #318 records that the Official MCP Registry already served io.github.moelayyan90/xguard at 0.6.1 before the verifier-only quoting fix was merged; server.json and LHM metadata remain aligned at 0.6.1."
+      "targetVersion": "0.6.2",
+      "checkedAt": "2026-08-19T14:20:51Z",
+      "refreshStatus": "external_verification_pending",
+      "evidence": "0.6.1 is the last independently recorded Official MCP Registry version. Current server.json, LHM metadata and MCP runtime target 0.6.2; the supported OIDC publication workflow is responsible for publishing and verifying that target. This record does not claim 0.6.2 is live until direct registry or workflow evidence confirms it."
     },
     "mcpRepository": {
       "status": "listed",
@@ -51,11 +53,11 @@
       "evidence": "A2A Registry returned HTTP 201, verified message/send through its A2A SDK, and recorded task_conformance passed=true"
     },
     "toolHive": {
-      "status": "ready_for_submission",
+      "status": "retest_required_after_tool_surface_change",
       "testedAt": "2026-08-17T05:12:31Z",
       "toolHiveVersion": "0.43.0",
       "runId": "31997034944",
-      "evidence": "ToolHive remote proxy initialized XGuard successfully and tools/list returned xguard_discover, xguard_resource_details, and xguard_status; compatibility run ended with TOOLHIVE_XGUARD_COMPATIBILITY=PASS"
+      "evidence": "The prior ToolHive compatibility run predates the current five-tool MCP surface and only verified xguard_discover, xguard_resource_details and xguard_status. Since xguard_payment_offer and xguard_payment_decision were added later, that historical run is not sufficient evidence for current submission readiness; a fresh ToolHive compatibility run is required before claiming current compatibility."
     },
     "mcpFoundry": {
       "status": "not_applicable_remote_only",
@@ -83,9 +85,10 @@
       "evidence": "production-provider listing request sent to info@x402.org; GitHub App writes to the foundation repository are not authorized"
     },
     "x402List": {
-      "status": "blocked_custom_domain_required",
-      "checkedAt": "2026-08-17",
-      "evidence": "x402-list accepts free first submissions for services/facilitators but explicitly rejects workers.dev and other free-hosting/dev-tunnel domains; XGuard's current public mainnet URL is on workers.dev"
+      "status": "custom_domain_block_removed_submission_requirements_pending",
+      "checkedAt": "2026-08-19T14:20:51Z",
+      "canonicalWebsite": "https://xguardgate.com",
+      "evidence": "The previous workers.dev/custom-domain blocker is obsolete: XGuard now has the canonical own-domain production URL https://xguardgate.com and successful mainnet/live-MCP checks in GitHub. x402-list still requires truthful facilitator submission fields including an operator email, one or more settler addresses and networks, and performs manual review. No submission or acceptance is claimed here because those current submission facts and any adoption/evidence gate must be verified before sending."
     },
     "x402Watch": {
       "status": "account_required",
