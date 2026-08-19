@@ -8,10 +8,15 @@ import { paymentLayerIndexResponse } from "./payment-layer-indexing.js";
 import { paymentLayerPublicResponse } from "./payment-layer-public.js";
 import { portalDesignResponse } from "./portal-design.js";
 import { searchIndexResponse } from "./search-indexing.js";
+import { valueHarvesterResponse } from "./value-harvester.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
 
-type PublicMainnetEnv = Record<string, unknown>;
+interface PublicMainnetEnv extends Record<string, unknown> {
+  DB: D1Database;
+  XGUARD_VALUE_API_KEY?: string;
+}
+
 type PublicFetch = (
   request: Request,
   env: PublicMainnetEnv,
@@ -86,6 +91,9 @@ const handler: ExportedHandler<PublicMainnetEnv> = {
 
     const writeEndpointDiscovery = writeEndpointDiscoveryResponse(request);
     if (writeEndpointDiscovery !== null) return writeEndpointDiscovery;
+
+    const valueHarvester = await valueHarvesterResponse(request, env);
+    if (valueHarvester !== null) return valueHarvester;
 
     const paymentLayer = paymentLayerPublicResponse(request);
     if (paymentLayer !== null) return paymentLayer;
