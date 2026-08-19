@@ -11,7 +11,7 @@ import {
 } from "./payment-decision.js";
 
 export const MODERN_MCP_PROTOCOL = "2026-07-28";
-export const XGUARD_MCP_VERSION = "0.6.1";
+export const XGUARD_MCP_VERSION = "0.6.2";
 
 const LEGACY_MCP_PROTOCOLS = new Set([
   "2025-11-25",

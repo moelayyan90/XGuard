@@ -70,7 +70,7 @@ describe("MCP 2026-07-28 mainnet surface", () => {
       _meta: {
         "io.modelcontextprotocol/serverInfo": {
           name: "xguard-mainnet",
-          version: "0.6.1",
+          version: "0.6.2",
         },
       },
     });
