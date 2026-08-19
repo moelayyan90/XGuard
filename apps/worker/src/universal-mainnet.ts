@@ -9,6 +9,10 @@ import { buyerPortalResponse } from "./buyer-portal.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 import { mcpOAuthChallengeResponse } from "./mcp-oauth-challenge.js";
 import { mcpOAuthResponse } from "./mcp-oauth.js";
+import {
+  migrationAssistanceResponse,
+  type MigrationAssistanceEnv,
+} from "./migration-assistance.js";
 import { paymentDecisionResponse } from "./payment-decision.js";
 import {
   normalizePublicPaymentContract,
@@ -31,7 +35,7 @@ export {
   XPayGlobalRateGate,
 };
 
-interface UniversalMainnetEnv {
+interface UniversalMainnetEnv extends MigrationAssistanceEnv {
   DB: D1Database;
   BASE_RPC_URL: string;
   XGUARD_TREASURY_USDC_ADDRESS: string;
@@ -43,6 +47,7 @@ interface UniversalMainnetEnv {
   XGUARD_PAYMENT_DECISION_FEE_MICRO_USD?: string;
   XGUARD_SECURITY_FEE_MICRO_USD?: string;
   XGUARD_TOOL_FEE_MICRO_USD?: string;
+  MIGRATION_OPERATION_FEE_MICRO_USD?: string;
   [key: string]: unknown;
 }
 
@@ -125,6 +130,12 @@ export default {
 
     const securityBlock = universalSecurityGuardResponse(standardRequest);
     if (securityBlock !== null) return securityBlock;
+
+    const migrationAssistance = await migrationAssistanceResponse(
+      standardRequest,
+      env,
+    );
+    if (migrationAssistance !== null) return migrationAssistance;
 
     const buyerPassCreateBlock = await buyerPassCreationGuard(
       standardRequest,
