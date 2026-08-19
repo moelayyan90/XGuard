@@ -96,14 +96,17 @@ async function scanFeed(
 
     try {
       const body = normalizeFeedOpportunity(feed.id, externalId, item);
-      const request = new Request("https://xguard.internal/v1/value/opportunities", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
+      const request = new Request(
+        "https://xguard.internal/v1/value/opportunities",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify(body),
-      });
+      );
 
       const response = await valueHarvesterResponse(request, env);
       if (!response || response.status !== 201) {
@@ -114,7 +117,9 @@ async function scanFeed(
 
       const result = (await response.json()) as { id?: unknown };
       const opportunityId =
-        typeof result.id === "string" && result.id.length > 0 ? result.id : null;
+        typeof result.id === "string" && result.id.length > 0
+          ? result.id
+          : null;
       if (!opportunityId) {
         await releaseDiscovery(env.DB, feed.id, externalId);
         stats.failed += 1;
@@ -149,7 +154,9 @@ async function fetchFeed(url: string): Promise<Record<string, unknown>[]> {
 
     if (!response.ok) throw new Error("feed_http_error");
 
-    const advertisedLength = Number(response.headers.get("content-length") ?? "0");
+    const advertisedLength = Number(
+      response.headers.get("content-length") ?? "0",
+    );
     if (advertisedLength > MAX_FEED_BYTES) throw new Error("feed_too_large");
 
     const bytes = await response.arrayBuffer();
@@ -180,8 +187,12 @@ function normalizeFeedOpportunity(
       : feedId;
   const metadata = isRecord(item.metadata) ? item.metadata : {};
 
-  const { externalId: _externalId, source: _source, metadata: _metadata, ...rest } =
-    item;
+  const {
+    externalId: _externalId,
+    source: _source,
+    metadata: _metadata,
+    ...rest
+  } = item;
 
   return {
     ...rest,
@@ -212,7 +223,8 @@ function parseFeeds(raw: string, allowedHosts: Set<string>): FeedConfig[] {
   for (const candidate of parsed.slice(0, MAX_FEEDS)) {
     if (!isRecord(candidate)) continue;
     const id = typeof candidate.id === "string" ? candidate.id.trim() : "";
-    const rawUrl = typeof candidate.url === "string" ? candidate.url.trim() : "";
+    const rawUrl =
+      typeof candidate.url === "string" ? candidate.url.trim() : "";
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || seenIds.has(id)) continue;
 
     let url: URL;
