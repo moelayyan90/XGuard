@@ -23,8 +23,7 @@ const OPPORTUNITY_KINDS = new Set([
   "other",
 ]);
 
-const TERMINAL_STATUSES = new Set(["RECOVERED", "REJECTED", "EXPIRED"]);
-const ALLOWED_TRANSITIONS: Record<string, Set<string>> = {
+const ALLOWED_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   FOUND: new Set(["ELIGIBLE", "REVIEW", "REJECTED", "EXPIRED"]),
   ELIGIBLE: new Set(["CLAIMING", "REVIEW", "REJECTED", "EXPIRED"]),
   REVIEW: new Set(["ELIGIBLE", "REJECTED", "EXPIRED"]),
@@ -96,12 +95,10 @@ export async function valueHarvesterResponse(
   if (url.pathname === OPPORTUNITIES_PATH) {
     if (request.method === "OPTIONS") return corsPreflight();
     const auth = authorize(request, env);
-    if (auth !== null) return auth;
+    if (auth) return auth;
     await ensureSchema(env.DB);
 
-    if (request.method === "POST") {
-      return ingestOpportunity(request, env.DB);
-    }
+    if (request.method === "POST") return ingestOpportunity(request, env.DB);
     if (request.method === "GET" || request.method === "HEAD") {
       return listOpportunities(request, env.DB, url);
     }
@@ -111,7 +108,7 @@ export async function valueHarvesterResponse(
   if (url.pathname === SUMMARY_PATH) {
     if (request.method === "OPTIONS") return corsPreflight();
     const auth = authorize(request, env);
-    if (auth !== null) return auth;
+    if (auth) return auth;
     await ensureSchema(env.DB);
 
     if (request.method === "GET" || request.method === "HEAD") {
@@ -123,14 +120,15 @@ export async function valueHarvesterResponse(
   const transitionMatch = url.pathname.match(
     /^\/v1\/value\/opportunities\/([A-Za-z0-9_-]{8,128})\/transition$/,
   );
-  if (transitionMatch) {
+  const opportunityId = transitionMatch?.[1];
+  if (opportunityId) {
     if (request.method === "OPTIONS") return corsPreflight();
     const auth = authorize(request, env);
-    if (auth !== null) return auth;
+    if (auth) return auth;
     await ensureSchema(env.DB);
 
     if (request.method !== "POST") return methodNotAllowed("POST, OPTIONS");
-    return transitionOpportunity(request, env.DB, transitionMatch[1]);
+    return transitionOpportunity(request, env.DB, opportunityId);
   }
 
   return null;
@@ -142,21 +140,17 @@ function authorize(request: Request, env: ValueHarvesterEnv): Response | null {
     return jsonResponse(
       {
         error: "value_harvester_not_configured",
-        message:
-          "Set XGUARD_VALUE_API_KEY before exposing private opportunity data or mutation endpoints.",
+        message: "Set XGUARD_VALUE_API_KEY before exposing private value data.",
       },
       503,
     );
   }
 
-  const header = request.headers.get("authorization") ?? "";
+  const actual = request.headers.get("authorization") ?? "";
   const expected = `Bearer ${configured}`;
-  if (!timingSafeEqual(header, expected)) {
+  if (!constantTimeEqual(actual, expected)) {
     return jsonResponse(
-      {
-        error: "unauthorized",
-        message: "A valid XGuard Value API bearer token is required.",
-      },
+      { error: "unauthorized" },
       401,
       { "WWW-Authenticate": 'Bearer realm="xguard-value"' },
     );
@@ -164,13 +158,13 @@ function authorize(request: Request, env: ValueHarvesterEnv): Response | null {
   return null;
 }
 
-function timingSafeEqual(left: string, right: string): boolean {
+function constantTimeEqual(left: string, right: string): boolean {
   if (left.length !== right.length) return false;
-  let diff = 0;
+  let difference = 0;
   for (let index = 0; index < left.length; index += 1) {
-    diff |= left.charCodeAt(index) ^ right.charCodeAt(index);
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
   }
-  return diff === 0;
+  return difference === 0;
 }
 
 async function ensureSchema(db: D1Database): Promise<void> {
@@ -210,14 +204,14 @@ async function ingestOpportunity(
   request: Request,
   db: D1Database,
 ): Promise<Response> {
-  let raw: OpportunityInput;
+  let input: OpportunityInput;
   try {
-    raw = (await request.json()) as OpportunityInput;
+    input = (await request.json()) as OpportunityInput;
   } catch {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
 
-  const normalized = normalizeOpportunity(raw);
+  const normalized = normalizeOpportunity(input);
   if ("error" in normalized) {
     return jsonResponse(
       { error: "invalid_opportunity", details: normalized.error },
@@ -280,46 +274,42 @@ async function ingestOpportunity(
 }
 
 function normalizeOpportunity(
-  raw: OpportunityInput,
+  input: OpportunityInput,
 ): NormalizedOpportunity | { error: string[] } {
   const errors: string[] = [];
-  const source = readText(raw.source, 200);
-  const kind = readText(raw.kind, 64).toLowerCase();
-  const currency = readText(raw.currency, 12).toUpperCase();
-  const legalBasis = readText(raw.legalBasis, 500);
-  const evidence = readStringArray(raw.evidence, 20, 1000);
+  const source = readText(input.source, 200);
+  const kind = readText(input.kind, 64).toLowerCase();
+  const currency = readText(input.currency, 12).toUpperCase();
+  const legalBasis = readText(input.legalBasis, 500);
+  const evidence = readStringArray(input.evidence, 20, 1000);
+  const grossMicros = amountToMicros(input.grossValue);
+  const costMicros =
+    input.estimatedCost === undefined ? 0 : amountToMicros(input.estimatedCost);
+  const confidence = readConfidence(input.confidence);
+  const expiresAt = readIsoDate(input.expiresAt);
+  const claim = readRecord(input.claim);
+  const metadata = readRecord(input.metadata);
 
   if (!source) errors.push("source is required");
   if (!OPPORTUNITY_KINDS.has(kind)) errors.push("kind is not supported");
   if (!/^[A-Z]{3,12}$/.test(currency)) errors.push("currency is invalid");
   if (!legalBasis) errors.push("legalBasis is required");
-
-  const grossMicros = amountToMicros(raw.grossValue);
-  const costMicros =
-    raw.estimatedCost === undefined ? 0 : amountToMicros(raw.estimatedCost);
   if (grossMicros === null || grossMicros <= 0) {
     errors.push("grossValue must be a positive finite amount");
   }
   if (costMicros === null || costMicros < 0) {
     errors.push("estimatedCost must be zero or a positive finite amount");
   }
-
-  const confidence = readConfidence(raw.confidence);
   if (confidence === null) errors.push("confidence must be between 0 and 1");
-
-  const expiresAt = readIsoDate(raw.expiresAt);
-  if (raw.expiresAt !== undefined && expiresAt === null) {
+  if (input.expiresAt !== undefined && expiresAt === null) {
     errors.push("expiresAt must be an ISO-8601 date/time");
   }
-
-  const claim = readRecord(raw.claim);
-  if (raw.claim !== undefined && raw.claim !== null && claim === null) {
+  if (input.claim !== undefined && input.claim !== null && claim === null) {
     errors.push("claim must be an object when provided");
   }
-  const metadata = readRecord(raw.metadata);
   if (
-    raw.metadata !== undefined &&
-    raw.metadata !== null &&
+    input.metadata !== undefined &&
+    input.metadata !== null &&
     metadata === null
   ) {
     errors.push("metadata must be an object when provided");
@@ -335,9 +325,9 @@ function normalizeOpportunity(
   }
 
   const netMicros = grossMicros - costMicros;
-  const rightToClaim = raw.rightToClaim === true;
-  const termsConfirmed = raw.termsConfirmed === true;
-  const automatic = raw.automatic === true;
+  const rightToClaim = input.rightToClaim === true;
+  const termsConfirmed = input.termsConfirmed === true;
+  const automatic = input.automatic === true;
   const reasons: string[] = [];
 
   if (!rightToClaim) reasons.push("right_to_claim_not_confirmed");
@@ -392,32 +382,29 @@ async function listOpportunities(
   db: D1Database,
   url: URL,
 ): Promise<Response> {
-  const requestedLimit = Number(url.searchParams.get("limit") ?? "50");
-  const limit = Number.isFinite(requestedLimit)
-    ? Math.max(1, Math.min(200, Math.trunc(requestedLimit)))
+  const parsedLimit = Number(url.searchParams.get("limit") ?? "50");
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.min(200, Math.trunc(parsedLimit)))
     : 50;
   const status = (url.searchParams.get("status") ?? "").toUpperCase();
 
   const statement = status
     ? db
         .prepare(
-          `SELECT * FROM value_opportunities WHERE status = ? ORDER BY updated_at DESC LIMIT ?`,
+          "SELECT * FROM value_opportunities WHERE status = ? ORDER BY updated_at DESC LIMIT ?",
         )
         .bind(status, limit)
     : db
         .prepare(
-          `SELECT * FROM value_opportunities ORDER BY updated_at DESC LIMIT ?`,
+          "SELECT * FROM value_opportunities ORDER BY updated_at DESC LIMIT ?",
         )
         .bind(limit);
 
   const result = await statement.all<Record<string, unknown>>();
-  const rows = (result.results ?? []).map(serializeRow);
+  const opportunities = (result.results ?? []).map(serializeRow);
   return new Response(
-    request.method === "HEAD" ? null : JSON.stringify({ opportunities: rows }),
-    {
-      status: 200,
-      headers: jsonHeaders(),
-    },
+    request.method === "HEAD" ? null : JSON.stringify({ opportunities }),
+    { status: 200, headers: jsonHeaders() },
   );
 }
 
@@ -425,7 +412,7 @@ async function summaryResponse(
   request: Request,
   db: D1Database,
 ): Promise<Response> {
-  const result = await db
+  const row = await db
     .prepare(
       `SELECT
         COUNT(*) AS found_count,
@@ -439,15 +426,15 @@ async function summaryResponse(
     .first<Record<string, unknown>>();
 
   const body = {
-    found: Number(result?.found_count ?? 0),
-    eligible: Number(result?.eligible_count ?? 0),
-    claimed: Number(result?.claimed_count ?? 0),
-    recovered: Number(result?.recovered_count ?? 0),
+    found: Number(row?.found_count ?? 0),
+    eligible: Number(row?.eligible_count ?? 0),
+    claimed: Number(row?.claimed_count ?? 0),
+    recovered: Number(row?.recovered_count ?? 0),
     eligibleExpectedNetValue: microsToAmount(
-      Number(result?.eligible_net_micros ?? 0),
+      Number(row?.eligible_net_micros ?? 0),
     ),
-    recoveredValue: microsToAmount(Number(result?.recovered_micros ?? 0)),
-    unit: "currency-specific; do not add mixed currencies without normalization",
+    recoveredValue: microsToAmount(Number(row?.recovered_micros ?? 0)),
+    unit: "currency-specific; mixed currencies require normalization",
   };
 
   return new Response(request.method === "HEAD" ? null : JSON.stringify(body), {
@@ -461,35 +448,33 @@ async function transitionOpportunity(
   db: D1Database,
   id: string,
 ): Promise<Response> {
-  let body: Record<string, unknown>;
+  let input: Record<string, unknown>;
   try {
-    body = (await request.json()) as Record<string, unknown>;
+    input = (await request.json()) as Record<string, unknown>;
   } catch {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
 
-  const target = readText(body.status, 32).toUpperCase();
+  const target = readText(input.status, 32).toUpperCase();
   if (!target) return jsonResponse({ error: "status_required" }, 400);
 
   const current = await db
     .prepare(
-      `SELECT status, currency, recovered_micros FROM value_opportunities WHERE id = ?`,
+      "SELECT status, currency, recovered_micros FROM value_opportunities WHERE id = ?",
     )
     .bind(id)
     .first<Record<string, unknown>>();
   if (!current) return jsonResponse({ error: "opportunity_not_found" }, 404);
 
   const currentStatus = String(current.status ?? "").toUpperCase();
-  if (TERMINAL_STATUSES.has(currentStatus)) {
-    return jsonResponse({ error: "terminal_status", currentStatus }, 409);
-  }
-  if (!ALLOWED_TRANSITIONS[currentStatus]?.has(target)) {
+  const allowed = ALLOWED_TRANSITIONS[currentStatus];
+  if (!allowed?.has(target)) {
     return jsonResponse(
       {
         error: "invalid_status_transition",
         currentStatus,
         requestedStatus: target,
-        allowed: [...(ALLOWED_TRANSITIONS[currentStatus] ?? [])],
+        allowed: allowed ? [...allowed] : [],
       },
       409,
     );
@@ -497,7 +482,7 @@ async function transitionOpportunity(
 
   let recoveredMicros = Number(current.recovered_micros ?? 0);
   if (target === "RECOVERED") {
-    const parsed = amountToMicros(body.recoveredValue);
+    const parsed = amountToMicros(input.recoveredValue);
     if (parsed === null || parsed < 0) {
       return jsonResponse(
         { error: "recoveredValue must be zero or a positive finite amount" },
@@ -507,14 +492,12 @@ async function transitionOpportunity(
     recoveredMicros = parsed;
   }
 
-  const now = new Date().toISOString();
+  const updatedAt = new Date().toISOString();
   await db
     .prepare(
-      `UPDATE value_opportunities
-       SET status = ?, recovered_micros = ?, updated_at = ?
-       WHERE id = ?`,
+      "UPDATE value_opportunities SET status = ?, recovered_micros = ?, updated_at = ? WHERE id = ?",
     )
-    .bind(target, recoveredMicros, now, id)
+    .bind(target, recoveredMicros, updatedAt, id)
     .run();
 
   return jsonResponse({
@@ -522,7 +505,7 @@ async function transitionOpportunity(
     status: target,
     currency: current.currency,
     recoveredValue: microsToAmount(recoveredMicros),
-    updatedAt: now,
+    updatedAt,
   });
 }
 
@@ -559,11 +542,9 @@ function discoveryResponse(request: Request, origin: string): Response {
     version: 1,
     category: "universal-value-recovery",
     description:
-      "Hosted engine for discovering, qualifying, proving, claiming and reconciling legally recoverable value. The core is protocol-neutral: payment rails, cloud credits, rebates, refunds, rewards and other sources are connectors, not the product boundary.",
+      "Hosted engine for discovering, qualifying, proving, claiming and reconciling legally recoverable value.",
     localInstallRequired: false,
     custody: false,
-    principle:
-      "XGuard only treats value as collectible when the right to claim and the governing terms are explicitly confirmed and supporting evidence exists.",
     pipeline: ["DISCOVER", "QUALIFY", "PROVE", "CLAIM", "RECONCILE"],
     opportunityKinds: [...OPPORTUNITY_KINDS],
     api: {
@@ -575,8 +556,9 @@ function discoveryResponse(request: Request, origin: string): Response {
     counters: ["found", "eligible", "claimed", "recovered"],
     safety: {
       noUnauthorizedFunds: true,
-      noAutomaticClaimWithoutConfirmedRight: true,
-      noSecretRequiredForDiscovery: true,
+      confirmedRightRequired: true,
+      confirmedTermsRequired: true,
+      evidenceRequiredForEligibility: true,
       privateOpportunityDataRequiresBearerToken: true,
     },
     connectorModel: {
@@ -594,7 +576,7 @@ function discoveryResponse(request: Request, origin: string): Response {
         "unclaimed-balance",
         "x402-recovery",
       ],
-      note: "x402 is one optional connector. The core does not depend on x402.",
+      note: "x402 is one optional connector; the core does not depend on it.",
     },
   };
 
@@ -602,10 +584,7 @@ function discoveryResponse(request: Request, origin: string): Response {
     request.method === "HEAD" ? null : JSON.stringify(body, null, 2),
     {
       status: 200,
-      headers: {
-        ...jsonHeaders(),
-        "Cache-Control": "public, max-age=300",
-      },
+      headers: { ...jsonHeaders(), "Cache-Control": "public, max-age=300" },
     },
   );
 }
@@ -613,8 +592,7 @@ function discoveryResponse(request: Request, origin: string): Response {
 function amountToMicros(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   const micros = Math.round(value * 1_000_000);
-  if (!Number.isSafeInteger(micros)) return null;
-  return micros;
+  return Number.isSafeInteger(micros) ? micros : null;
 }
 
 function microsToAmount(micros: number): number {
@@ -622,8 +600,7 @@ function microsToAmount(micros: number): number {
 }
 
 function readText(value: unknown, maxLength: number): string {
-  if (typeof value !== "string") return "";
-  return value.trim().slice(0, maxLength);
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
 function readStringArray(
@@ -632,28 +609,24 @@ function readStringArray(
   maxLength: number,
 ): string[] {
   if (!Array.isArray(value)) return [];
-  const items: string[] = [];
-  for (const item of value.slice(0, maxItems)) {
-    if (typeof item !== "string") continue;
-    const trimmed = item.trim().slice(0, maxLength);
-    if (trimmed) items.push(trimmed);
-  }
-  return items;
+  return value
+    .slice(0, maxItems)
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim().slice(0, maxLength))
+    .filter(Boolean);
 }
 
 function readConfidence(value: unknown): number | null {
   if (value === undefined) return 0.5;
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  if (value < 0 || value > 1) return null;
-  return value;
+  return value >= 0 && value <= 1 ? value : null;
 }
 
 function readIsoDate(value: unknown): string | null {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string") return null;
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString();
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 function readRecord(value: unknown): Record<string, unknown> | null {
@@ -703,9 +676,6 @@ function jsonResponse(
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      ...jsonHeaders(),
-      ...extraHeaders,
-    },
+    headers: { ...jsonHeaders(), ...extraHeaders },
   });
 }
