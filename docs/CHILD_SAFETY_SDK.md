@@ -33,10 +33,12 @@ const decision = await safety.scanAndEnforce(
     onWarn: async () => showSafetyWarning(message.id),
     onBlock: async () => blockMessageDelivery(message.id),
     onFreezeConversation: async () => freezeConversation(conversation.id),
-    onPreventFurtherContact: async () => preventContact(sender.id, recipient.id),
+    onPreventFurtherContact: async () =>
+      preventContact(sender.id, recipient.id),
     onHumanReview: async () => enqueueSafetyReview(message.id),
     onReportFlow: async () => surfaceReportingFlow(recipient.id),
-    onPreserveEvidence: async () => preserveEvidenceUnderYourRetentionPolicy(message.id),
+    onPreserveEvidence: async () =>
+      preserveEvidenceUnderYourRetentionPolicy(message.id),
   },
 );
 ```

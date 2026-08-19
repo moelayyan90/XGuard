@@ -8,12 +8,7 @@ export type ChildSafetyContentKind =
 export type ChildSafetyRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
 export type ChildSafetyAction =
-  | "ALLOW"
-  | "WARN"
-  | "BLUR"
-  | "BLOCK"
-  | "FREEZE_CHAT"
-  | "ESCALATE";
+  "ALLOW" | "WARN" | "BLUR" | "BLOCK" | "FREEZE_CHAT" | "ESCALATE";
 
 export interface ChildSafetyScanInput {
   eventId: string;
@@ -79,12 +74,8 @@ export interface ChildSafetyHooks {
   ) => void | Promise<void>;
   onSuppressAd?: (result: ChildSafetyScanResult) => void | Promise<void>;
   onDisableAutoplay?: (result: ChildSafetyScanResult) => void | Promise<void>;
-  onStopVideoPlayback?: (
-    result: ChildSafetyScanResult,
-  ) => void | Promise<void>;
-  onQuarantineActor?: (
-    result: ChildSafetyScanResult,
-  ) => void | Promise<void>;
+  onStopVideoPlayback?: (result: ChildSafetyScanResult) => void | Promise<void>;
+  onQuarantineActor?: (result: ChildSafetyScanResult) => void | Promise<void>;
   onHumanReview?: (result: ChildSafetyScanResult) => void | Promise<void>;
   onReportFlow?: (result: ChildSafetyScanResult) => void | Promise<void>;
   onPreserveEvidence?: (result: ChildSafetyScanResult) => void | Promise<void>;

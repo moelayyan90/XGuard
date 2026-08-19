@@ -29,11 +29,12 @@ function criticalResult(): ChildSafetyScanResult {
 
 describe("child safety SDK", () => {
   it("sends a paid server-side scan request", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify(criticalResult()), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(criticalResult()), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     const client = createChildSafetyClient({
       url: "https://xguardgate.com",
