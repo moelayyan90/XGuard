@@ -4,27 +4,31 @@ on:
   push:
     branches:
       - agent/value-harvester-core
-  pull_request:
-    branches:
-      - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   format:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: agent/value-harvester-core
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npx prettier --write apps/worker/src/value-harvester.ts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: formatted-value-harvester
-          path: apps/worker/src/value-harvester.ts
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit formatting if needed
+        run: |
+          if git diff --quiet -- apps/worker/src/value-harvester.ts; then
+            echo "Already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/value-harvester.ts
+          git commit -m "fix: format value harvester discovery source"
+          git push origin HEAD:agent/value-harvester-core
