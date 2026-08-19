@@ -6,6 +6,8 @@ const requiredFiles = [
   "docs/API.md",
   "docs/FACILITATORS.md",
   "docs/openapi.yaml",
+  "docs/MIGRATION_ASSISTANCE.md",
+  "docs/migration-openapi.yaml",
 ];
 
 for (const file of requiredFiles) await access(file);
@@ -38,24 +40,52 @@ for (const marker of [
     throw new Error(`OpenAPI mainnet boundary is missing: ${marker}`);
 }
 
+const migrationOpenapi = await readFile("docs/migration-openapi.yaml", "utf8");
+const migrationContract = load(migrationOpenapi);
+if (
+  typeof migrationContract !== "object" ||
+  migrationContract === null ||
+  migrationContract.openapi !== "3.1.0" ||
+  typeof migrationContract.paths !== "object" ||
+  migrationContract.paths === null
+)
+  throw new Error(
+    "Migration OpenAPI document did not parse into the expected contract",
+  );
+for (const marker of [
+  "title: XGuard Migration Assistance API",
+  "  /v1/migration/catalog:",
+  "  /v1/migration/official-help:",
+  "  /v1/migration/quote:",
+  "  /v1/migration/assist:",
+  'usd: { const: "3.00" }',
+  "microUsd: { const: 3000000 }",
+  "build_personalized_plan",
+  "safety_and_legal_aid",
+]) {
+  if (!migrationOpenapi.includes(marker))
+    throw new Error(`Migration OpenAPI boundary is missing: ${marker}`);
+}
+
 const readme = await readFile("README.md", "utf8");
 for (const link of [
   "[Quickstart](QUICKSTART.md)",
   "[API](docs/API.md)",
   "[facilitators](docs/FACILITATORS.md)",
+  "[Migration Assistance](docs/MIGRATION_ASSISTANCE.md)",
 ]) {
   if (!readme.includes(link))
     throw new Error(`README link is missing: ${link}`);
 }
 for (const marker of [
-  "# XGuard Payment Layer",
-  "https://xguardgate.com",
-  "/.well-known/xguard/payment-layer.json",
-  "The Payment Layer is the product; protocols are ways to connect it.",
+  "# XGuard Migration Assistance",
+  "USD 3.00 per completed paid operation",
+  "/v1/migration/assist",
+  "## Existing payment/protocol infrastructure",
   "x402 adapter",
 ]) {
   if (!readme.includes(marker))
-    throw new Error(`README universal product boundary is missing: ${marker}`);
+    throw new Error(`README migration product boundary is missing: ${marker}`);
 }
 
 console.log("Documentation contract check passed.");
