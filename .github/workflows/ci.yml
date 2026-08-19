@@ -25,6 +25,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Print canonical migration formatting
+        run: npx prettier apps/worker/src/migration-assistance.ts
       - run: npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
