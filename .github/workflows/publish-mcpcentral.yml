@@ -1,0 +1,35 @@
+name: Publish XGuard to MCP Central
+
+on:
+  push:
+    branches:
+      - distribution/mcpcentral
+    paths:
+      - server.json
+      - .github/workflows/publish-mcpcentral.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MCP publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz | tar xz
+          chmod +x mcp-publisher
+
+      - name: Authenticate to MCP Central with GitHub OIDC
+        shell: bash
+        run: ./mcp-publisher login github-oidc --registry https://registry.mcpcentral.io
+
+      - name: Publish server metadata
+        shell: bash
+        run: ./mcp-publisher publish
