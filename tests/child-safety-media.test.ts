@@ -56,14 +56,18 @@ function decision(kind: string): Response {
   );
 }
 
-async function mediaBody(response: Response | null): Promise<MediaResponseBody> {
+async function mediaBody(
+  response: Response | null,
+): Promise<MediaResponseBody> {
   if (response === null) throw new Error("Expected media response");
   return (await response.json()) as MediaResponseBody;
 }
 
 describe("child safety media worker", () => {
   it("uses vision for an uploaded image and delegates the derived summary", async () => {
-    const aiRun = vi.fn(async () => ({ answer: "Risk-relevant visual summary." }));
+    const aiRun = vi.fn(async () => ({
+      answer: "Risk-relevant visual summary.",
+    }));
     const delegate = vi.fn(async (request: Request) => {
       const body = (await request.json()) as Record<string, unknown>;
       expect(body.contentKind).toBe("image_description");

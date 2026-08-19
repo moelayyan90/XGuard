@@ -33,11 +33,12 @@ function mediaResult(kind: "image" | "audio" | "video") {
 
 describe("child safety media SDK", () => {
   it("posts image scans to the media endpoint", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify(mediaResult("image")), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(mediaResult("image")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     const client = createChildSafetyMediaClient({
       url: "https://xguardgate.com",
@@ -56,11 +57,12 @@ describe("child safety media SDK", () => {
   });
 
   it("posts audio scans to the media endpoint", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify(mediaResult("audio")), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(mediaResult("audio")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     const client = createChildSafetyMediaClient({
       url: "https://xguardgate.com",

@@ -45,9 +45,15 @@ export interface ChildSafetyMediaScanResult extends ChildSafetyScanResult {
 }
 
 export interface ChildSafetyMediaClient {
-  scanImage(input: ChildSafetyImageScanInput): Promise<ChildSafetyMediaScanResult>;
-  scanAudio(input: ChildSafetyAudioScanInput): Promise<ChildSafetyMediaScanResult>;
-  scanVideo(input: ChildSafetyVideoScanInput): Promise<ChildSafetyMediaScanResult>;
+  scanImage(
+    input: ChildSafetyImageScanInput,
+  ): Promise<ChildSafetyMediaScanResult>;
+  scanAudio(
+    input: ChildSafetyAudioScanInput,
+  ): Promise<ChildSafetyMediaScanResult>;
+  scanVideo(
+    input: ChildSafetyVideoScanInput,
+  ): Promise<ChildSafetyMediaScanResult>;
 }
 
 export function createChildSafetyMediaClient(
@@ -120,7 +126,9 @@ export function createChildSafetyMediaClient(
       for (const frame of input.frames) validateEncodedMedia(frame, "image");
       if (input.audio) validateEncodedMedia(input.audio, "audio");
       if (input.transcript && input.transcript.length > 20_000) {
-        throw new TypeError("video transcript must not exceed 20000 characters");
+        throw new TypeError(
+          "video transcript must not exceed 20000 characters",
+        );
       }
       return post("video", input);
     },

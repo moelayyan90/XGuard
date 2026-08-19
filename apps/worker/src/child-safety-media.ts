@@ -155,7 +155,11 @@ async function deriveSafetyText(
 
   if (kind === "audio") {
     const audio = requireAudio(input.audio);
-    const transcript = await transcribeAudio(env, audio, clean(input.language, 80));
+    const transcript = await transcribeAudio(
+      env,
+      audio,
+      clean(input.language, 80),
+    );
     return `Temporary transcription of uploaded audio for child-safety classification:\n${clean(transcript, MAX_TRANSCRIPT)}`;
   }
 
@@ -197,7 +201,10 @@ async function deriveSafetyText(
     .slice(0, MAX_TRANSCRIPT);
 }
 
-async function analyzeImage(env: MediaEnv, media: EncodedMedia): Promise<string> {
+async function analyzeImage(
+  env: MediaEnv,
+  media: EncodedMedia,
+): Promise<string> {
   const base64 = cleanBase64(media.base64, MAX_IMAGE_BASE64);
   const mimeType = normalizeImageMime(media.mimeType);
   const dataUri = `data:${mimeType};base64,${base64}`;
@@ -253,7 +260,10 @@ async function delegatePreparedScan(
         ? "video_transcript"
         : "chat_window";
   const signals = Array.isArray(input.signals)
-    ? input.signals.slice(0, 19).map((value) => clean(value, 120)).filter(Boolean)
+    ? input.signals
+        .slice(0, 19)
+        .map((value) => clean(value, 120))
+        .filter(Boolean)
     : [];
   signals.push(`xguard_raw_${kind}_scan`);
 
@@ -280,7 +290,8 @@ async function delegatePreparedScan(
   );
 
   const decision = await delegate(synthetic, env);
-  if (decision === null) return json({ error: "media_delegate_unavailable" }, 503);
+  if (decision === null)
+    return json({ error: "media_delegate_unavailable" }, 503);
   if (!decision.ok) return decision;
 
   const body: unknown = await decision.json().catch(() => null);
@@ -296,7 +307,8 @@ async function delegatePreparedScan(
           : kind === "audio"
             ? "speech_to_text"
             : "sampled_frames_plus_audio",
-      videoFrameCount: kind === "video" ? input.frames?.length ?? 0 : undefined,
+      videoFrameCount:
+        kind === "video" ? (input.frames?.length ?? 0) : undefined,
     },
   });
 }
@@ -331,7 +343,10 @@ function requireVideoFrames(value: VideoFrame[] | undefined): VideoFrame[] {
 }
 
 async function readInput(request: Request): Promise<MediaScanInput | Response> {
-  const length = Number.parseInt(request.headers.get("content-length") ?? "0", 10);
+  const length = Number.parseInt(
+    request.headers.get("content-length") ?? "0",
+    10,
+  );
   if (Number.isFinite(length) && length > MAX_REQUEST_BYTES)
     return json({ error: "request_too_large" }, 413);
   try {
@@ -393,14 +408,18 @@ function cleanBase64(value: unknown, maxLength: number): string {
 }
 
 function normalizeImageMime(value: unknown): string {
-  const mime = String(value ?? "").trim().toLowerCase();
+  const mime = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(mime))
     return mime === "image/jpg" ? "image/jpeg" : mime;
   throw new Error("unsupported_image_mime_type");
 }
 
 function normalizeAudioMime(value: unknown): string {
-  const mime = String(value ?? "").trim().toLowerCase();
+  const mime = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (
     [
       "audio/mpeg",

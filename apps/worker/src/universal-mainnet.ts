@@ -131,7 +131,10 @@ export default {
     const securityBlock = universalSecurityGuardResponse(standardRequest);
     if (securityBlock !== null) return securityBlock;
 
-    const childSafetyMedia = await childSafetyMediaResponse(standardRequest, env);
+    const childSafetyMedia = await childSafetyMediaResponse(
+      standardRequest,
+      env,
+    );
     if (childSafetyMedia !== null) return childSafetyMedia;
 
     const childSafety = await childSafetyResponse(standardRequest, env);
