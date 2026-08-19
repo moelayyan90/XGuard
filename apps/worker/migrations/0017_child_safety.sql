@@ -3,6 +3,8 @@ CREATE TABLE child_safety_scans (
   merchant_id TEXT NOT NULL REFERENCES merchants(merchant_id),
   external_event_id TEXT NOT NULL,
   risk_session_hash TEXT,
+  actor_hash TEXT,
+  target_hash TEXT,
   content_kind TEXT NOT NULL,
   risk_level TEXT NOT NULL CHECK (risk_level IN ('LOW','MEDIUM','HIGH','CRITICAL')),
   action TEXT NOT NULL CHECK (action IN ('ALLOW','WARN','BLUR','BLOCK','FREEZE_CHAT','ESCALATE')),
@@ -15,6 +17,10 @@ CREATE INDEX child_safety_scans_merchant_created_idx
   ON child_safety_scans(merchant_id, created_at);
 CREATE INDEX child_safety_scans_session_idx
   ON child_safety_scans(merchant_id, risk_session_hash, created_at);
+CREATE INDEX child_safety_scans_actor_idx
+  ON child_safety_scans(merchant_id, actor_hash, created_at);
+CREATE INDEX child_safety_scans_actor_target_idx
+  ON child_safety_scans(merchant_id, actor_hash, target_hash, created_at);
 
 CREATE TABLE child_safety_scan_charges (
   charge_id TEXT PRIMARY KEY,
