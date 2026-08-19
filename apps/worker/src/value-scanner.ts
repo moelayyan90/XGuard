@@ -186,13 +186,10 @@ function normalizeFeedOpportunity(
       ? `${feedId}:${item.source.trim()}`
       : feedId;
   const metadata = isRecord(item.metadata) ? item.metadata : {};
-
-  const {
-    externalId: _externalId,
-    source: _source,
-    metadata: _metadata,
-    ...rest
-  } = item;
+  const rest = { ...item };
+  delete rest.externalId;
+  delete rest.source;
+  delete rest.metadata;
 
   return {
     ...rest,
