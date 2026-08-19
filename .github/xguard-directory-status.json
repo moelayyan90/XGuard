@@ -1,12 +1,12 @@
 {
-  "updatedAt": "2026-08-17T09:45:00Z",
+  "updatedAt": "2026-08-19T02:24:29Z",
   "entries": {
     "officialMcpRegistry": {
       "status": "listed",
       "name": "io.github.moelayyan90/xguard",
-      "version": "0.4.0",
-      "checkedAt": "2026-08-17T09:15:49Z",
-      "evidence": "official Registry API returned exactly one latest match with status=active and the public streamable-http /mcp remote"
+      "version": "0.6.1",
+      "checkedAt": "2026-08-19T02:24:29Z",
+      "evidence": "PR #318 records that the Official MCP Registry already served io.github.moelayyan90/xguard at 0.6.1 before the verifier-only quoting fix was merged; server.json and LHM metadata remain aligned at 0.6.1."
     },
     "mcpRepository": {
       "status": "listed",
