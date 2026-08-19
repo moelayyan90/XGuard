@@ -151,7 +151,7 @@ npm run smoke:mainnet
 
 ## Documentation
 
-[Quickstart](QUICKSTART.md) · [API](docs/API.md) · [Pricing](PRICING.md) · [Billing](BILLING.md) · [Deployment](DEPLOYMENT.md)
+[Quickstart](QUICKSTART.md) · [API](docs/API.md) · [facilitators](docs/FACILITATORS.md) · [Pricing](PRICING.md) · [Billing](BILLING.md) · [Deployment](DEPLOYMENT.md)
 
 XGuard is an independent project and is not an official product of the x402 Foundation, Coinbase, Cloudflare, Base, Circle, xpay, PayAI, OKX, Google or Microsoft.
 
