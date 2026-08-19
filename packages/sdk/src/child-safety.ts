@@ -187,16 +187,26 @@ export function createChildSafetyClient(
 }
 
 function normalizeBaseUrl(value: string): string {
-  const url = value.trim().replace(/\/+$/, "");
-  if (
-    !/^https:\/\//.test(url) &&
-    !/^http:\/\/(?:127\.0\.0\.1|localhost)(?::[0-9]+)?$/.test(url)
-  ) {
+  const trimmed = value.trim();
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new TypeError("XGuard URL must be a valid absolute URL");
+  }
+
+  const localhost =
+    url.protocol === "http:" &&
+    (url.hostname === "127.0.0.1" || url.hostname === "localhost");
+  if (url.protocol !== "https:" && !localhost) {
     throw new TypeError(
       "XGuard URL must use HTTPS, except for localhost development",
     );
   }
-  return url;
+  if (url.username || url.password) {
+    throw new TypeError("XGuard URL must not contain embedded credentials");
+  }
+  return url.origin;
 }
 
 function normalizeTimeout(value: number | undefined): number {
