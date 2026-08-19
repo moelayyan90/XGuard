@@ -1,7 +1,10 @@
+import { authenticateBuyerPass } from "./buyer-pass.js";
+
 const PAID_OPERATION_FEE_MICRO_USD = 3_000_000;
 const PAID_OPERATION_FEE_USD = "3.00";
 const MAX_TEXT_LENGTH = 24_000;
 const MAX_SOURCE_COUNT = 12;
+const OPERATION_ID = /^[A-Za-z0-9_-]{16,100}$/;
 
 const PAID_OPERATIONS = new Set([
   "explain_letter",
@@ -36,6 +39,7 @@ const GLOBAL_OFFICIAL_HELP = [
 ];
 
 export interface MigrationAssistanceEnv {
+  DB: D1Database;
   AI: {
     run(model: string, input: unknown): Promise<unknown>;
   };
@@ -65,6 +69,15 @@ interface ParsedAiResponse {
   response?: string;
 }
 
+interface MigrationChargeRow {
+  operation_id: string;
+  principal_id: string;
+  operation_type: string;
+  amount_micro_usd: number;
+  state: "HELD" | "EARNED" | "RELEASED";
+  request_nonce: string;
+}
+
 export async function migrationAssistanceResponse(
   request: Request,
   env: MigrationAssistanceEnv,
@@ -79,44 +92,18 @@ export async function migrationAssistanceResponse(
     return jsonResponse({
       product: "XGuard Migration Assistance",
       mission:
-        "Practical, multilingual help for migrants, refugees, asylum seekers and displaced people, regardless of documentation status.",
+        "Practical, multilingual help for migrants, refugees, asylum seekers, displaced people and people without regular documentation.",
       pricing: pricingContract(env),
       paidOperations: [
-        {
-          id: "explain_letter",
-          name: "Explain an official letter",
-          priceUsd: PAID_OPERATION_FEE_USD,
-        },
-        {
-          id: "translate_document",
-          name: "Translate document text",
-          priceUsd: PAID_OPERATION_FEE_USD,
-        },
-        {
-          id: "prepare_document_packet",
-          name: "Prepare and organize a document packet",
-          priceUsd: PAID_OPERATION_FEE_USD,
-        },
-        {
-          id: "check_completeness",
-          name: "Check a file against supplied requirements",
-          priceUsd: PAID_OPERATION_FEE_USD,
-        },
-        {
-          id: "build_personalized_plan",
-          name: "Build a source-grounded personal action plan",
-          priceUsd: PAID_OPERATION_FEE_USD,
-        },
+        { id: "explain_letter", name: "Explain an official letter", priceUsd: PAID_OPERATION_FEE_USD },
+        { id: "translate_document", name: "Translate document text", priceUsd: PAID_OPERATION_FEE_USD },
+        { id: "prepare_document_packet", name: "Prepare and organize a document packet", priceUsd: PAID_OPERATION_FEE_USD },
+        { id: "check_completeness", name: "Check a file against supplied requirements", priceUsd: PAID_OPERATION_FEE_USD },
+        { id: "build_personalized_plan", name: "Build a source-grounded personal action plan", priceUsd: PAID_OPERATION_FEE_USD },
       ],
       freeOperations: [
-        {
-          id: "find_official_help",
-          name: "Find official protection and help starting points",
-        },
-        {
-          id: "safety_and_legal_aid",
-          name: "Safety and legal-aid routing",
-        },
+        { id: "find_official_help", name: "Find official protection and help starting points" },
+        { id: "safety_and_legal_aid", name: "Safety and legal-aid routing" },
       ],
     });
   }
@@ -215,6 +202,64 @@ async function handleAssistance(
     );
   }
 
+  const principal = await authenticateBuyerPass(request, env);
+  if (principal === null) return migrationPaymentRequired(env, "buyer_pass_required");
+
+  const clientOperationId = cleanString(
+    request.headers.get("x-xguard-operation-id"),
+    100,
+  );
+  if (!OPERATION_ID.test(clientOperationId)) {
+    return jsonResponse(
+      {
+        error: "operation_id_required",
+        message:
+          "Send a stable X-XGuard-Operation-Id (16-100 URL-safe characters) so retries cannot charge twice.",
+      },
+      400,
+    );
+  }
+  const operationId = `migration_${clientOperationId}`;
+
+  let charge: MigrationChargeRow;
+  try {
+    charge = await reserveMigrationCharge(
+      env.DB,
+      principal.principalId,
+      operationId,
+      operation,
+      configuredFee,
+    );
+  } catch (error) {
+    const code = errorCode(error);
+    if (code === "insufficient_service_balance") {
+      return migrationPaymentRequired(env, code);
+    }
+    return jsonResponse({ error: "migration_charge_unavailable", detail: code }, 503);
+  }
+
+  if (charge.amount_micro_usd !== configuredFee || charge.operation_type !== operation) {
+    return jsonResponse({ error: "operation_charge_conflict" }, 409);
+  }
+  if (charge.state === "EARNED") {
+    return jsonResponse(
+      {
+        error: "operation_already_completed",
+        message: "This operation id has already been charged and completed. Use a new id for a new service operation.",
+      },
+      409,
+    );
+  }
+  if (charge.state === "RELEASED") {
+    return jsonResponse(
+      {
+        error: "operation_id_already_released",
+        message: "This operation id was released after a failed attempt. Use a new id to try again.",
+      },
+      409,
+    );
+  }
+
   const prompt = buildPrompt({
     ...input,
     operation,
@@ -228,10 +273,7 @@ async function handleAssistance(
   try {
     const result = await env.AI.run("@cf/zai-org/glm-4.7-flash", {
       messages: [
-        {
-          role: "system",
-          content: MIGRATION_SYSTEM_PROMPT,
-        },
+        { role: "system", content: MIGRATION_SYSTEM_PROMPT },
         { role: "user", content: prompt },
       ],
       max_tokens: 1800,
@@ -240,14 +282,27 @@ async function handleAssistance(
 
     const answer = extractAiText(result);
     if (!answer) {
-      return jsonResponse({ error: "assistance_generation_failed" }, 502);
+      await releaseMigrationCharge(env.DB, principal.principalId, operationId).catch(logChargeReleaseError);
+      return jsonResponse({ error: "assistance_generation_failed", chargeState: "released" }, 502);
+    }
+
+    try {
+      await earnMigrationCharge(env.DB, principal.principalId, operationId);
+    } catch (error) {
+      await releaseMigrationCharge(env.DB, principal.principalId, operationId).catch(logChargeReleaseError);
+      return jsonResponse(
+        { error: "migration_charge_completion_failed", detail: errorCode(error) },
+        503,
+      );
     }
 
     return jsonResponse({
       operation,
+      operationId: clientOperationId,
       language,
       billable: true,
       fee: pricingContract(env),
+      chargeState: "earned",
       answer,
       sourceCount: sources.length,
       legalBoundary:
@@ -256,14 +311,16 @@ async function handleAssistance(
         "This endpoint does not persist the submitted document text in XGuard application storage.",
     });
   } catch (error) {
+    await releaseMigrationCharge(env.DB, principal.principalId, operationId).catch(logChargeReleaseError);
     console.error(
       JSON.stringify({
         event: "migration_assistance_ai_error",
         operation,
-        detail: error instanceof Error ? error.message : "unknown_error",
+        operationId: clientOperationId,
+        detail: errorCode(error),
       }),
     );
-    return jsonResponse({ error: "assistance_unavailable" }, 503);
+    return jsonResponse({ error: "assistance_unavailable", chargeState: "released" }, 503);
   }
 }
 
@@ -309,8 +366,7 @@ function buildPrompt(input: Required<Pick<AssistanceInput, "operation" | "langua
     );
   }
 
-  const task = operationInstruction(input.operation || "");
-  return `${context.join("\n\n")}\n\nTask:\n${task}`;
+  return `${context.join("\n\n")}\n\nTask:\n${operationInstruction(input.operation || "")}`;
 }
 
 function operationInstruction(operation: string): string {
@@ -332,6 +388,152 @@ function operationInstruction(operation: string): string {
 
 function requiresText(operation: string): boolean {
   return operation === "explain_letter" || operation === "translate_document";
+}
+
+async function reserveMigrationCharge(
+  db: D1Database,
+  principalId: string,
+  operationId: string,
+  operationType: string,
+  amountMicroUsd: number,
+): Promise<MigrationChargeRow> {
+  const existing = await migrationCharge(db, operationId);
+  if (existing !== null) {
+    if (existing.principal_id !== principalId) throw new Error("operation_charge_owner_conflict");
+    return existing;
+  }
+
+  const nonce = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.batch([
+    db
+      .prepare(
+        "INSERT OR IGNORE INTO migration_operation_charges(operation_id,principal_id,operation_type,amount_micro_usd,state,request_nonce,created_at,updated_at) SELECT ?,?,?,?,'HELD',?,?,? FROM merchants WHERE merchant_id=? AND active=1 AND available_balance_micro_usd>=?",
+      )
+      .bind(operationId, principalId, operationType, amountMicroUsd, nonce, now, now, principalId, amountMicroUsd),
+    db
+      .prepare(
+        "UPDATE merchants SET available_balance_micro_usd=available_balance_micro_usd-?,held_balance_micro_usd=held_balance_micro_usd+? WHERE merchant_id=? AND active=1 AND available_balance_micro_usd>=? AND EXISTS(SELECT 1 FROM migration_operation_charges WHERE operation_id=? AND principal_id=? AND state='HELD' AND request_nonce=?)",
+      )
+      .bind(amountMicroUsd, amountMicroUsd, principalId, amountMicroUsd, operationId, principalId, nonce),
+  ]);
+
+  const created = await migrationCharge(db, operationId);
+  if (created === null) throw new Error("insufficient_service_balance");
+  if (created.principal_id !== principalId) throw new Error("operation_charge_owner_conflict");
+  return created;
+}
+
+async function earnMigrationCharge(
+  db: D1Database,
+  principalId: string,
+  operationId: string,
+): Promise<MigrationChargeRow> {
+  const row = await requireMigrationCharge(db, principalId, operationId);
+  if (row.state === "EARNED") return row;
+  if (row.state !== "HELD") throw new Error("invalid_migration_charge_transition");
+
+  const nonce = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const eventId = `migration:${operationId}`;
+  await db.batch([
+    db
+      .prepare(
+        "UPDATE migration_operation_charges SET state='EARNED',request_nonce=?,updated_at=? WHERE operation_id=? AND principal_id=? AND state='HELD'",
+      )
+      .bind(nonce, now, operationId, principalId),
+    db
+      .prepare(
+        "UPDATE merchants SET held_balance_micro_usd=held_balance_micro_usd-? WHERE merchant_id=? AND held_balance_micro_usd>=? AND EXISTS(SELECT 1 FROM migration_operation_charges WHERE operation_id=? AND principal_id=? AND state='EARNED' AND request_nonce=?)",
+      )
+      .bind(row.amount_micro_usd, principalId, row.amount_micro_usd, operationId, principalId, nonce),
+    db
+      .prepare(
+        "INSERT OR IGNORE INTO migration_usage_events(event_id,operation_id,principal_id,operation_type,fee_micro_usd,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM migration_operation_charges WHERE operation_id=? AND principal_id=? AND state='EARNED' AND request_nonce=?)",
+      )
+      .bind(eventId, operationId, principalId, row.operation_type, row.amount_micro_usd, now, operationId, principalId, nonce),
+    db
+      .prepare(
+        "INSERT OR IGNORE INTO ledger_entries(entry_id,event_id,account,side,amount_micro_usd,created_at) SELECT ?,?,'UNEARNED_LIABILITY','DEBIT',?,? WHERE EXISTS(SELECT 1 FROM migration_operation_charges WHERE operation_id=? AND principal_id=? AND state='EARNED' AND request_nonce=?)",
+      )
+      .bind(`${eventId}:debit`, eventId, row.amount_micro_usd, now, operationId, principalId, nonce),
+    db
+      .prepare(
+        "INSERT OR IGNORE INTO ledger_entries(entry_id,event_id,account,side,amount_micro_usd,created_at) SELECT ?,?,'EARNED_REVENUE','CREDIT',?,? WHERE EXISTS(SELECT 1 FROM migration_operation_charges WHERE operation_id=? AND principal_id=? AND state='EARNED' AND request_nonce=?)",
+      )
+      .bind(`${eventId}:credit`, eventId, row.amount_micro_usd, now, operationId, principalId, nonce),
+  ]);
+
+  const final = await requireMigrationCharge(db, principalId, operationId);
+  if (final.state !== "EARNED") throw new Error("migration_charge_transition_failed");
+  return final;
+}
+
+async function releaseMigrationCharge(
+  db: D1Database,
+  principalId: string,
+  operationId: string,
+): Promise<MigrationChargeRow> {
+  const row = await requireMigrationCharge(db, principalId, operationId);
+  if (row.state === "RELEASED" || row.state === "EARNED") return row;
+
+  const nonce = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.batch([
+    db
+      .prepare(
+        "UPDATE migration_operation_charges SET state='RELEASED',request_nonce=?,updated_at=? WHERE operation_id=? AND principal_id=? AND state='HELD'",
+      )
+      .bind(nonce, now, operationId, principalId),
+    db
+      .prepare(
+        "UPDATE merchants SET available_balance_micro_usd=available_balance_micro_usd+?,held_balance_micro_usd=held_balance_micro_usd-? WHERE merchant_id=? AND held_balance_micro_usd>=? AND EXISTS(SELECT 1 FROM migration_operation_charges WHERE operation_id=? AND principal_id=? AND state='RELEASED' AND request_nonce=?)",
+      )
+      .bind(row.amount_micro_usd, row.amount_micro_usd, principalId, row.amount_micro_usd, operationId, principalId, nonce),
+  ]);
+
+  return requireMigrationCharge(db, principalId, operationId);
+}
+
+async function migrationCharge(db: D1Database, operationId: string): Promise<MigrationChargeRow | null> {
+  return db
+    .prepare(
+      "SELECT operation_id,principal_id,operation_type,amount_micro_usd,state,request_nonce FROM migration_operation_charges WHERE operation_id=?",
+    )
+    .bind(operationId)
+    .first<MigrationChargeRow>();
+}
+
+async function requireMigrationCharge(
+  db: D1Database,
+  principalId: string,
+  operationId: string,
+): Promise<MigrationChargeRow> {
+  const row = await migrationCharge(db, operationId);
+  if (row === null || row.principal_id !== principalId) throw new Error("migration_charge_not_found");
+  return row;
+}
+
+function migrationPaymentRequired(
+  env: MigrationAssistanceEnv,
+  reason: string,
+): Response {
+  return jsonResponse(
+    {
+      error: "migration_payment_required",
+      reason,
+      pricing: pricingContract(env),
+      buyerPass: {
+        create: "/v1/buyer-pass",
+        balance: "/v1/buyer-pass",
+        topUp: "/v1/buyer-pass/topups/intents",
+        currentRail: "Base mainnet native USDC prepaid balance",
+      },
+      localCurrencyCheckout:
+        "The migration product is priced at USD 3.00. A card/local-currency checkout provider must be connected before public launch so the provider can quote and collect the live local equivalent.",
+    },
+    402,
+  );
 }
 
 function normalizeSources(value: OfficialSourceInput[] | undefined): OfficialSourceInput[] {
@@ -393,10 +595,21 @@ function pricingContract(env: MigrationAssistanceEnv): Record<string, unknown> {
     microUsd,
     model: "per_completed_paid_operation",
     localCurrency:
-      "The checkout provider must calculate the local-currency equivalent from the USD 3.00 anchor using its live FX quote at checkout. XGuard does not hardcode exchange rates.",
-    paymentEnforcement:
-      "Provider-backed payment authorization must be connected before public launch. The assistance API does not treat a client-supplied paid flag as proof of payment.",
+      "USD 3.00 is the anchor price. The connected checkout provider must calculate and collect the live local-currency equivalent at checkout; XGuard does not hardcode exchange rates.",
+    failurePolicy:
+      "The fee is reserved before generation and earned only after a completed operation. Failed generation releases the reservation.",
   };
+}
+
+function errorCode(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message.slice(0, 160);
+  return "unknown_error";
+}
+
+function logChargeReleaseError(error: unknown): void {
+  console.error(
+    JSON.stringify({ event: "migration_charge_release_error", detail: errorCode(error) }),
+  );
 }
 
 function migrationPortalHtml(): string {
@@ -443,7 +656,9 @@ function migrationPortalHtml(): string {
 <script>
 const language=document.getElementById('language');language.value=navigator.language||'English';
 const result=document.getElementById('result');
-document.getElementById('run').addEventListener('click',async()=>{const body={operation:document.getElementById('operation').value,language:language.value,currentCountry:document.getElementById('country').value,migrationStatus:document.getElementById('status').value,goal:document.getElementById('goal').value,text:document.getElementById('text').value,requirements:document.getElementById('requirements').value};result.textContent='Working…';try{const response=await fetch('/v1/migration/assist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const data=await response.json();result.textContent=data.answer||data.message||JSON.stringify(data,null,2)}catch{result.textContent='XGuard assistance is temporarily unavailable.'}});
+const paid=new Set(['explain_letter','translate_document','prepare_document_packet','check_completeness','build_personalized_plan']);
+async function buyerPass(){let token=localStorage.getItem('xguardMigrationBuyerPass');if(token)return token;const response=await fetch('/v1/buyer-pass',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channel:'browser',label:'Migration assistance'})});if(!response.ok)return '';const data=await response.json();if(data.buyerPass){localStorage.setItem('xguardMigrationBuyerPass',data.buyerPass);return data.buyerPass}return ''}
+document.getElementById('run').addEventListener('click',async()=>{const operation=document.getElementById('operation').value;const body={operation,language:language.value,currentCountry:document.getElementById('country').value,migrationStatus:document.getElementById('status').value,goal:document.getElementById('goal').value,text:document.getElementById('text').value,requirements:document.getElementById('requirements').value};result.textContent='Working…';try{const headers={'content-type':'application/json','x-xguard-operation-id':crypto.randomUUID()};if(paid.has(operation)){const token=await buyerPass();if(token)headers.authorization='Bearer '+token}const response=await fetch('/v1/migration/assist',{method:'POST',headers,body:JSON.stringify(body)});const data=await response.json();if(response.status===402){result.textContent='Payment required: $3.00 for this operation. The charging engine is active. The current bootstrap rail is prepaid Base USDC; card/local-currency checkout must be connected before public launch.';return}result.textContent=data.answer||data.message||JSON.stringify(data,null,2)}catch{result.textContent='XGuard assistance is temporarily unavailable.'}});
 </script>
 </body>
 </html>`;
@@ -454,7 +669,7 @@ function apiHeaders(): Headers {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-XGuard-Operation-Id",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "X-Content-Type-Options": "nosniff",
   });
