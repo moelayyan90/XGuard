@@ -44,10 +44,7 @@ function assertAuthenticationOrWatchdogFailClosed(result, message) {
 
 const root = await text("/");
 assert(root.response.status === 200, "mainnet root endpoint is unavailable");
-assert(
-  /XGuard/i.test(root.body),
-  "root is not an XGuard product surface",
-);
+assert(/XGuard/i.test(root.body), "root is not an XGuard product surface");
 
 const health = await json("/healthz");
 assert(health.response.status === 200, "mainnet health check failed");
