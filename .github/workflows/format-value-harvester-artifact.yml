@@ -1,0 +1,27 @@
+name: Format value harvester artifact
+
+on:
+  push:
+    branches:
+      - agent/value-harvester-core
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prettier --write apps/worker/src/value-harvester.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: formatted-value-harvester
+          path: apps/worker/src/value-harvester.ts
+          if-no-files-found: error
+          retention-days: 1
