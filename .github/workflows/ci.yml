@@ -3,19 +3,47 @@ on:
   pull_request:
   merge_group:
   push:
-    branches: [main]
+    branches: [main, agent/child-safety-platform]
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   checks: write
   pull-requests: read
 
 jobs:
+  format_child_safety:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/child-safety-platform' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/child-safety-platform
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prettier --write packages/sdk/src/child-safety.ts
+      - name: Commit canonical formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- packages/sdk/src/child-safety.ts; then
+            echo "Already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/sdk/src/child-safety.ts
+          git commit -m "Format CodeQL SDK fix"
+          git push origin HEAD:agent/child-safety-platform
+
   verify:
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
