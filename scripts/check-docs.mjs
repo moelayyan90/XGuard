@@ -48,11 +48,12 @@ for (const link of [
     throw new Error(`README link is missing: ${link}`);
 }
 for (const marker of [
-  "# XGuard Payment Layer",
+  "# XGuard Value Harvester",
+  "XGuard is a hosted value-harvesting and recovery layer",
   "https://xguardgate.com",
-  "/.well-known/xguard/payment-layer.json",
-  "The Payment Layer is the product; protocols are ways to connect it.",
-  "x402 adapter",
+  "/.well-known/xguard/value-harvester.json",
+  "A payment protocol is only one possible source.",
+  "x402 compatibility adapter",
 ]) {
   if (!readme.includes(marker))
     throw new Error(`README universal product boundary is missing: ${marker}`);
