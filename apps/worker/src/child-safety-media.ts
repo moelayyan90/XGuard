@@ -454,10 +454,14 @@ function aiText(result: unknown): string {
 }
 
 function clean(value: unknown, maxLength: number): string {
-  return String(value ?? "")
-    .replace(/[\u0000-\u001F\u007F]/g, " ")
-    .trim()
-    .slice(0, maxLength);
+  const text = String(value ?? "");
+  let normalized = "";
+  const limit = Math.min(text.length, Math.max(0, maxLength));
+  for (let index = 0; index < limit; index += 1) {
+    const code = text.charCodeAt(index);
+    normalized += code < 32 || code == 127 ? " " : text.charAt(index);
+  }
+  return normalized.trim();
 }
 
 function errorCode(error: unknown): string {
