@@ -2,7 +2,7 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "xguard-mainnet",
   "main": "src/universal-mainnet.ts",
-  "compatibility_date": "2026-08-14",
+  "compatibility_date": "2026-08-19",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": false,
   "minify": true,
@@ -18,6 +18,9 @@
       "enabled": true,
       "head_sampling_rate": 0.1,
     },
+  },
+  "ai": {
+    "binding": "AI",
   },
   "vars": {
     "BASE_RPC_URL": "https://base.public.blockpi.network/v1/rpc/public",

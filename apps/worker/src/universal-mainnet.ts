@@ -6,6 +6,7 @@ import monetizedMainnet, {
 import { a2aGatewayV1Response } from "./a2a-gateway-v1.js";
 import { buyerPassResponse } from "./buyer-pass.js";
 import { buyerPortalResponse } from "./buyer-portal.js";
+import { childSafetyResponse } from "./child-safety.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 import { mcpOAuthChallengeResponse } from "./mcp-oauth-challenge.js";
 import { mcpOAuthResponse } from "./mcp-oauth.js";
@@ -33,6 +34,9 @@ export {
 
 interface UniversalMainnetEnv {
   DB: D1Database;
+  AI: {
+    run(model: string, input: unknown): Promise<unknown>;
+  };
   BASE_RPC_URL: string;
   XGUARD_TREASURY_USDC_ADDRESS: string;
   REQUEST_RATE_LIMITER: RateLimit;
@@ -125,6 +129,9 @@ export default {
 
     const securityBlock = universalSecurityGuardResponse(standardRequest);
     if (securityBlock !== null) return securityBlock;
+
+    const childSafety = await childSafetyResponse(standardRequest, env);
+    if (childSafety !== null) return childSafety;
 
     const buyerPassCreateBlock = await buyerPassCreationGuard(
       standardRequest,
