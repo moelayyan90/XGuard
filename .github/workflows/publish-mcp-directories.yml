@@ -172,18 +172,30 @@ jobs:
         run: |
           set -euo pipefail
           URI='https://xguardgate.com/.well-known/agent-card.json'
-          card="$(curl -fsS --max-time 20 --retry 4 --retry-all-errors --retry-delay 2 "${URI}")"
-          if ! printf '%s' "${card}" | node -e '
-            let s="";
-            process.stdin.on("data",d=>s+=d).on("end",()=>{
-              const x=JSON.parse(s);
-              const interfaces=Array.isArray(x.supportedInterfaces)?x.supportedInterfaces:[];
-              const v1=interfaces.some(i=>i&&String(i.url||"")==="https://xguardgate.com/a2a"&&i.protocolBinding==="JSONRPC"&&String(i.protocolVersion||"")==="1.0");
-              const v03=interfaces.some(i=>i&&String(i.url||"")==="https://xguardgate.com/a2a"&&i.protocolBinding==="JSONRPC"&&String(i.protocolVersion||"").startsWith("0.3"));
-              process.exit(v1&&v03?0:1);
-            });
-          '; then
-            echo "XGuard Agent Card is not A2A 1.0-compatible with the advertised 0.3 compatibility interface; refusing registry refresh."
+          live_ready=false
+          for attempt in 1 2 3 4 5 6 7 8 9; do
+            if card="$(curl -fsS --max-time 20 --retry 2 --retry-all-errors --retry-delay 2 "${URI}")" && \
+              printf '%s' "${card}" | node -e '
+                let s="";
+                process.stdin.on("data",d=>s+=d).on("end",()=>{
+                  const x=JSON.parse(s);
+                  const interfaces=Array.isArray(x.supportedInterfaces)?x.supportedInterfaces:[];
+                  const skills=Array.isArray(x.skills)?x.skills:[];
+                  const v1=interfaces.some(i=>i&&String(i.url||"")==="https://xguardgate.com/a2a"&&i.protocolBinding==="JSONRPC"&&String(i.protocolVersion||"")==="1.0");
+                  const v03=interfaces.some(i=>i&&String(i.url||"")==="https://xguardgate.com/a2a"&&i.protocolBinding==="JSONRPC"&&String(i.protocolVersion||"").startsWith("0.3"));
+                  const paymentDecisions=skills.some(s=>s&&s.id==="payment-decisions"&&Array.isArray(s.examples)&&s.examples.includes("payment-offer")&&s.examples.some(e=>String(e).includes("payment-decision")));
+                  const paymentDecisionDiscovery=x?.xguardDiscovery?.paymentDecision==="https://xguardgate.com/.well-known/xguard-payment.json";
+                  process.exit(v1&&v03&&paymentDecisions&&paymentDecisionDiscovery?0:1);
+                });
+              '; then
+              live_ready=true
+              break
+            fi
+            echo "Live Agent Card is not yet on the current payment-intent discovery contract (attempt ${attempt}/9); waiting before registry refresh."
+            sleep 5
+          done
+          if [[ "${live_ready}" != "true" ]]; then
+            echo "XGuard Agent Card did not expose A2A 1.0/0.3 plus payment-intent discovery after waiting; refusing a stale registry refresh." >&2
             exit 1
           fi
           response="$(curl -sS --max-time 30 --retry 4 --retry-all-errors --retry-delay 2 -w $'\n%{http_code}' \
