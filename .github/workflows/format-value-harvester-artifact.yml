@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/value-harvester-core
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
