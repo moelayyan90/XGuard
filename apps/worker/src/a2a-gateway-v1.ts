@@ -149,6 +149,24 @@ function agentCard(origin: string): Record<string, unknown> {
         ],
       },
       {
+        id: "payment-decisions",
+        name: "Pre-payment decision and evidence",
+        description:
+          "Offer optional XGuard review before payment, then evaluate a declared payment intent and return ALLOW, REVIEW, or BLOCK with durable evidence. Use the payment-offer and payment-decision structured A2A actions; XGuard does not execute the underlying payment.",
+        tags: [
+          "payments",
+          "payment-intent",
+          "pre-payment",
+          "risk-decision",
+          "evidence",
+          "agent-commerce",
+        ],
+        examples: [
+          "payment-offer",
+          "payment-decision with a declared payment intent payload",
+        ],
+      },
+      {
         id: "payments",
         name: "Discover and fund XGuard",
         description: "Payment manifest, registration, balance and top-up.",
@@ -169,6 +187,7 @@ function agentCard(origin: string): Record<string, unknown> {
       actions: `${origin}/.well-known/xguard/actions.json`,
       execute: `${origin}/v1/actions/execute`,
       protocols: `${origin}/.well-known/xguard/protocols.json`,
+      paymentDecision: `${origin}/.well-known/xguard-payment.json`,
       mcp: `${origin}/mcp`,
     },
   };
@@ -188,6 +207,18 @@ async function executeAction(
       action: name,
       result: buildPaymentManifest(origin, env),
     };
+  if (name === "payment-offer")
+    return delegated(
+      delegate,
+      makeRequest(incoming, "/v1/payment/offer", "POST", {}),
+      name,
+    );
+  if (name === "payment-decision" && isRecord(action.payload))
+    return delegated(
+      delegate,
+      makeRequest(incoming, "/v1/payment/decision", "POST", action.payload),
+      name,
+    );
   if (name === "status")
     return delegated(delegate, makeRequest(incoming, "/status", "GET"), name);
   if (name === "capabilities")
@@ -263,6 +294,8 @@ async function executeAction(
     supportedActions: [
       "execute-action",
       "payment-manifest",
+      "payment-offer",
+      "payment-decision",
       "status",
       "capabilities",
       "register",
@@ -390,7 +423,7 @@ function answerText(text: string, origin: string): string {
   if (text.includes("price") || text.includes("fee"))
     return `XGuard x402 attempt fee is $${XGUARD_ATTEMPT_FEE_USD}. Universal action pricing is machine-readable at ${origin}/v1/gateway/quote.`;
   if (text.includes("pay") || text.includes("onboard"))
-    return `Robot: ${origin}/.well-known/payment-manifest. Human: ${origin}/pay.`;
+    return `Before payment, use structured action payment-offer; for an ALLOW/REVIEW/BLOCK decision with evidence, use payment-decision. Payment discovery: ${origin}/.well-known/xguard-payment.json. Funding: ${origin}/.well-known/payment-manifest.`;
   return `XGuard A2A is online. Use a structured data part with an action. Start at ${origin}/.well-known/agent-card.json or ${origin}/.well-known/xguard/actions.json.`;
 }
 
