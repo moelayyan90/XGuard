@@ -107,7 +107,7 @@ Example:
 }
 ```
 
-See [Migration Assistance](docs/MIGRATION_ASSISTANCE.md) for the product contract and current boundaries.
+See [Migration Assistance](docs/MIGRATION_ASSISTANCE.md) for the product contract and current boundaries. The machine-readable migration contract is in [Migration OpenAPI](docs/migration-openapi.yaml).
 
 ## Privacy posture
 
@@ -177,7 +177,7 @@ npm --workspace @xguard/worker run build:mainnet
 
 ## Documentation
 
-[Migration Assistance](docs/MIGRATION_ASSISTANCE.md) · [Security](SECURITY.md) · [Threat Model](THREAT_MODEL.md) · [Architecture](ARCHITECTURE.md) · [Operations](OPERATIONS.md) · [API](docs/API.md) · [Deployment](DEPLOYMENT.md)
+[Migration Assistance](docs/MIGRATION_ASSISTANCE.md) · [Migration OpenAPI](docs/migration-openapi.yaml) · [Quickstart](QUICKSTART.md) · [API](docs/API.md) · [facilitators](docs/FACILITATORS.md) · [Security](SECURITY.md) · [Threat Model](THREAT_MODEL.md) · [Architecture](ARCHITECTURE.md) · [Operations](OPERATIONS.md) · [Deployment](DEPLOYMENT.md)
 
 XGuard is an independent project and is not an official product of UNHCR, IOM, any government, Coinbase, Cloudflare, Base, Circle, x402 Foundation, or any other third party unless an explicit agreement states otherwise.
 
