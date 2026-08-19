@@ -100,11 +100,16 @@ paths:
         "200":
           description: Completed paid operation or free first-line routing result
         "400": { description: Invalid or unsupported request }
-        "402": { description: Buyer Pass or sufficient prepaid balance required }
-        "409": { description: Operation id conflict or already completed operation }
+        "402":
+          { description: Buyer Pass or sufficient prepaid balance required }
+        "409":
+          { description: Operation id conflict or already completed operation }
         "422":
           description: Verified official source required for a personalized plan
-        "502": { description: Assistance generation failed; reserved charge released }
+        "502":
+          {
+            description: Assistance generation failed; reserved charge released,
+          }
         "503": { description: Assistance or charging dependency unavailable }
 components:
   securitySchemes:
