@@ -216,12 +216,7 @@ async function executeAction(
   if (name === "payment-decision" && isRecord(action.payload))
     return delegated(
       delegate,
-      makeRequest(
-        incoming,
-        "/v1/payment/decision",
-        "POST",
-        action.payload,
-      ),
+      makeRequest(incoming, "/v1/payment/decision", "POST", action.payload),
       name,
     );
   if (name === "status")
