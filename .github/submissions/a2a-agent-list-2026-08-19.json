@@ -1,0 +1,11 @@
+{
+  "target": "A2A Agent List",
+  "url": "https://a2aagentlist.com/submit",
+  "status": "submitted_for_review",
+  "submittedAt": "2026-08-19T11:46:00Z",
+  "submissionMethod": "public editorial email",
+  "repository": "https://github.com/moelayyan90/XGuard",
+  "liveMainnet": "https://xguard-mainnet.maqamapp.workers.dev",
+  "remoteMcp": "https://xguard-mainnet.maqamapp.workers.dev/mcp",
+  "evidence": "Submission sent to the public address specified by the directory with truthful A2A/MCP/x402 metadata only; no paid plan, private credential, endorsement claim, signer misattribution, or duplicate submission used."
+}
