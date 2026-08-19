@@ -149,11 +149,9 @@ function authorize(request: Request, env: ValueHarvesterEnv): Response | null {
   const actual = request.headers.get("authorization") ?? "";
   const expected = `Bearer ${configured}`;
   if (!constantTimeEqual(actual, expected)) {
-    return jsonResponse(
-      { error: "unauthorized" },
-      401,
-      { "WWW-Authenticate": 'Bearer realm="xguard-value"' },
-    );
+    return jsonResponse({ error: "unauthorized" }, 401, {
+      "WWW-Authenticate": 'Bearer realm="xguard-value"',
+    });
   }
   return null;
 }
