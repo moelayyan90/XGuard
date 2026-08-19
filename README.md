@@ -1,169 +1,135 @@
-# XGuard Payment Layer
+# XGuard Value Harvester
 
 [![CI](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml)
 [![Mainnet](https://github.com/moelayyan90/XGuard/actions/workflows/deploy-mainnet.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/deploy-mainnet.yml)
 
-**XGuard is a payment-control layer that is meant to sit beside the payment, not force the payer into another XGuard website.**
+**XGuard is a hosted value-harvesting and recovery layer. Its product boundary is not x402, a payment rail, a browser extension, or any single protocol.**
 
-The primary buyer-side product is a Chromium browser layer that can run on normal HTTPS checkout, billing, beneficiary, payment and transfer surfaces. It can appear beside a detected native payment/transfer action and give the payer a persistent payment memory and control surface without requiring the merchant to integrate XGuard.
+The core objective is simple:
 
-The browser layer currently supports:
+```text
+DISCOVER value that may be legally recoverable
+        ↓
+QUALIFY the right to claim it
+        ↓
+PROVE the entitlement with evidence
+        ↓
+CLAIM through a supported connector
+        ↓
+RECONCILE whether value was actually recovered
+```
 
-- **ترحيل لغايات الدفع / Defer for payment** — capture a payment into the local queue while already on its real payment surface;
-- **دفع هذه فقط / Pay this only** — start one selected tracked payment;
-- **دفع كل الفواتير / Pay all bills** — coordinate a sequence of deferred payments;
-- **saved payees** — remember recipients and reuse their last known payment destination instead of rebuilding the same recipient every time;
-- **payment history** — keep a local record of completed payment sessions;
-- **تقسيم الفواتير / Split bills** — create child payments across saved payees;
-- optional XGuard verification and payment-safety services.
+XGuard is designed to run as a remote service. A local installation is not required for the Value Harvester API.
 
-The queue, remembered payees and history are stored locally by the browser layer. Merchant participation is not required for these buyer-side controls. XGuard does not request full card PAN, CVV/CVC, PIN, online-banking passwords, wallet private keys, seed phrases or mnemonics.
+## What counts as value
 
-## The product boundary is not x402
+The core models value opportunities generically. Sources can include:
 
-XGuard also exposes protocol and software integration surfaces, but they are **adapters around the payment layer**, not the definition of the product.
+- refunds;
+- service credits;
+- fee refunds;
+- rebates;
+- overcharges;
+- duplicate charges;
+- settlement shortfalls;
+- rewards and bounties;
+- commissions and cashback;
+- contractual credits;
+- unclaimed balances;
+- future connector-specific forms of legally recoverable value.
 
-Current surfaces include:
+A payment protocol is only one possible source. x402 remains supported as an adapter and recovery source; it does not define XGuard.
 
-- browser payment-surface layer;
+## Hard boundary
+
+XGuard must not treat money as collectible merely because it can see it.
+
+An opportunity is not automatically eligible unless all of the following are true:
+
+1. the right to claim is explicitly confirmed;
+2. the relevant program, contract, or policy terms are confirmed;
+3. supporting evidence exists;
+4. expected net value is positive;
+5. the claim has not expired;
+6. confidence is high enough for automatic treatment, otherwise the item is held for review.
+
+The Value Harvester does not take custody of customer funds and does not authorize taking money from unrelated accounts.
+
+## Main Value Harvester API
+
+Machine-readable discovery is public:
+
+```text
+GET /.well-known/xguard/value-harvester.json
+GET /v1/value
+GET /v1/value/capabilities
+```
+
+Private opportunity data is protected by `XGUARD_VALUE_API_KEY`:
+
+```text
+POST /v1/value/opportunities
+GET  /v1/value/opportunities
+GET  /v1/value/summary
+POST /v1/value/opportunities/{id}/transition
+```
+
+The main counters are:
+
+```text
+FOUND
+ELIGIBLE
+CLAIMED
+RECOVERED
+```
+
+The system deliberately distinguishes "found" from "recovered" so projected value is never reported as collected money.
+
+## Connector model
+
+The core is intentionally open-ended:
+
+```text
+                       XGuard Value Core
+                              │
+       ┌──────────────────────┼──────────────────────┐
+       │                      │                      │
+ cloud-credit            refund/rebate       settlement-recovery
+ connectors               connectors             connectors
+       │                      │                      │
+       └──────────────────────┼──────────────────────┘
+                              │
+                     future value sources
+```
+
+A connector is responsible for source-specific discovery, evidence collection, claim execution and confirmation. The core owns eligibility, lifecycle, accounting and recovered-value truth.
+
+Current protocol/payment code remains in the repository as connector and compatibility infrastructure while the product migrates toward this broader model.
+
+## Existing compatibility surfaces
+
+The repository still contains mature infrastructure that can be reused as connectors or transport layers:
+
 - HTTP and OpenAPI;
 - MCP;
 - A2A;
-- webhooks and generic protocol connectors;
-- x402 v2 settlement safety, truth and recovery.
+- generic HTTP/webhook connectors;
+- universal action/gateway infrastructure;
+- x402 settlement safety, truth and recovery;
+- browser payment-layer experiments.
 
-x402 remains an important adapter for compatible resource servers. It is not a requirement for the browser Payment Layer and should not be interpreted as the only market XGuard serves.
+These are no longer the definition of the product.
 
 ## Live public surfaces
 
-- **Website:** `https://xguardgate.com`
-- **Install:** `https://xguardgate.com/install`
-- **Payment Layer manifest:** `https://xguardgate.com/.well-known/xguard/payment-layer.json`
-- **Protocol adapter registry:** `https://xguardgate.com/.well-known/xguard/protocols.json`
-- **OpenAPI:** `https://xguardgate.com/openapi.json`
-- **Remote MCP:** `https://xguardgate.com/mcp`
-- **x402 adapter:** `https://xguardgate.com/.well-known/x402/facilitator.json`
-- **Status:** `https://xguardgate.com/status`
-
-## Browser Payment Layer
-
-The store-ready extension source lives in [`browser-extension/`](browser-extension/).
-
-The current manifest is **XGuard Payment Layer 0.2.1** and activates both:
-
-```text
-universal-layer.js
-surface-rail.js
-```
-
-on:
-
-```text
-https://*/*
-```
-
-The inline rail is designed to appear beside a detected native payment or transfer action. The full layer holds deferred bills, saved payees, active payment sessions and local history.
-
-### Public early-access package
-
-The repository publishes a persistent public GitHub Release for the current browser runtime:
-
-```text
-https://github.com/moelayyan90/XGuard/releases/download/xguard-payment-layer-v0.2.1/xguard-payment-layer-0.2.1.zip
-```
-
-The browser-store submission kit and disclosure text are maintained in [`browser-extension/STORE_SUBMISSION.md`](browser-extension/STORE_SUBMISSION.md). The project does not claim a Chrome Web Store or Edge Add-ons listing until one has actually been published.
-
-## What XGuard does not pretend to do
-
-The buyer-side browser layer can coordinate multiple payment intentions, but unrelated merchant card or bank payments do not magically become one native debit. Each underlying merchant, bank, wallet or payment provider still owns its real authentication and execution rail. A true one-debit/many-recipient settlement mode requires an authorized underlying rail that supports batch authorization and distribution.
-
-That distinction is intentional: XGuard owns the **control, memory, coordination, policy and safety layer** while the authorized payment provider continues to execute the actual money movement.
-
-## Merchant and agent integrations
-
-For software that wants XGuard in the execution path, the hosted service exposes payment-decision, discovery, gateway and protocol integration surfaces. These include OpenAPI, MCP, A2A, HTTP/webhook connectors and the x402 adapter.
-
-Machine-readable universal product metadata is available at:
-
-```text
-GET /.well-known/xguard/payment-layer.json
-```
-
-Protocol-specific adapters are enumerated separately at:
-
-```text
-GET /.well-known/xguard/protocols.json
-```
-
-This separation is deliberate: **The Payment Layer is the product; protocols are ways to connect it.**
-
-## x402 adapter: settlement safety and recovery
-
-For x402 v2 resource servers, XGuard can operate as a hosted settlement-safety gateway around a downstream facilitator and independently track settlement truth.
-
-The x402 path includes:
-
-- replay and duplicate protection;
-- one-settlement ownership under concurrency;
-- finalized Base USDC verification;
-- EIP-3009 ambiguity recovery;
-- settlement truth states such as `FINALIZED`, `PENDING`, `PROVEN_FAILED` and `CONFLICT`;
-- facilitator health and route controls;
-- merchant accounting and reconciliation boundaries.
-
-Merchant-scoped settlement truth is available through:
-
-```text
-GET  /v1/settlements/{logicalPaymentKey}/truth
-POST /v1/settlements/{logicalPaymentKey}/resolve
-```
-
-The x402 integration currently targets Base mainnet native USDC with the exact/EIP-3009 authorization scheme. That restriction belongs to the **x402 adapter**, not to the buyer-side Payment Layer. For protocol-specific facilitator behavior and route details, see [facilitators](docs/FACILITATORS.md).
-
-## Developer installation
-
-The CLI, SDK and core packages are also published as CI-built GitHub release tarballs while first npm publication remains identity-gated.
-
-```bash
-npm install -g https://github.com/moelayyan90/XGuard/releases/download/xguard-packages-v0.1.0-alpha.1/xguard-0.1.0-alpha.0.tgz
-xguard --help
-```
-
-The hosted x402 adapter can also be used through the standard x402 facilitator client. See [QUICKSTART.md](QUICKSTART.md) and [docs/API.md](docs/API.md).
-
-## Discovery
-
-XGuard exposes both human and machine discovery surfaces:
-
-```text
-GET /.well-known/xguard/payment-layer.json
-GET /.well-known/xguard/protocols.json
-GET /.well-known/mcp/server.json
-GET /.well-known/agent-card.json
-GET /.well-known/agent-market.json
-GET /openapi.json
-GET /llms.txt
-GET /llms-full.txt
-GET /discovery/resources
-GET /discovery/search?query=...
-POST /mcp
-```
-
-The discovery surfaces should describe protocol-specific capabilities without collapsing the whole XGuard product into one protocol.
-
-### Remote MCP tools
-
-The public Streamable HTTP MCP endpoint currently exposes the same five tools described by `lhm.plugin.json`:
-
-- `xguard_payment_offer` — return a free pre-payment XGuard offer without executing or charging the underlying payment;
-- `xguard_payment_decision` — evaluate a declared payment intent and return an `ALLOW`, `REVIEW`, or `BLOCK` decision with idempotent evidence, without executing the payment itself;
-- `xguard_discover` — search or list XGuard x402 HTTP and MCP resources;
-- `xguard_resource_details` — inspect one exact catalog resource by URL or key;
-- `xguard_status` — return live gateway, payment-decision, and discovery status.
-
-The payment-decision tools require declared payment metadata only; callers must not send card credentials, online-banking passwords, wallet private keys, seed phrases, or mnemonics.
+- Website: `https://xguardgate.com`
+- Value Harvester discovery: `https://xguardgate.com/.well-known/xguard/value-harvester.json` after deployment of this branch
+- Protocol adapter registry: `https://xguardgate.com/.well-known/xguard/protocols.json`
+- OpenAPI: `https://xguardgate.com/openapi.json`
+- Remote MCP: `https://xguardgate.com/mcp`
+- x402 compatibility adapter: `https://xguardgate.com/.well-known/x402/facilitator.json`
+- Status: `https://xguardgate.com/status`
 
 ## Security and operations
 
@@ -173,7 +139,6 @@ The payment-decision tools require declared payment metadata only; callers must 
 - [Incident response](INCIDENT_RESPONSE.md)
 - [Operations](OPERATIONS.md)
 - [Reconciliation](RECONCILIATION.md)
-- [Browser privacy disclosure](browser-extension/PRIVACY.md)
 
 Local verification:
 
@@ -186,7 +151,7 @@ npm run smoke:mainnet
 
 ## Documentation
 
-[Quickstart](QUICKSTART.md) · [API](docs/API.md) · [facilitators](docs/FACILITATORS.md) · [OpenAPI](docs/openapi.yaml) · [Pricing](PRICING.md) · [Billing](BILLING.md) · [Deployment](DEPLOYMENT.md) · [Browser Store Submission](browser-extension/STORE_SUBMISSION.md)
+[Quickstart](QUICKSTART.md) · [API](docs/API.md) · [Pricing](PRICING.md) · [Billing](BILLING.md) · [Deployment](DEPLOYMENT.md)
 
 XGuard is an independent project and is not an official product of the x402 Foundation, Coinbase, Cloudflare, Base, Circle, xpay, PayAI, OKX, Google or Microsoft.
 
