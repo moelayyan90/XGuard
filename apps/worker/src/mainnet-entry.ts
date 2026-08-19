@@ -9,12 +9,15 @@ import { paymentLayerPublicResponse } from "./payment-layer-public.js";
 import { portalDesignResponse } from "./portal-design.js";
 import { searchIndexResponse } from "./search-indexing.js";
 import { valueHarvesterResponse } from "./value-harvester.js";
+import { runValueScanner } from "./value-scanner.js";
 
 export { MainnetPaymentCoordinator, MainnetRequestGate };
 
 interface PublicMainnetEnv extends Record<string, unknown> {
   DB: D1Database;
   XGUARD_VALUE_API_KEY?: string;
+  XGUARD_VALUE_FEEDS?: string;
+  XGUARD_VALUE_FEED_HOSTS?: string;
 }
 
 type PublicFetch = (
@@ -135,6 +138,7 @@ const handler: ExportedHandler<PublicMainnetEnv> = {
   },
   async scheduled(controller, env, executionCtx): Promise<void> {
     await mainnetScheduled(controller, env, executionCtx);
+    await runValueScanner(env);
   },
 };
 
