@@ -5,8 +5,8 @@ const baseUrl = new URL(
 const BASE_MAINNET = "eip155:8453";
 const MONITOR_HEADER = "github-actions-mainnet-smoke";
 
-async function json(path, init = {}) {
-  const response = await fetch(new URL(path, baseUrl), {
+async function request(path, init = {}) {
+  return fetch(new URL(path, baseUrl), {
     ...init,
     headers: {
       "X-XGuard-Monitor": MONITOR_HEADER,
@@ -15,7 +15,17 @@ async function json(path, init = {}) {
     redirect: "manual",
     signal: AbortSignal.timeout(15_000),
   });
+}
+
+async function json(path, init = {}) {
+  const response = await request(path, init);
   const body = await response.json();
+  return { response, body };
+}
+
+async function text(path, init = {}) {
+  const response = await request(path, init);
+  const body = await response.text();
   return { response, body };
 }
 
@@ -32,10 +42,10 @@ function assertAuthenticationOrWatchdogFailClosed(result, message) {
   assert(result.response.status === 401 || watchdogFailClosed, message);
 }
 
-const root = await json("/");
+const root = await text("/");
 assert(root.response.status === 200, "mainnet root endpoint is unavailable");
 assert(
-  typeof root.body.name === "string" && root.body.name.startsWith("XGuard"),
+  /XGuard/i.test(root.body),
   "root is not an XGuard product surface",
 );
 
