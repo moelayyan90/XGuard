@@ -1,0 +1,43 @@
+name: Format migration assistance once
+
+on:
+  push:
+    branches: [agent/migrant-assistance-platform]
+    paths:
+      - apps/worker/src/migration-assistance.ts
+      - .github/workflows/format-migration-temp.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-migration-assistance
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/migrant-assistance-platform
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prettier --write apps/worker/src/migration-assistance.ts
+      - name: Commit canonical formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- apps/worker/src/migration-assistance.ts; then
+            echo "Already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/migration-assistance.ts
+          git commit -m "Format migration assistance"
+          git push origin HEAD:agent/migrant-assistance-platform
