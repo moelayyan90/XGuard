@@ -3,6 +3,14 @@ import { childSafetyMediaResponse } from "../apps/worker/src/child-safety-media.
 
 const API_KEY = `xg_live_${"a".repeat(48)}`;
 
+interface MediaResponseBody {
+  mediaScan: {
+    kind: string;
+    rawMediaStored: boolean;
+    videoFrameCount?: number;
+  };
+}
+
 function fakeDb(): D1Database {
   return {
     prepare(sql: string) {
@@ -48,6 +56,11 @@ function decision(kind: string): Response {
   );
 }
 
+async function mediaBody(response: Response | null): Promise<MediaResponseBody> {
+  if (response === null) throw new Error("Expected media response");
+  return (await response.json()) as MediaResponseBody;
+}
+
 describe("child safety media worker", () => {
   it("uses vision for an uploaded image and delegates the derived summary", async () => {
     const aiRun = vi.fn(async () => ({ answer: "Risk-relevant visual summary." }));
@@ -78,7 +91,7 @@ describe("child safety media worker", () => {
       { DB: fakeDb(), AI: { run: aiRun } },
       delegate,
     );
-    const body = (await response?.json()) as Record<string, any>;
+    const body = await mediaBody(response);
     expect(response?.status).toBe(200);
     expect(body.mediaScan.kind).toBe("image");
     expect(body.mediaScan.rawMediaStored).toBe(false);
@@ -116,7 +129,7 @@ describe("child safety media worker", () => {
       { DB: fakeDb(), AI: { run: aiRun } },
       delegate,
     );
-    const body = (await response?.json()) as Record<string, any>;
+    const body = await mediaBody(response);
     expect(response?.status).toBe(200);
     expect(body.mediaScan.kind).toBe("audio");
     expect(aiRun).toHaveBeenCalledWith(
@@ -170,7 +183,7 @@ describe("child safety media worker", () => {
       { DB: fakeDb(), AI: { run: aiRun } },
       delegate,
     );
-    const body = (await response?.json()) as Record<string, any>;
+    const body = await mediaBody(response);
     expect(response?.status).toBe(200);
     expect(body.mediaScan.kind).toBe("video");
     expect(body.mediaScan.videoFrameCount).toBe(2);
