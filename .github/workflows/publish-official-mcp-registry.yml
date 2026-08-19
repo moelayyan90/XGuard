@@ -133,7 +133,7 @@ jobs:
               }
               const remotes=Array.isArray(server?.remotes)?server.remotes:[];
               if (!remotes.some(r => r?.type === "streamable-http" && r?.url === "https://xguardgate.com/mcp")) {
-                throw new Error('Registry latest is missing canonical XGuard streamable-http remote');
+                throw new Error("Registry latest is missing canonical XGuard streamable-http remote");
               }
               console.log(`Official MCP Registry verified ${server.name} ${server.version}`);
             });
