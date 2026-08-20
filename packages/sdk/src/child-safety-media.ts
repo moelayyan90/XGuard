@@ -15,6 +15,10 @@ export interface ChildSafetyVideoFrame extends ChildSafetyEncodedMedia {
 export interface ChildSafetyMediaContext {
   eventId: string;
   riskSessionId?: string;
+  /** Platform-local pseudonymous account id. XGuard hashes it before persistence. */
+  actorId?: string;
+  /** Platform-local pseudonymous target id. XGuard hashes it before persistence. */
+  targetId?: string;
   language?: string;
   childLikely?: boolean;
   childAgeBand?: string;
@@ -144,6 +148,12 @@ function validateContext(input: ChildSafetyMediaContext): void {
     !/^[A-Za-z0-9._:-]{8,160}$/.test(input.riskSessionId)
   ) {
     throw new TypeError("riskSessionId must be 8-160 URL-safe characters");
+  }
+  if (input.actorId !== undefined && input.actorId.length > 256) {
+    throw new TypeError("actorId must not exceed 256 characters");
+  }
+  if (input.targetId !== undefined && input.targetId.length > 256) {
+    throw new TypeError("targetId must not exceed 256 characters");
   }
 }
 
