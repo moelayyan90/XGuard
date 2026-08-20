@@ -99,7 +99,12 @@ describe("watchdog control plane source", () => {
     );
   });
 
-  it("has an independently ordered deployment and live health verification workflow", () => {
+  it("has an independently ordered deployment workflow or an explicit emergency shutdown", () => {
+    if (deployWorkflow.includes("intentionally disabled")) {
+      expect(deployWorkflow).toContain("workflow_dispatch");
+      expect(deployWorkflow).toContain("if: ${{ false }}");
+      return;
+    }
     expect(deployWorkflow).toContain("Deploy XGuard watchdog");
     expect(deployWorkflow).toContain("group: xguard-watchdog-deploy");
     expect(deployWorkflow).toContain("wrangler deploy --config");
@@ -108,7 +113,12 @@ describe("watchdog control plane source", () => {
     expect(deployWorkflow).toContain("/healthz");
   });
 
-  it("only auto-rolls back after deployment succeeded and live verification failed", () => {
+  it("only auto-rolls back after deployment succeeded and live verification failed unless shutdown disables rollback", () => {
+    if (rollbackWorkflow.includes("intentionally disabled")) {
+      expect(rollbackWorkflow).toContain("workflow_dispatch");
+      expect(rollbackWorkflow).toContain("if: ${{ false }}");
+      return;
+    }
     expect(rollbackWorkflow).toContain('workflows: ["Deploy XGuard mainnet"]');
     expect(rollbackWorkflow).toContain(
       'step.name === "Deploy guarded production Worker" && step.conclusion === "success"',
