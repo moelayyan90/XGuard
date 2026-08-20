@@ -1,0 +1,30 @@
+name: Format child safety contact once
+
+on:
+  push:
+    branches: [agent/child-safety-contact-intake]
+    paths:
+      - .github/workflows/format-child-safety-contact-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/child-safety-contact-intake
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - name: Format contact intake files
+        run: |
+          npx prettier --write apps/worker/src/child-safety-contact.ts tests/child-safety-contact.test.ts tests/child-safety-contact-routing.test.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/child-safety-contact.ts tests/child-safety-contact.test.ts tests/child-safety-contact-routing.test.ts
+          git commit -m "Format institutional child safety contact intake" || true
+          git push origin HEAD:agent/child-safety-contact-intake
