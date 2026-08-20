@@ -24,7 +24,9 @@ describe("XGuard global child-safety reporting directory", () => {
     expect(body.local[0]?.source).toContain("childhelplineinternational.org");
     expect(body.global.map((item) => item.id)).toContain("inhope");
     expect(body.global.map((item) => item.id)).toContain("ncmec-cybertipline");
-    expect(body.evidenceBoundary).toContain("Do not send child sexual abuse material");
+    expect(body.evidenceBoundary).toContain(
+      "Do not send child sexual abuse material",
+    );
   });
 
   it("does not invent a direct phone number when the authoritative directory does not publish one", async () => {

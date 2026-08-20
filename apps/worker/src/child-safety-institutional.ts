@@ -163,7 +163,7 @@ function reportingBody(): string {
     "Global reporting & support",
     "Never invent a hotline number.",
     "XGuard prefers a verified country-specific route. When one has not yet been validated, the product falls back to established international networks and official country selectors.",
-  )}<section class="partners">${items}</section><section class="panel"><h2>Emergency boundary</h2><p>If a child is in immediate physical danger, users must contact the local emergency service or police for the child’s current location. XGuard is a technology provider, not an emergency-response authority.</p></section>`;
+  )}<section class="partners">${items}</section><section class="cta"><h2>Verified country routing</h2><p><a href="/child-safety/reporting-directory">Open XGuard’s verified reporting directory →</a></p><p>Direct numbers are published only when a current authoritative source provides them.</p></section><section class="panel"><h2>Emergency boundary</h2><p>If a child is in immediate physical danger, users must contact the local emergency service or police for the child’s current location. XGuard is a technology provider, not an emergency-response authority.</p></section>`;
 }
 
 function page(title: string, body: string): string {

@@ -18,21 +18,8 @@ type LocalRoute = {
 
 const LOCAL_ROUTES: LocalRoute[] = [
   route("DZ", "Algeria", "Je t’écoute", "phone", "3033"),
-  route(
-    "EG",
-    "Egypt",
-    "Child Helpline Egypt",
-    "directory",
-    CHI_DIRECTORY,
-  ),
-  route(
-    "IQ",
-    "Iraq",
-    "116 Child Helpline",
-    "phone",
-    "116",
-    "Kurdistan Region",
-  ),
+  route("EG", "Egypt", "Child Helpline Egypt", "directory", CHI_DIRECTORY),
+  route("IQ", "Iraq", "116 Child Helpline", "phone", "116", "Kurdistan Region"),
   route("JO", "Jordan", "JRF 110 Helpline", "phone", "110"),
   route("KW", "Kuwait", "Help Hotline", "phone", "147"),
   route(
@@ -53,13 +40,7 @@ const LOCAL_ROUTES: LocalRoute[] = [
   route("QA", "Qatar", "Hotline", "phone", "919"),
   route("SA", "Saudi Arabia", "Saudi Child Helpline", "phone", "116111"),
   route("SD", "Sudan", "Child Helpline", "phone", "9696"),
-  route(
-    "AE",
-    "United Arab Emirates",
-    "Child Helpline",
-    "phone",
-    "800 700",
-  ),
+  route("AE", "United Arab Emirates", "Child Helpline", "phone", "800 700"),
 ];
 
 const GLOBAL_ROUTES = [
