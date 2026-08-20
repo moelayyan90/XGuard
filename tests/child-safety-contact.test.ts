@@ -49,7 +49,9 @@ describe("XGuard institutional child-safety contact", () => {
     const html = await response?.text();
     expect(html).toContain("Institutional contact");
     expect(html).toContain("Do not send names, images, conversations");
-    expect(html).toContain("Do not upload or transmit suspected child sexual abuse material");
+    expect(html).toContain(
+      "Do not upload or transmit suspected child sexual abuse material",
+    );
   });
 
   it("accepts a valid institutional enquiry and stores only a hashed source identifier", async () => {
@@ -68,7 +70,8 @@ describe("XGuard institutional child-safety contact", () => {
           email: "safety@example.gov",
           website: "https://example.gov",
           inquiryType: "government",
-          message: "We would like to discuss a limited child-safety pilot with XGuard.",
+          message:
+            "We would like to discuss a limited child-safety pilot with XGuard.",
         }),
       }),
       makeEnv(captured),
@@ -93,7 +96,8 @@ describe("XGuard institutional child-safety contact", () => {
           organization: "Example Platform",
           email: "not-an-email",
           inquiryType: "platform",
-          message: "We would like to discuss integrating XGuard into our platform.",
+          message:
+            "We would like to discuss integrating XGuard into our platform.",
         }),
       }),
       makeEnv({ binds: [] }),

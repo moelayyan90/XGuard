@@ -3,10 +3,7 @@ import { readFileSync } from "node:fs";
 
 describe("institutional child-safety contact routing", () => {
   it("wires the contact intake ahead of public child-safety pages", () => {
-    const source = readFileSync(
-      "apps/worker/src/universal-mainnet.ts",
-      "utf8",
-    );
+    const source = readFileSync("apps/worker/src/universal-mainnet.ts", "utf8");
     expect(source).toContain('from "./child-safety-contact.js"');
     expect(source).toContain("childSafetyContactResponse");
     expect(source.indexOf("childSafetyContactResponse")).toBeLessThan(

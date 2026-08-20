@@ -36,14 +36,20 @@ export async function childSafetyContactResponse(
     return html(contactPage());
   }
 
-  if (request.method === "OPTIONS" && url.pathname === "/v1/child-safety/contact") {
+  if (
+    request.method === "OPTIONS" &&
+    url.pathname === "/v1/child-safety/contact"
+  ) {
     return new Response(null, {
       status: 204,
       headers: corsHeaders(),
     });
   }
 
-  if (request.method === "POST" && url.pathname === "/v1/child-safety/contact") {
+  if (
+    request.method === "POST" &&
+    url.pathname === "/v1/child-safety/contact"
+  ) {
     const rateBlock = await rateLimit(request, env);
     if (rateBlock) return rateBlock;
 
