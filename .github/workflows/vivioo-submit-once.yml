@@ -32,10 +32,8 @@ jobs:
             "name": "XGuard",
             "platform": "Custom",
             "builder": "Mohammad Elayyan",
-            "tagline": "Open-source payment-control and x402 settlement-safety infrastructure with public MCP and A2A endpoints.",
-            "trustScore": 1,
-            "description": "XGuard is an independent open-source payment-control layer with public MCP and A2A discovery plus an x402 v2 settlement-safety gateway. Source: https://github.com/moelayyan90/XGuard ; live mainnet: https://xguard-mainnet.maqamapp.workers.dev . No third-party certification, signer ownership, transaction volume, or endorsement is claimed.",
-            "biggestLimitation": "This is a new Vivioo listing; no Vivioo-specific verification or independent audit is claimed."
+            "tagline": "Open-source infrastructure for payment safety, MCP discovery, and agent integrations.",
+            "trustScore": 1
           }
           JSON
 
