@@ -28,6 +28,7 @@ jobs:
           apps/worker/src/eudr-smart-employee-site.ts
           apps/worker/src/operations-employee.ts
           apps/worker/wrangler.mainnet.jsonc
+          CROSS_BORDER_OPERATIONS.md
           EUDR_NETWORK.md
           EUDR_OPERATIONS_ENGINE.md
           README.md
@@ -45,6 +46,7 @@ jobs:
             apps/worker/src/eudr-smart-employee-site.ts \
             apps/worker/src/operations-employee.ts \
             apps/worker/wrangler.mainnet.jsonc \
+            CROSS_BORDER_OPERATIONS.md \
             EUDR_NETWORK.md \
             EUDR_OPERATIONS_ENGINE.md \
             README.md \
