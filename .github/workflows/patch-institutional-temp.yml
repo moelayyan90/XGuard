@@ -1,0 +1,44 @@
+name: Wire institutional child safety routes once
+
+on:
+  push:
+    branches: [agent/complete-child-safety-platform]
+    paths:
+      - .github/workflows/patch-institutional-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/complete-child-safety-platform
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Wire routes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('apps/worker/src/universal-mainnet.ts')
+          s=p.read_text()
+          needle='import { childSafetyControlResponse } from "./child-safety-control.js";\n'
+          ins=needle+'import { childSafetyInstitutionalResponse } from "./child-safety-institutional.js";\n'
+          if 'childSafetyInstitutionalResponse' not in s:
+              s=s.replace(needle,ins)
+          needle2='    const childSafetySite = publicChildSafetySiteResponse(standardRequest);\n'
+          block='    const childSafetyInstitutional = childSafetyInstitutionalResponse(standardRequest);\n    if (childSafetyInstitutional !== null) return childSafetyInstitutional;\n\n'+needle2
+          if 'const childSafetyInstitutional =' not in s:
+              s=s.replace(needle2,block)
+          p.write_text(s)
+          PY
+          npx prettier --write apps/worker/src/universal-mainnet.ts apps/worker/src/child-safety-institutional.ts tests/child-safety-institutional.test.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/universal-mainnet.ts apps/worker/src/child-safety-institutional.ts tests/child-safety-institutional.test.ts
+          git commit -m "Wire institutional child safety surface"
+          git push origin HEAD:agent/complete-child-safety-platform
