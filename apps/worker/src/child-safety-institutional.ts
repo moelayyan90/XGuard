@@ -53,7 +53,8 @@ export function childSafetyInstitutionalResponse(
   if (url.pathname === "/v1/child-safety/institutional") {
     return json({
       product: "XGuard Privacy-Preserving Child Safety Compliance Infrastructure",
-      positioning: "Age assurance, safety controls and auditable evidence without surveillance",
+      positioning:
+        "Age assurance, safety controls and auditable evidence without surveillance",
       commercialModel:
         "B2B/B2G usage-based safety API plus separately contracted institutional deployments",
       pricing: PRICING,
