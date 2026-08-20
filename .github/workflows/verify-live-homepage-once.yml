@@ -1,0 +1,25 @@
+name: Verify live homepage once
+
+on:
+  push:
+    branches: [pivot/eudr-network]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-homepage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch live XGuard homepage
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 -H 'Cache-Control: no-cache' 'https://xguardgate.com/?homepage-check=59b27030' -o /tmp/home.html
+          grep -Fq 'XGuard — Cross-Border Operations, Executed' /tmp/home.html
+          grep -Fq 'Your company has work that' /tmp/home.html
+          grep -Fq 'smart cross-border operations employee' /tmp/home.html
+          grep -Fq 'Request a pilot' /tmp/home.html
+          grep -Fq 'Mood has no place in the workflow' /tmp/home.html
+          echo 'LIVE_HOMEPAGE=OPERATIONS'
+          sed -n '1,28p' /tmp/home.html
