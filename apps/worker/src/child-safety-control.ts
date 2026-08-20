@@ -33,6 +33,17 @@ interface SummaryRow {
   earned_micro_usd: number;
 }
 
+interface DashboardSummary {
+  windowHours: number;
+  totalScans: number;
+  criticalScans: number;
+  highScans: number;
+  blockedScans: number;
+  frozenScans: number;
+  earnedMicroUsd: number;
+  earnedUsd: string;
+}
+
 interface RiskActorRow {
   actor_hash: string;
   high_risk_events: number;
@@ -104,12 +115,12 @@ async function trackedScan(
   request: Request,
   env: ChildSafetyControlEnv,
 ): Promise<Response> {
-  const input = await readTraceInput(request.clone());
+  const input = await readTraceInput(request.clone() as unknown as Request);
   const url = new URL(request.url);
 
   const response = url.pathname.startsWith("/v1/child-safety/media/")
-    ? await childSafetyMediaResponse(request.clone(), env)
-    : await childSafetyResponse(request.clone(), env);
+    ? await childSafetyMediaResponse(request.clone() as unknown as Request, env)
+    : await childSafetyResponse(request.clone() as unknown as Request, env);
 
   if (response === null) return json({ error: "scan_route_unavailable" }, 404);
   if (!response.ok) return response;
@@ -287,7 +298,7 @@ async function dashboardSummary(
   db: D1Database,
   merchantId: string,
   hours: number,
-): Promise<Record<string, unknown>> {
+): Promise<DashboardSummary> {
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
   const row = await db
     .prepare(
