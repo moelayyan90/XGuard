@@ -1,0 +1,49 @@
+name: Harden institutional contact privacy once
+
+on:
+  push:
+    branches: [agent/contact-privacy-hardening]
+    paths:
+      - .github/workflows/harden-contact-privacy-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/contact-privacy-hardening
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - name: Stop persisting source IP derivatives
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('apps/worker/src/child-safety-contact.ts')
+          s=p.read_text()
+          s=s.replace('    const ipHash = await sourceIpHash(request);','    const ipHash = null;')
+          start=s.find('async function sourceIpHash(request: Request): Promise<string | null> {')
+          if start != -1:
+              end=s.find('async function isAdmin(', start)
+              s=s[:start]+s[end:]
+          p.write_text(s)
+
+          t=Path('tests/child-safety-contact.test.ts')
+          s=t.read_text()
+          s=s.replace('accepts a valid institutional enquiry and stores only a hashed source identifier','accepts a valid institutional enquiry without persisting the source IP')
+          s=s.replace('    expect(typeof values[8]).toBe("string");\n    expect((values[8] as string).length).toBe(64);','    expect(values[8]).toBeNull();')
+          t.write_text(s)
+          PY
+          npx prettier --write apps/worker/src/child-safety-contact.ts tests/child-safety-contact.test.ts apps/worker/migrations/0021_child_safety_contact_privacy.sql
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/child-safety-contact.ts tests/child-safety-contact.test.ts apps/worker/migrations/0021_child_safety_contact_privacy.sql
+          git commit -m "Stop persisting institutional contact source hashes" || true
+          git push origin HEAD:agent/contact-privacy-hardening
