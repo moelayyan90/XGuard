@@ -47,3 +47,5 @@ jobs:
           git add apps/worker/src/child-safety-contact.ts tests/child-safety-contact.test.ts apps/worker/migrations/0021_child_safety_contact_privacy.sql
           git commit -m "Stop persisting institutional contact source hashes" || true
           git push origin HEAD:agent/contact-privacy-hardening
+
+# trigger
