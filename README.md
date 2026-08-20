@@ -182,6 +182,14 @@ Existing machine/developer surfaces remain available, including:
 /mcp
 ```
 
+The current remote MCP surface exposes these five tools:
+
+- `xguard_payment_offer`
+- `xguard_payment_decision`
+- `xguard_discover`
+- `xguard_resource_details`
+- `xguard_status`
+
 The legacy x402 adapter continues to handle Base-mainnet native USDC settlement safety independently of the child-safety product.
 
 For protocol-specific facilitator behavior, see [facilitators](docs/FACILITATORS.md).
