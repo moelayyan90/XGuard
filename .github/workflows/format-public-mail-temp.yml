@@ -1,0 +1,33 @@
+name: Format public child safety mail once
+
+on:
+  push:
+    branches: [agent/child-safety-public-site]
+    paths:
+      - .github/workflows/format-public-mail-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/child-safety-public-site
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prettier --write apps/worker/src/xguard-mail.ts apps/worker/wrangler.mainnet.jsonc
+      - name: Commit formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- apps/worker/src/xguard-mail.ts apps/worker/wrangler.mainnet.jsonc
+          git commit -m "Format XGuard branded mail implementation"
+          git push origin HEAD:agent/child-safety-public-site
