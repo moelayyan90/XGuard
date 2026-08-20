@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   submit:
@@ -14,6 +15,8 @@ jobs:
     steps:
       - name: Check for existing XGuard listing and submit once
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -51,5 +54,10 @@ jobs:
             exit 1
           fi
 
-          echo "Vivioo submission accepted (HTTP $http_code)."
+          slug=$(jq -r '.slug // .agent.slug // "unknown"' /tmp/vivioo-response.json)
+          echo "Vivioo submission accepted (HTTP $http_code), slug=$slug."
           jq '{success, slug, message, agent: (if .agent then {name: .agent.name, slug: .agent.slug} else null end)}' /tmp/vivioo-response.json
+
+          gh issue comment 306 \
+            --repo moelayyan90/XGuard \
+            --body "Vivioo directory submission accepted on 2026-08-20 via the public unauthenticated submission API. XGuard was checked for an existing listing first; no duplicate was sent. Returned slug: \`$slug\`. The response's private edit key was intentionally not logged or posted."
