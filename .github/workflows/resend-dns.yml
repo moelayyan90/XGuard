@@ -35,30 +35,18 @@ jobs:
             local type="$1" name="$2" content="$3" priority="${4:-}"
             local found id payload response
             found="$(curl -fsS "${auth[@]}" "${API}/zones/${ZONE_ID}/dns_records?type=${type}&name=${name}")"
-            id="$(printf '%s' "$found" | node - "$content" <<'NODE'
-let s=""; const content=process.argv[2];
-process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const r=(x.result||[]).find(v=>v.content===content);if(r?.id)process.stdout.write(r.id)});
-NODE
-)"
+            id="$(printf '%s' "$found" | node -e 'let s="";const content=process.argv[1];process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const r=(x.result||[]).find(v=>v.content===content);if(r?.id)process.stdout.write(r.id)})' "$content")"
             if [[ "$type" == "MX" ]]; then
-              payload="$(node - "$type" "$name" "$content" "$priority" <<'NODE'
-const [type,name,content,priority]=process.argv.slice(2);process.stdout.write(JSON.stringify({type,name,content,ttl:1,priority:Number(priority)}));
-NODE
-)"
+              payload="$(node -e 'const [type,name,content,priority]=process.argv.slice(1);process.stdout.write(JSON.stringify({type,name,content,ttl:1,priority:Number(priority)}))' "$type" "$name" "$content" "$priority")"
             else
-              payload="$(node - "$type" "$name" "$content" <<'NODE'
-const [type,name,content]=process.argv.slice(2);process.stdout.write(JSON.stringify({type,name,content,ttl:1}));
-NODE
-)"
+              payload="$(node -e 'const [type,name,content]=process.argv.slice(1);process.stdout.write(JSON.stringify({type,name,content,ttl:1}))' "$type" "$name" "$content")"
             fi
             if [[ -n "$id" ]]; then
               response="$(curl -fsS -X PUT "${auth[@]}" "${API}/zones/${ZONE_ID}/dns_records/${id}" --data "$payload")"
             else
               response="$(curl -fsS -X POST "${auth[@]}" "${API}/zones/${ZONE_ID}/dns_records" --data "$payload")"
             fi
-            printf '%s' "$response" | node - "$type" "$name" <<'NODE'
-let s="";const [type,name]=process.argv.slice(2);process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.success){console.error(JSON.stringify(x.errors||x));process.exit(1)}console.log(`Configured ${type} ${name}`)});
-NODE
+            printf '%s' "$response" | node -e 'let s="";const type=process.argv[1],name=process.argv[2];process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.success){console.error(JSON.stringify(x.errors||x));process.exit(1)}console.log(`Configured ${type} ${name}`)})' "$type" "$name"
           }
 
           upsert TXT "resend._domainkey.${DOMAIN}" 'p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDBLfA8O5uK1idJqI8Ia8b18JkH89inHYlhAH/qC+Tu/F31MRy/MT04pPFFSkDd2hDBbvX4Wk8wotzv6HJ6WmfrpFN/14XpgcP0RNBVp3GEiE41e6jzOp82JnYp33ciLtiUC4Qz4Z9N/8NG0kKNZD+7U+BCMmz9dIcouhVN0tTf/QIDAQAB'
