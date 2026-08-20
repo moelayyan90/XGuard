@@ -1,0 +1,34 @@
+name: Format pilot intake once
+
+on:
+  push:
+    branches: [pivot/eudr-network]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: pivot/eudr-network
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prettier --write apps/worker/src/operations-pilot.ts
+      - shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- apps/worker/src/operations-pilot.ts; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- apps/worker/src/operations-pilot.ts
+          git commit -m "style: format operations pilot intake"
+          git push origin HEAD:pivot/eudr-network
