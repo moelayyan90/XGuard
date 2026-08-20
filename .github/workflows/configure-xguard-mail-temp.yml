@@ -7,92 +7,106 @@ on:
       - .github/workflows/configure-xguard-mail-temp.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   configure:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/child-safety-public-site
       - name: Configure Cloudflare Email Routing and Sending
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           DOMAIN="xguardgate.com"
           API="https://api.cloudflare.com/client/v4"
+          ROUTING=false
+          INFO=false
+          SUPPORT=false
+          SENDING=false
+          NOTE=""
           TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+
           if [[ -z "${TOKEN}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-            echo "::error::Cloudflare GitHub secrets are not available."
-            exit 1
-          fi
-          auth=(-H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json')
-
-          zones="$(curl -fsS "${auth[@]}" "${API}/zones?name=${DOMAIN}&account.id=${CLOUDFLARE_ACCOUNT_ID}")"
-          ZONE_ID="$(printf '%s' "$zones" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const z=(x.result||[])[0];if(!x.success||!z?.id)process.exit(1);process.stdout.write(z.id)})')"
-          echo "Resolved zone ${DOMAIN}."
-
-          routing="$(curl -fsS "${auth[@]}" "${API}/zones/${ZONE_ID}/email/routing" || true)"
-          ready="$(printf '%s' "$routing" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);process.stdout.write(x.success&&x.result?.enabled?"yes":"no")}catch{process.stdout.write("no")}})')"
-          if [[ "$ready" != "yes" ]]; then
-            response="$(curl -sS -X POST "${auth[@]}" "${API}/zones/${ZONE_ID}/email/routing/dns" --data "{\"name\":\"${DOMAIN}\"}")"
-            printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.success){console.error(JSON.stringify(x.errors||x));process.exit(1)};console.log("Email Routing enabled")})'
+            NOTE="Cloudflare GitHub secrets unavailable"
           else
-            echo "Email Routing already enabled."
-          fi
+            auth=(-H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json')
+            zones="$(curl -sS "${auth[@]}" "${API}/zones?name=${DOMAIN}&account.id=${CLOUDFLARE_ACCOUNT_ID}" || true)"
+            ZONE_ID="$(printf '%s' "$zones" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);const z=(x.result||[])[0];if(x.success&&z?.id)process.stdout.write(z.id)}catch{}})' || true)"
 
-          rules="$(curl -fsS "${auth[@]}" "${API}/zones/${ZONE_ID}/email/routing/rules?per_page=100")"
-          for mailbox in info support; do
-            address="${mailbox}@${DOMAIN}"
-            exists="$(printf '%s' "$rules" | node - "$address" <<'NODE'
-          let s="";
-          const address=process.argv[2];
-          process.stdin.on("data",d=>s+=d).on("end",()=>{
-            const x=JSON.parse(s);
-            const found=(x.result||[]).some(r=>(r.matchers||[]).some(m=>String(m.value||"").toLowerCase()===address.toLowerCase()));
-            process.stdout.write(found?"yes":"no");
-          });
+            if [[ -z "$ZONE_ID" ]]; then
+              NOTE="Could not resolve Cloudflare zone with current token"
+            else
+              routing="$(curl -sS "${auth[@]}" "${API}/zones/${ZONE_ID}/email/routing" || true)"
+              routing_ready="$(printf '%s' "$routing" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);process.stdout.write(x.success&&x.result?.enabled?"yes":"no")}catch{process.stdout.write("no")}})' || true)"
+              if [[ "$routing_ready" == "yes" ]]; then
+                ROUTING=true
+              else
+                response="$(curl -sS -X POST "${auth[@]}" "${API}/zones/${ZONE_ID}/email/routing/dns" --data "{\"name\":\"${DOMAIN}\"}" || true)"
+                if printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);process.exit(x.success?0:1)}catch{process.exit(1)}})'; then ROUTING=true; fi
+              fi
+
+              rules="$(curl -sS "${auth[@]}" "${API}/zones/${ZONE_ID}/email/routing/rules?per_page=100" || true)"
+              for mailbox in info support; do
+                address="${mailbox}@${DOMAIN}"
+                exists="$(printf '%s' "$rules" | node - "$address" <<'NODE'
+          let s="";const address=process.argv[2];process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);const ok=x.success&&(x.result||[]).some(r=>(r.matchers||[]).some(m=>String(m.value||"").toLowerCase()===address.toLowerCase()));process.stdout.write(ok?"yes":"no")}catch{process.stdout.write("no")}});
           NODE
           )"
-            if [[ "$exists" == "yes" ]]; then
-              echo "Routing rule already exists for ${address}."
-              continue
-            fi
-            payload="$(node - "$mailbox" "$address" <<'NODE'
-          const [mailbox,address]=process.argv.slice(2);
-          process.stdout.write(JSON.stringify({
-            name:`XGuard ${mailbox} mailbox`,
-            enabled:true,
-            matchers:[{type:"literal",field:"to",value:address}],
-            actions:[{type:"worker",value:["xguard-mainnet"]}]
-          }));
+                rule_ok=false
+                if [[ "$exists" == "yes" ]]; then
+                  rule_ok=true
+                elif [[ "$ROUTING" == "true" ]]; then
+                  payload="$(node - "$mailbox" "$address" <<'NODE'
+          const [mailbox,address]=process.argv.slice(2);process.stdout.write(JSON.stringify({name:`XGuard ${mailbox} mailbox`,enabled:true,matchers:[{type:"literal",field:"to",value:address}],actions:[{type:"worker",value:["xguard-mainnet"]}]}));
           NODE
           )"
-            response="$(curl -sS -X POST "${auth[@]}" "${API}/zones/${ZONE_ID}/email/routing/rules" --data "$payload")"
-            printf '%s' "$response" | node - "$address" <<'NODE'
-          let s=""; const address=process.argv[2];
-          process.stdin.on("data",d=>s+=d).on("end",()=>{
-            const x=JSON.parse(s);
-            if(!x.success){console.error(JSON.stringify(x.errors||x));process.exit(1)}
-            console.log(`Created routing rule for ${address}`);
-          });
-          NODE
-          done
+                  response="$(curl -sS -X POST "${auth[@]}" "${API}/zones/${ZONE_ID}/email/routing/rules" --data "$payload" || true)"
+                  if printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);process.exit(x.success?0:1)}catch{process.exit(1)}})'; then rule_ok=true; fi
+                fi
+                if [[ "$mailbox" == "info" && "$rule_ok" == "true" ]]; then INFO=true; fi
+                if [[ "$mailbox" == "support" && "$rule_ok" == "true" ]]; then SUPPORT=true; fi
+              done
 
-          sending="$(curl -fsS "${auth[@]}" "${API}/zones/${ZONE_ID}/email/sending/subdomains" || true)"
-          sending_ready="$(printf '%s' "$sending" | node - "$DOMAIN" <<'NODE'
+              sending="$(curl -sS "${auth[@]}" "${API}/zones/${ZONE_ID}/email/sending/subdomains" || true)"
+              sending_ready="$(printf '%s' "$sending" | node - "$DOMAIN" <<'NODE'
           let s="";const domain=process.argv[2];process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);const ok=x.success&&(x.result||[]).some(r=>r.enabled&&r.name===domain);process.stdout.write(ok?"yes":"no")}catch{process.stdout.write("no")}});
           NODE
           )"
-          if [[ "$sending_ready" != "yes" ]]; then
-            response="$(curl -sS -X POST "${auth[@]}" "${API}/zones/${ZONE_ID}/email/sending/subdomains" --data "{\"name\":\"${DOMAIN}\"}")"
-            if printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);process.exit(x.success?0:1)})'; then
-              echo "Email Sending enabled for ${DOMAIN}."
-            else
-              echo "::warning::Email Routing can still receive mail, but Cloudflare Email Sending could not be enabled with the current entitlement/token."
-              printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify(x.errors||x))})'
+              if [[ "$sending_ready" == "yes" ]]; then
+                SENDING=true
+              else
+                response="$(curl -sS -X POST "${auth[@]}" "${API}/zones/${ZONE_ID}/email/sending/subdomains" --data "{\"name\":\"${DOMAIN}\"}" || true)"
+                if printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);process.exit(x.success?0:1)}catch{process.exit(1)}})'; then SENDING=true; else NOTE="${NOTE:+$NOTE; }Email Sending unavailable or token lacks permission"; fi
+              fi
             fi
-          else
-            echo "Email Sending already enabled for ${DOMAIN}."
           fi
+
+          ROUTING="$ROUTING" INFO="$INFO" SUPPORT="$SUPPORT" SENDING="$SENDING" NOTE="$NOTE" node <<'NODE'
+          const fs=require('node:fs');
+          fs.writeFileSync('mail-setup-result.json',JSON.stringify({
+            domain:'xguardgate.com',
+            routingEnabled:process.env.ROUTING==='true',
+            infoAddressConfigured:process.env.INFO==='true',
+            supportAddressConfigured:process.env.SUPPORT==='true',
+            outboundSendingEnabled:process.env.SENDING==='true',
+            personalEmailForwarding:false,
+            note:process.env.NOTE||'',
+            checkedAt:new Date().toISOString()
+          },null,2)+'\n');
+          NODE
+
+      - name: Commit non-secret setup result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- mail-setup-result.json
+          git commit -m "Record XGuard mail configuration result"
+          git push origin HEAD:agent/child-safety-public-site
