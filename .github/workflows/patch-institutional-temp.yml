@@ -1,4 +1,4 @@
-name: Wire institutional child safety routes once
+name: Expose institutional child safety pages once
 
 on:
   push:
@@ -19,26 +19,22 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Wire routes
+      - name: Expose pages
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path('apps/worker/src/universal-mainnet.ts')
+          p=Path('apps/worker/src/child-safety-public-site.ts')
           s=p.read_text()
-          needle='import { childSafetyControlResponse } from "./child-safety-control.js";\n'
-          ins=needle+'import { childSafetyInstitutionalResponse } from "./child-safety-institutional.js";\n'
-          if 'childSafetyInstitutionalResponse' not in s:
-              s=s.replace(needle,ins)
-          needle2='    const childSafetySite = publicChildSafetySiteResponse(standardRequest);\n'
-          block='    const childSafetyInstitutional = childSafetyInstitutionalResponse(standardRequest);\n    if (childSafetyInstitutional !== null) return childSafetyInstitutional;\n\n'+needle2
-          if 'const childSafetyInstitutional =' not in s:
-              s=s.replace(needle2,block)
+          old='${navLink("governments", page, "/child-safety/governments", "Governments")}${navLink("integrate", page, "/child-safety/integrate", "Integrate")}${navLink("transparency", page, "/child-safety/transparency", "Transparency")}'
+          new='${navLink("governments", page, "/child-safety/governments", "Governments")}<a href="/child-safety/compliance">Compliance</a><a href="/child-safety/pilot">Pilot</a><a href="/child-safety/pricing">Pricing</a><a href="/child-safety/reporting">Reporting</a>${navLink("integrate", page, "/child-safety/integrate", "Integrate")}${navLink("transparency", page, "/child-safety/transparency", "Transparency")}'
+          if old in s:
+              s=s.replace(old,new)
           p.write_text(s)
           PY
-          npx prettier --write apps/worker/src/universal-mainnet.ts apps/worker/src/child-safety-institutional.ts tests/child-safety-institutional.test.ts
+          npx prettier --write apps/worker/src/child-safety-public-site.ts
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/worker/src/universal-mainnet.ts apps/worker/src/child-safety-institutional.ts tests/child-safety-institutional.test.ts
-          git commit -m "Wire institutional child safety surface"
+          git add apps/worker/src/child-safety-public-site.ts
+          git commit -m "Expose compliance pilot pricing and reporting pages" || true
           git push origin HEAD:agent/complete-child-safety-platform
