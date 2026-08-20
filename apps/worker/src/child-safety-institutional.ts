@@ -46,6 +46,10 @@ export function childSafetyInstitutionalResponse(
   if (request.method !== "GET") return null;
   const url = new URL(request.url);
 
+  if (["/", "/child-safety"].includes(url.pathname)) {
+    return html(page("Child Safety Infrastructure", homeBody()));
+  }
+
   if (url.pathname === "/v1/child-safety/institutional") {
     return json({
       product: "XGuard Child Safety Control Layer",
@@ -76,6 +80,33 @@ export function childSafetyInstitutionalResponse(
   }
 
   return null;
+}
+
+function homeBody(): string {
+  return `${hero(
+    "Child-safety infrastructure",
+    "Protect children. Not monitor childhood.",
+    "XGuard is paid safety infrastructure for platforms, institutions and public-sector programmes. It analyzes defined safety events already entering a host service and returns proportionate controls without becoming a child-surveillance system.",
+  )}
+  <section class="grid">
+    ${card("For platforms", "Scan messages, chat windows, images, audio, video and ads. Apply ALLOW, WARN, BLUR, BLOCK, FREEZE CHAT or ESCALATE inside the service you already control.")}
+    ${card("For governments & regulators", "Run limited pilots, validate reporting routes and inspect safeguards without receiving a hidden feed of children’s private activity.")}
+    ${card("Commercial model", "Usage-based B2B/B2G pricing. Children are not the buyer; online services and institutions pay for analyzed safety events.")}
+    ${card("Global reporting", "Prefer locally verified child-protection routes, with established international networks as a fallback when a direct country number is not yet validated.")}
+  </section>
+  <section class="steps">
+    ${step("01", "Integrate", "Submit a defined safety event already entering your product flow.")}
+    ${step("02", "Assess", "XGuard evaluates grooming, solicitation, coercion, sextortion, explicit media, predatory contact and sexualized advertising.")}
+    ${step("03", "Control", "Receive a proportionate action and structured enforcement guidance.")}
+    ${step("04", "Review", "High and critical cases are surfaced for accountable human review and verified reporting routes.")}
+  </section>
+  <section class="grid">
+    <a class="partner" href="/child-safety/compliance"><strong>Compliance</strong><span>Risk assessment, safeguards and regulatory positioning →</span></a>
+    <a class="partner" href="/child-safety/pilot"><strong>Government / platform pilot</strong><span>A limited, measurable deployment without surveillance →</span></a>
+    <a class="partner" href="/child-safety/pricing"><strong>Pricing</strong><span>Usage-based commercial API pricing →</span></a>
+    <a class="partner" href="/child-safety/reporting"><strong>Global reporting</strong><span>Verified support and reporting networks →</span></a>
+  </section>
+  <section class="cta"><h2>Start an institutional conversation</h2><p>Partnerships, regulators and government pilots: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a><br>Technical support: <a href="mailto:support@xguardgate.com">support@xguardgate.com</a></p></section>`;
 }
 
 function complianceBody(): string {
