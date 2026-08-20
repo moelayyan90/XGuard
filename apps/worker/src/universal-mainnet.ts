@@ -6,6 +6,7 @@ import monetizedMainnet, {
 import { a2aGatewayV1Response } from "./a2a-gateway-v1.js";
 import { buyerPassResponse } from "./buyer-pass.js";
 import { buyerPortalResponse } from "./buyer-portal.js";
+import { childSafetyContactResponse } from "./child-safety-contact.js";
 import { childSafetyControlResponse } from "./child-safety-control.js";
 import { childSafetyInstitutionalResponse } from "./child-safety-institutional.js";
 import { publicChildSafetySiteResponse } from "./child-safety-public-site.js";
@@ -138,6 +139,12 @@ export default {
 
     const mail = await xguardMailHttpResponse(standardRequest, env);
     if (mail !== null) return mail;
+
+    const childSafetyContact = await childSafetyContactResponse(
+      standardRequest,
+      env,
+    );
+    if (childSafetyContact !== null) return childSafetyContact;
 
     const childSafetyInstitutional =
       childSafetyInstitutionalResponse(standardRequest);
