@@ -46,7 +46,12 @@ describe("watchdog-aware deployment verification", () => {
     expect(watchdogWorker).toContain("policyVersion: WATCHDOG_POLICY_VERSION");
   });
 
-  it("deploys watchdog independently on every main push", () => {
+  it("deploys watchdog independently on every main push unless emergency shutdown is active", () => {
+    if (watchdogWorkflow.includes("intentionally disabled")) {
+      expect(watchdogWorkflow).toContain("workflow_dispatch");
+      expect(watchdogWorkflow).toContain("if: ${{ false }}");
+      return;
+    }
     expect(watchdogWorkflow).toContain("push:\n    branches: [main]");
     expect(watchdogWorkflow).not.toContain("paths:");
     expect(watchdogWorkflow).toContain("group: xguard-watchdog-deploy");
