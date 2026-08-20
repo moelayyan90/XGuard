@@ -25,6 +25,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Show exact Prettier diff for operations pilot
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx prettier --write apps/worker/src/operations-pilot.ts
+          git diff -- apps/worker/src/operations-pilot.ts
+          exit 1
       - run: npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
