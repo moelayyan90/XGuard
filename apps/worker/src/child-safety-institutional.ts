@@ -106,7 +106,7 @@ function homeBody(): string {
     <a class="partner" href="/child-safety/pricing"><strong>Pricing</strong><span>Usage-based commercial API pricing →</span></a>
     <a class="partner" href="/child-safety/reporting"><strong>Global reporting</strong><span>Verified support and reporting networks →</span></a>
   </section>
-  <section class="cta"><h2>Start an institutional conversation</h2><p>Partnerships, regulators and government pilots: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a><br>Technical support: <a href="mailto:support@xguardgate.com">support@xguardgate.com</a></p></section>`;
+  <section class="cta"><h2>Start an institutional conversation</h2><p><a href="/child-safety/contact">Submit a government, regulator or platform enquiry directly to XGuard →</a></p><p>Official email: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a><br>Technical support: <a href="mailto:support@xguardgate.com">support@xguardgate.com</a></p></section>`;
 }
 
 function complianceBody(): string {
@@ -138,7 +138,7 @@ function pilotBody(): string {
     ${step("5", "Publish safeguards", "Document retention, review, appeals, reporting and child-rights controls before broader rollout.")}
   </section>
   <section class="panel"><h2>What a pilot does not include</h2><ul><li>No background microphone or camera monitoring.</li><li>No child location tracking.</li><li>No secret parent or government dashboard of private activity.</li><li>No general behavioural scoring.</li><li>No remote control over third-party services that have not integrated XGuard.</li></ul></section>
-  <section class="cta"><h2>Institutional contact</h2><p>Government, regulator and public-sector enquiries: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a></p></section>`;
+  <section class="cta"><h2>Institutional contact</h2><p><a href="/child-safety/contact">Request a limited government or platform pilot directly →</a></p><p>Official email: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a></p></section>`;
 }
 
 function pricingBody(): string {
@@ -167,7 +167,7 @@ function reportingBody(): string {
 }
 
 function page(title: string, body: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="XGuard child-safety infrastructure for platforms, governments and institutions — protection without surveillance."><title>${esc(title)} — XGuard</title><style>${styles()}</style></head><body><header><a class="brand" href="/child-safety">XGuard.</a><nav><a href="/child-safety">Overview</a><a href="/child-safety/compliance">Compliance</a><a href="/child-safety/pilot">Pilot</a><a href="/child-safety/pricing">Pricing</a><a href="/child-safety/reporting">Reporting</a><a href="/child-safety/rights">Rights</a><a href="/child-safety/integrate">Integrate</a></nav></header><main>${body}</main><footer><span>Protect children. Not monitor childhood.</span><span>info@xguardgate.com · support@xguardgate.com</span></footer></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="XGuard child-safety infrastructure for platforms, governments and institutions — protection without surveillance."><title>${esc(title)} — XGuard</title><style>${styles()}</style></head><body><header><a class="brand" href="/child-safety">XGuard.</a><nav><a href="/child-safety">Overview</a><a href="/child-safety/compliance">Compliance</a><a href="/child-safety/pilot">Pilot</a><a href="/child-safety/pricing">Pricing</a><a href="/child-safety/reporting">Reporting</a><a href="/child-safety/rights">Rights</a><a href="/child-safety/integrate">Integrate</a><a href="/child-safety/contact">Contact</a></nav></header><main>${body}</main><footer><span>Protect children. Not monitor childhood.</span><span>info@xguardgate.com · support@xguardgate.com</span></footer></body></html>`;
 }
 
 function hero(label: string, title: string, text: string): string {
