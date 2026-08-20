@@ -22,6 +22,15 @@
   "ai": {
     "binding": "AI",
   },
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": [
+        "info@xguardgate.com",
+        "support@xguardgate.com",
+      ],
+    },
+  ],
   "vars": {
     "BASE_RPC_URL": "https://base.public.blockpi.network/v1/rpc/public",
     "BASE_RPC_FALLBACK_URLS": "https://mainnet.base.org",

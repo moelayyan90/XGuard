@@ -7,6 +7,7 @@ import { a2aGatewayV1Response } from "./a2a-gateway-v1.js";
 import { buyerPassResponse } from "./buyer-pass.js";
 import { buyerPortalResponse } from "./buyer-portal.js";
 import { childSafetyControlResponse } from "./child-safety-control.js";
+import { publicChildSafetySiteResponse } from "./child-safety-public-site.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 import { mcpOAuthChallengeResponse } from "./mcp-oauth-challenge.js";
 import { mcpOAuthResponse } from "./mcp-oauth.js";
@@ -24,6 +25,11 @@ import { universalActionRailResponse } from "./universal-action-rail.js";
 import { universalProtocolResponse } from "./universal-protocol-router.js";
 import { universalSecurityGuardResponse } from "./universal-security-guard.js";
 import { universalWebhookResponse } from "./universal-webhook-ingress.js";
+import {
+  xguardInboundEmail,
+  xguardMailHttpResponse,
+  type XGuardMailEnv,
+} from "./xguard-mail.js";
 
 export {
   MainnetPaymentCoordinator,
@@ -32,8 +38,7 @@ export {
   XPayGlobalRateGate,
 };
 
-interface UniversalMainnetEnv {
-  DB: D1Database;
+interface UniversalMainnetEnv extends XGuardMailEnv {
   AI: {
     run(model: string, input: unknown): Promise<unknown>;
   };
@@ -130,6 +135,12 @@ export default {
     const securityBlock = universalSecurityGuardResponse(standardRequest);
     if (securityBlock !== null) return securityBlock;
 
+    const mail = await xguardMailHttpResponse(standardRequest, env);
+    if (mail !== null) return mail;
+
+    const childSafetySite = publicChildSafetySiteResponse(standardRequest);
+    if (childSafetySite !== null) return childSafetySite;
+
     const childSafety = await childSafetyControlResponse(standardRequest, env);
     if (childSafety !== null) return childSafety;
 
@@ -184,6 +195,11 @@ export default {
 
     const response = await mainnetFetch(standardRequest, env, ctx);
     return normalizePublicPaymentContract(standardRequest, response);
+  },
+
+  async email(message, env, ctx): Promise<void> {
+    void ctx;
+    await xguardInboundEmail(message, env);
   },
 
   async scheduled(controller, env, ctx): Promise<void> {
