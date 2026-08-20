@@ -89,7 +89,7 @@ ${footer()}
 }
 
 function nav(page: PageKey): string {
-  return `<header class="nav"><a class="brand" href="/">XGuard<span>.</span></a><nav>${navLink("home", page, "/child-safety", "Overview")}${navLink("rights", page, "/child-safety/rights", "Child rights")}${navLink("governments", page, "/child-safety/governments", "Governments")}${navLink("integrate", page, "/child-safety/integrate", "Integrate")}${navLink("transparency", page, "/child-safety/transparency", "Transparency")}</nav><a class="nav-cta" href="/child-safety/dashboard">Dashboard</a></header>`;
+  return `<header class="nav"><a class="brand" href="/">XGuard<span>.</span></a><nav>${navLink("home", page, "/child-safety", "Overview")}${navLink("rights", page, "/child-safety/rights", "Child rights")}${navLink("governments", page, "/child-safety/governments", "Governments")}<a href="/child-safety/compliance">Compliance</a><a href="/child-safety/pilot">Pilot</a><a href="/child-safety/pricing">Pricing</a><a href="/child-safety/reporting">Reporting</a>${navLink("integrate", page, "/child-safety/integrate", "Integrate")}${navLink("transparency", page, "/child-safety/transparency", "Transparency")}</nav><a class="nav-cta" href="/child-safety/dashboard">Dashboard</a></header>`;
 }
 
 function navLink(
