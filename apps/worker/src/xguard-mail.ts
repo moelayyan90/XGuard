@@ -6,7 +6,7 @@ const MAX_INBOUND_PREVIEW = 60_000;
 
 type Mailbox = (typeof MAILBOXES)[number];
 
-interface SendEmailBinding {
+export interface SendEmailBinding {
   send(message: {
     to: string | string[];
     from: string | { email: string; name?: string };
@@ -17,7 +17,7 @@ interface SendEmailBinding {
   }): Promise<unknown>;
 }
 
-interface XGuardMailEnv {
+export interface XGuardMailEnv {
   DB: D1Database;
   EMAIL?: SendEmailBinding;
   XGUARD_ADMIN_TOKEN_SHA256?: string;
