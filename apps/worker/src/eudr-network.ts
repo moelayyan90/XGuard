@@ -231,7 +231,7 @@ export async function eudrNetworkResponse(
     /^\/eudr\/inbox\/([a-z0-9-]{1,48})$/,
   );
   if (request.method === "GET" && inboxPageMatch) {
-    const slug = inboxPageMatch[1];
+    const [, slug = ""] = inboxPageMatch;
     const row = await env.DB.prepare(
       "SELECT organisation_name FROM eudr_inboxes WHERE slug = ?",
     )
@@ -245,7 +245,7 @@ export async function eudrNetworkResponse(
     /^\/v1\/eudr\/inboxes\/([a-z0-9-]{1,48})\/references$/,
   );
   if (request.method === "POST" && referenceMatch) {
-    const slug = referenceMatch[1];
+    const [, slug = ""] = referenceMatch;
     const inbox = await env.DB.prepare(
       "SELECT id, organisation_name FROM eudr_inboxes WHERE slug = ?",
     )
@@ -337,7 +337,7 @@ export async function eudrNetworkResponse(
     /^\/v1\/eudr\/inboxes\/([a-z0-9-]{1,48})\/summary$/,
   );
   if (request.method === "GET" && summaryMatch) {
-    const slug = summaryMatch[1];
+    const [, slug = ""] = summaryMatch;
     const adminKey = request.headers
       .get("authorization")
       ?.replace(/^Bearer\s+/i, "")
