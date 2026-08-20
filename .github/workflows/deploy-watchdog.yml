@@ -1,93 +1,14 @@
-name: Deploy XGuard watchdog
+name: Deploy XGuard watchdog — disabled
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
 
-concurrency:
-  group: xguard-watchdog-deploy
-  cancel-in-progress: true
-
 jobs:
-  deploy:
+  disabled:
+    if: ${{ false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - run: npm ci --ignore-scripts
-
-      - name: Validate watchdog source and config
-        run: |
-          npm run format:check
-          npm run lint
-          npm run typecheck
-          npx wrangler deploy --dry-run --config apps/worker/wrangler.watchdog.jsonc
-        env:
-          WRANGLER_SEND_METRICS: "false"
-
-      - name: Deploy independent watchdog Worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WRANGLER_SEND_METRICS: "false"
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" \
-            | tr -d '\r\n' \
-            | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
-          export CLOUDFLARE_API_TOKEN
-
-          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-            echo "::notice::Watchdog deployment is armed but waiting for Cloudflare GitHub Actions authorization."
-            exit 0
-          fi
-
-          if ! npx wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);process.exit(Array.isArray(a)&&a.some(x=>x&&x.name==="xguard-mainnet")?0:1)})'; then
-            echo "::error::xguard-mainnet D1 must exist before the watchdog can deploy."
-            exit 1
-          fi
-
-          CONFIG_PATH="${GITHUB_WORKSPACE}/apps/worker/wrangler.watchdog.resolved.jsonc"
-          node scripts/resolve-cloudflare-config.mjs \
-            --template apps/worker/wrangler.watchdog.jsonc \
-            --output "${CONFIG_PATH}" \
-            --database-name xguard-mainnet
-
-          npx wrangler d1 migrations apply xguard-mainnet --remote --config "${CONFIG_PATH}"
-          npx wrangler deploy --config "${CONFIG_PATH}"
-
-      - name: Verify watchdog live health
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE_URL="https://xguard-watchdog.maqamapp.workers.dev"
-          ready=0
-          for attempt in {1..18}; do
-            response="$(curl -sS --max-time 15 -H 'Cache-Control: no-cache' -w $'\n%{http_code}' "${BASE_URL}/healthz?attempt=${attempt}" || true)"
-            code="${response##*$'\n'}"
-            body="${response%$'\n'*}"
-            if [[ "${code}" == "200" ]] && printf '%s' "${body}" \
-              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.service!=="XGuard Watchdog"||x.mode!=="self-healing-control-plane"||x.policyVersion!=="2026-08-17-v2")process.exit(1)})'; then
-              ready=1
-              break
-            fi
-            sleep 5
-          done
-          if [[ "${ready}" -ne 1 ]]; then
-            echo "::error::XGuard watchdog policy v2 did not become healthy after deployment."
-            exit 1
-          fi
+      - run: echo "XGuard watchdog deployment is intentionally disabled."
