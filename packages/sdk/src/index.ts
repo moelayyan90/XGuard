@@ -1,6 +1,7 @@
 import { HTTPFacilitatorClient, type FacilitatorClient } from "@x402/core/http";
 
 export * from "./auto-pay.js";
+export * from "./child-safety-browser-media.js";
 export * from "./child-safety-media.js";
 export * from "./child-safety.js";
 export * from "./hosted-auto-pay.js";
