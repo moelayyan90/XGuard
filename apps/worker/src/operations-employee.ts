@@ -349,7 +349,7 @@ export async function operationsEmployeeResponse(
   if (request.method === "GET" && taskMatch) {
     const organisation = await authenticateOrganisation(request, env);
     if (!organisation) return json({ error: "unauthorized" }, 401);
-    const taskId = taskMatch[1];
+    const [, taskId = ""] = taskMatch;
     const task = await env.DB.prepare(
       "SELECT id, external_reference, country_code, authority, workflow_type, source_language, preferred_language, objective, status, priority, due_at, exception_code, created_at, updated_at FROM operations_tasks WHERE id = ? AND organisation_id = ?",
     )
