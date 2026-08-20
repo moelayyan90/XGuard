@@ -8,6 +8,7 @@ on:
       - ".github/workflows/publish-agent-discovery.yml"
       - "apps/worker/src/a2a-agent.ts"
       - "apps/worker/src/a2a-discovery.ts"
+      - "apps/worker/src/a2a-gateway-v1.ts"
       - "apps/worker/src/agent-discovery-modern.ts"
       - "apps/worker/src/mainnet-mcp-modern.ts"
       - "apps/worker/src/universal-mainnet.ts"
