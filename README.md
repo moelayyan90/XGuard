@@ -170,6 +170,14 @@ Existing machine/developer surfaces include:
 /mcp
 ```
 
+The legacy remote MCP surface remains available at `/mcp` with the synchronized tool set:
+
+- `xguard_payment_offer` — prepare the optional pre-payment XGuard offer without executing the underlying payment.
+- `xguard_payment_decision` — evaluate a declared payment intent and return the current decision/evidence result.
+- `xguard_discover` — search or list XGuard's x402 resource catalog.
+- `xguard_resource_details` — inspect one exact catalog resource.
+- `xguard_status` — return live gateway and discovery status.
+
 ## Development and verification
 
 ```bash
