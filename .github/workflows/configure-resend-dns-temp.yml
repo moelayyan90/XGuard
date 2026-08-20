@@ -7,13 +7,19 @@ on:
       - .github/workflows/configure-resend-dns-temp.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   configure:
     runs-on: ubuntu-latest
     steps:
-      - name: Add Resend DNS records to Cloudflare
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/configure-resend-dns
+
+      - id: dns
+        name: Add Resend DNS records to Cloudflare
+        continue-on-error: true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -24,14 +30,13 @@ jobs:
           API="https://api.cloudflare.com/client/v4"
           TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           if [[ -z "$TOKEN" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-            echo "::error::Cloudflare credentials are unavailable"
+            echo "Cloudflare credentials are unavailable" >&2
             exit 1
           fi
           auth=(-H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json')
           zones="$(curl -fsS "${auth[@]}" "${API}/zones?name=${DOMAIN}&account.id=${CLOUDFLARE_ACCOUNT_ID}")"
           ZONE_ID="$(printf '%s' "$zones" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const z=(x.result||[])[0];if(!x.success||!z?.id)process.exit(1);process.stdout.write(z.id)})')"
 
-          # Refuse to overwrite an unrelated root MX record.
           existing_root_mx="$(curl -fsS "${auth[@]}" "${API}/zones/${ZONE_ID}/dns_records?type=MX&name=${DOMAIN}")"
           printf '%s' "$existing_root_mx" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const a=x.result||[];const foreign=a.filter(r=>r.content!=="inbound-smtp.eu-west-1.amazonaws.com");if(foreign.length){console.error("Existing non-Resend root MX records detected; refusing to change mail routing automatically");process.exit(1)}})'
 
@@ -70,4 +75,28 @@ NODE
           upsert TXT "send.${DOMAIN}" 'v=spf1 include:amazonses.com ~all'
           upsert MX "${DOMAIN}" 'inbound-smtp.eu-west-1.amazonaws.com' 10
 
-          echo "All Resend DNS records configured."
+      - name: Record DNS result
+        shell: bash
+        env:
+          DNS_OUTCOME: ${{ steps.dns.outcome }}
+        run: |
+          set -euo pipefail
+          node - "$DNS_OUTCOME" <<'NODE'
+const fs=require('fs');
+const outcome=process.argv[2];
+fs.writeFileSync('resend-dns-result.json', JSON.stringify({
+  domain:'xguardgate.com',
+  configured: outcome === 'success',
+  outcome,
+  checkedAt:new Date().toISOString()
+}, null, 2)+'\n');
+NODE
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- resend-dns-result.json
+          git commit -m "Record Resend DNS configuration result" || true
+          git push origin HEAD:agent/configure-resend-dns
+
+      - name: Fail if DNS configuration failed
+        if: steps.dns.outcome != 'success'
+        run: exit 1
