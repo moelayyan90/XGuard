@@ -1,0 +1,73 @@
+name: Configure Resend DNS once
+
+on:
+  push:
+    branches: [agent/configure-resend-dns]
+    paths:
+      - .github/workflows/configure-resend-dns-temp.yml
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add Resend DNS records to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          DOMAIN="xguardgate.com"
+          API="https://api.cloudflare.com/client/v4"
+          TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          if [[ -z "$TOKEN" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::Cloudflare credentials are unavailable"
+            exit 1
+          fi
+          auth=(-H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json')
+          zones="$(curl -fsS "${auth[@]}" "${API}/zones?name=${DOMAIN}&account.id=${CLOUDFLARE_ACCOUNT_ID}")"
+          ZONE_ID="$(printf '%s' "$zones" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const z=(x.result||[])[0];if(!x.success||!z?.id)process.exit(1);process.stdout.write(z.id)})')"
+
+          # Refuse to overwrite an unrelated root MX record.
+          existing_root_mx="$(curl -fsS "${auth[@]}" "${API}/zones/${ZONE_ID}/dns_records?type=MX&name=${DOMAIN}")"
+          printf '%s' "$existing_root_mx" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const a=x.result||[];const foreign=a.filter(r=>r.content!=="inbound-smtp.eu-west-1.amazonaws.com");if(foreign.length){console.error("Existing non-Resend root MX records detected; refusing to change mail routing automatically");process.exit(1)}})'
+
+          upsert() {
+            local type="$1" name="$2" content="$3" priority="${4:-}"
+            local found id payload response
+            found="$(curl -fsS "${auth[@]}" "${API}/zones/${ZONE_ID}/dns_records?type=${type}&name=${name}")"
+            id="$(printf '%s' "$found" | node - "$content" <<'NODE'
+let s=""; const content=process.argv[2];
+process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const r=(x.result||[]).find(v=>v.content===content);if(r?.id)process.stdout.write(r.id)});
+NODE
+)"
+            if [[ "$type" == "MX" ]]; then
+              payload="$(node - "$type" "$name" "$content" "$priority" <<'NODE'
+const [type,name,content,priority]=process.argv.slice(2);process.stdout.write(JSON.stringify({type,name,content,ttl:1,priority:Number(priority)}));
+NODE
+)"
+            else
+              payload="$(node - "$type" "$name" "$content" <<'NODE'
+const [type,name,content]=process.argv.slice(2);process.stdout.write(JSON.stringify({type,name,content,ttl:1}));
+NODE
+)"
+            fi
+            if [[ -n "$id" ]]; then
+              response="$(curl -fsS -X PUT "${auth[@]}" "${API}/zones/${ZONE_ID}/dns_records/${id}" --data "$payload")"
+            else
+              response="$(curl -fsS -X POST "${auth[@]}" "${API}/zones/${ZONE_ID}/dns_records" --data "$payload")"
+            fi
+            printf '%s' "$response" | node - "$type" "$name" <<'NODE'
+let s="";const [type,name]=process.argv.slice(2);process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.success){console.error(JSON.stringify(x.errors||x));process.exit(1)}console.log(`Configured ${type} ${name}`)});
+NODE
+          }
+
+          upsert TXT "resend._domainkey.${DOMAIN}" 'p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDBLfA8O5uK1idJqI8Ia8b18JkH89inHYlhAH/qC+Tu/F31MRy/MT04pPFFSkDd2hDBbvX4Wk8wotzv6HJ6WmfrpFN/14XpgcP0RNBVp3GEiE41e6jzOp82JnYp33ciLtiUC4Qz4Z9N/8NG0kKNZD+7U+BCMmz9dIcouhVN0tTf/QIDAQAB'
+          upsert MX "send.${DOMAIN}" 'feedback-smtp.eu-west-1.amazonses.com' 10
+          upsert TXT "send.${DOMAIN}" 'v=spf1 include:amazonses.com ~all'
+          upsert MX "${DOMAIN}" 'inbound-smtp.eu-west-1.amazonaws.com' 10
+
+          echo "All Resend DNS records configured."
