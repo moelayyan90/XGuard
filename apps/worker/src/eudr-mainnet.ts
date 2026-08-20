@@ -1,5 +1,6 @@
 import universalMainnet from "./universal-mainnet.js";
 import { eudrNetworkResponse } from "./eudr-network.js";
+import { eudrSmartEmployeeSite } from "./eudr-smart-employee-site.js";
 
 interface EudrMainnetEnv {
   DB: D1Database;
@@ -33,6 +34,9 @@ const legacy = universalMainnet as unknown as {
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
+    const smartEmployee = eudrSmartEmployeeSite(request);
+    if (smartEmployee !== null) return smartEmployee;
+
     const eudr = await eudrNetworkResponse(request, env);
     if (eudr !== null) return eudr;
     return legacy.fetch(request, env, ctx);
