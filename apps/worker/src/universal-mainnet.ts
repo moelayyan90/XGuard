@@ -9,6 +9,7 @@ import { buyerPortalResponse } from "./buyer-portal.js";
 import { childSafetyContactResponse } from "./child-safety-contact.js";
 import { childSafetyControlResponse } from "./child-safety-control.js";
 import { childSafetyInstitutionalResponse } from "./child-safety-institutional.js";
+import { childSafetyReportingDirectoryResponse } from "./child-safety-reporting-directory.js";
 import { publicChildSafetySiteResponse } from "./child-safety-public-site.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 import { mcpOAuthChallengeResponse } from "./mcp-oauth-challenge.js";
@@ -145,6 +146,10 @@ export default {
       env,
     );
     if (childSafetyContact !== null) return childSafetyContact;
+
+    const childSafetyReporting =
+      childSafetyReportingDirectoryResponse(standardRequest);
+    if (childSafetyReporting !== null) return childSafetyReporting;
 
     const childSafetyInstitutional =
       childSafetyInstitutionalResponse(standardRequest);
