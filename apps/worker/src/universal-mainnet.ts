@@ -20,6 +20,7 @@ import {
   operationsEmployeeResponse,
   operationsEmployeeScheduled,
 } from "./operations-employee.js";
+import { operationsPilotResponse } from "./operations-pilot.js";
 import { paymentDecisionResponse } from "./payment-decision.js";
 import {
   normalizePublicPaymentContract,
@@ -148,6 +149,9 @@ export default {
 
     const mail = await xguardMailHttpResponse(standardRequest, env);
     if (mail !== null) return mail;
+
+    const pilot = await operationsPilotResponse(standardRequest, env);
+    if (pilot !== null) return pilot;
 
     const smartEmployeeSite = eudrSmartEmployeeSite(standardRequest);
     if (smartEmployeeSite !== null) return smartEmployeeSite;
