@@ -37,7 +37,12 @@ function cleanString(
   if (typeof value !== "string") return required ? "" : null;
   const clean = value
     .trim()
-    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .split("")
+    .filter((character) => {
+      const code = character.charCodeAt(0);
+      return code >= 32 && code !== 127;
+    })
+    .join("")
     .slice(0, max);
   if (required && clean.length === 0) return "";
   return clean.length === 0 ? null : clean;
