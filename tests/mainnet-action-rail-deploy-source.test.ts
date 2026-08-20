@@ -20,7 +20,7 @@ describe("mainnet Universal Action Rail deployment contract", () => {
     expect(source).toContain("universal-action-gateway");
     expect(source).toContain("/v1/actions/execute");
     expect(source).toContain("prepaid-per-successful-upstream-action");
-    expect(source).toContain('skill.id===\"universal-actions\"');
+    expect(source).toContain('skill.id==="universal-actions"');
     expect(source).toContain("xguard-mainnet-live");
     expect(source).toContain("XGuard Universal Action Rail is live on mainnet");
   });
