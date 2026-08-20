@@ -11,9 +11,15 @@ import { childSafetyControlResponse } from "./child-safety-control.js";
 import { childSafetyInstitutionalResponse } from "./child-safety-institutional.js";
 import { childSafetyReportingDirectoryResponse } from "./child-safety-reporting-directory.js";
 import { publicChildSafetySiteResponse } from "./child-safety-public-site.js";
+import { eudrNetworkResponse } from "./eudr-network.js";
+import { eudrSmartEmployeeSite } from "./eudr-smart-employee-site.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 import { mcpOAuthChallengeResponse } from "./mcp-oauth-challenge.js";
 import { mcpOAuthResponse } from "./mcp-oauth.js";
+import {
+  operationsEmployeeResponse,
+  operationsEmployeeScheduled,
+} from "./operations-employee.js";
 import { paymentDecisionResponse } from "./payment-decision.js";
 import {
   normalizePublicPaymentContract,
@@ -42,6 +48,7 @@ export {
 };
 
 interface UniversalMainnetEnv extends XGuardMailEnv {
+  DB: D1Database;
   AI: {
     run(model: string, input: unknown): Promise<unknown>;
   };
@@ -52,6 +59,7 @@ interface UniversalMainnetEnv extends XGuardMailEnv {
   BUYER_PASS_CREATE_RATE_LIMITER: RateLimit;
   WEBHOOK_DELIVERY_QUEUE: DurableObjectNamespace<WebhookDeliveryQueue>;
   WEBHOOK_RATE_LIMITER: RateLimit;
+  XGUARD_ADMIN_TOKEN_SHA256?: string;
   XGUARD_PAYMENT_DECISION_FEE_MICRO_USD?: string;
   XGUARD_SECURITY_FEE_MICRO_USD?: string;
   XGUARD_TOOL_FEE_MICRO_USD?: string;
@@ -141,6 +149,15 @@ export default {
     const mail = await xguardMailHttpResponse(standardRequest, env);
     if (mail !== null) return mail;
 
+    const smartEmployeeSite = eudrSmartEmployeeSite(standardRequest);
+    if (smartEmployeeSite !== null) return smartEmployeeSite;
+
+    const operations = await operationsEmployeeResponse(standardRequest, env);
+    if (operations !== null) return operations;
+
+    const eudr = await eudrNetworkResponse(standardRequest, env);
+    if (eudr !== null) return eudr;
+
     const childSafetyContact = await childSafetyContactResponse(
       standardRequest,
       env,
@@ -220,6 +237,7 @@ export default {
   },
 
   async scheduled(controller, env, ctx): Promise<void> {
+    await operationsEmployeeScheduled(env);
     await mainnetScheduled(controller, env, ctx);
   },
 } satisfies ExportedHandler<UniversalMainnetEnv>;
