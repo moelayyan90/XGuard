@@ -27,6 +27,30 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Patch sanitizer implementation
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const files = [
+            "apps/worker/src/eudr-network.ts",
+            "apps/worker/src/operations-employee.ts",
+          ];
+          const before = '.replace(/[\\u0000-\\u001f\\u007f]/g, "")';
+          const after = `.split("")
+            .filter((character) => {
+              const code = character.charCodeAt(0);
+              return code >= 32 && code !== 127;
+            })
+            .join("")`;
+          for (const file of files) {
+            const source = fs.readFileSync(file, "utf8");
+            if (!source.includes(before)) {
+              throw new Error(`Expected sanitizer not found in ${file}`);
+            }
+            fs.writeFileSync(file, source.replace(before, after));
+          }
+          NODE
       - name: Format pivot files
         run: >-
           npx prettier --write
@@ -41,7 +65,7 @@ jobs:
           README.md
           tests/eudr-network-source.test.ts
           tests/operations-employee-source.test.ts
-      - name: Commit formatting
+      - name: Commit pivot fixes
         run: |
           if git diff --quiet; then
             exit 0
@@ -60,7 +84,7 @@ jobs:
             README.md \
             tests/eudr-network-source.test.ts \
             tests/operations-employee-source.test.ts
-          git commit -m "Format cross-border operations pivot"
+          git commit -m "Fix and format cross-border operations pivot"
           git push origin HEAD:pivot/eudr-network
 
   verify:
