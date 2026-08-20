@@ -1,6 +1,10 @@
 import universalMainnet from "./universal-mainnet.js";
 import { eudrNetworkResponse } from "./eudr-network.js";
 import { eudrSmartEmployeeSite } from "./eudr-smart-employee-site.js";
+import {
+  operationsEmployeeResponse,
+  operationsEmployeeScheduled,
+} from "./operations-employee.js";
 
 interface EudrMainnetEnv {
   DB: D1Database;
@@ -13,13 +17,11 @@ type FetchHandler = (
   env: EudrMainnetEnv,
   ctx: ExecutionContext,
 ) => Promise<Response>;
-
 type EmailHandler = (
   message: ForwardableEmailMessage,
   env: EudrMainnetEnv,
   ctx: ExecutionContext,
 ) => Promise<void>;
-
 type ScheduledHandler = (
   controller: ScheduledController,
   env: EudrMainnetEnv,
@@ -37,8 +39,12 @@ export default {
     const smartEmployee = eudrSmartEmployeeSite(request);
     if (smartEmployee !== null) return smartEmployee;
 
+    const operations = await operationsEmployeeResponse(request, env);
+    if (operations !== null) return operations;
+
     const eudr = await eudrNetworkResponse(request, env);
     if (eudr !== null) return eudr;
+
     return legacy.fetch(request, env, ctx);
   },
 
@@ -47,6 +53,7 @@ export default {
   },
 
   async scheduled(controller, env, ctx): Promise<void> {
-    return legacy.scheduled(controller, env, ctx);
+    await operationsEmployeeScheduled(env);
+    await legacy.scheduled(controller, env, ctx);
   },
 } satisfies ExportedHandler<EudrMainnetEnv>;
