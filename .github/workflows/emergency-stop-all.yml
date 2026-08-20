@@ -13,24 +13,12 @@ permissions:
 jobs:
   stop:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - run: npm ci --ignore-scripts
-
-      - name: Delete all public XGuard Workers
+      - name: Delete all public XGuard Workers through Cloudflare API
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WRANGLER_SEND_METRICS: "false"
         shell: bash
         run: |
           set -euo pipefail
@@ -39,22 +27,21 @@ jobs:
             exit 1
           fi
 
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts"
           for worker in xguard-mainnet xguard-watchdog xguard-testnet; do
             echo "Stopping ${worker}..."
-            set +e
-            npx wrangler delete --name "${worker}" --force
-            delete_status=$?
-            set -e
-            if [[ "${delete_status}" -ne 0 ]]; then
-              echo "Delete returned ${delete_status} for ${worker}; verifying whether it is already absent."
-            fi
-
-            if npx wrangler deployments status --name "${worker}" --json >/tmp/${worker}.status.json 2>/tmp/${worker}.status.err; then
-              echo "::error::${worker} still exists after emergency stop."
-              cat /tmp/${worker}.status.json || true
+            code="$(curl --silent --show-error --max-time 30 \
+              --output "/tmp/${worker}-delete.json" \
+              --write-out '%{http_code}' \
+              --request DELETE \
+              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              --header 'Content-Type: application/json' \
+              "${api}/${worker}?force=true" || true)"
+            echo "DELETE ${worker} -> ${code}"
+            if [[ "${code}" != "200" && "${code}" != "404" ]]; then
+              cat "/tmp/${worker}-delete.json" || true
+              echo "::error::Cloudflare did not confirm deletion of ${worker}."
               exit 1
-            else
-              echo "${worker} is absent."
             fi
           done
 
@@ -69,6 +56,7 @@ jobs:
             echo "${url} -> ${code}"
             if [[ "${code}" == "200" ]]; then
               echo "::error::${url} still returns HTTP 200 after emergency stop."
+              head -c 500 /tmp/stop-check.out || true
               exit 1
             fi
           }
@@ -78,4 +66,4 @@ jobs:
           check_not_live "https://xguard-testnet.maqamapp.workers.dev/status"
 
       - name: Confirm preserved data boundary
-        run: echo "Workers stopped. Repository and D1 databases were intentionally not deleted."
+        run: echo "Public Workers stopped. Repository and D1 databases were intentionally not deleted."
