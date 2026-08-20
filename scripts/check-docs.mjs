@@ -8,6 +8,9 @@ const requiredFiles = [
   "docs/openapi.yaml",
   "docs/CHILD_SAFETY.md",
   "docs/child-safety-openapi.yaml",
+  "CROSS_BORDER_OPERATIONS.md",
+  "EUDR_NETWORK.md",
+  "EUDR_OPERATIONS_ENGINE.md",
 ];
 
 for (const file of requiredFiles) await access(file);
@@ -68,20 +71,38 @@ for (const link of [
   "[API](docs/API.md)",
   "[facilitators](docs/FACILITATORS.md)",
   "[Child Safety](docs/CHILD_SAFETY.md)",
+  "[Cross-Border Operations](CROSS_BORDER_OPERATIONS.md)",
+  "[EUDR Operations Engine](EUDR_OPERATIONS_ENGINE.md)",
+  "[EUDR Network](EUDR_NETWORK.md)",
 ]) {
   if (!readme.includes(link))
     throw new Error(`README link is missing: ${link}`);
 }
 for (const marker of [
-  "# XGuard Child Safety Control Layer",
+  "# XGuard — Smart Cross-Border Operations Employee",
+  "Government Runner",
+  "Customs Coordinator",
+  "Supplier Chaser",
+  "90% is readiness",
+  "Completed EUDR operational case",
+  "## Developer and legacy documentation",
   "/v1/child-safety/scan",
   "FREEZE_CHAT",
-  "per analyzed safety event",
-  "## Existing payment/protocol infrastructure",
   "x402 adapter",
 ]) {
   if (!readme.includes(marker))
-    throw new Error(`README child-safety boundary is missing: ${marker}`);
+    throw new Error(`README product boundary is missing: ${marker}`);
+}
+
+const operations = await readFile("CROSS_BORDER_OPERATIONS.md", "utf8");
+for (const marker of [
+  "XGuard Smart Cross-Border Operations",
+  "Jurisdiction onboarding gate",
+  "authoritative legal/procedural source",
+  "must never",
+]) {
+  if (!operations.includes(marker))
+    throw new Error(`Cross-border operations boundary is missing: ${marker}`);
 }
 
 console.log("Documentation contract check passed.");

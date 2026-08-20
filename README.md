@@ -1,177 +1,165 @@
-# XGuard Child Safety Control Layer
+# XGuard — Smart Cross-Border Operations Employee
 
 [![CI](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml)
 [![Mainnet](https://github.com/moelayyan90/XGuard/actions/workflows/deploy-mainnet.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/deploy-mainnet.yml)
 
-**XGuard is a commercial child-safety infrastructure layer for online platforms, games, communities, schools, telecom products, ad-tech and public-sector child-protection programmes.**
+**XGuard is an operations execution layer for companies dealing with government, customs, compliance, suppliers and cross-border workflows.**
 
-The product is designed to sit inside an integrated service and return an enforceable decision before or during delivery of risky content or contact involving children and minors.
+The product goal is deliberately different from a traditional dashboard:
 
-## Core control contract
+> **Give XGuard the objective. XGuard performs the repeatable operational work, tracks the deadline, chases missing inputs, prepares the case, hands it to an authorised execution route and returns the result or the exact exception that still needs a responsible person.**
 
-Every analyzed safety event receives a risk level and a primary control:
+XGuard starts with a focused EUDR operations workflow and expands only into government/customs workflows that are actually configured, validated and operationally supportable.
 
-```text
-ALLOW
-WARN
-BLUR
-BLOCK
-FREEZE_CHAT
-ESCALATE
-```
+## Why XGuard exists
 
-The host platform can use the returned enforcement object to:
+Cross-border operations often fail for ordinary reasons rather than exotic ones:
 
-- block a message or content item;
-- blur age-inappropriate media;
-- freeze a risky conversation;
-- prevent further contact;
-- suppress a sexualized advertisement;
-- disable autoplay for risky content;
-- require human safety review;
-- surface a reporting flow;
-- preserve evidence on the client/platform side when a critical incident is detected.
+- a supplier never sent one required field;
+- a deadline lived in somebody's mailbox;
+- the same data was copied between several systems;
+- a reference was not handed to the next party;
+- an employee was overloaded and a follow-up was delayed;
+- the company rebuilt the same evidence package repeatedly;
+- a government/customs response was received but not converted into the next task.
 
-XGuard does not remotely shut down conversations, accounts, videos or advertisements on third-party products that have not integrated XGuard. It provides the decision and control layer; the integrated host enforces it.
+Automation is useful precisely because repetitive work does not benefit from fatigue, mood or memory. XGuard therefore focuses on **consistent execution and visible exceptions**, not on pretending software replaces legal judgment.
 
-## Risks XGuard evaluates
-
-The first classifier is designed around risks such as:
-
-- grooming;
-- sexual solicitation;
-- requests for intimate or sexual images;
-- coercion and sextortion;
-- secrecy manipulation;
-- age-inappropriate contact;
-- attempts to move a minor into private/off-platform channels;
-- pressure to meet in person;
-- explicit sexual content;
-- sexualized advertising;
-- harassment.
-
-## Risk Session
-
-A single message may look harmless while the sequence is dangerous.
-
-XGuard supports an optional `riskSessionId` so the system can recognize a pattern such as:
+## Product model
 
 ```text
-secrecy
-  -> move to a private channel
-  -> request intimate imagery
-  -> coercion / sextortion
+SHIPMENT / PO / GOVERNMENT REQUEST / CUSTOMS REQUEST / COMPLIANCE TASK
+        |
+        v
+configured country + authority + workflow
+        |
+        v
+XGuard case
+        |
+        +--> reuse current authorised data
+        +--> identify missing facts/evidence
+        +--> request / remind / escalate
+        +--> validate completeness
+        +--> prepare forms/references/package
+        +--> track deadline and state
+        |
+        v
+READY or EXCEPTION
+        |
+        v
+authorised execution / filing / handoff when supported
+        |
+        v
+acknowledgement / status / reference
+        |
+        v
+ERP / broker / customer / audit record
 ```
 
-The session identifier is hashed before persistence. XGuard stores risk metadata and the hash, not the raw child conversation body in the child-safety scan ledger.
+## The XGuard jobs
 
-Repeated HIGH/CRITICAL signals in the same session increase the enforcement level of later risky events.
+### Government Runner
 
-## Commercial model
+Turns a supported government request into requirements, tasks, documents, deadlines and an operational execution path.
 
-The child-safety product is billed **per analyzed safety event** from the existing XGuard prepaid merchant balance.
+### Customs Coordinator
 
-Initial prices:
+Maps shipment identifiers, required references and handoffs so customs-facing work does not live across disconnected email and spreadsheets.
 
-| Event                   |  Price |
-| ----------------------- | -----: |
-| Single message          | $0.005 |
-| Chat window             | $0.010 |
-| Ad text                 | $0.010 |
-| Image-description event | $0.015 |
-| Video-transcript event  | $0.020 |
+### Compliance Desk
 
-The event id is idempotent per merchant. Retries do not create duplicate scan charges.
+Builds repeatable case files, checks completeness, preserves evidence and escalates matters that require a legally responsible person.
 
-A fee is held before classification, earned after a successful persisted safety decision, and released if classification fails.
+### Supplier Chaser
 
-## API
+Requests missing information, follows up, reminds and records supplier responses.
 
-```text
-GET  /v1/child-safety/catalog
-GET  /v1/child-safety/reporting?country=<country>
-POST /v1/child-safety/scan
-```
+### Multilingual Relay
 
-Paid scans use the existing XGuard merchant authentication:
+Normalises supported operational communications across languages while preserving source material and an audit trail.
 
-```text
-Authorization: Bearer <XGuard merchant API key>
-```
+### Deadline Engine
 
-Example:
+Keeps unresolved requests, due dates and exceptions visible until closure.
 
-```json
-{
-  "eventId": "msg:platform:12345678",
-  "riskSessionId": "conversation:98765432",
-  "contentKind": "message",
-  "language": "Arabic",
-  "childLikely": true,
-  "childAgeBand": "13-15",
-  "text": "...message supplied by the integrated platform...",
-  "signals": ["adult-minor age gap", "new contact"]
-}
-```
+### Evidence Vault
 
-See [Child Safety](docs/CHILD_SAFETY.md) and the machine-readable [Child Safety OpenAPI](docs/child-safety-openapi.yaml).
+Preserves input evidence, versions, hashes, handoffs, transformations and status history.
 
-## Global reporting router
+### ERP / API Worker
 
-XGuard does not invent hotline numbers.
+Accepts work through supported API/webhook/CSV/inbox paths and returns state, reference or exception to the system the customer already uses.
 
-`GET /v1/child-safety/reporting?country=<country>` returns a locally verified contact when a current country pack exists and always returns official global routing sources, including:
+## First focused workflow: EUDR
 
-- Child Helpline International — country-by-country child helplines;
-- INHOPE — country-based reporting routes for suspected child sexual abuse material;
-- NCMEC CyberTipline — suspected child sexual exploitation reporting with international referrals.
+XGuard's first production focus is EUDR operations:
 
-When a direct country number is not verified in XGuard, the API deliberately returns the official global country selectors instead of a guessed number.
+- readiness assessment;
+- supplier/reference Inbox;
+- supplier follow-up;
+- product/CN and origin mapping;
+- evidence organisation;
+- geodata preflight;
+- case assembly;
+- reference handoff;
+- audit history;
+- annual-review support.
 
-## Privacy boundary
+EU Information System execution must only be enabled when the participant's authority/credentials and XGuard's current production integration have been validated. XGuard must never call a statement verified or submitted merely because an internal workflow completed.
 
-The MVP child-safety ledger does not persist raw submitted child messages or raw content.
+See [Cross-Border Operations](CROSS_BORDER_OPERATIONS.md), [EUDR Operations Engine](EUDR_OPERATIONS_ENGINE.md) and [EUDR Network](EUDR_NETWORK.md).
 
-Stored safety data is limited to operational metadata such as:
+## Operating principle
 
-- merchant;
-- external event id;
-- hashed risk-session id;
-- content kind;
-- risk level;
-- risk categories;
-- enforcement action;
-- charged amount;
-- timestamp.
+> **90% is readiness. The final 10% is live execution.**
 
-A future evidence vault or forensic workflow requires a separate legal, retention and security design. XGuard must not silently become a general-purpose surveillance product.
+This is an XGuard product framework, not an official legal/statistical claim. Nine explicit readiness checks make up the pre-transaction 90%; the final 10% is reserved for the real movement/execution event.
 
-## Current media boundary
+## Launch pricing
 
-The initial API analyzes:
+| Service                                         |        XGuard launch price |
+| ----------------------------------------------- | -------------------------: |
+| Readiness + basic EUDR supplier/reference Inbox |                     **€0** |
+| Completed EUDR operational case                 |              **€9 / case** |
+| Recurring volume / embedded EUDR workflow       | **€4–€6 / completed case** |
 
-- message text;
-- chat windows;
-- advertisement text;
-- image-description events;
-- video transcripts.
+No monthly seat subscription is required for these launch offers.
 
-Direct raw-image/video decoding, key-frame extraction, audio transcription, perceptual-hash matching and specialist CSAM hash-list integration are **not yet implemented in this endpoint**.
+These are XGuard's own launch prices, not market averages. Government/customs workflows outside the published supported catalog are not charged as if they were automated. Third-party government, customs, data-provider, payment, translation or filing fees remain separate where applicable and must be disclosed before use.
 
-That boundary is deliberate. XGuard must not claim to identify known CSAM from raw media until an authorized detection source or hash programme, required reporting obligations and media-processing pipeline are in place.
+## Commercial rule
 
-## Why companies may need this layer
+XGuard should charge for **completed value-producing operational events**, not for promises.
 
-Child-accessible online services increasingly face explicit duties and regulator scrutiny around protection from grooming, harmful content, unwanted contact, age-inappropriate content and child-targeted advertising.
+A success-linked filing or execution fee is earned only when the defined event actually succeeds. Preparation or exception-handling services may have separate disclosed event prices where they perform real work.
 
-XGuard is intended to package those controls into one programmable layer that can be measured, audited and enforced consistently across chat, content and advertising surfaces.
+## Product boundaries
 
-## Existing payment/protocol infrastructure
+XGuard must not:
 
-The repository retains XGuard's earlier payment-control, x402, MCP, A2A, webhook, discovery and settlement-safety infrastructure. It now serves as reusable billing, API and compatibility plumbing rather than the primary product identity.
+- claim to be a government, customs authority, competent authority, law firm or certification body;
+- claim a jurisdiction/workflow is supported until it is actually configured and validated;
+- claim legal compliance merely because an internal readiness score is high;
+- fabricate legal conclusions, official approvals, regulatory statuses or filing references;
+- silently submit on behalf of a company without the required authority/credentials;
+- hide mandatory third-party fees inside an apparently free or fixed-price operation;
+- describe XGuard itself as legally mandatory.
 
-Existing machine/developer surfaces remain available, including:
+The legally responsible company remains responsible for decisions and declarations that law assigns to it.
+
+## Developer and legacy documentation
+
+The repository still contains earlier child-safety, x402/payment, MCP, A2A, webhook, routing, billing and security components. They remain available as reusable infrastructure or legacy surfaces while the primary product identity moves to cross-border operations.
+
+- [Quickstart](QUICKSTART.md)
+- [API](docs/API.md)
+- [facilitators](docs/FACILITATORS.md)
+- [Child Safety](docs/CHILD_SAFETY.md)
+
+The legacy Child Safety API includes `/v1/child-safety/scan` and actions such as `FREEZE_CHAT`; its billing and behavior remain governed by the dedicated legacy documentation and contracts. The earlier x402 adapter and payment/protocol infrastructure remain available to support existing integrations.
+
+Existing machine/developer surfaces include:
 
 ```text
 /.well-known/xguard/payment-layer.json
@@ -182,17 +170,13 @@ Existing machine/developer surfaces remain available, including:
 /mcp
 ```
 
-The current remote MCP surface exposes these five tools:
+The legacy remote MCP surface remains available at `/mcp` with the synchronized tool set:
 
-- `xguard_payment_offer`
-- `xguard_payment_decision`
-- `xguard_discover`
-- `xguard_resource_details`
-- `xguard_status`
-
-The legacy x402 adapter continues to handle Base-mainnet native USDC settlement safety independently of the child-safety product.
-
-For protocol-specific facilitator behavior, see [facilitators](docs/FACILITATORS.md).
+- `xguard_payment_offer` — prepare the optional pre-payment XGuard offer without executing the underlying payment.
+- `xguard_payment_decision` — evaluate a declared payment intent and return the current decision/evidence result.
+- `xguard_discover` — search or list XGuard's x402 resource catalog.
+- `xguard_resource_details` — inspect one exact catalog resource.
+- `xguard_status` — return live gateway and discovery status.
 
 ## Development and verification
 
@@ -202,10 +186,10 @@ npm run verify:release
 npm --workspace @xguard/worker run build:mainnet
 ```
 
-## Documentation
+## Contact
 
-[Child Safety](docs/CHILD_SAFETY.md) · [Child Safety OpenAPI](docs/child-safety-openapi.yaml) · [Quickstart](QUICKSTART.md) · [API](docs/API.md) · [facilitators](docs/FACILITATORS.md) · [Security](SECURITY.md) · [Threat Model](THREAT_MODEL.md) · [Architecture](ARCHITECTURE.md) · [Operations](OPERATIONS.md) · [Deployment](DEPLOYMENT.md)
+**info@xguardgate.com**
 
-XGuard is an independent project and is not an official product of Child Helpline International, INHOPE, NCMEC, INTERPOL, any government, Coinbase, Cloudflare, Base, Circle, x402 Foundation, Google, Microsoft or any other third party unless an explicit agreement states otherwise.
+XGuard is an independent project and is not an official product of the European Commission, TRACES, any customs or government authority, Coinbase, Cloudflare, Base, Circle, x402 Foundation, Google, Microsoft or any other third party unless an explicit agreement states otherwise.
 
 Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md).
