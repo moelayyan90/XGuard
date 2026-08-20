@@ -1,0 +1,10 @@
+{
+  "domain": "xguardgate.com",
+  "routingEnabled": false,
+  "infoAddressConfigured": false,
+  "supportAddressConfigured": false,
+  "outboundSendingEnabled": false,
+  "personalEmailForwarding": false,
+  "note": "Email Sending unavailable or token lacks permission",
+  "checkedAt": "2026-08-20T08:48:05.615Z"
+}
