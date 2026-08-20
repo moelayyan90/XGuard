@@ -47,22 +47,29 @@ export function childSafetyInstitutionalResponse(
   const url = new URL(request.url);
 
   if (["/", "/child-safety"].includes(url.pathname)) {
-    return html(page("Child Safety Infrastructure", homeBody()));
+    return html(page("Child Safety Compliance Infrastructure", homeBody()));
   }
 
   if (url.pathname === "/v1/child-safety/institutional") {
     return json({
-      product: "XGuard Child Safety Control Layer",
-      positioning: "Protect children without monitoring childhood",
-      commercialModel: "B2B/B2G usage-based child-safety infrastructure",
+      product: "XGuard Privacy-Preserving Child Safety Compliance Infrastructure",
+      positioning: "Age assurance, safety controls and auditable evidence without surveillance",
+      commercialModel:
+        "B2B/B2G usage-based safety API plus separately contracted institutional deployments",
       pricing: PRICING,
       partners: GLOBAL_PARTNERS,
+      regulatorySurfaces: [
+        "/v1/child-safety/compliance-profile",
+        "/v1/child-safety/age-assurance/schema",
+        "/v1/child-safety/regulator-pack",
+      ],
       governmentPilot: {
         purpose:
-          "Validate reporting routes, rights safeguards, intervention thresholds and technical integration without creating a surveillance feed.",
+          "Validate age-assurance evidence, reporting routes, rights safeguards, intervention thresholds and technical integration without creating a surveillance feed.",
         defaultScope:
-          "Limited pilot using defined safety events submitted by an integrated service; no continuous device monitoring, location tracking or hidden access.",
+          "Limited pilot using defined safety events and minimum-data age evidence submitted by an integrated service; no continuous device monitoring, location tracking or hidden access.",
       },
+      certificationStatus: "not_certified_or_government_approved",
     });
   }
 
@@ -84,60 +91,68 @@ export function childSafetyInstitutionalResponse(
 
 function homeBody(): string {
   return `${hero(
-    "Child-safety infrastructure",
-    "Protect children. Not monitor childhood.",
-    "XGuard is paid safety infrastructure for platforms, institutions and public-sector programmes. It analyzes defined safety events already entering a host service and returns proportionate controls without becoming a child-surveillance system.",
+    "Child-safety compliance infrastructure",
+    "Protect children. Prove the control. Preserve privacy.",
+    "XGuard combines minimum-data age-assurance evidence, real-time child-safety decisions and regulator-oriented evidence for platforms, institutions and public-sector programmes — without becoming a child-surveillance system.",
   )}
   <section class="grid">
+    ${card("Age assurance evidence", "Bind an age-threshold result from a verifier, provider or host to the relevant safety path without collecting a date of birth, identity document or exact age through the XGuard evidence endpoint.")}
     ${card("For platforms", "Scan messages, chat windows, images, audio, video and ads. Apply ALLOW, WARN, BLUR, BLOCK, FREEZE CHAT or ESCALATE inside the service you already control.")}
-    ${card("For governments & regulators", "Run limited pilots, validate reporting routes and inspect safeguards without receiving a hidden feed of children’s private activity.")}
-    ${card("Commercial model", "Usage-based B2B/B2G pricing. Children are not the buyer; online services and institutions pay for analyzed safety events.")}
+    ${card("For governments & regulators", "Inspect machine-readable control boundaries, run bounded pilots and review evidence without receiving a hidden feed of children’s private activity.")}
+    ${card("Regulator evidence", "Expose the age-assurance basis, policy signal, privacy boundary and evaluation evidence needed for technical due diligence — while separating readiness from any certification or approval claim.")}
+    ${card("Commercial model", "Usage-based B2B/B2G safety pricing plus separately contracted institutional deployments. Children are not the buyer.")}
     ${card("Global reporting", "Prefer locally verified child-protection routes, with established international networks as a fallback when a direct country number is not yet validated.")}
   </section>
   <section class="steps">
-    ${step("01", "Integrate", "Submit a defined safety event already entering your product flow.")}
+    ${step("01", "Establish age / eligibility evidence", "Use a suitable verifier or host process and pass XGuard only the minimum-data threshold result and evidence metadata.")}
     ${step("02", "Assess", "XGuard evaluates grooming, solicitation, coercion, sextortion, explicit media, predatory contact and sexualized advertising.")}
     ${step("03", "Control", "Receive a proportionate action and structured enforcement guidance.")}
     ${step("04", "Review", "High and critical cases are surfaced for accountable human review and verified reporting routes.")}
+    ${step("05", "Evidence", "Produce machine-readable evidence for platform governance, auditors and regulator-facing due diligence.")}
   </section>
   <section class="grid links">
+    <a class="partner" href="/child-safety/age-assurance"><strong>Age assurance</strong><span>Minimum-data age-threshold evidence and trust boundary →</span></a>
+    <a class="partner" href="/child-safety/regulatory-readiness"><strong>Regulatory readiness</strong><span>EU, UK and standards-readiness evidence without false approval claims →</span></a>
     <a class="partner" href="/child-safety/compliance"><strong>Compliance</strong><span>Risk assessment, safeguards and regulatory positioning →</span></a>
     <a class="partner" href="/child-safety/pilot"><strong>Government / platform pilot</strong><span>A limited, measurable deployment without surveillance →</span></a>
-    <a class="partner" href="/child-safety/pricing"><strong>Pricing</strong><span>Usage-based commercial API pricing →</span></a>
+    <a class="partner" href="/child-safety/pricing"><strong>Pricing</strong><span>Base safety API pricing and institutional commercial boundary →</span></a>
     <a class="partner" href="/child-safety/reporting"><strong>Global reporting</strong><span>Verified support and reporting networks →</span></a>
   </section>
-  <section class="cta"><h2>Start an institutional conversation</h2><p><a href="/child-safety/contact">Submit a government, regulator or platform enquiry directly to XGuard →</a></p><p>Official email: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a><br>Technical support: <a href="mailto:support@xguardgate.com">support@xguardgate.com</a></p></section>`;
+  <section class="cta"><h2>Start an institutional review</h2><p><a href="/child-safety/contact">Submit a government, regulator or platform enquiry directly to XGuard →</a></p><p>Official email: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a><br>Technical support: <a href="mailto:support@xguardgate.com">support@xguardgate.com</a></p></section>`;
 }
 
 function complianceBody(): string {
   return `${hero(
     "Compliance & regulation",
     "Build protection controls that can be inspected, documented and challenged.",
-    "XGuard is designed as a narrow safety-control layer for services that already handle user content. It is not a general monitoring system and does not create a government or parent surveillance feed.",
+    "XGuard is designed as privacy-preserving child-safety compliance infrastructure for services that already handle user content. It combines minimum-data age evidence, safety controls and auditable outputs without creating a government or parent surveillance feed.",
   )}
   <section class="grid">
+    ${card("Age-assurance evidence", "Record the threshold, method, verification basis, issue/expiry time and evaluation evidence while rejecting raw DOB and identity-document fields from the XGuard age-assurance evidence endpoint.")}
     ${card("Risk assessment support", "Provide structured evidence about what was scanned, which risk category was detected, confidence, action taken and whether human review was required.")}
     ${card("Protection of minors", "Support product controls for grooming, sexual solicitation, sextortion, explicit sexual content, predatory contact and sexualized advertising.")}
-    ${card("Data minimization", "Use pseudonymous session and actor hashes for repeat-risk analysis and keep raw conversation bodies out of the child-safety scan ledger.")}
+    ${card("Data minimization", "Use pseudonymous session and actor hashes for repeat-risk analysis, keep raw conversation bodies out of the child-safety scan ledger and prefer anonymous age-threshold results over identity data.")}
     ${card("Human accountability", "High and critical interventions are designed to surface human review rather than silently turning an automated decision into permanent punishment.")}
+    ${card("Regulator evidence", "Expose machine-readable compliance-profile, age-assurance schema and regulator-pack endpoints so reviewers can inspect boundaries instead of relying on marketing claims.")}
   </section>
-  <section class="panel"><h2>Regulatory positioning</h2><p>XGuard should be used as one technical control inside a broader safeguarding and compliance programme. The integrating organization remains responsible for its legal duties, notices, reporting obligations, human escalation and appeals.</p><p>Our product boundary is intentionally compatible with rights-based online-safety approaches: proportionality, privacy, child protection, transparency and meaningful remedy.</p></section>`;
+  <section class="panel"><h2>Regulatory positioning</h2><p>XGuard should be used as one technical control inside a broader safeguarding and compliance programme. The integrating organization remains responsible for its legal duties, notices, reporting obligations, human escalation, appeals and selection of an appropriate age-assurance method.</p><p>Readiness metadata is not certification. XGuard does not claim government approval, EU trusted-list status, Ofcom approval or ISO certification unless an independent, externally verifiable process actually grants that status.</p></section>`;
 }
 
 function pilotBody(): string {
   return `${hero(
     "Government & platform pilot",
-    "Prove the safety value without building a surveillance programme.",
-    "A pilot can test real child-safety workflows on defined events while preserving a hard technical boundary against device monitoring, location tracking and hidden institutional access.",
+    "Prove the safety and compliance value without building a surveillance programme.",
+    "A pilot can test age-assurance evidence and real child-safety workflows on defined events while preserving a hard technical boundary against device monitoring, location tracking and hidden institutional access.",
   )}
   <section class="steps">
-    ${step("1", "Define the safety scope", "Agree which harms and content flows are in scope: grooming, coercion, sexual solicitation, explicit media, dangerous repeat contact and sexualized ads.")}
-    ${step("2", "Validate local referral routes", "Confirm the correct child helpline, police/cybercrime route, hotline and emergency path for the jurisdiction.")}
-    ${step("3", "Run a limited integration", "The host submits only defined safety events already in its product flow. XGuard returns structured risk and enforcement guidance.")}
-    ${step("4", "Measure outcomes", "Track blocked high-risk content, frozen conversations, repeat-risk actors, false positives, human-review outcomes and reporting-route accuracy.")}
-    ${step("5", "Publish safeguards", "Document retention, review, appeals, reporting and child-rights controls before broader rollout.")}
+    ${step("1", "Define the legal and safety scope", "Agree which age thresholds, harms, content flows and evidence requirements are in scope before processing begins.")}
+    ${step("2", "Validate age assurance", "Document the selected provider or host method and the available evidence for technical accuracy, robustness, reliability, fairness, privacy and third-party scrutiny.")}
+    ${step("3", "Validate local referral routes", "Confirm the correct child helpline, police/cybercrime route, hotline and emergency path for the jurisdiction.")}
+    ${step("4", "Run a limited integration", "The host submits only defined safety events and minimum-data age evidence already in its product flow. XGuard returns structured risk, policy and enforcement guidance.")}
+    ${step("5", "Measure outcomes", "Track false positives and false negatives where ground truth exists, intervention outcomes, latency, bypass testing, human-review outcomes and reporting-route accuracy.")}
+    ${step("6", "Publish safeguards and limitations", "Document retention, review, appeals, privacy, child-rights controls, unresolved risks and the exact boundary of any pilot conclusion before broader rollout.")}
   </section>
-  <section class="panel"><h2>What a pilot does not include</h2><ul><li>No background microphone or camera monitoring.</li><li>No child location tracking.</li><li>No secret parent or government dashboard of private activity.</li><li>No general behavioural scoring.</li><li>No remote control over third-party services that have not integrated XGuard.</li></ul></section>
+  <section class="panel"><h2>What a pilot does not include</h2><ul><li>No background microphone or camera monitoring.</li><li>No child location tracking.</li><li>No secret parent or government dashboard of private activity.</li><li>No general behavioural scoring.</li><li>No remote control over third-party services that have not integrated XGuard.</li><li>No claim that a successful pilot equals regulator approval or certification.</li></ul></section>
   <section class="cta"><h2>Institutional contact</h2><p><a href="/child-safety/contact">Request a limited government or platform pilot directly →</a></p><p>Official email: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a></p></section>`;
 }
 
@@ -148,10 +163,10 @@ function pricingBody(): string {
   ).join("");
   return `${hero(
     "Commercial pricing",
-    "Usage-based infrastructure, priced for large-volume services.",
-    "XGuard is a paid B2B/B2G safety layer. The end child is not the buyer; platforms, institutions and programmes pay for analyzed safety events.",
+    "Base safety API pricing is not institutional compliance pricing.",
+    "The list below covers analyzed safety events only. Government pilots, regulated enterprise deployments, independent testing, certification work, age-assurance provider costs, legal review, human review and dedicated support are separate scopes and are not included in these per-event prices.",
   )}
-  <section class="panel"><table><thead><tr><th>Event</th><th>Base price</th><th>Billing unit</th></tr></thead><tbody>${rows}</tbody></table><p class="note">Enterprise volume agreements, government pilots and dedicated support can be contracted separately. Prices shown are base API list prices and do not represent legal or human-review fees.</p></section>`;
+  <section class="panel"><table><thead><tr><th>Event</th><th>Base price</th><th>Billing unit</th></tr></thead><tbody>${rows}</tbody></table><p class="note">Enterprise volume agreements, government pilots and dedicated support can be contracted separately. Prices shown are base safety API list prices only; they are not a quote for a regulator-facing or government deployment.</p></section>`;
 }
 
 function reportingBody(): string {
@@ -167,7 +182,7 @@ function reportingBody(): string {
 }
 
 function page(title: string, body: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="XGuard child-safety infrastructure for platforms, governments and institutions — protection without surveillance."><title>${esc(title)} — XGuard</title><style>${styles()}</style></head><body><header><a class="brand" href="/child-safety">XGuard.</a><nav><a href="/child-safety">Overview</a><a href="/child-safety/compliance">Compliance</a><a href="/child-safety/pilot">Pilot</a><a href="/child-safety/pricing">Pricing</a><a href="/child-safety/reporting">Reporting</a><a href="/child-safety/rights">Rights</a><a href="/child-safety/integrate">Integrate</a><a href="/child-safety/contact">Contact</a></nav></header><main>${body}</main><footer><span>Protect children. Not monitor childhood.</span><span>info@xguardgate.com · support@xguardgate.com</span></footer></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="XGuard privacy-preserving child-safety compliance infrastructure for platforms, governments and institutions — age assurance, protection controls and auditable evidence without surveillance."><title>${esc(title)} — XGuard</title><style>${styles()}</style></head><body><header><a class="brand" href="/child-safety">XGuard.</a><nav><a href="/child-safety">Overview</a><a href="/child-safety/age-assurance">Age assurance</a><a href="/child-safety/regulatory-readiness">Readiness</a><a href="/child-safety/compliance">Compliance</a><a href="/child-safety/pilot">Pilot</a><a href="/child-safety/pricing">Pricing</a><a href="/child-safety/reporting">Reporting</a><a href="/child-safety/rights">Rights</a><a href="/child-safety/integrate">Integrate</a><a href="/child-safety/contact">Contact</a></nav></header><main>${body}</main><footer><span>Privacy-preserving child safety compliance infrastructure.</span><span>info@xguardgate.com · support@xguardgate.com</span></footer></body></html>`;
 }
 
 function hero(label: string, title: string, text: string): string {
