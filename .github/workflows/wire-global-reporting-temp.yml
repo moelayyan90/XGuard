@@ -52,3 +52,5 @@ jobs:
           git add apps/worker/src/universal-mainnet.ts apps/worker/src/child-safety-reporting-directory.ts apps/worker/src/child-safety-institutional.ts tests/child-safety-reporting-directory.test.ts
           git commit -m "Wire verified global child safety reporting" || true
           git push origin HEAD:agent/global-child-safety-reporting
+
+# trigger
