@@ -1,0 +1,65 @@
+{
+  "sender": "info@xguardgate.com",
+  "policy": {
+    "personalEmailAllowed": false,
+    "massUnverifiedOutreachAllowed": false,
+    "requireOfficialSource": true,
+    "positioning": "XGuard protects children without becoming a surveillance product"
+  },
+  "templates": {
+    "government": "xguard-government-intro",
+    "partner": "xguard-partner-intro"
+  },
+  "targets": [
+    {
+      "organization": "Child Helpline International",
+      "type": "international-child-support-network",
+      "officialContact": "https://childhelplineinternational.org/contact-us/",
+      "template": "partner",
+      "status": "ready_pending_verified_sender"
+    },
+    {
+      "organization": "INHOPE",
+      "type": "international-hotline-network",
+      "officialContact": "https://www.inhope.org/EN/contact-us",
+      "template": "partner",
+      "status": "ready_pending_verified_sender"
+    },
+    {
+      "organization": "WeProtect Global Alliance",
+      "type": "international-policy-alliance",
+      "officialContact": "https://www.weprotect.org/contact-us/",
+      "template": "government",
+      "status": "ready_pending_verified_sender"
+    },
+    {
+      "organization": "NCMEC",
+      "type": "child-safety-reporting-organization",
+      "officialContact": "https://www.missingkids.org/footer/contactus",
+      "template": "partner",
+      "status": "ready_pending_verified_sender"
+    },
+    {
+      "organization": "Ofcom",
+      "type": "online-safety-regulator",
+      "officialContact": "https://www.ofcom.org.uk/about-ofcom/contact-us/",
+      "template": "government",
+      "status": "ready_pending_verified_sender"
+    },
+    {
+      "organization": "European Commission — Digital Services Act",
+      "type": "online-safety-regulator-policy",
+      "officialContact": "https://digital-strategy.ec.europa.eu/en/policies/digital-services-act-package",
+      "template": "government",
+      "status": "ready_pending_verified_sender"
+    }
+  ],
+  "countryRollout": {
+    "method": "Add a country only after verifying the competent child-protection, online-safety, cybercrime, hotline or regulator contact from an official government or recognized child-safety source.",
+    "fallback": [
+      "Child Helpline International country selector",
+      "INHOPE hotline network",
+      "NCMEC CyberTipline where applicable"
+    ]
+  }
+}
