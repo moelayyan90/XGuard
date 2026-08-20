@@ -28,3 +28,5 @@ jobs:
           git add apps/worker/src/child-safety-contact.ts tests/child-safety-contact.test.ts tests/child-safety-contact-routing.test.ts
           git commit -m "Format institutional child safety contact intake" || true
           git push origin HEAD:agent/child-safety-contact-intake
+
+# trigger 2
