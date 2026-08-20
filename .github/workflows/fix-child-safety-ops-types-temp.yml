@@ -1,0 +1,49 @@
+name: Fix child safety ops types once
+
+on:
+  push:
+    branches: [agent/child-safety-ops]
+    paths:
+      - .github/workflows/fix-child-safety-ops-types-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/child-safety-ops
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Patch Cloudflare request generics and dashboard summary typing
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('apps/worker/src/child-safety-control.ts')
+          s = p.read_text()
+          s = s.replace('const input = await readTraceInput(request.clone());', 'const input = await readTraceInput(request.clone() as unknown as Request);')
+          s = s.replace('await childSafetyMediaResponse(request.clone(), env)', 'await childSafetyMediaResponse(request.clone() as unknown as Request, env)')
+          s = s.replace('await childSafetyResponse(request.clone(), env)', 'await childSafetyResponse(request.clone() as unknown as Request, env)')
+          marker = '''interface RiskActorRow {'''
+          summary = '''interface DashboardSummary {\n  windowHours: number;\n  totalScans: number;\n  criticalScans: number;\n  highScans: number;\n  blockedScans: number;\n  frozenScans: number;\n  earnedMicroUsd: number;\n  earnedUsd: string;\n}\n\n'''
+          if 'interface DashboardSummary {' not in s:
+              s = s.replace(marker, summary + marker, 1)
+          s = s.replace('): Promise<Record<string, unknown>> {\n  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();', '): Promise<DashboardSummary> {\n  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();', 1)
+          p.write_text(s)
+      - run: npx prettier --write apps/worker/src/child-safety-control.ts
+      - name: Commit type fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/child-safety-control.ts
+          git commit -m "Fix child safety control typing"
+          git push origin HEAD:agent/child-safety-ops
