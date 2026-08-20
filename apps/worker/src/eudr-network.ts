@@ -27,7 +27,8 @@ function html(body: string, status = 200): Response {
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "strict-origin-when-cross-origin",
-      "Content-Security-Policy": "default-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy":
+        "default-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
     },
   });
 }
@@ -40,9 +41,16 @@ async function sha256(value: string): Promise<string> {
     .join("");
 }
 
-function cleanString(value: unknown, max: number, required = false): string | null {
+function cleanString(
+  value: unknown,
+  max: number,
+  required = false,
+): string | null {
   if (typeof value !== "string") return required ? "" : null;
-  const clean = value.trim().replace(/[\u0000-\u001f\u007f]/g, "").slice(0, max);
+  const clean = value
+    .trim()
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .slice(0, max);
   if (required && clean.length === 0) return "";
   return clean.length === 0 ? null : clean;
 }
@@ -68,7 +76,8 @@ function randomToken(prefix: string): string {
 async function readJson(request: Request): Promise<JsonRecord | null> {
   try {
     const value = await request.json();
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return null;
     return value as JsonRecord;
   } catch {
     return null;
@@ -96,7 +105,9 @@ const READINESS_FIELDS = [
 ] as const;
 
 function readiness(body: JsonRecord) {
-  const completed = READINESS_FIELDS.filter((field) => body[field] === true).length;
+  const completed = READINESS_FIELDS.filter(
+    (field) => body[field] === true,
+  ).length;
   const readinessPercent = completed * 10;
   return {
     readinessPercent,
@@ -129,18 +140,32 @@ function landingPage(): string {
 }
 
 function inboxPage(slug: string, organisationName: string): string {
-  const escapedOrg = organisationName.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c] ?? c));
+  const escapedOrg = organisationName.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ] ?? c,
+  );
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapedOrg} — XGuard EUDR Inbox</title><style>body{font-family:system-ui;margin:0;background:#f6f7f3;color:#111}.box{max-width:700px;margin:7vh auto;background:#fff;padding:34px;border-radius:20px;border:1px solid #ddd}input{width:100%;padding:12px;margin:6px 0 14px;border:1px solid #bbb;border-radius:9px}button{background:#111;color:#fff;border:0;padding:13px 18px;border-radius:10px;font-weight:700}.note{font-size:13px;color:#666}</style></head><body><div class="box"><h1>${escapedOrg}<br>EUDR Reference Inbox</h1><p>Submit the DDS reference requested by this customer. XGuard records a timestamped evidence receipt and prevents duplicate intake for the same shipment/reference pair.</p><form id="f"><label>Supplier name</label><input name="supplierName" required maxlength="160"><label>Supplier email</label><input name="supplierEmail" type="email" maxlength="254"><label>DDS reference</label><input name="ddsReference" required maxlength="160"><label>Verification number</label><input name="verificationNumber" maxlength="160"><label>Shipment / PO reference</label><input name="shipmentReference" maxlength="160"><label>Product description</label><input name="productDescription" maxlength="240"><label>Origin country</label><input name="originCountry" maxlength="120"><button>Send reference</button></form><pre id="r"></pre><p class="note">The verification number is hashed before storage by this intake surface. External EU-system verification is a separate capability and is not implied by submission here.</p></div><script>document.getElementById('f').addEventListener('submit',async(e)=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target).entries());const r=await fetch('/v1/eudr/inboxes/${encodeURIComponent(slug)}/references',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(d)});document.getElementById('r').textContent=JSON.stringify(await r.json(),null,2);if(r.ok)e.target.reset();});</script></body></html>`;
 }
 
-export async function eudrNetworkResponse(request: Request, env: EudrEnv): Promise<Response | null> {
+export async function eudrNetworkResponse(
+  request: Request,
+  env: EudrEnv,
+): Promise<Response | null> {
   const url = new URL(request.url);
 
   if (request.method === "OPTIONS" && url.pathname.startsWith("/v1/eudr/")) {
     return new Response(null, { status: 204, headers: JSON_HEADERS });
   }
 
-  if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/eudr" || url.pathname === "/eudr/")) {
+  if (
+    request.method === "GET" &&
+    (url.pathname === "/" ||
+      url.pathname === "/eudr" ||
+      url.pathname === "/eudr/")
+  ) {
     return html(landingPage());
   }
 
@@ -151,39 +176,76 @@ export async function eudrNetworkResponse(request: Request, env: EudrEnv): Promi
   }
 
   if (request.method === "POST" && url.pathname === "/v1/eudr/inboxes") {
-    if (!(await requireAdmin(request, env))) return json({ error: "unauthorized" }, 401);
+    if (!(await requireAdmin(request, env)))
+      return json({ error: "unauthorized" }, 401);
     const body = await readJson(request);
     if (!body) return json({ error: "invalid_json" }, 400);
     const organisationName = cleanString(body.organisationName, 180, true);
     const contactEmail = cleanString(body.contactEmail, 254, true);
     let slug = normalizeSlug(body.slug ?? organisationName);
-    if (!organisationName || !contactEmail || !isEmail(contactEmail)) return json({ error: "invalid_fields" }, 400);
+    if (!organisationName || !contactEmail || !isEmail(contactEmail))
+      return json({ error: "invalid_fields" }, 400);
     if (!slug) slug = `inbox-${crypto.randomUUID().slice(0, 8)}`;
     const adminKey = randomToken("xg_eudr_");
     const id = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     try {
-      await env.DB.prepare("INSERT INTO eudr_inboxes (id, slug, organisation_name, contact_email, admin_key_sha256, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(id, slug, organisationName, contactEmail, await sha256(adminKey), createdAt)
+      await env.DB.prepare(
+        "INSERT INTO eudr_inboxes (id, slug, organisation_name, contact_email, admin_key_sha256, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+        .bind(
+          id,
+          slug,
+          organisationName,
+          contactEmail,
+          await sha256(adminKey),
+          createdAt,
+        )
         .run();
     } catch {
       return json({ error: "slug_unavailable" }, 409);
     }
-    return json({ id, slug, organisationName, publicInbox: `${url.origin}/eudr/inbox/${slug}`, adminKey, pricing: { inboundReferenceIntake: "free", verification: "paid_when_enabled", filing: "paid_when_enabled" } }, 201);
+    return json(
+      {
+        id,
+        slug,
+        organisationName,
+        publicInbox: `${url.origin}/eudr/inbox/${slug}`,
+        adminKey,
+        pricing: {
+          inboundReferenceIntake: "free",
+          verification: "paid_when_enabled",
+          filing: "paid_when_enabled",
+        },
+      },
+      201,
+    );
   }
 
-  const inboxPageMatch = url.pathname.match(/^\/eudr\/inbox\/([a-z0-9-]{1,48})$/);
+  const inboxPageMatch = url.pathname.match(
+    /^\/eudr\/inbox\/([a-z0-9-]{1,48})$/,
+  );
   if (request.method === "GET" && inboxPageMatch) {
     const slug = inboxPageMatch[1];
-    const row = await env.DB.prepare("SELECT organisation_name FROM eudr_inboxes WHERE slug = ?").bind(slug).first<{organisation_name:string}>();
+    const row = await env.DB.prepare(
+      "SELECT organisation_name FROM eudr_inboxes WHERE slug = ?",
+    )
+      .bind(slug)
+      .first<{ organisation_name: string }>();
     if (!row) return html("<h1>Inbox not found</h1>", 404);
     return html(inboxPage(slug, row.organisation_name));
   }
 
-  const referenceMatch = url.pathname.match(/^\/v1\/eudr\/inboxes\/([a-z0-9-]{1,48})\/references$/);
+  const referenceMatch = url.pathname.match(
+    /^\/v1\/eudr\/inboxes\/([a-z0-9-]{1,48})\/references$/,
+  );
   if (request.method === "POST" && referenceMatch) {
     const slug = referenceMatch[1];
-    const inbox = await env.DB.prepare("SELECT id, organisation_name FROM eudr_inboxes WHERE slug = ?").bind(slug).first<{id:string;organisation_name:string}>();
+    const inbox = await env.DB.prepare(
+      "SELECT id, organisation_name FROM eudr_inboxes WHERE slug = ?",
+    )
+      .bind(slug)
+      .first<{ id: string; organisation_name: string }>();
     if (!inbox) return json({ error: "inbox_not_found" }, 404);
     const body = await readJson(request);
     if (!body) return json({ error: "invalid_json" }, 400);
@@ -194,30 +256,116 @@ export async function eudrNetworkResponse(request: Request, env: EudrEnv): Promi
     const shipmentReference = cleanString(body.shipmentReference, 160);
     const productDescription = cleanString(body.productDescription, 240);
     const originCountry = cleanString(body.originCountry, 120);
-    if (!supplierName || !ddsReference || (supplierEmail !== null && !isEmail(supplierEmail))) return json({ error: "invalid_fields" }, 400);
+    if (
+      !supplierName ||
+      !ddsReference ||
+      (supplierEmail !== null && !isEmail(supplierEmail))
+    )
+      return json({ error: "invalid_fields" }, 400);
     const id = crypto.randomUUID();
     const receivedAt = new Date().toISOString();
-    const verificationHash = verificationNumber ? await sha256(verificationNumber) : null;
-    const evidenceHash = await sha256(JSON.stringify({ inboxId: inbox.id, supplierName, supplierEmail, ddsReference, verificationHash, shipmentReference, productDescription, originCountry, receivedAt }));
+    const verificationHash = verificationNumber
+      ? await sha256(verificationNumber)
+      : null;
+    const evidenceHash = await sha256(
+      JSON.stringify({
+        inboxId: inbox.id,
+        supplierName,
+        supplierEmail,
+        ddsReference,
+        verificationHash,
+        shipmentReference,
+        productDescription,
+        originCountry,
+        receivedAt,
+      }),
+    );
     try {
-      await env.DB.prepare("INSERT INTO eudr_reference_intake (id, inbox_id, supplier_name, supplier_email, dds_reference, verification_number_sha256, shipment_reference, product_description, origin_country, evidence_sha256, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(id, inbox.id, supplierName, supplierEmail, ddsReference, verificationHash, shipmentReference, productDescription, originCountry, evidenceHash, receivedAt)
+      await env.DB.prepare(
+        "INSERT INTO eudr_reference_intake (id, inbox_id, supplier_name, supplier_email, dds_reference, verification_number_sha256, shipment_reference, product_description, origin_country, evidence_sha256, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+        .bind(
+          id,
+          inbox.id,
+          supplierName,
+          supplierEmail,
+          ddsReference,
+          verificationHash,
+          shipmentReference,
+          productDescription,
+          originCountry,
+          evidenceHash,
+          receivedAt,
+        )
         .run();
     } catch {
-      return json({ error: "duplicate_reference", message: "This DDS reference / shipment pair is already recorded for this inbox." }, 409);
+      return json(
+        {
+          error: "duplicate_reference",
+          message:
+            "This DDS reference / shipment pair is already recorded for this inbox.",
+        },
+        409,
+      );
     }
-    return json({ receiptId: id, inbox: inbox.organisation_name, ddsReference, shipmentReference, status: "RECEIVED", evidenceSha256: evidenceHash, receivedAt, charge: { amount: 0, currency: "EUR", reason: "inbound_reference_intake_is_free" }, next: "External verification or filing is a separate paid capability when enabled." }, 201);
+    return json(
+      {
+        receiptId: id,
+        inbox: inbox.organisation_name,
+        ddsReference,
+        shipmentReference,
+        status: "RECEIVED",
+        evidenceSha256: evidenceHash,
+        receivedAt,
+        charge: {
+          amount: 0,
+          currency: "EUR",
+          reason: "inbound_reference_intake_is_free",
+        },
+        next: "External verification or filing is a separate paid capability when enabled.",
+      },
+      201,
+    );
   }
 
-  const summaryMatch = url.pathname.match(/^\/v1\/eudr\/inboxes\/([a-z0-9-]{1,48})\/summary$/);
+  const summaryMatch = url.pathname.match(
+    /^\/v1\/eudr\/inboxes\/([a-z0-9-]{1,48})\/summary$/,
+  );
   if (request.method === "GET" && summaryMatch) {
     const slug = summaryMatch[1];
-    const adminKey = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+    const adminKey = request.headers
+      .get("authorization")
+      ?.replace(/^Bearer\s+/i, "")
+      .trim();
     if (!adminKey) return json({ error: "unauthorized" }, 401);
-    const inbox = await env.DB.prepare("SELECT id, organisation_name, admin_key_sha256, created_at FROM eudr_inboxes WHERE slug = ?").bind(slug).first<{id:string;organisation_name:string;admin_key_sha256:string;created_at:string}>();
-    if (!inbox || (await sha256(adminKey)) !== inbox.admin_key_sha256) return json({ error: "unauthorized" }, 401);
-    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM eudr_reference_intake WHERE inbox_id = ?").bind(inbox.id).first<{n:number}>();
-    return json({ organisationName: inbox.organisation_name, createdAt: inbox.created_at, inboundReferences: Number(count?.n ?? 0), commercialModel: { inboundReferenceIntake: "free", paidVerification: "planned", paidSubmission: "planned", partnerRevenueShare: "available_by_agreement" } });
+    const inbox = await env.DB.prepare(
+      "SELECT id, organisation_name, admin_key_sha256, created_at FROM eudr_inboxes WHERE slug = ?",
+    )
+      .bind(slug)
+      .first<{
+        id: string;
+        organisation_name: string;
+        admin_key_sha256: string;
+        created_at: string;
+      }>();
+    if (!inbox || (await sha256(adminKey)) !== inbox.admin_key_sha256)
+      return json({ error: "unauthorized" }, 401);
+    const count = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM eudr_reference_intake WHERE inbox_id = ?",
+    )
+      .bind(inbox.id)
+      .first<{ n: number }>();
+    return json({
+      organisationName: inbox.organisation_name,
+      createdAt: inbox.created_at,
+      inboundReferences: Number(count?.n ?? 0),
+      commercialModel: {
+        inboundReferenceIntake: "free",
+        paidVerification: "planned",
+        paidSubmission: "planned",
+        partnerRevenueShare: "available_by_agreement",
+      },
+    });
   }
 
   return null;

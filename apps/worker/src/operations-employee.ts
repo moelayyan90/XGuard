@@ -11,8 +11,7 @@ const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "Authorization, Content-Type, X-XGuard-Admin",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-XGuard-Admin",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
@@ -255,13 +254,15 @@ export async function operationsEmployeeResponse(
     if (!body) return json({ error: "invalid_json" }, 400);
 
     const externalReference = cleanString(body.externalReference, 180);
-    const countryCode = cleanString(body.countryCode, 2, true)?.toUpperCase() ?? "";
+    const countryCode =
+      cleanString(body.countryCode, 2, true)?.toUpperCase() ?? "";
     const authority = cleanString(body.authority, 180);
     const workflowType = cleanString(body.workflowType, 80, true);
     const sourceLanguage = cleanString(body.sourceLanguage, 32);
     const preferredLanguage = cleanString(body.preferredLanguage, 32) ?? "en";
     const objective = cleanString(body.objective, 3000, true);
-    const priorityCandidate = cleanString(body.priority, 12)?.toUpperCase() ?? "NORMAL";
+    const priorityCandidate =
+      cleanString(body.priority, 12)?.toUpperCase() ?? "NORMAL";
     const dueAtRaw = cleanString(body.dueAt, 80);
     const dueAt = dueAtRaw === null ? null : parseIsoDate(dueAtRaw);
 
@@ -331,8 +332,7 @@ export async function operationsEmployeeResponse(
         priority: priorityCandidate,
         dueAt,
         createdAt: now,
-        next:
-          "The task is recorded. Execution depends on the workflow being present in the validated XGuard supported catalog; unsupported workflows must be routed to configuration/review rather than falsely marked automated.",
+        next: "The task is recorded. Execution depends on the workflow being present in the validated XGuard supported catalog; unsupported workflows must be routed to configuration/review rather than falsely marked automated.",
       },
       201,
     );

@@ -28,7 +28,11 @@ describe("XGuard smart operations employee", () => {
     );
     expect(response?.status).toBe(200);
     const body = (await response!.json()) as {
-      workflows: Array<{ id: string; status: string; executionBoundary: string }>;
+      workflows: Array<{
+        id: string;
+        status: string;
+        executionBoundary: string;
+      }>;
     };
     expect(body.workflows).toEqual(
       expect.arrayContaining([

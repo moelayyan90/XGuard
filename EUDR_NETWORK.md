@@ -48,17 +48,20 @@ This creates a buyer -> supplier -> supplier's suppliers network effect without 
 ## Incentives
 
 ### Buyers
+
 - Free inbound reference intake.
 - Structured alternative to email/spreadsheet collection.
 - Timestamped evidence receipts and duplicate prevention.
 - Data portability; no artificial lock-in.
 
 ### Suppliers
+
 - No charge merely to send a requested reference.
 - One repeatable handoff format.
 - Immediate receipt proving what was submitted and when.
 
 ### ERP / customs / platform partners
+
 - Free integration/pilot setup where operationally feasible.
 - Partner revenue share can be negotiated on paid downstream services.
 - No need to charge the partner for raw inbound reference intake.
@@ -67,6 +70,7 @@ This creates a buyer -> supplier -> supplier's suppliers network effect without 
 ## Monetisation
 
 Free:
+
 - public Inbox receipt surface;
 - inbound DDS-reference intake;
 - duplicate protection;
@@ -74,6 +78,7 @@ Free:
 - basic receipt/evidence hash.
 
 Paid once implemented and independently validated:
+
 - external DDS verification;
 - EUDR submission orchestration;
 - exception handling/retry orchestration;

@@ -82,7 +82,8 @@ export function eudrSmartEmployeeSite(request: Request): Response | null {
       "Cache-Control": "public, max-age=300",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "strict-origin-when-cross-origin",
-      "Content-Security-Policy": "default-src 'self'; style-src 'unsafe-inline'; form-action 'self' mailto:; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy":
+        "default-src 'self'; style-src 'unsafe-inline'; form-action 'self' mailto:; base-uri 'none'; frame-ancestors 'none'",
     },
   });
 }

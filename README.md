@@ -60,27 +60,35 @@ ERP / broker / customer / audit record
 ## The XGuard jobs
 
 ### Government Runner
+
 Turns a supported government request into requirements, tasks, documents, deadlines and an operational execution path.
 
 ### Customs Coordinator
+
 Maps shipment identifiers, required references and handoffs so customs-facing work does not live across disconnected email and spreadsheets.
 
 ### Compliance Desk
+
 Builds repeatable case files, checks completeness, preserves evidence and escalates matters that require a legally responsible person.
 
 ### Supplier Chaser
+
 Requests missing information, follows up, reminds and records supplier responses.
 
 ### Multilingual Relay
+
 Normalises supported operational communications across languages while preserving source material and an audit trail.
 
 ### Deadline Engine
+
 Keeps unresolved requests, due dates and exceptions visible until closure.
 
 ### Evidence Vault
+
 Preserves input evidence, versions, hashes, handoffs, transformations and status history.
 
 ### ERP / API Worker
+
 Accepts work through supported API/webhook/CSV/inbox paths and returns state, reference or exception to the system the customer already uses.
 
 ## First focused workflow: EUDR
@@ -110,11 +118,11 @@ This is an XGuard product framework, not an official legal/statistical claim. Ni
 
 ## Launch pricing
 
-| Service | XGuard launch price |
-| --- | ---: |
-| Readiness + basic EUDR supplier/reference Inbox | **€0** |
-| Completed EUDR operational case | **€9 / case** |
-| Recurring volume / embedded EUDR workflow | **€4–€6 / completed case** |
+| Service                                         |        XGuard launch price |
+| ----------------------------------------------- | -------------------------: |
+| Readiness + basic EUDR supplier/reference Inbox |                     **€0** |
+| Completed EUDR operational case                 |              **€9 / case** |
+| Recurring volume / embedded EUDR workflow       | **€4–€6 / completed case** |
 
 No monthly seat subscription is required for these launch offers.
 

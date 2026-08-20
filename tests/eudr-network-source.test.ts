@@ -17,7 +17,10 @@ function env() {
 
 describe("EUDR network", () => {
   it("makes the EUDR readiness message the primary landing surface", async () => {
-    const response = await eudrNetworkResponse(new Request("https://xguardgate.com/"), env());
+    const response = await eudrNetworkResponse(
+      new Request("https://xguardgate.com/"),
+      env(),
+    );
     expect(response?.status).toBe(200);
     const body = await response!.text();
     expect(body).toContain("90% is readiness");

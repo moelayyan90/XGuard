@@ -21,6 +21,7 @@ The competitive advantage is not the number of screens. It is that the same supp
 ### 1. Readiness Autopilot
 
 Before a live shipment exists, XGuard prepares the account:
+
 - determine operational role and relevant scope;
 - map products/CN codes and commodities;
 - map suppliers and expected origins;
@@ -34,6 +35,7 @@ Product message: **90% is readiness. The last 10% is live execution.** This is a
 ### 2. Supplier Concierge
 
 XGuard performs supplier chasing instead of the buyer's team:
+
 - magic-link supplier intake;
 - multilingual structured requests;
 - automatic reminders for missing fields;
@@ -47,6 +49,7 @@ XGuard performs supplier chasing instead of the buyer's team:
 Each supplier/product/plot evidence package becomes a reusable, permissioned record.
 
 Purpose:
+
 - stop requesting the same evidence repeatedly from the same supplier;
 - reuse validated master data across future shipments where legally and factually applicable;
 - allow a supplier to share an approved subset with another buyer through an explicit permission flow;
@@ -57,6 +60,7 @@ A passport is not a legal certification. It is a structured reusable evidence bu
 ### 4. Geodata Sanitiser
 
 Before information reaches the EU system:
+
 - validate coordinate format and CRS;
 - detect malformed/empty/self-intersecting geometries;
 - normalise permitted geodata into the required internal representation;
@@ -69,6 +73,7 @@ Satellite/deforestation analysis is a separate capability and must only be adver
 ### 5. Due-Diligence Case Builder
 
 For every relevant shipment/case XGuard assembles:
+
 - product and quantity data;
 - country/production details;
 - supplier and customer chain information;
@@ -84,6 +89,7 @@ Missing items automatically become supplier/internal tasks instead of silent fai
 ### 6. EU Submission Orchestrator
 
 When EU production integration and the participant's credentials/authorisation are valid, XGuard should:
+
 - map the internal case to the current EU schema;
 - submit DDS/simplified declarations where the law and role require it;
 - support grouping where the current EU specifications permit it;
@@ -95,6 +101,7 @@ When EU production integration and the participant's credentials/authorisation a
 ### 7. Reference Exchange Network
 
 After a valid reference exists:
+
 - deliver it to the buyer/customer workflow;
 - associate it with shipment/PO/product records;
 - provide a structured supplier-to-buyer handoff;
@@ -106,6 +113,7 @@ This is the distribution loop: buyers invite suppliers; suppliers experience XGu
 ### 8. Customs / ERP Handoff
 
 XGuard should integrate without forcing the customer to replace its ERP:
+
 - inbound webhook/API/CSV/email ingestion where safe;
 - outbound webhook/API of case state and DDS reference;
 - mapping to shipment/PO/invoice identifiers;
@@ -117,6 +125,7 @@ XGuard should be the invisible execution layer behind existing software whenever
 ### 9. Five-Year Audit Vault
 
 XGuard stores the operational evidence package and version history needed by the company:
+
 - input evidence;
 - transformations;
 - risk/decision records;
@@ -130,6 +139,7 @@ Retention implementation must respect the customer's legal requirements, data-pr
 ### 10. Annual Review Pack
 
 Because operators must review their due-diligence system at least annually, XGuard should generate a review pack:
+
 - missing procedures;
 - stale suppliers/evidence;
 - failed/exception cases;
@@ -150,13 +160,16 @@ If no, it is not core.
 ## Commercial model
 
 ### Free adoption wedge
+
 - Readiness assessment.
 - Supplier/reference Inbox.
 - Basic supplier intake.
 - Basic evidence receipt.
 
 ### Paid execution
+
 Charge only for value-producing operational events, for example:
+
 - completed enhanced evidence validation;
 - completed geodata processing package;
 - successful EU submission/reconciliation once production integration is available;
@@ -170,6 +183,7 @@ Partner revenue share may be offered to ERP/customs/software partners on paid do
 USD 400/day is a commercial target, never a guarantee.
 
 Illustrative gross revenue before partner share, taxes and variable costs:
+
 - $5/event -> 80 paid events/day;
 - $4/event -> 100/day;
 - $3/event -> 134/day;
@@ -180,6 +194,7 @@ Therefore distribution should prioritise partners with recurring transaction flo
 ## Positioning
 
 Bad positioning:
+
 - "another EUDR platform"
 - "upload documents and see a dashboard"
 - "we make you compliant"
@@ -191,6 +206,7 @@ Preferred positioning:
 ## Product boundary
 
 XGuard must not:
+
 - state that XGuard itself is legally mandatory;
 - claim EU affiliation/approval without evidence;
 - present an internal readiness score as legal compliance;
