@@ -1,0 +1,81 @@
+name: Emergency stop all XGuard runtimes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/emergency-stop-all.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - run: npm ci --ignore-scripts
+
+      - name: Delete all public XGuard Workers
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::Cloudflare credentials are unavailable; emergency stop cannot be claimed."
+            exit 1
+          fi
+
+          for worker in xguard-mainnet xguard-watchdog xguard-testnet; do
+            echo "Stopping ${worker}..."
+            set +e
+            npx wrangler delete --name "${worker}" --force
+            delete_status=$?
+            set -e
+            if [[ "${delete_status}" -ne 0 ]]; then
+              echo "Delete returned ${delete_status} for ${worker}; verifying whether it is already absent."
+            fi
+
+            if npx wrangler deployments status --name "${worker}" --json >/tmp/${worker}.status.json 2>/tmp/${worker}.status.err; then
+              echo "::error::${worker} still exists after emergency stop."
+              cat /tmp/${worker}.status.json || true
+              exit 1
+            else
+              echo "${worker} is absent."
+            fi
+          done
+
+      - name: Verify public endpoints are not serving XGuard
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_not_live() {
+            local url="$1"
+            local code
+            code="$(curl -sS -L --max-time 15 -o /tmp/stop-check.out -w '%{http_code}' "${url}" || true)"
+            echo "${url} -> ${code}"
+            if [[ "${code}" == "200" ]]; then
+              echo "::error::${url} still returns HTTP 200 after emergency stop."
+              exit 1
+            fi
+          }
+
+          check_not_live "https://xguardgate.com/"
+          check_not_live "https://xguard-watchdog.maqamapp.workers.dev/healthz"
+          check_not_live "https://xguard-testnet.maqamapp.workers.dev/status"
+
+      - name: Confirm preserved data boundary
+        run: echo "Workers stopped. Repository and D1 databases were intentionally not deleted."
