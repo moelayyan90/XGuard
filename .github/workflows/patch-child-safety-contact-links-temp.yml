@@ -47,3 +47,5 @@ jobs:
           git add apps/worker/src/child-safety-institutional.ts
           git commit -m "Expose direct institutional contact intake" || true
           git push origin HEAD:agent/child-safety-contact-intake
+
+# trigger
