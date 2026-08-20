@@ -207,11 +207,12 @@ function html(body: string): Response {
 }
 
 function esc(value: string): string {
-  return value.replace(
-    /[&<>\"]/g,
-    (ch) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" })[ch] ?? ch,
-  );
+  return value.replace(/[&<>"]/g, (ch) => {
+    if (ch === "&") return "&amp;";
+    if (ch === "<") return "&lt;";
+    if (ch === ">") return "&gt;";
+    return "&quot;";
+  });
 }
 
 function styles(): string {
