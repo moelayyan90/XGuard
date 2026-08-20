@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   verify-homepage:
@@ -23,3 +24,29 @@ jobs:
           grep -Fq 'Mood has no place in the workflow' /tmp/home.html
           echo 'LIVE_HOMEPAGE=OPERATIONS'
           sed -n '1,28p' /tmp/home.html
+
+      - name: Publish live homepage status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=failure
+          description='XGuard operations homepage verification failed'
+          if [[ "$JOB_STATUS" == success ]]; then
+            state=success
+            description='XGuard operations homepage is live'
+          fi
+          node - "$state" "$description" <<'NODE' > /tmp/status.json
+          const [state, description] = process.argv.slice(2);
+          process.stdout.write(JSON.stringify({state,context:'xguard-homepage-live',description,target_url:`${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`}));
+          NODE
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            --data-binary @/tmp/status.json \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" >/dev/null
