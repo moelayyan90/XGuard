@@ -1,65 +1,104 @@
 {
   "sender": "info@xguardgate.com",
-  "policy": {
+  "replyTo": "info@xguardgate.com",
+  "verifiedAt": "2026-08-20",
+  "sendGate": {
+    "resendDomainMustBeVerified": true,
+    "replyMailboxMustBeOperational": true,
     "personalEmailAllowed": false,
+    "currentState": "blocked_pending_dns_verification"
+  },
+  "policy": {
     "massUnverifiedOutreachAllowed": false,
     "requireOfficialSource": true,
-    "positioning": "XGuard protects children without becoming a surveillance product"
+    "positioning": "XGuard protects children without becoming a surveillance product",
+    "noChildPersonalData": true,
+    "noCsamAttachmentsOrForwarding": true,
+    "noHiddenGovernmentAccessClaims": true,
+    "followUpMinimumBusinessDays": 10
   },
   "templates": {
     "government": "xguard-government-intro",
     "partner": "xguard-partner-intro"
   },
+  "firstWaveStrategy": "Contact high-leverage international networks and regulators first, then use their referrals and country networks for national outreach instead of sending indiscriminate mail to every government office.",
   "targets": [
     {
+      "priority": 1,
       "organization": "Child Helpline International",
       "type": "international-child-support-network",
-      "officialContact": "https://childhelplineinternational.org/contact-us/",
+      "contactMethod": "email",
+      "officialContact": "info@childhelplineinternational.org",
+      "officialSource": "https://childhelplineinternational.org/about/members/core-quality-standards/",
       "template": "partner",
+      "ask": "Validate country child-helpline routing and discuss a technical child-safety referral partnership.",
       "status": "ready_pending_verified_sender"
     },
     {
-      "organization": "INHOPE",
-      "type": "international-hotline-network",
-      "officialContact": "https://www.inhope.org/EN/contact-us",
+      "priority": 2,
+      "organization": "National Center for Missing & Exploited Children (NCMEC)",
+      "type": "child-safety-reporting-and-partnership-organization",
+      "contactMethod": "email",
+      "officialContact": "Outreach@ncmec.org",
+      "officialSource": "https://www.missingkids.org/supportus/program-partners/become-a-program-partner",
       "template": "partner",
+      "ask": "Discuss program-partner fit, CyberTipline routing boundaries and safe referral design.",
       "status": "ready_pending_verified_sender"
     },
     {
+      "priority": 3,
+      "organization": "European Commission — DG CONNECT / Better Internet for Kids",
+      "type": "eu-online-safety-policy",
+      "contactMethod": "email",
+      "officialContact": "cnect-G3@ec.europa.eu",
+      "officialSource": "https://digital-strategy.ec.europa.eu/en/library/digital-service-act-dsa-explained-what-online-platforms-should-do-keep-kids-and-teens-safe-online",
+      "template": "government",
+      "ask": "Request a technical and safeguarding dialogue on rights-respecting child-safety controls and DSA protection-of-minors alignment.",
+      "status": "ready_pending_verified_sender"
+    },
+    {
+      "priority": 4,
       "organization": "WeProtect Global Alliance",
       "type": "international-policy-alliance",
-      "officialContact": "https://www.weprotect.org/contact-us/",
+      "contactMethod": "official_form",
+      "officialContact": "https://www.weprotect.org/contact/",
+      "officialSource": "https://www.weprotect.org/contact/",
       "template": "government",
-      "status": "ready_pending_verified_sender"
+      "ask": "Request dialogue on technology-facilitated child sexual exploitation and abuse safeguards and potential ecosystem participation.",
+      "status": "ready_pending_operational_reply_mailbox"
     },
     {
-      "organization": "NCMEC",
-      "type": "child-safety-reporting-organization",
-      "officialContact": "https://www.missingkids.org/footer/contactus",
+      "priority": 5,
+      "organization": "INHOPE",
+      "type": "international-csam-hotline-network",
+      "contactMethod": "official_site",
+      "officialContact": "https://www.inhope.org/",
+      "officialSource": "https://www.inhope.org/what-we-do/how-to-report",
       "template": "partner",
-      "status": "ready_pending_verified_sender"
+      "ask": "Validate XGuard's CSAM reporting handoff design and boundaries. Never send suspected CSAM files by email.",
+      "status": "ready_pending_operational_reply_mailbox"
     },
     {
+      "priority": 6,
       "organization": "Ofcom",
-      "type": "online-safety-regulator",
+      "type": "uk-online-safety-regulator",
+      "contactMethod": "official_site",
       "officialContact": "https://www.ofcom.org.uk/about-ofcom/contact-us/",
+      "officialSource": "https://www.ofcom.org.uk/online-safety/protecting-children/protection-of-children-duties-under-the-online-safety-act",
       "template": "government",
-      "status": "ready_pending_verified_sender"
-    },
-    {
-      "organization": "European Commission — Digital Services Act",
-      "type": "online-safety-regulator-policy",
-      "officialContact": "https://digital-strategy.ec.europa.eu/en/policies/digital-services-act-package",
-      "template": "government",
-      "status": "ready_pending_verified_sender"
+      "ask": "Request guidance on appropriate engagement for a child-safety technical control supporting regulated services' protection duties.",
+      "status": "ready_pending_operational_reply_mailbox"
     }
   ],
   "countryRollout": {
-    "method": "Add a country only after verifying the competent child-protection, online-safety, cybercrime, hotline or regulator contact from an official government or recognized child-safety source.",
-    "fallback": [
-      "Child Helpline International country selector",
+    "method": "Add a national government, regulator, police/cybercrime unit, hotline or child-protection authority only after verifying the exact competent contact from an official government or recognized child-safety source.",
+    "preferredReferralPath": [
+      "Child Helpline International country network",
       "INHOPE hotline network",
-      "NCMEC CyberTipline where applicable"
-    ]
+      "NCMEC international law-enforcement referral network",
+      "European Commission / national Digital Services Coordinators where applicable",
+      "recognized national child-protection or online-safety regulator"
+    ],
+    "fallback": "Use XGuard's verified global reporting directory rather than inventing a national contact."
   }
 }
