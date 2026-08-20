@@ -13,7 +13,9 @@ describe("child safety institutional surface", () => {
         new Request(`https://xguardgate.com${path}`),
       );
       expect(response?.status).toBe(200);
-      expect(response?.headers.get("permissions-policy")).toContain("camera=()");
+      expect(response?.headers.get("permissions-policy")).toContain(
+        "camera=()",
+      );
     }
   });
 

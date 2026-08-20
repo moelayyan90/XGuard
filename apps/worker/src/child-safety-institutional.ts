@@ -40,7 +40,9 @@ const PRICING = [
   { event: "video", usd: "0.020" },
 ] as const;
 
-export function childSafetyInstitutionalResponse(request: Request): Response | null {
+export function childSafetyInstitutionalResponse(
+  request: Request,
+): Response | null {
   if (request.method !== "GET") return null;
   const url = new URL(request.url);
 
@@ -110,7 +112,8 @@ function pilotBody(): string {
 
 function pricingBody(): string {
   const rows = PRICING.map(
-    (p) => `<tr><td>${esc(p.event)}</td><td>$${esc(p.usd)}</td><td>per analyzed safety event</td></tr>`,
+    (p) =>
+      `<tr><td>${esc(p.event)}</td><td>$${esc(p.usd)}</td><td>per analyzed safety event</td></tr>`,
   ).join("");
   return `${hero(
     "Commercial pricing",
@@ -122,7 +125,8 @@ function pricingBody(): string {
 
 function reportingBody(): string {
   const items = GLOBAL_PARTNERS.map(
-    (p) => `<a class="partner" href="${p.url}" rel="noreferrer"><strong>${esc(p.name)}</strong><span>${esc(p.role)}</span></a>`,
+    (p) =>
+      `<a class="partner" href="${p.url}" rel="noreferrer"><strong>${esc(p.name)}</strong><span>${esc(p.role)}</span></a>`,
   ).join("");
   return `${hero(
     "Global reporting & support",
@@ -171,7 +175,11 @@ function html(body: string): Response {
 }
 
 function esc(value: string): string {
-  return value.replace(/[&<>\"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" })[ch] ?? ch);
+  return value.replace(
+    /[&<>\"]/g,
+    (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" })[ch] ?? ch,
+  );
 }
 
 function styles(): string {
