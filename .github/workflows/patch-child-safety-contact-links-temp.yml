@@ -1,0 +1,49 @@
+name: Patch child safety contact links once
+
+on:
+  push:
+    branches: [agent/child-safety-contact-intake]
+    paths:
+      - .github/workflows/patch-child-safety-contact-links-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/child-safety-contact-intake
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - name: Add contact links
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('apps/worker/src/child-safety-institutional.ts')
+          s=p.read_text()
+          s=s.replace(
+            '<section class="cta"><h2>Start an institutional conversation</h2><p>Partnerships, regulators and government pilots: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a><br>Technical support: <a href="mailto:support@xguardgate.com">support@xguardgate.com</a></p></section>',
+            '<section class="cta"><h2>Start an institutional conversation</h2><p><a href="/child-safety/contact">Submit a government, regulator or platform enquiry directly to XGuard →</a></p><p>Official email: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a><br>Technical support: <a href="mailto:support@xguardgate.com">support@xguardgate.com</a></p></section>'
+          )
+          s=s.replace(
+            '<section class="cta"><h2>Institutional contact</h2><p>Government, regulator and public-sector enquiries: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a></p></section>',
+            '<section class="cta"><h2>Institutional contact</h2><p><a href="/child-safety/contact">Request a limited government or platform pilot directly →</a></p><p>Official email: <a href="mailto:info@xguardgate.com">info@xguardgate.com</a></p></section>'
+          )
+          s=s.replace(
+            '<a href="/child-safety/integrate">Integrate</a></nav>',
+            '<a href="/child-safety/integrate">Integrate</a><a href="/child-safety/contact">Contact</a></nav>'
+          )
+          p.write_text(s)
+          PY
+          npx prettier --write apps/worker/src/child-safety-institutional.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/worker/src/child-safety-institutional.ts
+          git commit -m "Expose direct institutional contact intake" || true
+          git push origin HEAD:agent/child-safety-contact-intake
