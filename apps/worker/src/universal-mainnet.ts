@@ -6,8 +6,7 @@ import monetizedMainnet, {
 import { a2aGatewayV1Response } from "./a2a-gateway-v1.js";
 import { buyerPassResponse } from "./buyer-pass.js";
 import { buyerPortalResponse } from "./buyer-portal.js";
-import { childSafetyMediaResponse } from "./child-safety-media.js";
-import { childSafetyResponse } from "./child-safety.js";
+import { childSafetyControlResponse } from "./child-safety-control.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 import { mcpOAuthChallengeResponse } from "./mcp-oauth-challenge.js";
 import { mcpOAuthResponse } from "./mcp-oauth.js";
@@ -131,13 +130,7 @@ export default {
     const securityBlock = universalSecurityGuardResponse(standardRequest);
     if (securityBlock !== null) return securityBlock;
 
-    const childSafetyMedia = await childSafetyMediaResponse(
-      standardRequest,
-      env,
-    );
-    if (childSafetyMedia !== null) return childSafetyMedia;
-
-    const childSafety = await childSafetyResponse(standardRequest, env);
+    const childSafety = await childSafetyControlResponse(standardRequest, env);
     if (childSafety !== null) return childSafety;
 
     const buyerPassCreateBlock = await buyerPassCreationGuard(

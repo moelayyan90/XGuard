@@ -13,6 +13,10 @@ export type ChildSafetyAction =
 export interface ChildSafetyScanInput {
   eventId: string;
   riskSessionId?: string;
+  /** Platform-local pseudonymous account id. XGuard hashes it before persistence. */
+  actorId?: string;
+  /** Platform-local pseudonymous target id. XGuard hashes it before persistence. */
+  targetId?: string;
   contentKind: ChildSafetyContentKind;
   language?: string;
   childLikely?: boolean;
@@ -35,6 +39,15 @@ export interface ChildSafetyEnforcement {
   preserveClientSideEvidence?: boolean;
 }
 
+export interface ChildSafetyActorTracking {
+  rawActorIdStored: false;
+  rawTargetIdStored: false;
+  highRiskEvents30d: number;
+  uniqueTargets30d: number;
+  repeatRiskFlag: boolean;
+  humanReviewRecommended: boolean;
+}
+
 export interface ChildSafetyScanResult {
   eventId: string;
   contentKind: ChildSafetyContentKind;
@@ -45,6 +58,7 @@ export interface ChildSafetyScanResult {
   enforcement: ChildSafetyEnforcement;
   rationale?: string;
   priorHighRiskEventsInSession?: number;
+  actorTracking?: ChildSafetyActorTracking;
   feeUsd: string;
   rawContentStored: false;
   reporting?: unknown;
@@ -225,6 +239,10 @@ function validateScanInput(input: ChildSafetyScanInput): void {
   ) {
     throw new TypeError("riskSessionId must be 8-160 URL-safe characters");
   }
+  if (input.actorId !== undefined && input.actorId.length > 256)
+    throw new TypeError("actorId must not exceed 256 characters");
+  if (input.targetId !== undefined && input.targetId.length > 256)
+    throw new TypeError("targetId must not exceed 256 characters");
   if (typeof input.text !== "string" || input.text.trim().length === 0)
     throw new TypeError("text is required");
   if (input.text.length > 20_000)
