@@ -1,0 +1,42 @@
+name: Patch homepage live hotfix
+
+on:
+  push:
+    branches: [hotfix/operations-homepage-live]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: hotfix/operations-homepage-live
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          site = Path('apps/worker/src/eudr-smart-employee-site.ts')
+          s = site.read_text()
+          s = s.replace('"Cache-Control": "public, max-age=300",', '"Cache-Control": "no-store, max-age=0",\n      "X-XGuard-Site-Version": "2026-08-20-operations-v1",')
+          site.write_text(s)
+
+          deploy = Path('.github/workflows/deploy-mainnet.yml')
+          d = deploy.read_text()
+          needle = '''          curl -fsS --max-time 15 -H 'Accept: text/html' "${BASE_URL}/pay?deploy=${VERIFY_TOKEN}" | grep -q '\\$0.03'\n'''
+          insert = '''          homepage_body="$(curl -fsS --max-time 15 -H 'Cache-Control: no-cache' -H 'Accept: text/html' "${BASE_URL}/?deploy=${VERIFY_TOKEN}")"\n          printf '%s' "${homepage_body}" | grep -Fq 'XGuard — Cross-Border Operations, Executed'\n          printf '%s' "${homepage_body}" | grep -Fq 'Your company has work that'\n          printf '%s' "${homepage_body}" | grep -Fq 'Request a pilot'\n          printf '%s' "${homepage_body}" | grep -Fq 'Mood has no place in the workflow'\n\n''' + needle
+          if needle not in d:
+              raise SystemExit('deploy insertion point not found')
+          d = d.replace(needle, insert, 1)
+          deploy.write_text(d)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- apps/worker/src/eudr-smart-employee-site.ts .github/workflows/deploy-mainnet.yml
+          git commit -m "fix: prevent stale operations homepage and verify live root"
+          git push origin HEAD:hotfix/operations-homepage-live
