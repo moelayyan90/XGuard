@@ -51,7 +51,9 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-async function payload(request: Request): Promise<Record<string, unknown> | null> {
+async function payload(
+  request: Request,
+): Promise<Record<string, unknown> | null> {
   const type = request.headers.get("content-type")?.toLowerCase() ?? "";
   try {
     if (type.includes("application/json")) {
@@ -80,7 +82,8 @@ export async function operationsPilotResponse(
   if (url.pathname !== "/v1/operations/pilot") return null;
 
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
-  if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  if (request.method !== "POST")
+    return json({ error: "method_not_allowed" }, 405);
 
   const client = (
     request.headers.get("cf-connecting-ip") ??
@@ -150,8 +153,10 @@ export async function operationsPilotResponse(
     )
     .run();
 
-  const wantsHtml =
-    !request.headers.get("content-type")?.toLowerCase().includes("application/json");
+  const wantsHtml = !request.headers
+    .get("content-type")
+    ?.toLowerCase()
+    .includes("application/json");
   if (wantsHtml) return html("Pilot request received");
 
   return json(
