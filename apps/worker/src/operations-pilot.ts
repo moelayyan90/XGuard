@@ -58,7 +58,9 @@ async function payload(
   try {
     if (type.includes("application/json")) {
       const value = await request.json();
-      return typeof value === "object" && value !== null && !Array.isArray(value)
+      return typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value)
         ? (value as Record<string, unknown>)
         : null;
     }
@@ -97,8 +99,7 @@ export async function operationsPilotResponse(
     const decision = await env.REQUEST_RATE_LIMITER.limit({
       key: `operations:pilot:${client}`,
     });
-    if (!decision.success)
-      return json({ error: "rate_limit_exceeded" }, 429);
+    if (!decision.success) return json({ error: "rate_limit_exceeded" }, 429);
   } catch {
     return json({ error: "protection_unavailable" }, 503);
   }
