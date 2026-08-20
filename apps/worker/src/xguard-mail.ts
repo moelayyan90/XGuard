@@ -50,7 +50,8 @@ export async function xguardMailHttpResponse(
   }
 
   if (request.method === "POST" && url.pathname === "/v1/mail/send") {
-    if (!(await isAdmin(request, env))) return json({ error: "unauthorized" }, 401);
+    if (!(await isAdmin(request, env)))
+      return json({ error: "unauthorized" }, 401);
     if (!env.EMAIL) return json({ error: "email_sending_not_configured" }, 503);
 
     const input = await readJson<SendInput>(request);
