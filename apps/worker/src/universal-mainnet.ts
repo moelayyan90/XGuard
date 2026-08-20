@@ -7,6 +7,7 @@ import { a2aGatewayV1Response } from "./a2a-gateway-v1.js";
 import { buyerPassResponse } from "./buyer-pass.js";
 import { buyerPortalResponse } from "./buyer-portal.js";
 import { childSafetyControlResponse } from "./child-safety-control.js";
+import { childSafetyInstitutionalResponse } from "./child-safety-institutional.js";
 import { publicChildSafetySiteResponse } from "./child-safety-public-site.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
 import { mcpOAuthChallengeResponse } from "./mcp-oauth-challenge.js";
@@ -137,6 +138,10 @@ export default {
 
     const mail = await xguardMailHttpResponse(standardRequest, env);
     if (mail !== null) return mail;
+
+    const childSafetyInstitutional =
+      childSafetyInstitutionalResponse(standardRequest);
+    if (childSafetyInstitutional !== null) return childSafetyInstitutional;
 
     const childSafetySite = publicChildSafetySiteResponse(standardRequest);
     if (childSafetySite !== null) return childSafetySite;
