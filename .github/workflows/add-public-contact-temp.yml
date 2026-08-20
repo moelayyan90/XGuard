@@ -1,0 +1,47 @@
+name: Add branded XGuard contacts once
+
+on:
+  push:
+    branches: [agent/child-safety-public-site]
+    paths:
+      - .github/workflows/add-public-contact-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/child-safety-public-site
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Add public contact addresses
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('apps/worker/src/child-safety-public-site.ts')
+          s=p.read_text()
+          old='''<div><b>Governance</b><a href="/child-safety/rights">Child rights</a><a href="/child-safety/governments">Government brief</a><a href="/child-safety/transparency">Transparency</a></div></div>'''
+          new='''<div><b>Governance</b><a href="/child-safety/rights">Child rights</a><a href="/child-safety/governments">Government brief</a><a href="/child-safety/transparency">Transparency</a></div><div><b>Contact</b><a href="mailto:info@xguardgate.com">info@xguardgate.com</a><a href="mailto:support@xguardgate.com">support@xguardgate.com</a></div></div>'''
+          if old not in s:
+              raise SystemExit('footer marker not found')
+          s=s.replace(old,new,1)
+          s=s.replace('grid-template-columns:2fr 1fr 1fr;gap:40px','grid-template-columns:2fr 1fr 1fr 1fr;gap:40px',1)
+          p.write_text(s)
+      - run: npx prettier --write apps/worker/src/child-safety-public-site.ts
+      - run: npm run typecheck
+      - name: Commit contact update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- apps/worker/src/child-safety-public-site.ts
+          git commit -m "Publish XGuard info and support addresses"
+          git push origin HEAD:agent/child-safety-public-site
