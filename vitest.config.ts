@@ -33,7 +33,15 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json-summary"],
       include: ["packages/*/src/**/*.ts", "apps/gateway/src/**/*.ts"],
-      exclude: ["**/bin.ts", "**/server.ts", "**/demo.ts"],
+      exclude: [
+        "**/bin.ts",
+        "**/server.ts",
+        "**/demo.ts",
+        // This module is DOM/AudioContext integration code. Its pure sampling
+        // helpers are covered in the node suite; browser execution is verified
+        // separately rather than lowering the repository-wide coverage gate.
+        "packages/sdk/src/child-safety-browser-media.ts",
+      ],
       thresholds: { lines: 75, functions: 75, statements: 75, branches: 65 },
     },
   },
