@@ -1,95 +1,14 @@
-name: Live XGuard mainnet monitor
+name: Live XGuard mainnet monitor — disabled
 
 on:
-  workflow_run:
-    workflows:
-      - Deploy XGuard mainnet
-    types: [completed]
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
-  issues: write
-
-concurrency:
-  group: live-xguard-mainnet-monitor
-  cancel-in-progress: true
 
 jobs:
-  smoke:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+  disabled:
+    if: ${{ false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - run: npm ci --ignore-scripts
-      - name: Run live mainnet smoke checks
-        id: smoke
-        continue-on-error: true
-        run: npm run smoke:mainnet
-      - name: Record monitor state
-        uses: actions/github-script@v8
-        env:
-          MONITOR_OUTCOME: ${{ steps.smoke.outcome }}
-        with:
-          script: |
-            const target = "mainnet";
-            const title = "[monitor] XGuard live mainnet smoke failed";
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-            const { data: openIssues } = await github.rest.issues.listForRepo({
-              owner,
-              repo,
-              state: "open",
-              per_page: 100,
-            });
-            const existing = openIssues.find((issue) => issue.title === title);
-            const failed = process.env.MONITOR_OUTCOME !== "success";
-
-            if (failed) {
-              const body = [
-                "The automated public mainnet smoke check failed.",
-                "",
-                "Target: Base mainnet billable gateway",
-                `Workflow run: ${runUrl}`,
-                `Commit: ${context.sha}`,
-                "",
-                "The smoke check makes no payment. It verifies liveness, readiness, the public Base/native-USDC/x402 contract, facilitator health, discovery surfaces including Glama and MCP, billing metadata, accounting privacy, and reconciliation state. Merchant authentication remains fail-closed and is covered by CI billing tests without generating expected 401 traffic in production logs.",
-              ].join("\n");
-              if (existing) {
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number: existing.number,
-                  body,
-                });
-              } else {
-                await github.rest.issues.create({ owner, repo, title, body });
-              }
-            } else if (existing) {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: existing.number,
-                body: `Recovered. Passing workflow run: ${runUrl}`,
-              });
-              await github.rest.issues.update({
-                owner,
-                repo,
-                issue_number: existing.number,
-                state: "closed",
-                state_reason: "completed",
-              });
-            }
-      - name: Fail workflow when smoke check failed
-        if: steps.smoke.outcome != 'success'
-        run: exit 1
+      - run: echo "XGuard live monitoring is intentionally disabled during shutdown."
