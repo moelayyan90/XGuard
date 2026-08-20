@@ -26,7 +26,12 @@ const liveMainnetEntrypoint = readFileSync(
 );
 
 describe("mainnet release gate", () => {
-  it("uses the custom-domain mainnet release workflow", () => {
+  it("uses the custom-domain mainnet release workflow or an explicit emergency shutdown", () => {
+    if (deployWorkflow.includes("intentionally disabled")) {
+      expect(deployWorkflow).toContain("workflow_dispatch");
+      expect(deployWorkflow).toContain("if: ${{ false }}");
+      return;
+    }
     expect(deployWorkflow).toContain("npm run verify:mainnet-release");
     expect(deployWorkflow).not.toContain("npm run verify:release\n");
     expect(deployWorkflow).toContain("src\\/universal-mainnet\\.ts");
