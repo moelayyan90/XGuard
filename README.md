@@ -108,7 +108,7 @@ XGuard's first production focus is EUDR operations:
 
 EU Information System execution must only be enabled when the participant's authority/credentials and XGuard's current production integration have been validated. XGuard must never call a statement verified or submitted merely because an internal workflow completed.
 
-See [EUDR Operations Engine](EUDR_OPERATIONS_ENGINE.md) and [EUDR Network](EUDR_NETWORK.md).
+See [Cross-Border Operations](CROSS_BORDER_OPERATIONS.md), [EUDR Operations Engine](EUDR_OPERATIONS_ENGINE.md) and [EUDR Network](EUDR_NETWORK.md).
 
 ## Operating principle
 
@@ -148,9 +148,16 @@ XGuard must not:
 
 The legally responsible company remains responsible for decisions and declarations that law assigns to it.
 
-## Reusable infrastructure retained from earlier XGuard versions
+## Developer and legacy documentation
 
 The repository still contains earlier child-safety, x402/payment, MCP, A2A, webhook, routing, billing and security components. They remain available as reusable infrastructure or legacy surfaces while the primary product identity moves to cross-border operations.
+
+- [Quickstart](QUICKSTART.md)
+- [API](docs/API.md)
+- [facilitators](docs/FACILITATORS.md)
+- [Child Safety](docs/CHILD_SAFETY.md)
+
+The legacy Child Safety API includes `/v1/child-safety/scan` and actions such as `FREEZE_CHAT`; its billing and behavior remain governed by the dedicated legacy documentation and contracts. The earlier x402 adapter and payment/protocol infrastructure remain available to support existing integrations.
 
 Existing machine/developer surfaces include:
 
