@@ -22,7 +22,9 @@ describe("child safety browser media preprocessing", () => {
     expect(segments[0]?.duration).toBe(60);
     expect(segments[1]?.offset).toBeGreaterThan(200);
     expect(segments[2]?.offset).toBe(540);
-    expect(segments.reduce((sum, segment) => sum + segment.duration, 0)).toBe(180);
+    expect(segments.reduce((sum, segment) => sum + segment.duration, 0)).toBe(
+      180,
+    );
   });
 
   it("keeps the full audio when the video is shorter than the cap", () => {

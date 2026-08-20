@@ -55,7 +55,11 @@ export function createChildSafetyBrowserMediaClient(
     async scanVideoFile(context, video, rawOptions = {}) {
       assertBrowserRuntime();
       const frameCount = clampInteger(rawOptions.frameCount ?? 6, 1, 6);
-      const maxFrameWidth = clampInteger(rawOptions.maxFrameWidth ?? 640, 160, 1280);
+      const maxFrameWidth = clampInteger(
+        rawOptions.maxFrameWidth ?? 640,
+        160,
+        1280,
+      );
       const jpegQuality = clamp(rawOptions.jpegQuality ?? 0.78, 0.45, 0.95);
       const maxAudioSeconds = clampInteger(
         rawOptions.maxAudioSeconds ?? 180,
@@ -72,9 +76,11 @@ export function createChildSafetyBrowserMediaClient(
 
       let audio: ChildSafetyEncodedMedia | undefined;
       if (rawOptions.includeAudio !== false) {
-        audio = await extractSampledAudio(video, sampled.duration, maxAudioSeconds).catch(
-          () => undefined,
-        );
+        audio = await extractSampledAudio(
+          video,
+          sampled.duration,
+          maxAudioSeconds,
+        ).catch(() => undefined);
       }
 
       return mediaClient.scanVideo({
@@ -148,7 +154,10 @@ async function sampleVideoFrames(
     }
 
     const width = Math.min(maxFrameWidth, video.videoWidth);
-    const height = Math.max(1, Math.round((video.videoHeight / video.videoWidth) * width));
+    const height = Math.max(
+      1,
+      Math.round((video.videoHeight / video.videoWidth) * width),
+    );
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -193,7 +202,10 @@ async function extractSampledAudio(
     if (!segments.length) throw new Error("No audio segment is available");
 
     const sampleRate = 16_000;
-    const totalDuration = segments.reduce((sum, segment) => sum + segment.duration, 0);
+    const totalDuration = segments.reduce(
+      (sum, segment) => sum + segment.duration,
+      0,
+    );
     const offline = new OfflineAudioContext(
       1,
       Math.max(1, Math.ceil(totalDuration * sampleRate)),
@@ -272,16 +284,23 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = "";
   const chunk = 0x8000;
   for (let offset = 0; offset < bytes.length; offset += chunk) {
-    const slice = bytes.subarray(offset, Math.min(bytes.length, offset + chunk));
+    const slice = bytes.subarray(
+      offset,
+      Math.min(bytes.length, offset + chunk),
+    );
     for (const byte of slice) binary += String.fromCharCode(byte);
   }
   return btoa(binary);
 }
 
 async function seekVideo(video: HTMLVideoElement, time: number): Promise<void> {
-  if (Math.abs(video.currentTime - time) < 0.01 && video.readyState >= 2) return;
+  if (Math.abs(video.currentTime - time) < 0.01 && video.readyState >= 2)
+    return;
   const ready = once(video, "seeked");
-  video.currentTime = Math.max(0, Math.min(time, Math.max(0, video.duration - 0.001)));
+  video.currentTime = Math.max(
+    0,
+    Math.min(time, Math.max(0, video.duration - 0.001)),
+  );
   await ready;
 }
 
@@ -311,7 +330,8 @@ function canvasToBlob(
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("Canvas encoding failed"))),
+      (blob) =>
+        blob ? resolve(blob) : reject(new Error("Canvas encoding failed")),
       type,
       quality,
     );

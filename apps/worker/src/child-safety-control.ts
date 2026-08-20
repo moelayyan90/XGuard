@@ -121,19 +121,23 @@ async function trackedScan(
   const merchant = await authenticateRequest(request, env.DB);
   if (merchant === null) return response;
 
-  const responseBody: unknown = await response.clone().json().catch(() => null);
+  const responseBody: unknown = await response
+    .clone()
+    .json()
+    .catch(() => null);
   const eventId =
-    responseBody && typeof responseBody === "object" && !Array.isArray(responseBody)
+    responseBody &&
+    typeof responseBody === "object" &&
+    !Array.isArray(responseBody)
       ? clean((responseBody as Record<string, unknown>).eventId, 160)
       : clean(input.eventId, 160);
   if (!eventId) return response;
 
   const actorHash = actorId ? await sha256(actorId) : "";
   const targetHash = targetId ? await sha256(targetId) : "";
-  await env.DB
-    .prepare(
-      "UPDATE child_safety_scans SET actor_hash=CASE WHEN ?<>'' THEN ? ELSE actor_hash END,target_hash=CASE WHEN ?<>'' THEN ? ELSE target_hash END WHERE merchant_id=? AND external_event_id=?",
-    )
+  await env.DB.prepare(
+    "UPDATE child_safety_scans SET actor_hash=CASE WHEN ?<>'' THEN ? ELSE actor_hash END,target_hash=CASE WHEN ?<>'' THEN ? ELSE target_hash END WHERE merchant_id=? AND external_event_id=?",
+  )
     .bind(
       actorHash,
       actorHash,
@@ -144,11 +148,20 @@ async function trackedScan(
     )
     .run();
 
-  if (!actorHash || !responseBody || typeof responseBody !== "object" || Array.isArray(responseBody)) {
+  if (
+    !actorHash ||
+    !responseBody ||
+    typeof responseBody !== "object" ||
+    Array.isArray(responseBody)
+  ) {
     return response;
   }
 
-  const pattern = await actorRiskPattern(env.DB, merchant.merchantId, actorHash);
+  const pattern = await actorRiskPattern(
+    env.DB,
+    merchant.merchantId,
+    actorHash,
+  );
   return json({
     ...(responseBody as Record<string, unknown>),
     actorTracking: {
@@ -156,8 +169,7 @@ async function trackedScan(
       rawTargetIdStored: false,
       highRiskEvents30d: pattern.highRiskEvents,
       uniqueTargets30d: pattern.uniqueTargets,
-      repeatRiskFlag:
-        pattern.highRiskEvents >= 3 && pattern.uniqueTargets >= 2,
+      repeatRiskFlag: pattern.highRiskEvents >= 3 && pattern.uniqueTargets >= 2,
       humanReviewRecommended:
         pattern.highRiskEvents >= 3 && pattern.uniqueTargets >= 2,
     },
@@ -179,14 +191,14 @@ async function dashboardLogin(
   const hash = await sha256(token);
   const now = Math.floor(Date.now() / 1000);
   const expires = now + SESSION_TTL_SECONDS;
-  await env.DB
-    .prepare("DELETE FROM child_safety_dashboard_sessions WHERE expires_at_epoch<?")
+  await env.DB.prepare(
+    "DELETE FROM child_safety_dashboard_sessions WHERE expires_at_epoch<?",
+  )
     .bind(now)
     .run();
-  await env.DB
-    .prepare(
-      "INSERT INTO child_safety_dashboard_sessions(session_hash,merchant_id,expires_at_epoch,created_at) VALUES(?,?,?,?)",
-    )
+  await env.DB.prepare(
+    "INSERT INTO child_safety_dashboard_sessions(session_hash,merchant_id,expires_at_epoch,created_at) VALUES(?,?,?,?)",
+  )
     .bind(hash, merchant.merchantId, expires, new Date().toISOString())
     .run();
 
@@ -204,11 +216,15 @@ async function dashboardLogout(
   request: Request,
   env: ChildSafetyControlEnv,
 ): Promise<Response> {
-  const token = cookieValue(request.headers.get("cookie") ?? "", SESSION_COOKIE);
+  const token = cookieValue(
+    request.headers.get("cookie") ?? "",
+    SESSION_COOKIE,
+  );
   if (token) {
     const hash = await sha256(token);
-    await env.DB
-      .prepare("DELETE FROM child_safety_dashboard_sessions WHERE session_hash=?")
+    await env.DB.prepare(
+      "DELETE FROM child_safety_dashboard_sessions WHERE session_hash=?",
+    )
       .bind(hash)
       .run();
   }
@@ -261,7 +277,10 @@ ${metric("Gross revenue", `$${summary.earnedUsd}`, "ok")}
 }
 
 function dashboardLoginPage(message = "", status = 200): Response {
-  return html(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>XGuard Child Safety Dashboard</title><style>body{margin:0;background:#07111f;color:#f8fafc;font-family:Inter,system-ui,sans-serif;display:grid;place-items:center;min-height:100vh}.box{width:min(430px,calc(100% - 32px));padding:28px;background:#0d1929;border:1px solid #243246;border-radius:18px}h1{margin-top:0}label{display:block;color:#94a3b8;margin-bottom:8px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #334155;background:#07111f;color:#fff}button{width:100%;margin-top:14px;padding:13px;border:0;border-radius:10px;background:#f8fafc;color:#07111f;font-weight:800}.error{color:#fb7185;margin-bottom:12px}.note{font-size:12px;color:#94a3b8;margin-top:12px}</style></head><body><form class="box" method="post" action="/child-safety/dashboard/login"><h1>XGuard Child Safety</h1><p>Merchant operations dashboard</p>${message ? `<div class="error">${escapeHtml(message)}</div>` : ""}<label>Merchant API key</label><input type="password" name="apiKey" autocomplete="off" required><button type="submit">Open dashboard</button><div class="note">The API key is exchanged for a short-lived HttpOnly dashboard session and is not stored in browser storage.</div></form></body></html>`, status);
+  return html(
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>XGuard Child Safety Dashboard</title><style>body{margin:0;background:#07111f;color:#f8fafc;font-family:Inter,system-ui,sans-serif;display:grid;place-items:center;min-height:100vh}.box{width:min(430px,calc(100% - 32px));padding:28px;background:#0d1929;border:1px solid #243246;border-radius:18px}h1{margin-top:0}label{display:block;color:#94a3b8;margin-bottom:8px}input{width:100%;padding:13px;border-radius:10px;border:1px solid #334155;background:#07111f;color:#fff}button{width:100%;margin-top:14px;padding:13px;border:0;border-radius:10px;background:#f8fafc;color:#07111f;font-weight:800}.error{color:#fb7185;margin-bottom:12px}.note{font-size:12px;color:#94a3b8;margin-top:12px}</style></head><body><form class="box" method="post" action="/child-safety/dashboard/login"><h1>XGuard Child Safety</h1><p>Merchant operations dashboard</p>${message ? `<div class="error">${escapeHtml(message)}</div>` : ""}<label>Merchant API key</label><input type="password" name="apiKey" autocomplete="off" required><button type="submit">Open dashboard</button><div class="note">The API key is exchanged for a short-lived HttpOnly dashboard session and is not stored in browser storage.</div></form></body></html>`,
+    status,
+  );
 }
 
 async function dashboardSummary(
@@ -355,12 +374,17 @@ async function dashboardMerchant(
   request: Request,
   db: D1Database,
 ): Promise<MerchantIdentity | null> {
-  const token = cookieValue(request.headers.get("cookie") ?? "", SESSION_COOKIE);
+  const token = cookieValue(
+    request.headers.get("cookie") ?? "",
+    SESSION_COOKIE,
+  );
   if (!token) return null;
   const hash = await sha256(token);
   const now = Math.floor(Date.now() / 1000);
   await db
-    .prepare("DELETE FROM child_safety_dashboard_sessions WHERE expires_at_epoch<?")
+    .prepare(
+      "DELETE FROM child_safety_dashboard_sessions WHERE expires_at_epoch<?",
+    )
     .bind(now)
     .run();
   const row = await db
@@ -415,11 +439,17 @@ function randomToken(bytes: number): string {
   crypto.getRandomValues(data);
   let binary = "";
   for (const byte of data) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
 async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
@@ -444,16 +474,23 @@ function numeric(value: unknown): number {
 }
 
 function recentRowHtml(row: Record<string, unknown>): string {
-  const categories = Array.isArray(row.categories) ? row.categories.join(", ") : "";
+  const categories = Array.isArray(row.categories)
+    ? row.categories.join(", ")
+    : "";
   return `<tr><td>${escapeHtml(String(row.createdAt ?? ""))}</td><td>${escapeHtml(String(row.contentKind ?? ""))}</td><td><span class="pill">${escapeHtml(String(row.riskLevel ?? ""))}</span></td><td>${escapeHtml(String(row.action ?? ""))}</td><td>${escapeHtml(categories)}</td></tr>`;
 }
 
 function actorRowHtml(row: RiskActorRow): string {
-  const flagged = numeric(row.high_risk_events) >= 3 && numeric(row.unique_targets) >= 2;
+  const flagged =
+    numeric(row.high_risk_events) >= 3 && numeric(row.unique_targets) >= 2;
   return `<tr><td>${escapeHtml(`${row.actor_hash.slice(0, 12)}…`)}${flagged ? ` <span class="pill danger">repeat risk</span>` : ""}</td><td>${numeric(row.high_risk_events)}</td><td>${numeric(row.unique_targets)}</td></tr>`;
 }
 
-function metric(label: string, value: string | number, className: string): string {
+function metric(
+  label: string,
+  value: string | number,
+  className: string,
+): string {
   return `<div class="card"><div class="label">${escapeHtml(label)}</div><div class="metric ${className}">${escapeHtml(String(value))}</div></div>`;
 }
 
@@ -467,7 +504,9 @@ function escapeHtml(value: string): string {
 }
 
 function clean(value: unknown, maxLength: number): string {
-  return String(value ?? "").trim().slice(0, maxLength);
+  return String(value ?? "")
+    .trim()
+    .slice(0, maxLength);
 }
 
 function methodNotAllowed(): Response {
@@ -494,7 +533,8 @@ function html(body: string, status = 200): Response {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy":
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
     },
