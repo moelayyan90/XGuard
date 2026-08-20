@@ -1,0 +1,55 @@
+name: Wire child safety public site once
+
+on:
+  push:
+    branches: [agent/child-safety-public-site]
+    paths:
+      - .github/workflows/wire-child-safety-public-site-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/child-safety-public-site
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Insert public site routing
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('apps/worker/src/universal-mainnet.ts')
+          s = p.read_text()
+          old_import = 'import { childSafetyControlResponse } from "./child-safety-control.js";\n'
+          new_import = old_import + 'import { publicChildSafetySiteResponse } from "./child-safety-public-site.js";\n'
+          if 'publicChildSafetySiteResponse' not in s:
+              if old_import not in s:
+                  raise SystemExit('child safety import marker not found')
+              s = s.replace(old_import, new_import, 1)
+          marker = '''    const securityBlock = universalSecurityGuardResponse(standardRequest);\n    if (securityBlock !== null) return securityBlock;\n\n'''
+          insert = marker + '''    const childSafetySite = publicChildSafetySiteResponse(standardRequest);\n    if (childSafetySite !== null) return childSafetySite;\n\n'''
+          if 'const childSafetySite = publicChildSafetySiteResponse' not in s:
+              if marker not in s:
+                  raise SystemExit('security routing marker not found')
+              s = s.replace(marker, insert, 1)
+          p.write_text(s)
+      - run: npx prettier --write apps/worker/src/universal-mainnet.ts
+      - run: npm run typecheck
+      - name: Commit router wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- apps/worker/src/universal-mainnet.ts
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Route public child safety site before control APIs"
+          git push origin HEAD:agent/child-safety-public-site
