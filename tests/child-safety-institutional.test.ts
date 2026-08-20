@@ -27,7 +27,9 @@ describe("child safety institutional surface", () => {
     const body = await response!.text();
     expect(body).toContain("/child-safety/age-assurance");
     expect(body).toContain("/child-safety/regulatory-readiness");
-    expect(body).toContain("Protect children. Prove the control. Preserve privacy.");
+    expect(body).toContain(
+      "Protect children. Prove the control. Preserve privacy.",
+    );
   });
 
   it("publishes a machine-readable institutional registry", async () => {
@@ -45,7 +47,9 @@ describe("child safety institutional surface", () => {
     };
     expect(body.product).toContain("Compliance Infrastructure");
     expect(body.commercialModel).toContain("B2B/B2G");
-    expect(body.certificationStatus).toBe("not_certified_or_government_approved");
+    expect(body.certificationStatus).toBe(
+      "not_certified_or_government_approved",
+    );
     expect(body.pricing.some((row) => row.event === "video")).toBe(true);
     expect(body.partners.some((row) => row.name === "INHOPE")).toBe(true);
     expect(body.regulatorySurfaces).toContain(
