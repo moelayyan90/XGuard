@@ -1,6 +1,8 @@
 name: Commerce source probe
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [fix/commerce-official-sources]
 
