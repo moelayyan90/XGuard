@@ -399,9 +399,7 @@ export async function globalOpportunityHunterResponse(
   return json({ error: "not_found" }, 404);
 }
 
-export async function runGlobalOpportunityHunter(
-  env: HunterEnv,
-): Promise<{
+export async function runGlobalOpportunityHunter(env: HunterEnv): Promise<{
   mode: string;
   considered: number;
   submitted: number;
