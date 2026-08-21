@@ -3,6 +3,8 @@ name: XGuard site live diagnostic
 on:
   push:
     branches: [diag/site-live-20260821]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
