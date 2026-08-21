@@ -1,0 +1,39 @@
+name: XGuard live now PR
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe live XGuard endpoints
+        shell: bash
+        run: |
+          set +e
+          date -u
+          for host in xguardgate.com www.xguardgate.com xguard-public.maqamapp.workers.dev; do
+            echo "=== DNS ${host} ==="
+            getent ahosts "$host" | head -6 || true
+          done
+          for url in \
+            https://xguardgate.com/ \
+            https://www.xguardgate.com/ \
+            https://xguardgate.com/v1/commerce/status \
+            https://xguardgate.com/v1/commerce/execution/status \
+            https://xguard-public.maqamapp.workers.dev/ \
+            https://xguard-public.maqamapp.workers.dev/v1/commerce/status; do
+            echo "=== ${url} ==="
+            rm -f /tmp/body /tmp/headers
+            curl -sS -L --max-time 20 -D /tmp/headers -o /tmp/body -w 'HTTP=%{http_code} remote=%{remote_ip} redirect=%{redirect_url}\n' "$url"
+            sed -n '1,12p' /tmp/headers 2>/dev/null || true
+            echo BODY:
+            head -c 800 /tmp/body 2>/dev/null || true
+            echo
+          done
+          exit 0
