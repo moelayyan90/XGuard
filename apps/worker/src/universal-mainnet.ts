@@ -249,18 +249,23 @@ export default {
   },
 
   async scheduled(controller, env, ctx): Promise<void> {
-    const hunterResult = await runGlobalOpportunityHunter(env).catch((error) => {
-      console.error(
-        JSON.stringify({
-          event: "global_opportunity_hunter_tick_failed",
-          error: error instanceof Error ? error.message : "unknown_error",
-        }),
-      );
-      return null;
-    });
+    const hunterResult = await runGlobalOpportunityHunter(env).catch(
+      (error) => {
+        console.error(
+          JSON.stringify({
+            event: "global_opportunity_hunter_tick_failed",
+            error: error instanceof Error ? error.message : "unknown_error",
+          }),
+        );
+        return null;
+      },
+    );
     if (hunterResult !== null)
       console.log(
-        JSON.stringify({ event: "global_opportunity_hunter_tick", ...hunterResult }),
+        JSON.stringify({
+          event: "global_opportunity_hunter_tick",
+          ...hunterResult,
+        }),
       );
     await operationsEmployeeScheduled(env);
     await mainnetScheduled(controller, env, ctx);

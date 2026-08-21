@@ -1,7 +1,4 @@
-import {
-  parseJsonStrict,
-  readHttpBodyTextCapped,
-} from "@xguard/core/edge";
+import { parseJsonStrict, readHttpBodyTextCapped } from "@xguard/core/edge";
 
 const MAX_BODY_BYTES = 128 * 1024;
 const DEFAULT_MIN_NET_PROFIT_MICRO_USD = 100_000_000;
@@ -186,7 +183,10 @@ export function evaluateShariahPolicy(candidate: HunterCandidateInput): {
       pattern.test(candidateText),
     )
   ) {
-    return { status: "UNKNOWN", reason: "requires_shariah_specific_verification" };
+    return {
+      status: "UNKNOWN",
+      reason: "requires_shariah_specific_verification",
+    };
   }
   if (HALAL_CATEGORY_PATTERNS.some((pattern) => pattern.test(candidateText))) {
     return { status: "HALAL", reason: "approved_trade_category" };
@@ -232,17 +232,17 @@ export function evaluateOpportunity(
         );
   const ageSeconds = Math.max(
     0,
-    Math.floor(
-      (nowEpochMs - new Date(candidate.observedAt).getTime()) / 1_000,
-    ),
+    Math.floor((nowEpochMs - new Date(candidate.observedAt).getTime()) / 1_000),
   );
 
   const reasons: string[] = [];
   if (shariah.status !== "HALAL") reasons.push(`shariah:${shariah.reason}`);
-  if (!candidate.buyer.paymentSecured) reasons.push("buyer_payment_not_secured");
+  if (!candidate.buyer.paymentSecured)
+    reasons.push("buyer_payment_not_secured");
   if (!candidate.buyer.fundsAvailableBeforePurchase)
     reasons.push("buyer_funds_not_available_before_purchase");
-  if (!candidate.buyer.identityVerified) reasons.push("buyer_identity_unverified");
+  if (!candidate.buyer.identityVerified)
+    reasons.push("buyer_identity_unverified");
   if (!candidate.supplier.identityVerified)
     reasons.push("supplier_identity_unverified");
   if (!candidate.supplier.inventoryVerified)
@@ -276,7 +276,11 @@ export function evaluateOpportunity(
     0,
     15,
   );
-  const riskScore = clamp(Math.floor((100 - candidate.risk.score) * 0.15), 0, 15);
+  const riskScore = clamp(
+    Math.floor((100 - candidate.risk.score) * 0.15),
+    0,
+    15,
+  );
   const score = clamp(
     profitScore + marginScore + fundingScore + reliabilityScore + riskScore,
     0,
@@ -296,7 +300,8 @@ export function evaluateOpportunity(
     !candidate.buyer.identityVerified ||
     !candidate.supplier.identityVerified ||
     !candidate.supplier.inventoryVerified ||
-    candidate.supplier.availableQuantity < candidate.supplier.requiredQuantity ||
+    candidate.supplier.availableQuantity <
+      candidate.supplier.requiredQuantity ||
     candidate.risk.counterfeitRisk ||
     candidate.risk.sanctionsRisk ||
     candidate.risk.restrictedGoodsRisk ||
@@ -343,14 +348,19 @@ export async function globalOpportunityHunterResponse(
 
     const results: Array<Record<string, unknown>> = [];
     for (const candidate of candidates) {
-      const evaluation = evaluateOpportunity(candidate, Date.now(), config(env));
+      const evaluation = evaluateOpportunity(
+        candidate,
+        Date.now(),
+        config(env),
+      );
       const id = await persistOpportunity(env.DB, candidate, evaluation);
       results.push({ id, externalId: candidate.externalId, ...evaluation });
     }
     return json({ accepted: results.length, results }, 202);
   }
 
-  if (!(await requireAdmin(request, env))) return json({ error: "unauthorized" }, 401);
+  if (!(await requireAdmin(request, env)))
+    return json({ error: "unauthorized" }, 401);
 
   if (url.pathname === "/v1/hunter/status" && request.method === "GET") {
     const stats = await env.DB.prepare(
@@ -391,7 +401,12 @@ export async function globalOpportunityHunterResponse(
 
 export async function runGlobalOpportunityHunter(
   env: HunterEnv,
-): Promise<{ mode: string; considered: number; submitted: number; failed: number }> {
+): Promise<{
+  mode: string;
+  considered: number;
+  submitted: number;
+  failed: number;
+}> {
   const mode = automationMode(env);
   const rows = await env.DB.prepare(
     `SELECT id, source, external_id, title, category, observed_at,
@@ -411,7 +426,12 @@ export async function runGlobalOpportunityHunter(
   const endpoint = optionalString(env.HUNTER_EXECUTION_WEBHOOK_URL);
   const secret = optionalString(env.HUNTER_EXECUTION_WEBHOOK_SECRET);
   if (endpoint === null || secret === null)
-    return { mode: "safe-disabled", considered: rows.results.length, submitted: 0, failed: 0 };
+    return {
+      mode: "safe-disabled",
+      considered: rows.results.length,
+      submitted: 0,
+      failed: 0,
+    };
   assertSafeHttpsEndpoint(endpoint);
 
   let submitted = 0;
@@ -442,7 +462,8 @@ export async function runGlobalOpportunityHunter(
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) throw new Error(`execution_http_${response.status}`);
-      const reference = response.headers.get("x-execution-reference")?.slice(0, 256) ?? null;
+      const reference =
+        response.headers.get("x-execution-reference")?.slice(0, 256) ?? null;
       await env.DB.batch([
         env.DB.prepare(
           `UPDATE hunter_opportunities
@@ -460,7 +481,10 @@ export async function runGlobalOpportunityHunter(
       submitted += 1;
     } catch (error) {
       failed += 1;
-      const message = error instanceof Error ? error.message.slice(0, 512) : "execution_failed";
+      const message =
+        error instanceof Error
+          ? error.message.slice(0, 512)
+          : "execution_failed";
       await env.DB.batch([
         env.DB.prepare(
           `UPDATE hunter_opportunities
@@ -487,7 +511,9 @@ async function persistOpportunity(
   evaluation: HunterEvaluation,
 ): Promise<string> {
   const existing = await db
-    .prepare("SELECT id FROM hunter_opportunities WHERE source=? AND external_id=?")
+    .prepare(
+      "SELECT id FROM hunter_opportunities WHERE source=? AND external_id=?",
+    )
     .bind(candidate.source, candidate.externalId)
     .first<{ id: string }>();
   const id = existing?.id ?? crypto.randomUUID();
@@ -559,18 +585,33 @@ function parseCandidate(value: unknown): HunterCandidateInput {
     buyer: {
       country: stringField(buyer.country, "buyer.country"),
       priceMicroUsd: integerField(buyer.priceMicroUsd, "buyer.priceMicroUsd"),
-      paymentSecured: booleanField(buyer.paymentSecured, "buyer.paymentSecured"),
+      paymentSecured: booleanField(
+        buyer.paymentSecured,
+        "buyer.paymentSecured",
+      ),
       fundsAvailableBeforePurchase: booleanField(
         buyer.fundsAvailableBeforePurchase,
         "buyer.fundsAvailableBeforePurchase",
       ),
-      identityVerified: booleanField(buyer.identityVerified, "buyer.identityVerified"),
+      identityVerified: booleanField(
+        buyer.identityVerified,
+        "buyer.identityVerified",
+      ),
     },
     supplier: {
       country: stringField(supplier.country, "supplier.country"),
-      priceMicroUsd: integerField(supplier.priceMicroUsd, "supplier.priceMicroUsd"),
-      shippingMicroUsd: integerField(supplier.shippingMicroUsd, "supplier.shippingMicroUsd"),
-      dutiesMicroUsd: integerField(supplier.dutiesMicroUsd, "supplier.dutiesMicroUsd"),
+      priceMicroUsd: integerField(
+        supplier.priceMicroUsd,
+        "supplier.priceMicroUsd",
+      ),
+      shippingMicroUsd: integerField(
+        supplier.shippingMicroUsd,
+        "supplier.shippingMicroUsd",
+      ),
+      dutiesMicroUsd: integerField(
+        supplier.dutiesMicroUsd,
+        "supplier.dutiesMicroUsd",
+      ),
       platformFeesMicroUsd: integerField(
         supplier.platformFeesMicroUsd,
         "supplier.platformFeesMicroUsd",
@@ -579,7 +620,10 @@ function parseCandidate(value: unknown): HunterCandidateInput {
         supplier.paymentFeesMicroUsd,
         "supplier.paymentFeesMicroUsd",
       ),
-      fxCostMicroUsd: integerField(supplier.fxCostMicroUsd, "supplier.fxCostMicroUsd"),
+      fxCostMicroUsd: integerField(
+        supplier.fxCostMicroUsd,
+        "supplier.fxCostMicroUsd",
+      ),
       otherCostsMicroUsd: integerField(
         supplier.otherCostsMicroUsd,
         "supplier.otherCostsMicroUsd",
@@ -607,7 +651,10 @@ function parseCandidate(value: unknown): HunterCandidateInput {
     },
     risk: {
       score: integerField(risk.score, "risk.score"),
-      counterfeitRisk: booleanField(risk.counterfeitRisk, "risk.counterfeitRisk"),
+      counterfeitRisk: booleanField(
+        risk.counterfeitRisk,
+        "risk.counterfeitRisk",
+      ),
       sanctionsRisk: booleanField(risk.sanctionsRisk, "risk.sanctionsRisk"),
       restrictedGoodsRisk: booleanField(
         risk.restrictedGoodsRisk,
@@ -622,7 +669,10 @@ function validateCandidate(candidate: HunterCandidateInput): void {
     throw new Error("candidate_identifier_too_long");
   if (candidate.title.length > 500 || candidate.category.length > 200)
     throw new Error("candidate_text_too_long");
-  if (candidate.description !== undefined && candidate.description.length > 4_000)
+  if (
+    candidate.description !== undefined &&
+    candidate.description.length > 4_000
+  )
     throw new Error("candidate_description_too_long");
   if (candidate.supplier.reliabilityBps > 10_000)
     throw new Error("supplier_reliability_bps_out_of_range");
@@ -648,7 +698,10 @@ function config(env: HunterEnv): Partial<{
     minMarginBps: envNumber(env.HUNTER_MIN_MARGIN_BPS, DEFAULT_MIN_MARGIN_BPS),
     minScore: envNumber(env.HUNTER_MIN_SCORE, DEFAULT_MIN_SCORE),
     maxRiskScore: envNumber(env.HUNTER_MAX_RISK_SCORE, DEFAULT_MAX_RISK_SCORE),
-    maxAgeSeconds: envNumber(env.HUNTER_MAX_AGE_SECONDS, DEFAULT_MAX_AGE_SECONDS),
+    maxAgeSeconds: envNumber(
+      env.HUNTER_MAX_AGE_SECONDS,
+      DEFAULT_MAX_AGE_SECONDS,
+    ),
   };
 }
 
@@ -669,12 +722,16 @@ async function verifyIngestSignature(
   if (secret === null || signature === null || timestamp === null) return false;
   const timestampNumber = Number(timestamp);
   if (!Number.isSafeInteger(timestampNumber)) return false;
-  if (Math.abs(Math.floor(Date.now() / 1_000) - timestampNumber) > 300) return false;
+  if (Math.abs(Math.floor(Date.now() / 1_000) - timestampNumber) > 300)
+    return false;
   const expected = `sha256=${await hmacHex(secret, `${timestamp}.${rawBody}`)}`;
   return timingSafeTextEqual(expected, signature);
 }
 
-async function requireAdmin(request: Request, env: HunterEnv): Promise<boolean> {
+async function requireAdmin(
+  request: Request,
+  env: HunterEnv,
+): Promise<boolean> {
   const expected = optionalString(env.XGUARD_ADMIN_TOKEN_SHA256)?.toLowerCase();
   if (expected === null || !/^[a-f0-9]{64}$/.test(expected)) return false;
   const authorization = request.headers.get("authorization") ?? "";
@@ -727,7 +784,8 @@ function timingSafeTextEqual(a: string, b: string): boolean {
 
 function assertSafeHttpsEndpoint(value: string): void {
   const url = new URL(value);
-  if (url.protocol !== "https:") throw new Error("execution_endpoint_requires_https");
+  if (url.protocol !== "https:")
+    throw new Error("execution_endpoint_requires_https");
   const host = url.hostname.toLowerCase();
   if (
     host === "localhost" ||
@@ -765,7 +823,8 @@ function stringField(value: unknown, field: string): string {
 function isoDateField(value: unknown, field: string): string {
   const textValue = stringField(value, field);
   const date = new Date(textValue);
-  if (!Number.isFinite(date.getTime())) throw new Error(`${field}_must_be_iso_date`);
+  if (!Number.isFinite(date.getTime()))
+    throw new Error(`${field}_must_be_iso_date`);
   return date.toISOString();
 }
 

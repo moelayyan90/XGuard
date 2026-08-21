@@ -63,10 +63,13 @@ describe("strict shariah gate", () => {
     ["vape replacement parts", "electronic components"],
     ["rifle spare parts", "industrial components"],
     ["pork processing spare kit", "industrial machinery"],
-  ])("hard-blocks prohibited trade even inside a safe category: %s", (title, category) => {
-    const result = evaluateShariahPolicy(candidate({ title, category }));
-    expect(result.status).toBe("HARAM");
-  });
+  ])(
+    "hard-blocks prohibited trade even inside a safe category: %s",
+    (title, category) => {
+      const result = evaluateShariahPolicy(candidate({ title, category }));
+      expect(result.status).toBe("HARAM");
+    },
+  );
 
   it("rejects ambiguous categories rather than guessing", () => {
     expect(
@@ -95,7 +98,9 @@ describe("pre-funded back-to-back opportunity evaluation", () => {
       NOW,
     );
     expect(result.state).toBe("REJECTED_FUNDING");
-    expect(result.reasons).toContain("buyer_funds_not_available_before_purchase");
+    expect(result.reasons).toContain(
+      "buyer_funds_not_available_before_purchase",
+    );
   });
 
   it("rejects apparent spread that disappears after landed costs", () => {
