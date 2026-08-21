@@ -1,0 +1,44 @@
+name: Commerce source probe
+
+on:
+  push:
+    branches: [fix/commerce-official-sources]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Probe FTS, Contracts Finder and TED
+        shell: bash
+        run: |
+          node <<'NODE'
+          const end = new Date();
+          const start = new Date(end.getTime() - 48*3600*1000);
+          const iso = d => d.toISOString().slice(0,19);
+          const fts = `https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages?updatedFrom=${encodeURIComponent(iso(start))}&updatedTo=${encodeURIComponent(iso(end))}&stages=tender&limit=3`;
+          const cf = `https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search?publishedFrom=${encodeURIComponent(start.toISOString())}&publishedTo=${encodeURIComponent(end.toISOString())}&stages=tender&limit=3`;
+          async function probeGet(name,url){
+            const r=await fetch(url,{headers:{accept:'application/json','user-agent':'XGuard/1.0'}});
+            const t=await r.text();
+            console.log(name,'status',r.status,'type',r.headers.get('content-type'),'length',t.length);
+            if(!r.ok) return console.log(name,'body',t.slice(0,500));
+            const j=JSON.parse(t);
+            console.log(name,'topKeys',Object.keys(j));
+            const x=(j.releases||j.releasePackages||j.results||[])[0];
+            if(x) console.log(name,'sampleKeys',Object.keys(x),'tenderKeys',Object.keys(x.tender||{}),'buyerKeys',Object.keys(x.buyer||{}),'partyKeys',Object.keys((x.parties||[])[0]||{}));
+          }
+          await probeGet('FTS',fts);
+          await probeGet('CF',cf);
+          const tedBody={query:'publication-date >= 20260820',fields:['publication-number','notice-title','buyer-name','buyer-email','classification-cpv','total-value','total-value-cur','deadline-date-lot','quantity-lot','quantity-unit-lot'],page:1,limit:3,scope:'ACTIVE',checkQuerySyntax:true,paginationMode:'PAGE_NUMBER'};
+          const tr=await fetch('https://api.ted.europa.eu/v3/notices/search',{method:'POST',headers:{'content-type':'application/json','accept':'application/json','user-agent':'XGuard/1.0'},body:JSON.stringify(tedBody)});
+          const tt=await tr.text();
+          console.log('TED status',tr.status,'type',tr.headers.get('content-type'),'length',tt.length);
+          console.log('TED body',tt.slice(0,4000));
+          NODE
