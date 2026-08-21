@@ -9,4 +9,6 @@ Production sources:
 - ECB EXR reference-rate API: currency normalization only; no guessed FX fallback.
 - EU TED Search API adapter: parser is implemented, but live imports are accepted only when the public API actually returns notices. A zero/empty upstream result does not create synthetic demand.
 
+The production scheduler checks source state on each cron cycle, refreshes official sources at a bounded cadence, overlaps the prior successful window to avoid missing late updates, follows only same-origin HTTPS pagination, and caps both response size and page count.
+
 Execution remains gated separately by explicit buyer-payment, buyer-funds, buyer-identity, supplier-identity and supplier-inventory verification.
