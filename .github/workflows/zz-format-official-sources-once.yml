@@ -24,7 +24,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npx prettier --write apps/worker/src/official-commerce-sources.ts apps/worker/src/commerce-mainnet.ts apps/worker/migrations/0027_official_commerce_sources.sql tests/official-commerce-sources.test.ts .github/workflows/commerce-official-sources-check.yml docs/commerce-official-sources.md
+      - run: npx prettier --write apps/worker/src/official-commerce-sources.ts apps/worker/src/commerce-mainnet.ts tests/official-commerce-sources.test.ts .github/workflows/commerce-official-sources-check.yml docs/commerce-official-sources.md
       - name: Commit formatting if needed
         shell: bash
         run: |
@@ -32,6 +32,6 @@ jobs:
           if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- apps/worker/src/official-commerce-sources.ts apps/worker/src/commerce-mainnet.ts apps/worker/migrations/0027_official_commerce_sources.sql tests/official-commerce-sources.test.ts .github/workflows/commerce-official-sources-check.yml docs/commerce-official-sources.md
+          git add -- apps/worker/src/official-commerce-sources.ts apps/worker/src/commerce-mainnet.ts tests/official-commerce-sources.test.ts .github/workflows/commerce-official-sources-check.yml docs/commerce-official-sources.md
           git commit -m "style: format official commerce sources"
           git push origin HEAD:fix/commerce-official-sources
