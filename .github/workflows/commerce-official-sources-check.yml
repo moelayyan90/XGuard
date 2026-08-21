@@ -1,0 +1,30 @@
+name: Commerce official sources check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [fix/commerce-official-sources]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Formatting
+        run: npx prettier --check apps/worker/src/official-commerce-sources.ts apps/worker/src/commerce-mainnet.ts tests/official-commerce-sources.test.ts
+      - name: Lint
+        run: npx eslint apps/worker/src/official-commerce-sources.ts apps/worker/src/commerce-mainnet.ts tests/official-commerce-sources.test.ts --max-warnings=0
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Source parser tests
+        run: npx vitest run tests/official-commerce-sources.test.ts
