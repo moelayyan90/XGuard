@@ -10,30 +10,58 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - name: Probe live XGuard endpoints
+      - name: Attach fresh access hostname
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          account="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n ')"
+          [[ -n "$token" && -n "$account" ]]
+          api="https://api.cloudflare.com/client/v4/accounts/${account}/workers/domains"
+          payload='{"hostname":"app.xguardgate.com","service":"xguard-mainnet","zone_name":"xguardgate.com"}'
+          code="$(curl -sS -o /tmp/attach.json -w '%{http_code}' -X PUT -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' --data "$payload" "$api")"
+          cat /tmp/attach.json
+          echo "attach_http=${code}"
+          [[ "$code" == "200" || "$code" == "201" ]]
+
+      - name: Probe global DNS and HTTP
         shell: bash
         run: |
           set +e
           date -u
-          for host in xguardgate.com www.xguardgate.com xguard-public.maqamapp.workers.dev; do
-            echo "=== DNS ${host} ==="
+          echo '=== system resolver ==='
+          for host in xguardgate.com www.xguardgate.com app.xguardgate.com xguard-public.maqamapp.workers.dev; do
+            echo "--- ${host} ---"
             getent ahosts "$host" | head -6 || true
           done
+          echo '=== public resolvers ==='
+          for server in 1.1.1.1 8.8.8.8 9.9.9.9; do
+            echo "--- resolver ${server} ---"
+            dig +time=3 +tries=1 @${server} xguardgate.com A +noall +answer +comments || true
+            dig +time=3 +tries=1 @${server} app.xguardgate.com A +noall +answer +comments || true
+          done
+          echo '=== authoritative ==='
+          dig NS xguardgate.com +short || true
+          for ns in $(dig NS xguardgate.com +short); do
+            echo "--- ${ns} ---"
+            dig +time=3 +tries=1 @${ns} xguardgate.com A +noall +answer +authority +comments || true
+            dig +time=3 +tries=1 @${ns} app.xguardgate.com A +noall +answer +authority +comments || true
+          done
+          echo '=== HTTP ==='
           for url in \
             https://xguardgate.com/ \
             https://www.xguardgate.com/ \
+            https://app.xguardgate.com/ \
             https://xguardgate.com/v1/commerce/status \
-            https://xguardgate.com/v1/commerce/execution/status \
-            https://xguard-public.maqamapp.workers.dev/ \
-            https://xguard-public.maqamapp.workers.dev/v1/commerce/status; do
-            echo "=== ${url} ==="
-            rm -f /tmp/body /tmp/headers
-            curl -sS -L --max-time 20 -D /tmp/headers -o /tmp/body -w 'HTTP=%{http_code} remote=%{remote_ip} redirect=%{redirect_url}\n' "$url"
-            sed -n '1,12p' /tmp/headers 2>/dev/null || true
-            echo BODY:
-            head -c 800 /tmp/body 2>/dev/null || true
+            https://xguard-public.maqamapp.workers.dev/; do
+            echo "--- ${url} ---"
+            curl -sS -L --max-time 20 -o /tmp/body -w 'HTTP=%{http_code} remote=%{remote_ip}\n' "$url" || true
+            head -c 240 /tmp/body 2>/dev/null || true
             echo
           done
           exit 0
