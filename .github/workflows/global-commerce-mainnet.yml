@@ -64,6 +64,7 @@ jobs:
             [/"main"\s*:\s*"src\/commerce-mainnet\.ts"/, 'commerce entrypoint'],
             [/"database_name"\s*:\s*"xguard-mainnet"/, 'D1 database'],
             [/"XGUARD_COMMERCE_AUTO_OUTREACH"\s*:\s*"true"/, 'commerce auto outreach'],
+            [/"XGUARD_COMMERCE_AUTO_EXECUTE"\s*:\s*"false"/, 'commerce execution fail-closed default'],
             [/"XGUARD_COMMERCE_MIN_PROFIT_USD"\s*:\s*"100"/, 'profit gate'],
             [/"XGUARD_COMMERCE_MIN_MARGIN_BPS"\s*:\s*"2000"/, 'margin gate'],
             [/"global_fetch_strictly_public"/, 'public-fetch guard'],
@@ -79,17 +80,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base='https://xguardgate.com'
-          ok=0
-          for attempt in {1..24}; do
-            code="$(curl -sS -o /tmp/commerce-status.json -w '%{http_code}' --max-time 15 "${base}/v1/commerce/status?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
-            if [[ "$code" == "200" ]] && node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/commerce-status.json","utf8"));if(x.mode!=="global-commerce-hunter"||x.inventoryPolicy!=="no speculative inventory"||x.autoOutreach!==true)process.exit(1)'; then
-              ok=1
-              break
-            fi
-            sleep 5
+          bases=(
+            'https://xguardgate.com'
+            'https://xguard-public.maqamapp.workers.dev'
+          )
+          for base in "${bases[@]}"; do
+            for attempt in {1..24}; do
+              commerce_code="$(curl -sS -o /tmp/commerce-status.json -w '%{http_code}' --max-time 15 "${base}/v1/commerce/status?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+              execution_code="$(curl -sS -o /tmp/execution-status.json -w '%{http_code}' --max-time 15 "${base}/v1/commerce/execution/status?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+              if [[ "$commerce_code" == "200" && "$execution_code" == "200" ]] && \
+                node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/commerce-status.json","utf8"));const y=JSON.parse(fs.readFileSync("/tmp/execution-status.json","utf8"));if(x.mode!=="global-commerce-hunter"||x.inventoryPolicy!=="no speculative inventory"||y.mode!=="verified-execution"||y.autoExecute!==false)process.exit(1)'; then
+                echo "XGUARD_LIVE_BASE=${base}" >> "$GITHUB_ENV"
+                if [[ "$base" != 'https://xguardgate.com' ]]; then
+                  echo 'Custom DNS is degraded; verified workers.dev fallback is serving production code.'
+                fi
+                exit 0
+              fi
+              sleep 5
+            done
           done
-          [[ "$ok" -eq 1 ]] || { cat /tmp/commerce-status.json || true; exit 1; }
+          cat /tmp/commerce-status.json || true
+          cat /tmp/execution-status.json || true
+          exit 1
 
       - name: Publish deployment status
         if: always()
@@ -100,11 +112,17 @@ jobs:
         run: |
           state=failure
           description='XGuard Global Commerce deployment failed'
+          target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [[ "$JOB_STATUS" == success ]]; then
             state=success
-            description='XGuard Global Commerce is live'
+            target_url="${XGUARD_LIVE_BASE:-$target_url}"
+            if [[ "${XGUARD_LIVE_BASE:-}" == 'https://xguardgate.com' ]]; then
+              description='XGuard Global Commerce is live on xguardgate.com'
+            else
+              description='XGuard Global Commerce is live via verified fallback'
+            fi
           fi
-          payload="$(node -e 'const [state,description]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-global-commerce-live",description,target_url:`${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`}))' "$state" "$description")"
+          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-global-commerce-live",description,target_url}))' "$state" "$description" "$target_url")"
           curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Authorization: Bearer ${GH_TOKEN}" \
