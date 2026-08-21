@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
   checks: write
   pull-requests: read
 
@@ -20,29 +20,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: feat/global-opportunity-hunter
-          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Format hunter files
-        run: npx prettier --write apps/worker/src/global-opportunity-hunter.ts apps/worker/src/universal-mainnet.ts apps/worker/wrangler.mainnet.jsonc tests/global-opportunity-hunter.test.ts
-      - name: Persist hunter formatting
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet -- apps/worker/src/global-opportunity-hunter.ts apps/worker/src/universal-mainnet.ts apps/worker/wrangler.mainnet.jsonc tests/global-opportunity-hunter.test.ts; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- apps/worker/src/global-opportunity-hunter.ts apps/worker/src/universal-mainnet.ts apps/worker/wrangler.mainnet.jsonc tests/global-opportunity-hunter.test.ts
-          git commit -m "style: apply prettier to opportunity hunter"
-          git push origin HEAD:feat/global-opportunity-hunter
       - run: npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
