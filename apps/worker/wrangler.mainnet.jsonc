@@ -50,6 +50,12 @@
     "PAYMENT_IDENTIFIER_TTL_SECONDS": "86400",
     "HEALTH_MAX_AGE_SECONDS": "300",
     "XGUARD_TREASURY_USDC_ADDRESS": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
+    "HUNTER_AUTOMATION_MODE": "shadow",
+    "HUNTER_MIN_NET_PROFIT_MICRO_USD": "100000000",
+    "HUNTER_MIN_MARGIN_BPS": "2000",
+    "HUNTER_MIN_SCORE": "80",
+    "HUNTER_MAX_RISK_SCORE": "35",
+    "HUNTER_MAX_AGE_SECONDS": "1800"
   },
   "ratelimits": [
     {
@@ -71,43 +77,43 @@
       "name": "BUYER_PASS_CREATE_RATE_LIMITER",
       "namespace_id": "2004",
       "simple": { "limit": 5, "period": 60 },
-    },
+    }
   ],
   "durable_objects": {
     "bindings": [
       {
         "name": "PAYMENT_COORDINATOR",
-        "class_name": "MainnetPaymentCoordinator",
+        "class_name": "MainnetPaymentCoordinator"
       },
       { "name": "REQUEST_GATE", "class_name": "MainnetRequestGate" },
       { "name": "XPAY_RATE_GATE", "class_name": "XPayGlobalRateGate" },
       {
         "name": "WEBHOOK_DELIVERY_QUEUE",
-        "class_name": "WebhookDeliveryQueue",
-      },
-    ],
+        "class_name": "WebhookDeliveryQueue"
+      }
+    ]
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["MainnetPaymentCoordinator", "MainnetRequestGate"],
+      "new_sqlite_classes": ["MainnetPaymentCoordinator", "MainnetRequestGate"]
     },
     {
       "tag": "v2",
-      "new_sqlite_classes": ["XPayGlobalRateGate"],
+      "new_sqlite_classes": ["XPayGlobalRateGate"]
     },
     {
       "tag": "v3",
-      "new_sqlite_classes": ["WebhookDeliveryQueue"],
-    },
+      "new_sqlite_classes": ["WebhookDeliveryQueue"]
+    }
   ],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "xguard-mainnet",
       "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
-  "triggers": { "crons": ["*/1 * * * *"] },
+  "triggers": { "crons": ["*/1 * * * *"] }
 }
