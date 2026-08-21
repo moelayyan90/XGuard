@@ -24,7 +24,9 @@ export default {
   async fetch(request, env, ctx): Promise<Response> {
     const commerce = await globalCommerceResponse(request as Request, env);
     if (commerce !== null) return commerce;
-    if (!base.fetch) return new Response("mainnet_fetch_unavailable", { status: 503 });
+    if (!base.fetch) {
+      return new Response("mainnet_fetch_unavailable", { status: 503 });
+    }
     return base.fetch(request, env, ctx);
   },
 
