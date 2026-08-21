@@ -63,3 +63,27 @@ jobs:
           done
           cat /tmp/status.json || true
           exit 1
+      - name: Publish fallback URL status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          state='failure'
+          description='XGuard public fallback deployment failed'
+          target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [[ "${JOB_STATUS}" == 'success' && -n "${PUBLIC_FALLBACK_URL:-}" ]]; then
+            state='success'
+            description='XGuard public fallback is live'
+            target_url="${PUBLIC_FALLBACK_URL}"
+          fi
+          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-public-fallback",description,target_url}))' "$state" "$description" "$target_url")"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data "$payload" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" >/dev/null
