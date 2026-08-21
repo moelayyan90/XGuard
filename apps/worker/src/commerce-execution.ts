@@ -719,7 +719,8 @@ function unsafeHost(host: string): boolean {
   if (/^10\./.test(host) || /^192\.168\./.test(host)) return true;
   const match = host.match(/^172\.(\d+)\./);
   if (match && Number(match[1]) >= 16 && Number(match[1]) <= 31) return true;
-  if (/^(fc|fd|fe80)/i.test(host.replace(/[\[\]]/g, ""))) return true;
+  if (/^(fc|fd|fe80)/i.test(host.replaceAll("[", "").replaceAll("]", "")))
+    return true;
   return false;
 }
 
@@ -763,12 +764,13 @@ function finiteNumber(raw: unknown): number | null {
 }
 
 function clean(raw: unknown, max = 500): string {
-  return typeof raw === "string"
-    ? raw
-        .trim()
-        .replace(/[\u0000-\u001f\u007f]/g, "")
-        .slice(0, max)
-    : "";
+  if (typeof raw !== "string") return "";
+  let sanitized = "";
+  for (const char of raw.trim()) {
+    const code = char.charCodeAt(0);
+    if (code >= 32 && code !== 127) sanitized += char;
+  }
+  return sanitized.slice(0, max);
 }
 
 function round2(value: number): number {
