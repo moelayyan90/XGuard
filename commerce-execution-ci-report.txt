@@ -1,0 +1,22 @@
+prettier_exit=0
+eslint_exit=1
+typecheck_exit=0
+
+=== PRETTIER ===
+Checking formatting...
+All matched files use Prettier code style!
+
+=== ESLINT ===
+
+/home/runner/work/XGuard/XGuard/apps/worker/src/commerce-execution.ts
+  722:44  error  Unnecessary escape character: \[                                   no-useless-escape
+  769:18  error  Unexpected control character(s) in regular expression: \x00, \x1f  no-control-regex
+
+✖ 2 problems (2 errors, 0 warnings)
+
+
+=== TYPECHECK ===
+
+> xguard-monorepo@0.1.0-alpha.0 typecheck
+> tsc -b --pretty false
+
