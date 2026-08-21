@@ -5,10 +5,10 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/worker/wrangler.public-fallback.jsonc'
-      - 'apps/worker/src/**'
-      - 'apps/worker/migrations/**'
-      - '.github/workflows/public-fallback.yml'
+      - "apps/worker/wrangler.public-fallback.jsonc"
+      - "apps/worker/src/**"
+      - "apps/worker/migrations/**"
+      - ".github/workflows/public-fallback.yml"
 
 permissions:
   contents: read
@@ -30,12 +30,12 @@ jobs:
       - name: Verify production code
         run: npm run verify:mainnet-release
         env:
-          WRANGLER_SEND_METRICS: 'false'
-      - name: Resolve D1 and deploy fallback
+          WRANGLER_SEND_METRICS: "false"
+      - name: Resolve D1, migrate, and deploy fallback
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WRANGLER_SEND_METRICS: 'false'
+          WRANGLER_SEND_METRICS: "false"
         shell: bash
         run: |
           set -euo pipefail
@@ -44,6 +44,7 @@ jobs:
           export CLOUDFLARE_API_TOKEN="$token"
           CONFIG_PATH="${GITHUB_WORKSPACE}/apps/worker/wrangler.public-fallback.resolved.jsonc"
           node scripts/resolve-cloudflare-config.mjs --template apps/worker/wrangler.public-fallback.jsonc --output "$CONFIG_PATH" --database-name xguard-mainnet
+          npx wrangler d1 migrations apply xguard-mainnet --remote --config "$CONFIG_PATH"
           npx wrangler deploy --config "$CONFIG_PATH" 2>&1 | tee /tmp/deploy.log
           url="$(grep -Eo 'https://[A-Za-z0-9._-]+\.workers\.dev' /tmp/deploy.log | tail -1 || true)"
           [[ -n "$url" ]] || { echo 'workers.dev URL not emitted'; exit 1; }
@@ -53,15 +54,18 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${PUBLIC_FALLBACK_URL:-}"
-          for attempt in {1..12}; do
-            code="$(curl -sS -o /tmp/status.json -w '%{http_code}' --max-time 15 "${PUBLIC_FALLBACK_URL}/v1/commerce/status?attempt=${attempt}" || true)"
-            if [[ "$code" == '200' ]] && node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/status.json","utf8"));if(x.mode!=="global-commerce-hunter"||x.inventoryPolicy!=="no speculative inventory")process.exit(1)'; then
+          for attempt in {1..18}; do
+            commerce_code="$(curl -sS -o /tmp/status.json -w '%{http_code}' --max-time 15 "${PUBLIC_FALLBACK_URL}/v1/commerce/status?attempt=${attempt}" || true)"
+            execution_code="$(curl -sS -o /tmp/execution-status.json -w '%{http_code}' --max-time 15 "${PUBLIC_FALLBACK_URL}/v1/commerce/execution/status?attempt=${attempt}" || true)"
+            if [[ "$commerce_code" == "200" && "$execution_code" == "200" ]] && \
+              node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/status.json","utf8"));const y=JSON.parse(fs.readFileSync("/tmp/execution-status.json","utf8"));if(x.mode!=="global-commerce-hunter"||x.inventoryPolicy!=="no speculative inventory"||y.mode!=="verified-execution"||y.autoExecute!==false)process.exit(1)'; then
               echo "Fallback live: ${PUBLIC_FALLBACK_URL}"
               exit 0
             fi
             sleep 5
           done
           cat /tmp/status.json || true
+          cat /tmp/execution-status.json || true
           exit 1
       - name: Publish fallback URL status
         if: always()
