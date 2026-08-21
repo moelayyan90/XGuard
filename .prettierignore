@@ -12,6 +12,9 @@ apps/worker/src/monetized-mainnet.ts
 # TypeScript, worker tests, release builds, self-tests, and CodeQL.
 apps/worker/src/global-commerce.ts
 scripts/commerce-self-test.mjs
+# Operational fallback deployment/config files are validated by their workflow and release gate.
+.github/workflows/public-fallback.yml
+apps/worker/wrangler.public-fallback.jsonc
 /worker-configuration.d.ts
 package-lock.json
 .wrangler
