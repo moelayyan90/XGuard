@@ -20,6 +20,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: feat/global-opportunity-hunter
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 24
