@@ -1,6 +1,8 @@
 name: One-shot official sources formatter
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [fix/commerce-official-sources]
 
@@ -9,13 +11,13 @@ permissions:
 
 jobs:
   format:
-    if: ${{ github.actor != 'github-actions[bot]' }}
+    if: ${{ github.actor != 'github-actions[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: fix/commerce-official-sources
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
