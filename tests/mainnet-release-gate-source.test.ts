@@ -16,6 +16,10 @@ const universalMainnetEntrypoint = readFileSync(
   "apps/worker/src/universal-mainnet.ts",
   "utf8",
 );
+const commerceMainnetEntrypoint = readFileSync(
+  "apps/worker/src/commerce-mainnet.ts",
+  "utf8",
+);
 const monetizedMainnetEntrypoint = readFileSync(
   "apps/worker/src/monetized-mainnet.ts",
   "utf8",
@@ -49,7 +53,21 @@ describe("mainnet release gate", () => {
   });
 
   it("locks production to the hardened universal edge", () => {
-    expect(mainnetConfig).toContain('"main": "src/universal-mainnet.ts"');
+    const usesUniversalDirectly = mainnetConfig.includes(
+      '"main": "src/universal-mainnet.ts"',
+    );
+    const usesCommerceWrapper = mainnetConfig.includes(
+      '"main": "src/commerce-mainnet.ts"',
+    );
+    expect(usesUniversalDirectly || usesCommerceWrapper).toBe(true);
+    if (usesCommerceWrapper) {
+      expect(commerceMainnetEntrypoint).toContain(
+        'from "./universal-mainnet.js";',
+      );
+      expect(commerceMainnetEntrypoint).toContain(
+        "return base.fetch(request, env, ctx);",
+      );
+    }
     expect(mainnetConfig).toContain('"workers_dev": false');
     expect(mainnetConfig).toContain('"global_fetch_strictly_public"');
     expect(mainnetConfig).toContain('"WEBHOOK_DELIVERY_QUEUE"');
