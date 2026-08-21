@@ -1,0 +1,36 @@
+name: XGuard site live diagnostic
+
+on:
+  push:
+    branches: [diag/site-live-20260821]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe public domain and fallback
+        shell: bash
+        run: |
+          set +e
+          for host in xguardgate.com www.xguardgate.com xguard-public.maqamapp.workers.dev; do
+            echo "=== DNS ${host} ==="
+            getent ahosts "$host" || true
+          done
+          for url in \
+            https://xguardgate.com/ \
+            https://www.xguardgate.com/ \
+            https://xguard-public.maqamapp.workers.dev/ \
+            https://xguard-public.maqamapp.workers.dev/v1/commerce/status \
+            https://xguard-public.maqamapp.workers.dev/v1/commerce/execution/status; do
+            echo "=== ${url} ==="
+            curl -sS -L --max-time 20 -D /tmp/headers -o /tmp/body -w 'HTTP=%{http_code} remote=%{remote_ip} redirect=%{redirect_url}\n' "$url"
+            cat /tmp/headers | sed -n '1,20p'
+            echo 'BODY:'
+            head -c 1200 /tmp/body
+            echo
+          done
+          exit 0
