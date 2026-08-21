@@ -78,14 +78,26 @@ export async function commerceExecutionResponse(
 ): Promise<Response | null> {
   const url = new URL(request.url);
 
-  if (request.method === "GET" && url.pathname === "/v1/commerce/execution/status") {
+  if (
+    request.method === "GET" &&
+    url.pathname === "/v1/commerce/execution/status"
+  ) {
     return executionStatus(env);
   }
 
-  if (request.method === "POST" && url.pathname === "/v1/commerce/verifications") {
+  if (
+    request.method === "POST" &&
+    url.pathname === "/v1/commerce/verifications"
+  ) {
     const raw = await readBody(request);
     if (raw === null) return json({ error: "body_too_large" }, 413);
-    if (!(await verifySignedRequest(request, raw, env.XGUARD_COMMERCE_VERIFICATION_SECRET))) {
+    if (
+      !(await verifySignedRequest(
+        request,
+        raw,
+        env.XGUARD_COMMERCE_VERIFICATION_SECRET,
+      ))
+    ) {
       return json({ error: "unauthorized" }, 401);
     }
     const payload = parseJson<VerificationPayload>(raw);
@@ -93,10 +105,19 @@ export async function commerceExecutionResponse(
     return upsertVerification(env, payload);
   }
 
-  if (request.method === "POST" && url.pathname === "/v1/commerce/executions/confirm") {
+  if (
+    request.method === "POST" &&
+    url.pathname === "/v1/commerce/executions/confirm"
+  ) {
     const raw = await readBody(request);
     if (raw === null) return json({ error: "body_too_large" }, 413);
-    if (!(await verifySignedRequest(request, raw, env.XGUARD_COMMERCE_EXECUTION_SECRET))) {
+    if (
+      !(await verifySignedRequest(
+        request,
+        raw,
+        env.XGUARD_COMMERCE_EXECUTION_SECRET,
+      ))
+    ) {
       return json({ error: "unauthorized" }, 401);
     }
     const payload = parseJson<ConfirmationPayload>(raw);
@@ -104,9 +125,12 @@ export async function commerceExecutionResponse(
     return confirmExecution(env, payload);
   }
 
-  const verifyMatch = url.pathname.match(/^\/v1\/commerce\/opportunities\/([^/]+)\/verify$/);
+  const verifyMatch = url.pathname.match(
+    /^\/v1\/commerce\/opportunities\/([^/]+)\/verify$/,
+  );
   if (request.method === "POST" && verifyMatch) {
-    if (!(await requireAdmin(request, env))) return json({ error: "unauthorized" }, 401);
+    if (!(await requireAdmin(request, env)))
+      return json({ error: "unauthorized" }, 401);
     const raw = await readBody(request);
     if (raw === null) return json({ error: "body_too_large" }, 413);
     const payload = parseJson<VerificationPayload>(raw) ?? {};
@@ -114,15 +138,22 @@ export async function commerceExecutionResponse(
     return upsertVerification(env, payload);
   }
 
-  const executeMatch = url.pathname.match(/^\/v1\/commerce\/opportunities\/([^/]+)\/execute$/);
+  const executeMatch = url.pathname.match(
+    /^\/v1\/commerce\/opportunities\/([^/]+)\/execute$/,
+  );
   if (request.method === "POST" && executeMatch) {
-    if (!(await requireAdmin(request, env))) return json({ error: "unauthorized" }, 401);
-    const result = await executeOpportunity(env, decodeURIComponent(executeMatch[1]));
+    if (!(await requireAdmin(request, env)))
+      return json({ error: "unauthorized" }, 401);
+    const result = await executeOpportunity(
+      env,
+      decodeURIComponent(executeMatch[1]),
+    );
     return json(result.body, result.status);
   }
 
   if (request.method === "GET" && url.pathname === "/v1/commerce/executions") {
-    if (!(await requireAdmin(request, env))) return json({ error: "unauthorized" }, 401);
+    if (!(await requireAdmin(request, env)))
+      return json({ error: "unauthorized" }, 401);
     const limit = boundedInt(url.searchParams.get("limit"), 50, 1, 200);
     const rows = await env.DB.prepare(
       `SELECT execution_id,opportunity_id,state,attempts,connector_ref,
@@ -130,14 +161,18 @@ export async function commerceExecutionResponse(
               actual_revenue_usd,actual_cost_usd,actual_profit_usd,last_error,
               submitted_at,confirmed_at,created_at,updated_at
        FROM commerce_executions ORDER BY created_at DESC LIMIT ?`,
-    ).bind(limit).all<Record<string, unknown>>();
+    )
+      .bind(limit)
+      .all<Record<string, unknown>>();
     return json({ executions: rows.results ?? [] });
   }
 
   return null;
 }
 
-export async function commerceExecutionScheduled(env: CommerceExecutionEnv): Promise<void> {
+export async function commerceExecutionScheduled(
+  env: CommerceExecutionEnv,
+): Promise<void> {
   if (!autoExecute(env) || !connectorConfigured(env)) return;
   const rows = await env.DB.prepare(
     `SELECT o.opportunity_id
@@ -157,7 +192,9 @@ export async function commerceExecutionScheduled(env: CommerceExecutionEnv): Pro
         AND (e.execution_id IS NULL OR e.state='FAILED')
       ORDER BY o.score DESC,o.net_profit_usd DESC
       LIMIT ?`,
-  ).bind(MAX_EXECUTIONS_PER_TICK).all<{ opportunity_id: string }>();
+  )
+    .bind(MAX_EXECUTIONS_PER_TICK)
+    .all<{ opportunity_id: string }>();
 
   for (const row of rows.results ?? []) {
     await executeOpportunity(env, row.opportunity_id);
@@ -184,12 +221,17 @@ async function executionStatus(env: CommerceExecutionEnv): Promise<Response> {
   });
 }
 
-async function upsertVerification(env: CommerceExecutionEnv, payload: VerificationPayload): Promise<Response> {
+async function upsertVerification(
+  env: CommerceExecutionEnv,
+  payload: VerificationPayload,
+): Promise<Response> {
   const opportunityId = clean(payload.opportunityId, 200);
   if (!opportunityId) return json({ error: "opportunity_id_required" }, 400);
   const exists = await env.DB.prepare(
     "SELECT opportunity_id FROM commerce_opportunities WHERE opportunity_id=?",
-  ).bind(opportunityId).first<{ opportunity_id: string }>();
+  )
+    .bind(opportunityId)
+    .first<{ opportunity_id: string }>();
   if (!exists) return json({ error: "opportunity_not_found" }, 404);
 
   const values = {
@@ -216,18 +258,23 @@ async function upsertVerification(env: CommerceExecutionEnv, payload: Verificati
        evidence_json=excluded.evidence_json,
        verified_at=excluded.verified_at,
        updated_at=excluded.updated_at`,
-  ).bind(
-    opportunityId,
-    values.buyerPaymentSecured ? 1 : 0,
-    values.buyerFundsAvailable ? 1 : 0,
-    values.buyerIdentityVerified ? 1 : 0,
-    values.supplierIdentityVerified ? 1 : 0,
-    values.supplierInventoryVerified ? 1 : 0,
-    evidence,
-    fullyVerified ? now : null,
-    now,
-  ).run();
-  return json({ accepted: true, opportunityId, fullyVerified }, fullyVerified ? 200 : 202);
+  )
+    .bind(
+      opportunityId,
+      values.buyerPaymentSecured ? 1 : 0,
+      values.buyerFundsAvailable ? 1 : 0,
+      values.buyerIdentityVerified ? 1 : 0,
+      values.supplierIdentityVerified ? 1 : 0,
+      values.supplierInventoryVerified ? 1 : 0,
+      evidence,
+      fullyVerified ? now : null,
+      now,
+    )
+    .run();
+  return json(
+    { accepted: true, opportunityId, fullyVerified },
+    fullyVerified ? 200 : 202,
+  );
 }
 
 async function executeOpportunity(
@@ -235,7 +282,10 @@ async function executeOpportunity(
   opportunityId: string,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   if (!connectorConfigured(env)) {
-    return { status: 503, body: { error: "execution_connector_not_configured" } };
+    return {
+      status: 503,
+      body: { error: "execution_connector_not_configured" },
+    };
   }
 
   const row = await env.DB.prepare(
@@ -249,17 +299,24 @@ async function executeOpportunity(
        JOIN commerce_offers s ON s.offer_id=o.offer_id
        LEFT JOIN commerce_trade_verifications v ON v.opportunity_id=o.opportunity_id
       WHERE o.opportunity_id=?`,
-  ).bind(opportunityId).first<OpportunityExecutionRow>();
+  )
+    .bind(opportunityId)
+    .first<OpportunityExecutionRow>();
   if (!row) return { status: 404, body: { error: "opportunity_not_found" } };
 
   const eligibility = executionEligibility(row);
   if (!eligibility.ok) {
-    return { status: 409, body: { error: "execution_not_eligible", reasons: eligibility.reasons } };
+    return {
+      status: 409,
+      body: { error: "execution_not_eligible", reasons: eligibility.reasons },
+    };
   }
 
   const existing = await env.DB.prepare(
     "SELECT * FROM commerce_executions WHERE opportunity_id=?",
-  ).bind(opportunityId).first<ExecutionRow>();
+  )
+    .bind(opportunityId)
+    .first<ExecutionRow>();
   if (existing?.state === "CONFIRMED" || existing?.state === "SUBMITTED") {
     return {
       status: 200,
@@ -276,7 +333,8 @@ async function executeOpportunity(
   const executionId = existing?.execution_id ?? crypto.randomUUID();
   const idempotencyKey = existing?.idempotency_key ?? `xguard:${opportunityId}`;
   const attempts = Number(existing?.attempts ?? 0) + 1;
-  if (attempts > 5) return { status: 409, body: { error: "execution_attempt_limit_reached" } };
+  if (attempts > 5)
+    return { status: 409, body: { error: "execution_attempt_limit_reached" } };
   const now = new Date().toISOString();
 
   if (!existing) {
@@ -285,21 +343,25 @@ async function executeOpportunity(
          execution_id,opportunity_id,idempotency_key,state,attempts,
          expected_revenue_usd,expected_cost_usd,expected_profit_usd,created_at,updated_at)
        VALUES(?,?,?,'QUEUED',?,?,?,?,?,?)`,
-    ).bind(
-      executionId,
-      opportunityId,
-      idempotencyKey,
-      attempts,
-      row.revenue_usd,
-      row.landed_cost_usd + row.reserve_usd,
-      row.net_profit_usd,
-      now,
-      now,
-    ).run();
+    )
+      .bind(
+        executionId,
+        opportunityId,
+        idempotencyKey,
+        attempts,
+        row.revenue_usd,
+        row.landed_cost_usd + row.reserve_usd,
+        row.net_profit_usd,
+        now,
+        now,
+      )
+      .run();
   } else {
     await env.DB.prepare(
       "UPDATE commerce_executions SET state='QUEUED',attempts=?,last_error=NULL,updated_at=? WHERE execution_id=?",
-    ).bind(attempts, now, executionId).run();
+    )
+      .bind(attempts, now, executionId)
+      .run();
   }
 
   const payload = {
@@ -327,7 +389,10 @@ async function executeOpportunity(
     const target = safeHttpsUrl(env.XGUARD_COMMERCE_EXECUTION_URL);
     if (!target) throw new Error("unsafe_execution_url");
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const signature = await hmacHex(env.XGUARD_COMMERCE_EXECUTION_SECRET ?? "", `${timestamp}.${raw}`);
+    const signature = await hmacHex(
+      env.XGUARD_COMMERCE_EXECUTION_SECRET ?? "",
+      `${timestamp}.${raw}`,
+    );
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     let response: Response;
@@ -351,51 +416,90 @@ async function executeOpportunity(
     const text = (await response.text()).slice(0, 20_000);
     const parsed = parseJson<Record<string, unknown>>(text) ?? {};
     if (!response.ok || parsed.accepted !== true) {
-      throw new Error(`connector_rejected_${response.status}:${clean(text, 500)}`);
+      throw new Error(
+        `connector_rejected_${response.status}:${clean(text, 500)}`,
+      );
     }
     const connectorRef = clean(parsed.executionRef, 300) || null;
     await env.DB.prepare(
       `UPDATE commerce_executions
           SET state='SUBMITTED',connector_ref=?,submitted_at=?,updated_at=?
         WHERE execution_id=?`,
-    ).bind(connectorRef, now, now, executionId).run();
-    await recordEvent(env, executionId, `submitted:${executionId}:${attempts}`, "SUBMITTED", {
-      connectorRef,
-      httpStatus: response.status,
-    });
+    )
+      .bind(connectorRef, now, now, executionId)
+      .run();
+    await recordEvent(
+      env,
+      executionId,
+      `submitted:${executionId}:${attempts}`,
+      "SUBMITTED",
+      {
+        connectorRef,
+        httpStatus: response.status,
+      },
+    );
     return {
       status: 202,
       body: { accepted: true, executionId, state: "SUBMITTED", connectorRef },
     };
   } catch (error) {
-    const message = clean(error instanceof Error ? error.message : String(error), 1000);
+    const message = clean(
+      error instanceof Error ? error.message : String(error),
+      1000,
+    );
     await env.DB.prepare(
       "UPDATE commerce_executions SET state='FAILED',last_error=?,updated_at=? WHERE execution_id=?",
-    ).bind(message, new Date().toISOString(), executionId).run();
-    await recordEvent(env, executionId, `failed:${executionId}:${attempts}`, "FAILED", { error: message });
-    return { status: 502, body: { error: "execution_failed", detail: message, executionId } };
+    )
+      .bind(message, new Date().toISOString(), executionId)
+      .run();
+    await recordEvent(
+      env,
+      executionId,
+      `failed:${executionId}:${attempts}`,
+      "FAILED",
+      { error: message },
+    );
+    return {
+      status: 502,
+      body: { error: "execution_failed", detail: message, executionId },
+    };
   }
 }
 
-function executionEligibility(row: OpportunityExecutionRow): { ok: boolean; reasons: string[] } {
+function executionEligibility(row: OpportunityExecutionRow): {
+  ok: boolean;
+  reasons: string[];
+} {
   const reasons: string[] = [];
   if (row.status !== "READY") reasons.push("opportunity_not_ready");
-  if (row.payment_before_purchase !== 1) reasons.push("commercial_payment_terms_not_pre_funded");
-  if (row.sanctions_clear !== 1) reasons.push("jurisdiction_or_sanctions_gate_failed");
-  if (row.restricted_goods_clear !== 1) reasons.push("restricted_goods_gate_failed");
+  if (row.payment_before_purchase !== 1)
+    reasons.push("commercial_payment_terms_not_pre_funded");
+  if (row.sanctions_clear !== 1)
+    reasons.push("jurisdiction_or_sanctions_gate_failed");
+  if (row.restricted_goods_clear !== 1)
+    reasons.push("restricted_goods_gate_failed");
   if (row.identity_match !== 1) reasons.push("product_identity_mismatch");
-  if (row.buyer_payment_secured !== 1) reasons.push("buyer_payment_not_verified");
-  if (row.buyer_funds_available !== 1) reasons.push("buyer_funds_not_verified_available");
-  if (row.buyer_identity_verified !== 1) reasons.push("buyer_identity_not_verified");
-  if (row.supplier_identity_verified !== 1) reasons.push("supplier_identity_not_verified");
-  if (row.supplier_inventory_verified !== 1) reasons.push("supplier_inventory_not_verified");
+  if (row.buyer_payment_secured !== 1)
+    reasons.push("buyer_payment_not_verified");
+  if (row.buyer_funds_available !== 1)
+    reasons.push("buyer_funds_not_verified_available");
+  if (row.buyer_identity_verified !== 1)
+    reasons.push("buyer_identity_not_verified");
+  if (row.supplier_identity_verified !== 1)
+    reasons.push("supplier_identity_not_verified");
+  if (row.supplier_inventory_verified !== 1)
+    reasons.push("supplier_inventory_not_verified");
   return { ok: reasons.length === 0, reasons };
 }
 
-async function confirmExecution(env: CommerceExecutionEnv, payload: ConfirmationPayload): Promise<Response> {
+async function confirmExecution(
+  env: CommerceExecutionEnv,
+  payload: ConfirmationPayload,
+): Promise<Response> {
   const eventId = clean(payload.eventId, 300);
   const executionId = clean(payload.executionId, 200);
-  if (!eventId || !executionId) return json({ error: "event_id_and_execution_id_required" }, 400);
+  if (!eventId || !executionId)
+    return json({ error: "event_id_and_execution_id_required" }, 400);
   const state = clean(payload.state, 80).toUpperCase();
   if (!new Set(["CONFIRMED", "FAILED", "CANCELLED"]).has(state)) {
     return json({ error: "invalid_state" }, 400);
@@ -403,12 +507,22 @@ async function confirmExecution(env: CommerceExecutionEnv, payload: Confirmation
 
   const execution = await env.DB.prepare(
     "SELECT * FROM commerce_executions WHERE execution_id=?",
-  ).bind(executionId).first<ExecutionRow>();
+  )
+    .bind(executionId)
+    .first<ExecutionRow>();
   if (!execution) return json({ error: "execution_not_found" }, 404);
   const priorEvent = await env.DB.prepare(
     "SELECT event_id FROM commerce_execution_events WHERE event_id=?",
-  ).bind(eventId).first<{ event_id: string }>();
-  if (priorEvent) return json({ accepted: true, duplicate: true, executionId, state: execution.state });
+  )
+    .bind(eventId)
+    .first<{ event_id: string }>();
+  if (priorEvent)
+    return json({
+      accepted: true,
+      duplicate: true,
+      executionId,
+      state: execution.state,
+    });
 
   const now = new Date().toISOString();
   const actualRevenue = finiteNonNegative(payload.actualRevenueUsd);
@@ -418,29 +532,45 @@ async function confirmExecution(env: CommerceExecutionEnv, payload: Confirmation
     actualProfit = round2(actualRevenue - actualCost);
   }
   if (state === "CONFIRMED" && actualProfit === null) {
-    return json({ error: "confirmed_execution_requires_actual_profit_or_revenue_and_cost" }, 400);
+    return json(
+      {
+        error: "confirmed_execution_requires_actual_profit_or_revenue_and_cost",
+      },
+      400,
+    );
   }
-  const connectorRef = clean(payload.connectorRef, 300) || execution.connector_ref || null;
-  const lastError = state === "FAILED" ? clean(payload.detail?.error, 1000) || "connector_reported_failure" : null;
+  const connectorRef =
+    clean(payload.connectorRef, 300) || execution.connector_ref || null;
+  const lastError =
+    state === "FAILED"
+      ? clean(payload.detail?.error, 1000) || "connector_reported_failure"
+      : null;
 
   await env.DB.prepare(
     `UPDATE commerce_executions
         SET state=?,connector_ref=?,actual_revenue_usd=?,actual_cost_usd=?,actual_profit_usd=?,
             last_error=?,confirmed_at=?,updated_at=?
       WHERE execution_id=?`,
-  ).bind(
-    state,
-    connectorRef,
-    actualRevenue,
-    actualCost,
-    actualProfit,
-    lastError,
-    state === "CONFIRMED" ? now : null,
-    now,
-    executionId,
-  ).run();
+  )
+    .bind(
+      state,
+      connectorRef,
+      actualRevenue,
+      actualCost,
+      actualProfit,
+      lastError,
+      state === "CONFIRMED" ? now : null,
+      now,
+      executionId,
+    )
+    .run();
   await recordEvent(env, executionId, eventId, state, payload.detail ?? {});
-  return json({ accepted: true, executionId, state, actualProfitUsd: actualProfit });
+  return json({
+    accepted: true,
+    executionId,
+    state,
+    actualProfitUsd: actualProfit,
+  });
 }
 
 async function recordEvent(
@@ -453,11 +583,22 @@ async function recordEvent(
   await env.DB.prepare(
     `INSERT OR IGNORE INTO commerce_execution_events(event_id,execution_id,event_type,detail_json,created_at)
      VALUES(?,?,?,?,?)`,
-  ).bind(eventId, executionId, eventType, safeJson(detail), new Date().toISOString()).run();
+  )
+    .bind(
+      eventId,
+      executionId,
+      eventType,
+      safeJson(detail),
+      new Date().toISOString(),
+    )
+    .run();
 }
 
 function connectorConfigured(env: CommerceExecutionEnv): boolean {
-  return Boolean(safeHttpsUrl(env.XGUARD_COMMERCE_EXECUTION_URL) && clean(env.XGUARD_COMMERCE_EXECUTION_SECRET, 1000));
+  return Boolean(
+    safeHttpsUrl(env.XGUARD_COMMERCE_EXECUTION_URL) &&
+    clean(env.XGUARD_COMMERCE_EXECUTION_SECRET, 1000),
+  );
 }
 
 function autoExecute(env: CommerceExecutionEnv): boolean {
@@ -466,7 +607,10 @@ function autoExecute(env: CommerceExecutionEnv): boolean {
   return !["0", "false", "off", "no"].includes(value);
 }
 
-async function requireAdmin(request: Request, env: CommerceExecutionEnv): Promise<boolean> {
+async function requireAdmin(
+  request: Request,
+  env: CommerceExecutionEnv,
+): Promise<boolean> {
   const expected = clean(env.XGUARD_ADMIN_TOKEN_SHA256, 128).toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(expected)) return false;
   const auth = request.headers.get("authorization") ?? "";
@@ -476,14 +620,22 @@ async function requireAdmin(request: Request, env: CommerceExecutionEnv): Promis
   return constantTimeEqual(actual, expected);
 }
 
-async function verifySignedRequest(request: Request, raw: string, secretRaw: string | undefined): Promise<boolean> {
+async function verifySignedRequest(
+  request: Request,
+  raw: string,
+  secretRaw: string | undefined,
+): Promise<boolean> {
   const secret = clean(secretRaw, 2000);
   if (!secret) return false;
   const timestampRaw = request.headers.get("x-xguard-timestamp") ?? "";
   const signatureRaw = request.headers.get("x-xguard-signature") ?? "";
   const timestamp = Number(timestampRaw);
   if (!Number.isInteger(timestamp)) return false;
-  if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > CALLBACK_MAX_AGE_SECONDS) return false;
+  if (
+    Math.abs(Math.floor(Date.now() / 1000) - timestamp) >
+    CALLBACK_MAX_AGE_SECONDS
+  )
+    return false;
   const supplied = signatureRaw.replace(/^sha256=/i, "").toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(supplied)) return false;
   const expected = await hmacHex(secret, `${timestampRaw}.${raw}`);
@@ -499,7 +651,10 @@ async function readBody(request: Request): Promise<string | null> {
 }
 
 async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
   return bytesToHex(new Uint8Array(digest));
 }
 
@@ -511,18 +666,25 @@ async function hmacHex(secret: string, value: string): Promise<string> {
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(value),
+  );
   return bytesToHex(new Uint8Array(signature));
 }
 
 function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < a.length; i += 1)
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
 }
 
@@ -541,8 +703,19 @@ function safeHttpsUrl(raw: unknown): string | null {
 }
 
 function unsafeHost(host: string): boolean {
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
-  if (host === "127.0.0.1" || host === "0.0.0.0" || host === "::1" || host === "[::1]") return true;
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local")
+  )
+    return true;
+  if (
+    host === "127.0.0.1" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host === "[::1]"
+  )
+    return true;
   if (/^10\./.test(host) || /^192\.168\./.test(host)) return true;
   const match = host.match(/^172\.(\d+)\./);
   if (match && Number(match[1]) >= 16 && Number(match[1]) <= 31) return true;
@@ -567,9 +740,16 @@ function safeJson(value: unknown): string {
   }
 }
 
-function boundedInt(raw: unknown, fallback: number, min: number, max: number): number {
+function boundedInt(
+  raw: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   const number = Number(raw);
-  return Number.isInteger(number) ? Math.max(min, Math.min(max, number)) : fallback;
+  return Number.isInteger(number)
+    ? Math.max(min, Math.min(max, number))
+    : fallback;
 }
 
 function finiteNonNegative(raw: unknown): number | null {
@@ -583,7 +763,12 @@ function finiteNumber(raw: unknown): number | null {
 }
 
 function clean(raw: unknown, max = 500): string {
-  return typeof raw === "string" ? raw.trim().replace(/[\u0000-\u001f\u007f]/g, "").slice(0, max) : "";
+  return typeof raw === "string"
+    ? raw
+        .trim()
+        .replace(/[\u0000-\u001f\u007f]/g, "")
+        .slice(0, max)
+    : "";
 }
 
 function round2(value: number): number {
@@ -593,6 +778,9 @@ function round2(value: number): number {
 function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
   });
 }
