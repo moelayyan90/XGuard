@@ -1,0 +1,24 @@
+name: XGuard Global Commerce self-test
+
+on:
+  pull_request:
+    paths:
+      - "apps/worker/src/global-commerce.ts"
+      - "apps/worker/src/commerce-mainnet.ts"
+      - "apps/worker/migrations/0025_global_commerce.sql"
+      - "apps/worker/wrangler.mainnet.jsonc"
+      - "scripts/commerce-self-test.mjs"
+      - ".github/workflows/commerce-self-test.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: node scripts/commerce-self-test.mjs
