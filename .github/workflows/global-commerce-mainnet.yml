@@ -1,0 +1,114 @@
+name: Deploy XGuard Global Commerce mainnet
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: xguard-global-commerce-mainnet
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Verify release
+        run: npm run verify:mainnet-release
+        env:
+          WRANGLER_SEND_METRICS: "false"
+
+      - name: Resolve database and deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare deployment credentials unavailable'; exit 1; }
+          export CLOUDFLARE_API_TOKEN="$token"
+
+          if ! npx wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);process.exit(Array.isArray(a)&&a.some(x=>x?.name==="xguard-mainnet")?0:1)})'; then
+            npx wrangler d1 create xguard-mainnet
+          fi
+
+          CONFIG_PATH="${GITHUB_WORKSPACE}/apps/worker/wrangler.mainnet.resolved.jsonc"
+          node scripts/resolve-cloudflare-config.mjs \
+            --template apps/worker/wrangler.mainnet.jsonc \
+            --output "$CONFIG_PATH" \
+            --database-name xguard-mainnet
+
+          node - "$CONFIG_PATH" <<'NODE'
+          const fs = require('node:fs');
+          const source = fs.readFileSync(process.argv[2], 'utf8');
+          const checks = [
+            [/"name"\s*:\s*"xguard-mainnet"/, 'mainnet target'],
+            [/"main"\s*:\s*"src\/commerce-mainnet\.ts"/, 'commerce entrypoint'],
+            [/"database_name"\s*:\s*"xguard-mainnet"/, 'D1 database'],
+            [/"XGUARD_COMMERCE_AUTO_OUTREACH"\s*:\s*"true"/, 'commerce auto outreach'],
+            [/"XGUARD_COMMERCE_MIN_PROFIT_USD"\s*:\s*"100"/, 'profit gate'],
+            [/"XGUARD_COMMERCE_MIN_MARGIN_BPS"\s*:\s*"2000"/, 'margin gate'],
+            [/"global_fetch_strictly_public"/, 'public-fetch guard'],
+            [/"EMAIL"/, 'official email binding'],
+          ];
+          for (const [pattern,label] of checks) if (!pattern.test(source)) throw new Error(`invalid ${label}`);
+          NODE
+
+          npx wrangler d1 migrations apply xguard-mainnet --remote --config "$CONFIG_PATH"
+          npx wrangler deploy --config "$CONFIG_PATH"
+
+      - name: Verify live commerce surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://xguardgate.com'
+          ok=0
+          for attempt in {1..24}; do
+            code="$(curl -sS -o /tmp/commerce-status.json -w '%{http_code}' --max-time 15 "${base}/v1/commerce/status?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            if [[ "$code" == "200" ]] && node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/commerce-status.json","utf8"));if(x.mode!=="global-commerce-hunter"||x.inventoryPolicy!=="no speculative inventory"||x.autoOutreach!==true)process.exit(1)'; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          [[ "$ok" -eq 1 ]] || { cat /tmp/commerce-status.json || true; exit 1; }
+
+      - name: Publish deployment status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          state=failure
+          description='XGuard Global Commerce deployment failed'
+          if [[ "$JOB_STATUS" == success ]]; then
+            state=success
+            description='XGuard Global Commerce is live'
+          fi
+          payload="$(node -e 'const [state,description]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-global-commerce-live",description,target_url:`${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`}))' "$state" "$description")"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data "$payload" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" >/dev/null

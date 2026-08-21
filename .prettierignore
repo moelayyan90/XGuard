@@ -8,6 +8,10 @@ apps/worker/src/portal-design.ts
 # The attempt-pricing boundary contains deliberate long pricing disclosure replacements.
 # It remains covered by ESLint, TypeScript, worker tests, release builds, and CodeQL.
 apps/worker/src/monetized-mainnet.ts
+# The global commerce engine is intentionally dense and remains covered by ESLint,
+# TypeScript, worker tests, release builds, self-tests, and CodeQL.
+apps/worker/src/global-commerce.ts
+scripts/commerce-self-test.mjs
 /worker-configuration.d.ts
 package-lock.json
 .wrangler
