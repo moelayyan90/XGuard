@@ -17,30 +17,40 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Probe FTS, Contracts Finder and TED
+      - name: Probe official source field contracts
         shell: bash
         run: |
           node <<'NODE'
           const end = new Date();
-          const start = new Date(end.getTime() - 48*3600*1000);
+          const start = new Date(end.getTime() - 7*24*3600*1000);
           const iso = d => d.toISOString().slice(0,19);
-          const fts = `https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages?updatedFrom=${encodeURIComponent(iso(start))}&updatedTo=${encodeURIComponent(iso(end))}&stages=tender&limit=3`;
-          const cf = `https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search?publishedFrom=${encodeURIComponent(start.toISOString())}&publishedTo=${encodeURIComponent(end.toISOString())}&stages=tender&limit=3`;
-          async function probeGet(name,url){
-            const r=await fetch(url,{headers:{accept:'application/json','user-agent':'XGuard/1.0'}});
-            const t=await r.text();
-            console.log(name,'status',r.status,'type',r.headers.get('content-type'),'length',t.length);
-            if(!r.ok) return console.log(name,'body',t.slice(0,500));
-            const j=JSON.parse(t);
-            console.log(name,'topKeys',Object.keys(j));
-            const x=(j.releases||j.releasePackages||j.results||[])[0];
-            if(x) console.log(name,'sampleKeys',Object.keys(x),'tenderKeys',Object.keys(x.tender||{}),'buyerKeys',Object.keys(x.buyer||{}),'partyKeys',Object.keys((x.parties||[])[0]||{}));
+          const summarize = r => ({
+            id:r.id,ocid:r.ocid,date:r.date,tag:r.tag,
+            buyer:r.buyer,
+            parties:(r.parties||[]).map(p=>({id:p.id,name:p.name,roles:p.roles,address:p.address,contactPoint:p.contactPoint})).slice(0,8),
+            tender:r.tender ? {
+              id:r.tender.id,title:r.tender.title,status:r.tender.status,classification:r.tender.classification,
+              value:r.tender.value,tenderPeriod:r.tender.tenderPeriod,mainProcurementCategory:r.tender.mainProcurementCategory,
+              items:(r.tender.items||[]).slice(0,3),lots:(r.tender.lots||[]).slice(0,3),
+              submissionMethodDetails:r.tender.submissionMethodDetails
+            } : null,
+            awards:(r.awards||[]).slice(0,4).map(a=>({id:a.id,title:a.title,status:a.status,date:a.date,value:a.value,suppliers:a.suppliers,items:(a.items||[]).slice(0,3)})),
+            contracts:(r.contracts||[]).slice(0,2)
+          });
+          async function getJson(url){const r=await fetch(url,{headers:{accept:'application/json','user-agent':'XGuard/1.0'}}); const t=await r.text(); if(!r.ok)throw new Error(`${r.status}:${t.slice(0,300)}`); return JSON.parse(t)}
+          for(const [name,base,fromKey,toKey] of [
+            ['FTS','https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages','updatedFrom','updatedTo'],
+            ['CF','https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search','publishedFrom','publishedTo']
+          ]){
+            for(const stage of ['tender','award']){
+              const u=new URL(base);u.searchParams.set(fromKey,iso(start));u.searchParams.set(toKey,iso(end));u.searchParams.set('stages',stage);u.searchParams.set('limit','2');
+              const j=await getJson(u);
+              console.log(`${name}-${stage}`,JSON.stringify({links:j.links,releases:(j.releases||[]).map(summarize)},null,2).slice(0,18000));
+            }
           }
-          await probeGet('FTS',fts);
-          await probeGet('CF',cf);
-          const tedBody={query:'publication-date >= 20260820',fields:['publication-number','notice-title','buyer-name','buyer-email','classification-cpv','total-value','total-value-cur','deadline-date-lot','quantity-lot','quantity-unit-lot'],page:1,limit:3,scope:'ACTIVE',checkQuerySyntax:true,paginationMode:'PAGE_NUMBER'};
+          const tedBody={query:`publication-date >= ${start.toISOString().slice(0,10).replaceAll('-','')}`,fields:['publication-number','notice-title','buyer-name','buyer-email','classification-cpv','total-value','total-value-cur','deadline-date-lot','quantity-lot','quantity-unit-lot'],page:1,limit:3,scope:'ALL',checkQuerySyntax:true,paginationMode:'PAGE_NUMBER'};
           const tr=await fetch('https://api.ted.europa.eu/v3/notices/search',{method:'POST',headers:{'content-type':'application/json','accept':'application/json','user-agent':'XGuard/1.0'},body:JSON.stringify(tedBody)});
-          const tt=await tr.text();
-          console.log('TED status',tr.status,'type',tr.headers.get('content-type'),'length',tt.length);
-          console.log('TED body',tt.slice(0,4000));
+          console.log('TED',tr.status,(await tr.text()).slice(0,10000));
+          const er=await fetch('https://data-api.ecb.europa.eu/service/data/EXR/D.USD+GBP.EUR.SP00.A?lastNObservations=5&format=csvdata',{headers:{accept:'text/csv','user-agent':'XGuard/1.0'}});
+          console.log('ECB',er.status,(await er.text()).slice(0,8000));
           NODE
