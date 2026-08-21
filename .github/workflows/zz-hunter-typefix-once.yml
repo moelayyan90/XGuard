@@ -1,0 +1,69 @@
+name: One-shot hunter type fix
+
+on:
+  push:
+    branches: [feat/global-opportunity-hunter]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/global-opportunity-hunter
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Apply strict TypeScript fixes
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('apps/worker/src/global-opportunity-hunter.ts')
+          text = path.read_text()
+          old = '''  return {
+    source: stringField(value.source, "source"),
+    externalId: stringField(value.externalId, "externalId"),
+    observedAt: isoDateField(value.observedAt, "observedAt"),
+    title: stringField(value.title, "title"),
+    description: optionalText(value.description),
+    category: stringField(value.category, "category"),'''
+          new = '''  const description = optionalText(value.description);
+          return {
+    source: stringField(value.source, "source"),
+    externalId: stringField(value.externalId, "externalId"),
+    observedAt: isoDateField(value.observedAt, "observedAt"),
+    title: stringField(value.title, "title"),
+    ...(description === undefined ? {} : { description }),
+    category: stringField(value.category, "category"),'''
+          if old not in text:
+              raise SystemExit('parseCandidate target not found')
+          text = text.replace(old, new, 1)
+          old = '''  const expected = optionalString(env.XGUARD_ADMIN_TOKEN_SHA256)?.toLowerCase();
+  if (expected === null || !/^[a-f0-9]{64}$/.test(expected)) return false;'''
+          new = '''  const expectedRaw = optionalString(env.XGUARD_ADMIN_TOKEN_SHA256);
+  if (expectedRaw === null) return false;
+  const expected = expectedRaw.toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expected)) return false;'''
+          if old not in text:
+              raise SystemExit('requireAdmin target not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+      - run: npx prettier --write apps/worker/src/global-opportunity-hunter.ts
+      - run: npx prettier --write apps/worker/src/global-opportunity-hunter.ts
+      - run: npx prettier --check apps/worker/src/global-opportunity-hunter.ts
+      - name: Commit fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- apps/worker/src/global-opportunity-hunter.ts
+          git commit -m "fix: satisfy strict hunter types"
+          git push origin HEAD:feat/global-opportunity-hunter
