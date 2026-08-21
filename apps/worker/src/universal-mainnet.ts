@@ -14,6 +14,11 @@ import { publicChildSafetySiteResponse } from "./child-safety-public-site.js";
 import { eudrNetworkResponse } from "./eudr-network.js";
 import { eudrSmartEmployeeSite } from "./eudr-smart-employee-site.js";
 import { genericHttpConnectorResponse } from "./generic-http-connector.js";
+import {
+  globalOpportunityHunterResponse,
+  runGlobalOpportunityHunter,
+  type HunterEnv,
+} from "./global-opportunity-hunter.js";
 import { mcpOAuthChallengeResponse } from "./mcp-oauth-challenge.js";
 import { mcpOAuthResponse } from "./mcp-oauth.js";
 import {
@@ -48,7 +53,7 @@ export {
   XPayGlobalRateGate,
 };
 
-interface UniversalMainnetEnv extends XGuardMailEnv {
+interface UniversalMainnetEnv extends XGuardMailEnv, HunterEnv {
   DB: D1Database;
   AI: {
     run(model: string, input: unknown): Promise<unknown>;
@@ -159,6 +164,9 @@ export default {
     const operations = await operationsEmployeeResponse(standardRequest, env);
     if (operations !== null) return operations;
 
+    const hunter = await globalOpportunityHunterResponse(standardRequest, env);
+    if (hunter !== null) return hunter;
+
     const eudr = await eudrNetworkResponse(standardRequest, env);
     if (eudr !== null) return eudr;
 
@@ -241,6 +249,19 @@ export default {
   },
 
   async scheduled(controller, env, ctx): Promise<void> {
+    const hunterResult = await runGlobalOpportunityHunter(env).catch((error) => {
+      console.error(
+        JSON.stringify({
+          event: "global_opportunity_hunter_tick_failed",
+          error: error instanceof Error ? error.message : "unknown_error",
+        }),
+      );
+      return null;
+    });
+    if (hunterResult !== null)
+      console.log(
+        JSON.stringify({ event: "global_opportunity_hunter_tick", ...hunterResult }),
+      );
     await operationsEmployeeScheduled(env);
     await mainnetScheduled(controller, env, ctx);
   },
