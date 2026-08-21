@@ -1,13 +1,16 @@
 const FTS_ID = "uk-find-a-tender";
 const FTS_NAME = "UK Find a Tender";
-const FTS_BASE = "https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages";
+const FTS_BASE =
+  "https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages";
 const CF_ID = "uk-contracts-finder";
 const CF_NAME = "UK Contracts Finder";
-const CF_BASE = "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search";
+const CF_BASE =
+  "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search";
 const TED_ID = "eu-ted";
 const TED_NAME = "EU TED";
 const TED_BASE = "https://api.ted.europa.eu/v3/notices/search";
-const ECB_FX = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD+GBP.EUR.SP00.A?lastNObservations=10&format=csvdata";
+const ECB_FX =
+  "https://data-api.ecb.europa.eu/service/data/EXR/D.USD+GBP.EUR.SP00.A?lastNObservations=10&format=csvdata";
 const MAX_RESPONSE_BYTES = 5_000_000;
 const MAX_PAGES_PER_STAGE = 3;
 const SOURCE_INTERVAL_MS = 10 * 60 * 1000;
@@ -139,7 +142,12 @@ export async function officialCommerceSourcesResponse(
 
 export async function refreshOfficialCommerceSources(
   env: OfficialCommerceSourceEnv,
-): Promise<{ checked: number; imported: number; vendors: number; errors: string[] }> {
+): Promise<{
+  checked: number;
+  imported: number;
+  vendors: number;
+  errors: string[];
+}> {
   let checked = 0;
   let imported = 0;
   let vendors = 0;
@@ -312,13 +320,19 @@ export function parseOcdsReleasePackage(
     for (const award of awards) {
       if (text(award.status).toLowerCase() === "cancelled") continue;
       const awardId = text(award.id);
-      const awardMoney = moneyValue(award.value) ?? contractMoney(contracts, awardId);
+      const awardMoney =
+        moneyValue(award.value) ?? contractMoney(contracts, awardId);
       for (const supplierValue of array(award.suppliers)) {
         const supplier = record(supplierValue);
         const supplierId = text(supplier.id);
         const supplierName = text(supplier.name);
         if (!supplierName) continue;
-        const party = partyByIdOrRole(parties, supplierId, "supplier", supplierName);
+        const party = partyByIdOrRole(
+          parties,
+          supplierId,
+          "supplier",
+          supplierName,
+        );
         const supplierEmail = email(record(party.contactPoint).email);
         const supplierCountry = text(record(party.address).countryName) || null;
         vendors.push({
@@ -482,7 +496,8 @@ async function fetchTedDemands(
     }),
   });
   const body = await responseText(response);
-  if (!response.ok) throw new Error(`ted_http_${response.status}:${body.slice(0, 200)}`);
+  if (!response.ok)
+    throw new Error(`ted_http_${response.status}:${body.slice(0, 200)}`);
   return parseTedSearchResponse(JSON.parse(body) as unknown, fx);
 }
 
@@ -593,7 +608,8 @@ function safeNextPage(raw: unknown, base: string): string | null {
   try {
     const url = new URL(next);
     const expected = new URL(base);
-    if (url.protocol !== "https:" || url.origin !== expected.origin) return null;
+    if (url.protocol !== "https:" || url.origin !== expected.origin)
+      return null;
     return url.toString();
   } catch {
     return null;
@@ -602,10 +618,14 @@ function safeNextPage(raw: unknown, base: string): string | null {
 
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetchWithTimeout(url, {
-    headers: { accept: "application/json", "user-agent": "XGuard-Global-Commerce/1.0" },
+    headers: {
+      accept: "application/json",
+      "user-agent": "XGuard-Global-Commerce/1.0",
+    },
   });
   const body = await responseText(response);
-  if (!response.ok) throw new Error(`source_http_${response.status}:${body.slice(0, 200)}`);
+  if (!response.ok)
+    throw new Error(`source_http_${response.status}:${body.slice(0, 200)}`);
   return JSON.parse(body) as unknown;
 }
 
@@ -653,11 +673,15 @@ async function getSourceRun(
 
 function sourceDue(run: SourceRun | null): boolean {
   const checked = run?.last_checked_at ? Date.parse(run.last_checked_at) : 0;
-  return !Number.isFinite(checked) || Date.now() - checked >= SOURCE_INTERVAL_MS;
+  return (
+    !Number.isFinite(checked) || Date.now() - checked >= SOURCE_INTERVAL_MS
+  );
 }
 
 function sourceWindowStart(run: SourceRun | null, now: Date): Date {
-  const success = run?.last_success_at ? Date.parse(run.last_success_at) : Number.NaN;
+  const success = run?.last_success_at
+    ? Date.parse(run.last_success_at)
+    : Number.NaN;
   if (Number.isFinite(success)) return new Date(success - SOURCE_OVERLAP_MS);
   return new Date(now.getTime() - INITIAL_LOOKBACK_MS);
 }
@@ -743,7 +767,9 @@ function productKeyFromOcds(tender: JsonRecord, release: JsonRecord): string {
   return "";
 }
 
-function tenderMoney(tender: JsonRecord): { amount: number; currency: string } | null {
+function tenderMoney(
+  tender: JsonRecord,
+): { amount: number; currency: string } | null {
   const direct = moneyValue(tender.value);
   if (direct) return direct;
   let total = 0;
@@ -769,7 +795,9 @@ function contractMoney(
   return contract ? moneyValue(contract.value) : null;
 }
 
-function moneyValue(value: unknown): { amount: number; currency: string } | null {
+function moneyValue(
+  value: unknown,
+): { amount: number; currency: string } | null {
   const money = record(value);
   const amount = Number(money.amount);
   const currency = text(money.currency).toUpperCase();
@@ -787,8 +815,7 @@ function partyByIdOrRole(
   return (
     parties.find((party) => id && text(party.id) === id) ??
     parties.find(
-      (party) =>
-        name && text(party.name).toLowerCase() === name.toLowerCase(),
+      (party) => name && text(party.name).toLowerCase() === name.toLowerCase(),
     ) ??
     parties.find((party) =>
       stringArray(party.roles)
@@ -895,7 +922,10 @@ function stableKey(prefix: string, ...parts: string[]): string {
 }
 
 function cleanKey(value: string): string {
-  return value.toUpperCase().replace(/[^A-Z0-9]+/g, "").slice(0, 80);
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "")
+    .slice(0, 80);
 }
 
 function compactDescription(parts: string[]): string {

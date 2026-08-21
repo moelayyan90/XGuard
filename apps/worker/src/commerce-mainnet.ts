@@ -42,7 +42,10 @@ export default {
     const execution = await commerceExecutionResponse(request as Request, env);
     if (execution !== null) return execution;
 
-    const sources = await officialCommerceSourcesResponse(request as Request, env);
+    const sources = await officialCommerceSourcesResponse(
+      request as Request,
+      env,
+    );
     if (sources !== null) return sources;
 
     const commerce = await globalCommerceResponse(request as Request, env);

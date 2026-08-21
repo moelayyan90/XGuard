@@ -70,9 +70,15 @@ describe("official commerce sources", () => {
       targetUnitPriceUsd: 1_200_000,
       evidenceLevel: 95,
     });
-    expect(result.demands[0]?.paymentTerms).toContain("not independently verified");
-    expect(result.demands[0]?.paymentTerms.toLowerCase()).not.toContain("advance");
-    expect(result.demands[0]?.paymentTerms.toLowerCase()).not.toContain("escrow");
+    expect(result.demands[0]?.paymentTerms).toContain(
+      "not independently verified",
+    );
+    expect(result.demands[0]?.paymentTerms.toLowerCase()).not.toContain(
+      "advance",
+    );
+    expect(result.demands[0]?.paymentTerms.toLowerCase()).not.toContain(
+      "escrow",
+    );
   });
 
   it("stores awarded suppliers as candidates, never as live offers", () => {
@@ -163,6 +169,8 @@ describe("official commerce sources", () => {
       buyerEmail: "buyer@example.eu",
       targetUnitPriceUsd: 120_000,
     });
-    expect(result.demands[0]?.paymentTerms).toContain("not independently verified");
+    expect(result.demands[0]?.paymentTerms).toContain(
+      "not independently verified",
+    );
   });
 });
