@@ -1,0 +1,36 @@
+{
+  "demands": [
+    {
+      "sourceName": "buyer-rfq-source",
+      "sourceUrl": "https://example.com/rfq/123",
+      "sourceRef": "RFQ-123",
+      "buyerName": "Example Buyer",
+      "buyerCountry": "Jordan",
+      "buyerEmail": "procurement@example.com",
+      "productKey": "OEM-PART-123",
+      "description": "Exact OEM-PART-123",
+      "quantity": 10,
+      "unit": "pcs",
+      "targetUnitPriceUsd": 250,
+      "paymentTerms": "100% advance before shipment",
+      "evidenceLevel": 90
+    }
+  ],
+  "offers": [
+    {
+      "sourceName": "supplier-source",
+      "sourceUrl": "https://example.org/product/OEM-PART-123",
+      "supplierName": "Example Supplier",
+      "supplierCountry": "Saudi Arabia",
+      "productKey": "OEM-PART-123",
+      "description": "Exact OEM-PART-123",
+      "quantityAvailable": 20,
+      "unitPriceUsd": 100,
+      "shippingUsd": 150,
+      "customsUsd": 50,
+      "taxUsd": 0,
+      "stockVerified": true,
+      "supplierScore": 90
+    }
+  ]
+}
