@@ -76,6 +76,58 @@ jobs:
           npx wrangler d1 migrations apply xguard-mainnet --remote --config "$CONFIG_PATH"
           npx wrangler deploy --config "$CONFIG_PATH"
 
+      - name: Ensure XGuard custom domains
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          account="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n ' )"
+          [[ -n "$token" && -n "$account" ]] || { echo 'Cloudflare custom-domain credentials unavailable'; exit 1; }
+          api="https://api.cloudflare.com/client/v4/accounts/${account}/workers/domains"
+
+          repair_needed=0
+          for hostname in xguardgate.com www.xguardgate.com; do
+            dns="$(getent ahosts "$hostname" | head -1 || true)"
+            code="$(curl -sS -L -o /tmp/domain-probe -w '%{http_code}' --max-time 12 "https://${hostname}/" || true)"
+            echo "preflight hostname=${hostname} dns=${dns:-missing} http=${code}"
+            if [[ -z "$dns" || "$code" != "200" ]]; then repair_needed=1; fi
+          done
+
+          if [[ "$repair_needed" == "1" ]]; then
+            echo 'Custom-domain drift detected; reattaching hostnames to xguard-mainnet.'
+            for hostname in xguardgate.com www.xguardgate.com; do
+              payload="$(node -e 'const h=process.argv[1];process.stdout.write(JSON.stringify({hostname:h,service:"xguard-mainnet",zone_name:"xguardgate.com"}))' "$hostname")"
+              code="$(curl -sS -o /tmp/domain-attach.json -w '%{http_code}' \
+                -X PUT \
+                -H "Authorization: Bearer ${token}" \
+                -H 'Content-Type: application/json' \
+                --data "$payload" \
+                "$api")"
+              echo "reattach hostname=${hostname} http=${code}"
+              node -e 'const fs=require("node:fs");let x={};try{x=JSON.parse(fs.readFileSync("/tmp/domain-attach.json","utf8"))}catch{};if(x.success!==true){console.error(JSON.stringify({success:x.success,errors:x.errors||[],messages:x.messages||[]}));process.exit(1)}'
+              [[ "$code" == "200" || "$code" == "201" ]] || exit 1
+            done
+          fi
+
+          for attempt in {1..24}; do
+            apex_code="$(curl -sS -L -o /tmp/apex.html -w '%{http_code}' --max-time 15 https://xguardgate.com/ || true)"
+            www_code="$(curl -sS -L -o /tmp/www.html -w '%{http_code}' --max-time 15 https://www.xguardgate.com/ || true)"
+            status_code="$(curl -sS -o /tmp/commerce-status.json -w '%{http_code}' --max-time 15 https://xguardgate.com/v1/commerce/status || true)"
+            echo "verify attempt=${attempt} apex=${apex_code} www=${www_code} status=${status_code}"
+            if [[ "$apex_code" == "200" && "$www_code" == "200" && "$status_code" == "200" ]] && \
+              grep -q 'XGuard' /tmp/apex.html && grep -q 'XGuard' /tmp/www.html && \
+              node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/commerce-status.json","utf8"));if(x.mode!=="global-commerce-hunter")process.exit(1)'; then
+              echo 'Both XGuard custom domains are live.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Custom domains failed post-deploy verification.'
+          exit 1
+
       - name: Verify live commerce surface
         shell: bash
         run: |
