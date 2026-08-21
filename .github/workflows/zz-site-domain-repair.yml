@@ -1,0 +1,75 @@
+name: XGuard custom domain repair
+
+on:
+  push:
+    branches: [diag/site-live-20260821]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Reattach xguardgate.com custom domains
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          account="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n ' )"
+          [[ -n "$token" && -n "$account" ]] || { echo 'Cloudflare credentials unavailable'; exit 1; }
+          api="https://api.cloudflare.com/client/v4/accounts/${account}/workers/domains"
+
+          echo 'Existing Workers custom domains:'
+          code="$(curl -sS -o /tmp/domains-before.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${token}" \
+            -H 'Accept: application/json' \
+            "$api")"
+          echo "list_http=${code}"
+          node -e 'const fs=require("node:fs");let x={};try{x=JSON.parse(fs.readFileSync("/tmp/domains-before.json","utf8"))}catch{};console.log(JSON.stringify({success:x.success,domains:Array.isArray(x.result)?x.result.map(d=>({hostname:d.hostname,service:d.service,zone_name:d.zone_name})):[],errors:x.errors||[]},null,2))'
+          [[ "$code" == "200" ]] || exit 1
+
+          for hostname in xguardgate.com www.xguardgate.com; do
+            payload="$(node -e 'const h=process.argv[1];process.stdout.write(JSON.stringify({hostname:h,service:"xguard-mainnet",zone_name:"xguardgate.com"}))' "$hostname")"
+            attach_code="$(curl -sS -o "/tmp/attach-${hostname}.json" -w '%{http_code}' \
+              -X PUT \
+              -H "Authorization: Bearer ${token}" \
+              -H 'Content-Type: application/json' \
+              --data "$payload" \
+              "$api")"
+            echo "attach ${hostname} http=${attach_code}"
+            node -e 'const fs=require("node:fs");const p=process.argv[1];let x={};try{x=JSON.parse(fs.readFileSync(p,"utf8"))}catch{};console.log(JSON.stringify({success:x.success,result:x.result?{hostname:x.result.hostname,service:x.result.service,zone_name:x.result.zone_name,environment:x.result.environment}:null,errors:x.errors||[],messages:x.messages||[]},null,2))' "/tmp/attach-${hostname}.json"
+            [[ "$attach_code" == "200" || "$attach_code" == "201" ]] || exit 1
+          done
+
+      - name: Verify DNS and live site
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in {1..30}; do
+            echo "attempt=${attempt}"
+            apex_dns="$(getent ahosts xguardgate.com | head -1 || true)"
+            www_dns="$(getent ahosts www.xguardgate.com | head -1 || true)"
+            echo "apex_dns=${apex_dns:-missing}"
+            echo "www_dns=${www_dns:-missing}"
+            apex_code="$(curl -sS -L -o /tmp/apex.html -w '%{http_code}' --max-time 15 https://xguardgate.com/ || true)"
+            status_code="$(curl -sS -o /tmp/status.json -w '%{http_code}' --max-time 15 https://xguardgate.com/v1/commerce/status || true)"
+            echo "apex_http=${apex_code} status_http=${status_code}"
+            if [[ "$apex_code" == "200" && "$status_code" == "200" ]] && \
+              grep -q 'XGuard' /tmp/apex.html && \
+              node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/status.json","utf8"));if(x.mode!=="global-commerce-hunter")process.exit(1)'; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          [[ "$ok" == "1" ]] || { echo 'Custom domain did not become live'; exit 1; }
+          echo 'xguardgate.com is live on xguard-mainnet'
