@@ -25,6 +25,16 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Format hunter files for capture
+        run: npx prettier --write apps/worker/src/global-opportunity-hunter.ts apps/worker/src/universal-mainnet.ts apps/worker/wrangler.mainnet.jsonc tests/global-opportunity-hunter.test.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hunter-formatted
+          path: |
+            apps/worker/src/global-opportunity-hunter.ts
+            apps/worker/src/universal-mainnet.ts
+            apps/worker/wrangler.mainnet.jsonc
+            tests/global-opportunity-hunter.test.ts
       - run: npm run verify:release
         env:
           WRANGLER_SEND_METRICS: "false"
