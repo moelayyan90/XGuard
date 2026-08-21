@@ -3,6 +3,8 @@ name: XGuard live now
 on:
   push:
     branches: [diag/live-2226]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
