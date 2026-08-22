@@ -1,4 +1,4 @@
-name: Deploy XGuard Global Commerce mainnet
+name: Deploy XGuard Autonomous AI Inference Provider
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ permissions:
   statuses: write
 
 concurrency:
-  group: xguard-global-commerce-mainnet
+  group: xguard-autonomous-inference-production
   cancel-in-progress: false
 
 jobs:
@@ -29,12 +29,12 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
-      - name: Verify release
-        run: npm run verify:mainnet-release
+      - name: Verify release gates
+        run: npm run inference:verify
         env:
           WRANGLER_SEND_METRICS: "false"
 
-      - name: Resolve database and deploy
+      - name: Resolve D1, migrate, and deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -50,33 +50,58 @@ jobs:
             npx wrangler d1 create xguard-mainnet
           fi
 
-          CONFIG_PATH="${GITHUB_WORKSPACE}/apps/worker/wrangler.mainnet.resolved.jsonc"
+          config_path="${GITHUB_WORKSPACE}/apps/worker/wrangler.mainnet.resolved.jsonc"
           node scripts/resolve-cloudflare-config.mjs \
             --template apps/worker/wrangler.mainnet.jsonc \
-            --output "$CONFIG_PATH" \
+            --output "$config_path" \
             --database-name xguard-mainnet
 
-          node - "$CONFIG_PATH" <<'NODE'
+          node - "$config_path" "$GITHUB_SHA" <<'NODE'
           const fs = require('node:fs');
-          const source = fs.readFileSync(process.argv[2], 'utf8');
-          const checks = [
-            [/"name"\s*:\s*"xguard-mainnet"/, 'mainnet target'],
-            [/"main"\s*:\s*"src\/commerce-mainnet\.ts"/, 'commerce entrypoint'],
-            [/"database_name"\s*:\s*"xguard-mainnet"/, 'D1 database'],
-            [/"XGUARD_COMMERCE_AUTO_OUTREACH"\s*:\s*"true"/, 'commerce auto outreach'],
-            [/"XGUARD_COMMERCE_AUTO_EXECUTE"\s*:\s*"false"/, 'commerce execution fail-closed default'],
-            [/"XGUARD_COMMERCE_MIN_PROFIT_USD"\s*:\s*"100"/, 'profit gate'],
-            [/"XGUARD_COMMERCE_MIN_MARGIN_BPS"\s*:\s*"2000"/, 'margin gate'],
-            [/"global_fetch_strictly_public"/, 'public-fetch guard'],
-            [/"EMAIL"/, 'official email binding'],
-          ];
-          for (const [pattern,label] of checks) if (!pattern.test(source)) throw new Error(`invalid ${label}`);
+          const [file, sha] = process.argv.slice(2);
+          let source = fs.readFileSync(file, 'utf8');
+          source = source.replace(/("XGUARD_GIT_COMMIT"\s*:\s*)"[^"]*"/, `$1${JSON.stringify(sha)}`);
+          source = source.replace(/("XGUARD_DEPLOYED_AT"\s*:\s*)"[^"]*"/, `$1${JSON.stringify(new Date().toISOString())}`);
+          for (const [pattern, label] of [
+            [/"name"\s*:\s*"xguard-mainnet"/, 'production Worker'],
+            [/"main"\s*:\s*"src\/inference-provider\.ts"/, 'inference entrypoint'],
+            [/"database_name"\s*:\s*"xguard-mainnet"/, 'production D1'],
+            [/"INFERENCE_COORDINATOR"/, 'concurrency coordinator'],
+            [/"MIN_MARGIN_USD"/, 'profit guard'],
+            [/"MAX_DAILY_LOSS_USD"/, 'loss guard'],
+          ]) if (!pattern.test(source)) throw new Error(`invalid ${label}`);
+          if (/XGUARD_PAY_TO|0x[0-9a-fA-F]{40}/.test(source)) throw new Error('hard-coded payout destination');
+          fs.writeFileSync(file, source);
           NODE
 
-          npx wrangler d1 migrations apply xguard-mainnet --remote --config "$CONFIG_PATH"
-          npx wrangler deploy --config "$CONFIG_PATH"
+          npx wrangler d1 migrations apply xguard-mainnet --remote --config "$config_path"
+          npx wrangler deploy --config "$config_path"
+          echo "XGUARD_RESOLVED_CONFIG=$config_path" >> "$GITHUB_ENV"
 
-      - name: Ensure XGuard custom domains
+      - name: Install optional runtime secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DGRID_PROVIDER_API_KEY: ${{ secrets.DGRID_PROVIDER_API_KEY }}
+          XGUARD_ADMIN_TOKEN: ${{ secrets.XGUARD_ADMIN_TOKEN }}
+          XGUARD_PAYOUT_DESTINATION: ${{ secrets.XGUARD_PAYOUT_DESTINATION }}
+          XGUARD_UPSTREAM_1_API_KEY: ${{ secrets.XGUARD_UPSTREAM_1_API_KEY }}
+          XGUARD_UPSTREAM_2_API_KEY: ${{ secrets.XGUARD_UPSTREAM_2_API_KEY }}
+          XGUARD_UPSTREAM_3_API_KEY: ${{ secrets.XGUARD_UPSTREAM_3_API_KEY }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          export CLOUDFLARE_API_TOKEN="$token"
+          for name in DGRID_PROVIDER_API_KEY XGUARD_ADMIN_TOKEN XGUARD_PAYOUT_DESTINATION XGUARD_UPSTREAM_1_API_KEY XGUARD_UPSTREAM_2_API_KEY XGUARD_UPSTREAM_3_API_KEY; do
+            value="${!name:-}"
+            if [[ -n "$value" ]]; then
+              printf '%s' "$value" | npx wrangler secret put "$name" --config "$XGUARD_RESOLVED_CONFIG"
+            fi
+          done
+
+      - name: Ensure canonical custom domains
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -84,76 +109,49 @@ jobs:
         run: |
           set -euo pipefail
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
-          account="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n ' )"
-          [[ -n "$token" && -n "$account" ]] || { echo 'Cloudflare custom-domain credentials unavailable'; exit 1; }
+          account="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n ')"
           api="https://api.cloudflare.com/client/v4/accounts/${account}/workers/domains"
-
-          repair_needed=0
           for hostname in xguardgate.com www.xguardgate.com; do
-            dns="$(getent ahosts "$hostname" | head -1 || true)"
-            code="$(curl -sS -L -o /tmp/domain-probe -w '%{http_code}' --max-time 12 "https://${hostname}/" || true)"
-            echo "preflight hostname=${hostname} dns=${dns:-missing} http=${code}"
-            if [[ -z "$dns" || "$code" != "200" ]]; then repair_needed=1; fi
+            payload="$(node -e 'const h=process.argv[1];process.stdout.write(JSON.stringify({hostname:h,service:"xguard-mainnet",zone_name:"xguardgate.com"}))' "$hostname")"
+            response="$(curl --fail-with-body -sS --retry 4 --retry-all-errors -X PUT \
+              -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+              --data "$payload" "$api")"
+            printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{if(JSON.parse(s).success!==true)process.exit(1)})'
           done
 
-          if [[ "$repair_needed" == "1" ]]; then
-            echo 'Custom-domain drift detected; reattaching hostnames to xguard-mainnet.'
-            for hostname in xguardgate.com www.xguardgate.com; do
-              payload="$(node -e 'const h=process.argv[1];process.stdout.write(JSON.stringify({hostname:h,service:"xguard-mainnet",zone_name:"xguardgate.com"}))' "$hostname")"
-              code="$(curl -sS -o /tmp/domain-attach.json -w '%{http_code}' \
-                -X PUT \
-                -H "Authorization: Bearer ${token}" \
-                -H 'Content-Type: application/json' \
-                --data "$payload" \
-                "$api")"
-              echo "reattach hostname=${hostname} http=${code}"
-              node -e 'const fs=require("node:fs");let x={};try{x=JSON.parse(fs.readFileSync("/tmp/domain-attach.json","utf8"))}catch{};if(x.success!==true){console.error(JSON.stringify({success:x.success,errors:x.errors||[],messages:x.messages||[]}));process.exit(1)}'
-              [[ "$code" == "200" || "$code" == "201" ]] || exit 1
-            done
-          fi
-
-          for attempt in {1..24}; do
-            apex_code="$(curl -sS -L -o /tmp/apex.html -w '%{http_code}' --max-time 15 https://xguardgate.com/ || true)"
-            www_code="$(curl -sS -L -o /tmp/www.html -w '%{http_code}' --max-time 15 https://www.xguardgate.com/ || true)"
-            status_code="$(curl -sS -o /tmp/commerce-status.json -w '%{http_code}' --max-time 15 https://xguardgate.com/v1/commerce/status || true)"
-            echo "verify attempt=${attempt} apex=${apex_code} www=${www_code} status=${status_code}"
-            if [[ "$apex_code" == "200" && "$www_code" == "200" && "$status_code" == "200" ]] && \
-              grep -q 'XGuard' /tmp/apex.html && grep -q 'XGuard' /tmp/www.html && \
-              node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/commerce-status.json","utf8"));if(x.mode!=="global-commerce-hunter")process.exit(1)'; then
-              echo 'Both XGuard custom domains are live.'
-              exit 0
-            fi
-            sleep 5
-          done
-          echo 'Custom domains failed post-deploy verification.'
-          exit 1
-
-      - name: Verify live commerce surface
+      - name: Verify production truth surfaces
+        env:
+          XGUARD_BASE_URL: https://xguardgate.com
+          DGRID_PROVIDER_API_KEY: ${{ secrets.DGRID_PROVIDER_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
-          bases=(
-            'https://xguardgate.com'
-            'https://xguard-public.maqamapp.workers.dev'
-          )
-          for base in "${bases[@]}"; do
-            for attempt in {1..24}; do
-              commerce_code="$(curl -sS -o /tmp/commerce-status.json -w '%{http_code}' --max-time 15 "${base}/v1/commerce/status?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
-              execution_code="$(curl -sS -o /tmp/execution-status.json -w '%{http_code}' --max-time 15 "${base}/v1/commerce/execution/status?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
-              if [[ "$commerce_code" == "200" && "$execution_code" == "200" ]] && \
-                node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/commerce-status.json","utf8"));const y=JSON.parse(fs.readFileSync("/tmp/execution-status.json","utf8"));if(x.mode!=="global-commerce-hunter"||x.inventoryPolicy!=="no speculative inventory"||y.mode!=="verified-execution"||y.autoExecute!==false)process.exit(1)'; then
-                echo "XGUARD_LIVE_BASE=${base}" >> "$GITHUB_ENV"
-                if [[ "$base" != 'https://xguardgate.com' ]]; then
-                  echo 'Custom DNS is degraded; verified workers.dev fallback is serving production code.'
-                fi
-                exit 0
-              fi
-              sleep 5
-            done
+          base="$XGUARD_BASE_URL"
+          for attempt in {1..30}; do
+            code="$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 15 "${base}/healthz?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            if [[ "$code" == '200' ]] && grep -q 'xguard-autonomous-ai-inference-provider' /tmp/health.json; then break; fi
+            [[ "$attempt" != '30' ]] || { cat /tmp/health.json || true; exit 1; }
+            sleep 5
           done
-          cat /tmp/commerce-status.json || true
-          cat /tmp/execution-status.json || true
-          exit 1
+          curl -fsS "${base}/v1/status" > /tmp/status.json
+          curl -fsS "${base}/v1/models" > /tmp/models.json
+          curl -fsS "${base}/openapi.json" > /tmp/openapi.json
+          curl -fsS "${base}/" > /tmp/site.html
+          node <<'NODE'
+          const fs = require('node:fs');
+          const status = JSON.parse(fs.readFileSync('/tmp/status.json','utf8'));
+          if (status.service !== 'XGuard Autonomous AI Inference Provider') throw new Error('service identity mismatch');
+          if (typeof status.live !== 'boolean' || !Array.isArray(status.models)) throw new Error('truth status mismatch');
+          if ('today' in status) throw new Error('public financial data exposed');
+          const models = JSON.parse(fs.readFileSync('/tmp/models.json','utf8'));
+          if (models.object !== 'list' || !Array.isArray(models.data)) throw new Error('model list mismatch');
+          const openapi = JSON.parse(fs.readFileSync('/tmp/openapi.json','utf8'));
+          if (openapi.openapi !== '3.1.0' || !openapi.paths?.['/chat/completions']) throw new Error('OpenAPI mismatch');
+          if (!fs.readFileSync('/tmp/site.html','utf8').includes('AUTONOMOUS AI INFERENCE PROVIDER')) throw new Error('site mismatch');
+          NODE
+          owner_code="$(curl -sS -o /dev/null -w '%{http_code}' "${base}/v1/admin/metrics")"
+          [[ "$owner_code" == '401' || "$owner_code" == '404' ]]
+          npm run inference:smoke
 
       - name: Publish deployment status
         if: always()
@@ -162,23 +160,19 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         shell: bash
         run: |
+          set -euo pipefail
           state=failure
-          description='XGuard Global Commerce deployment failed'
+          description='XGuard inference deployment failed'
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [[ "$JOB_STATUS" == success ]]; then
             state=success
-            target_url="${XGUARD_LIVE_BASE:-$target_url}"
-            if [[ "${XGUARD_LIVE_BASE:-}" == 'https://xguardgate.com' ]]; then
-              description='XGuard Global Commerce is live on xguardgate.com'
-            else
-              description='XGuard Global Commerce is live via verified fallback'
-            fi
+            description='XGuard inference control plane is production-verified'
+            target_url='https://xguardgate.com'
           fi
-          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-global-commerce-live",description,target_url}))' "$state" "$description" "$target_url")"
-          curl --fail-with-body --silent --show-error \
-            --request POST \
+          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-inference-production",description,target_url}))' "$state" "$description" "$target_url")"
+          curl --fail-with-body --silent --show-error --request POST \
             --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
             --data "$payload" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" >/dev/null

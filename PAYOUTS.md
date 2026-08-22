@@ -1,74 +1,44 @@
-# Owner payouts
+# Payouts
 
-XGuard has a technically live Base mainnet treasury receiving path, but **treasury receipt is not the same as owner payout or owner profit**.
+## Current capability
 
-Merchant top-ups are native Base USDC deposits to the configured treasury address. Those deposits create merchant prepaid service balances and are customer liabilities. Only XGuard service fees that satisfy their configured billable event become gross earned revenue.
+Automatic payout is `NOT_SUPPORTED`.
 
-## Current canonical x402 money flow
+The dormant safety policy is configurable as `PAYOUT_THRESHOLD_USD`, `MIN_RESERVE_USD`, and `OPERATING_RESERVE_PERCENT` (default `20`). These values cannot trigger a withdrawal while the verified DGrid withdrawal contract is unavailable.
+
+[DGrid Marketplace](https://dgrid.ai/marketplace) advertises on-chain settlement and payouts, and the [official announcement](https://blog.dgrid.ai/posts/2026-07-23/) describes verified on-chain revenue. DGrid's public docs do not publish the asset, chain, withdrawal threshold, fee, destination API, custody rules, confirmation policy, or payout webhook. XGuard will not infer those details.
+
+## Destination secret
+
+The only payout destination input is the Cloudflare secret:
 
 ```text
-merchant Base USDC top-up
-        ↓
-configured crypto treasury address
-        ↓
-merchant prepaid liability in XGuard accounting
-        ↓
-authenticated + supported x402 economic request
-        ↓
-canonical logicalPaymentKey + sufficient prepaid balance
-        ↓
-$0.03 accepted-attempt fee earned once
-        ↓
-downstream verify / settlement execution
-        ↓
-independent settlement truth / reconciliation runs separately
-        ↓
-downstream + infrastructure + other liabilities/costs
-        ↓
-required operating reserve
-        ↓
-owner distributable amount, if any
+XGUARD_PAYOUT_DESTINATION
 ```
 
-The fixed x402 fee is **$0.03 / 30,000 micro-USD once per accepted authenticated economic attempt**. It is earned before downstream execution after authentication, supported-request parsing, canonical `logicalPaymentKey` derivation and successful prepaid-balance reservation. A downstream failure does not refund an accepted attempt, and an idempotent retry for the same logical payment key adds no second fixed fee.
+It must never be committed, hard-coded, logged, written to D1, exposed in the public status, or copied into deployment output. The owner dashboard reports only `CONFIGURED` or `NOT CONFIGURED`. A payout row may contain a one-way destination fingerprint after an official payout transaction exists; it must not contain the destination itself.
 
-Independent Base finality remains authoritative for the **truth of the expected USDC settlement**, not for the timing of the canonical accepted-attempt fee.
+## State transitions
 
-The physical USDC treasury can therefore contain a mixture of customer prepaid liabilities and earned XGuard funds. The entire wallet/exchange balance must never be treated as withdrawable owner profit.
+Payout-related revenue can advance only with external evidence:
 
-## OKX treasury verification
+1. `PENDING` after a real successful inference.
+2. `SETTLED` after a unique DGrid settlement reference.
+3. `WITHDRAWABLE` after DGrid confirms withdrawal eligibility.
+4. `WITHDRAWN` after a transaction or official withdrawal reference exists.
+5. `RECEIVED_BY_OWNER` after owner receipt is verified.
 
-XGuard includes `npm run ops:okx-treasury-check` and the manual GitHub Actions workflow **Verify OKX treasury**. The check is intended to use an authenticated, read-only OKX API key to prove that the configured public Base USDC treasury address belongs to the authenticated account and that the relevant deposit route is available for that account/entity.
+Retries must use the same external reference and remain idempotent. No balance screen, estimate, or pending token count is a payout.
 
-The verification uses encrypted GitHub Actions secrets such as `OKX_API_KEY`, `OKX_API_SECRET`, `OKX_API_PASSPHRASE`, and the configured `XGUARD_TREASURY_USDC_ADDRESS`. Do not put exchange API credentials in source, logs, issues, pull requests, or example environment files. Receiving treasury funds does not require XGuard source code to possess exchange trading or withdrawal authority.
+## Activation rule
 
-A repository workflow or implementation is not evidence that the account has actually passed the external verification. The result of the authenticated check is the relevant evidence when it is run.
+Automatic payout can be enabled only after DGrid publishes or contractually supplies all of the following:
 
-## Automatic owner payout status
+- authenticated destination configuration;
+- supported asset and chain;
+- withdrawal endpoint or event contract;
+- idempotency and finality rules;
+- fee and minimum-withdrawal rules;
+- a safe way to verify owner receipt.
 
-No automated regulated fiat/bank off-ramp connector is established merely by the existence of accounting or payout-policy code. A crypto treasury and earned XGuard revenue can exist while owner bank payout remains an external operational/compliance step.
-
-`AUTO_OWNER_PAYOUT=true`, where present in portable/reference components, expresses a policy setting only. It is not a bank/exchange transfer credential and does not itself authorize money movement.
-
-## Safety gate for any future automated payout
-
-An owner-distribution connector should not submit a payout unless all relevant conditions are proven, including:
-
-- destination ownership and provider eligibility;
-- full coverage of merchant customer liabilities;
-- unpaid operating/downstream obligations accounted for;
-- pending or ambiguous owner payouts excluded;
-- the required operating reserve funded;
-- the payout amount derived from reconciled earned XGuard revenue rather than gross treasury balance;
-- idempotent transfer submission and independently reconcilable final/returned status.
-
-Settlement ambiguity can still affect treasury reconciliation or payout safety even though it does not retroactively refund an already accepted canonical x402 attempt fee.
-
-## Current status
-
-- **Base USDC treasury receiving path:** implemented/configured for mainnet operation.
-- **Merchant prepaid liability accounting:** implemented in the production accounting path.
-- **Canonical public x402 fee:** $0.03 once per accepted authenticated economic attempt.
-- **Settlement truth/finality:** separate safety and reconciliation layer for the expected Base USDC transfer.
-- **Automatic regulated bank/off-ramp owner payout:** not established by the repository alone.
-- **Owner distributable amount:** must be computed from reconciled earned revenue minus customer liabilities, operating liabilities/costs, pending owner payouts and reserve; it cannot be inferred from the treasury balance.
+Until then, the runtime returns `NOT_SUPPORTED` rather than `OFF`, because there is no verified automation contract to switch on.

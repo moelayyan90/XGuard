@@ -1,79 +1,28 @@
-name: Verify XGuard agent stack
+name: Verify XGuard inference production
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "apps/worker/src/mainnet*.ts"
-      - "apps/worker/src/discovery.ts"
-      - "apps/worker/migrations/**"
-      - ".github/workflows/agent-stack-smoke.yml"
+  workflow_run:
+    workflows: ["Deploy XGuard Autonomous AI Inference Provider"]
+    types: [completed]
 
 permissions:
   contents: read
 
-concurrency:
-  group: xguard-agent-stack-smoke
-  cancel-in-progress: true
-
 jobs:
   smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
-      - name: Verify live discovery, Bazaar and MCP surfaces
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE_URL="https://xguardgate.com"
-
-          retry_json() {
-            local url="$1"
-            local check="$2"
-            for attempt in {1..18}; do
-              if body="$(curl -fsS --max-time 15 "$url" 2>/dev/null)" \
-                && printf '%s' "$body" | node -e "$check"; then
-                return 0
-              fi
-              sleep 5
-            done
-            echo "::error::Smoke check failed for $url"
-            return 1
-          }
-
-          retry_json "${BASE_URL}/supported" \
-            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||!x.kinds.some(k=>k&&k.x402Version===2&&k.network==="eip155:8453"&&k.scheme==="exact")||!Array.isArray(x.extensions)||!x.extensions.includes("bazaar"))process.exit(1)})'
-
-          retry_json "${BASE_URL}/.well-known/x402/facilitator.json" \
-            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.discovery||x.discovery.bazaarResources!=="https://xguardgate.com/discovery/resources"||x.discovery.bazaarSearch!=="https://xguardgate.com/discovery/search")process.exit(1)})'
-
-          bazaar_code="$(curl -sS --max-time 15 -o /tmp/xguard-bazaar.json -w '%{http_code}' "${BASE_URL}/discovery/resources?limit=1")"
-          if [[ "${bazaar_code}" != "401" ]]; then
-            echo "::error::Unauthenticated Bazaar catalog access returned HTTP ${bazaar_code}; expected 401"
-            cat /tmp/xguard-bazaar.json || true
-            exit 1
-          fi
-          printf '%s' "$(cat /tmp/xguard-bazaar.json)" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.error!=="unauthorized")process.exit(1)})'
-
-          retry_json "${BASE_URL}/.well-known/mcp/server.json" \
-            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="io.github.moelayyan90/xguard"||!Array.isArray(x.remotes)||!x.remotes.some(r=>r&&r.type==="streamable-http"&&r.url==="https://xguardgate.com/mcp"))process.exit(1)})'
-
-          mcp_body='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"xguard-smoke","version":"1.0.0"}}}'
-          for attempt in {1..18}; do
-            if body="$(curl -fsS --max-time 15 -X POST "${BASE_URL}/mcp" \
-              -H 'content-type: application/json' \
-              -H 'accept: application/json, text/event-stream' \
-              --data "$mcp_body" 2>/dev/null)" \
-              && printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.jsonrpc!=="2.0"||x.id!==1||!x.result||!x.result.serverInfo||x.result.serverInfo.name!=="xguard-mainnet")process.exit(1)})'; then
-              break
-            fi
-            if [[ "$attempt" == "18" ]]; then
-              echo "::error::MCP initialize smoke check failed"
-              exit 1
-            fi
-            sleep 5
-          done
-
-          status_body="$(curl -fsS --max-time 15 "${BASE_URL}/status")"
-          printf '%s' "$status_body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.gateway!=="operational"||x.mode!=="mainnet"||!x.discovery||!x.mcp||x.mcp.endpoint!=="/mcp")process.exit(1)})'
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Verify live provider identity and optional real inference
+        env:
+          XGUARD_BASE_URL: https://xguardgate.com
+          DGRID_PROVIDER_API_KEY: ${{ secrets.DGRID_PROVIDER_API_KEY }}
+        run: npm run inference:smoke

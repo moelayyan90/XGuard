@@ -1,51 +1,44 @@
-# Security policy
+# Security
 
-## Supported status
+Report vulnerabilities privately to `security@xguardgate.com`. Do not include production credentials, prompts, model outputs, payout destinations, or personal data in public issues.
 
-The canonical production runtime is the live `xguard-mainnet` Cloudflare Worker on Base mainnet. The repository's npm/CLI artifacts remain alpha/prerelease software; that package versioning is separate from the production Worker deployment status.
+## Trust boundaries
 
-The checked-in mainnet entrypoint is `apps/worker/src/universal-mainnet.ts`. The separate Base Sepolia Worker and the legacy/local Node gateway are test paths. In particular, `apps/gateway` remains compile-time blocked from mainnet and is not the source of truth for `xguard-mainnet`.
+- DGrid or another approved network authenticates with `DGRID_PROVIDER_API_KEY`.
+- Owner endpoints authenticate separately with `XGUARD_ADMIN_TOKEN`.
+- Each upstream has a distinct API-key secret.
+- `XGUARD_PAYOUT_DESTINATION` is readable only at runtime and is never returned.
 
-Security claims are limited to implemented controls and executed tests. XGuard is not described as unhackable, risk-free, independently certified, or externally audited unless such evidence is obtained separately.
+Missing secrets fail closed. There is no unauthenticated inference fallback.
 
-## Private reporting
+## Data minimization
 
-Do not open a public issue containing vulnerability details, payment payloads, API keys, wallet secrets, personal data, or financial destination data. Use GitHub's private vulnerability reporting/security channel when available for this repository. If a private channel is unavailable, contact the maintainer without including secrets in a public issue.
+XGuard does not store prompt text, message content, model output, upstream authorization headers, network credentials, client IP addresses, or payout destinations. D1 stores request hashes, one-way client hashes, model and provider identifiers, token counts, latency, status, cost, and revenue evidence references.
 
-## Implemented controls
+SSE accounting inspects only JSON usage frames; generated content is forwarded and discarded.
 
-- Strict JSON/request parsing with bounded body size and schema validation on protected mainnet paths.
-- Exact x402 v2 Base mainnet network, asset, recipient, amount, expiry, mechanism, and accepted-requirements binding.
-- Merchant bearer authentication before protected x402 execution can become a chargeable accepted attempt.
-- Canonical `logicalPaymentKey` identity for the fixed x402 attempt fee so retries and verify → settle do not create a second fixed fee.
-- SQLite-backed Durable Object serialization for per-authorization settlement ownership and concurrency control.
-- Outbound state persisted before network settlement; uncertain post-submit outcomes become ambiguous and are not blindly resubmitted.
-- Independent Base USDC finality verification for **settlement truth** and recovery. Finality does not retroactively determine whether the earlier canonical accepted-attempt fee was earned.
-- D1-backed merchant balance, settlement truth, reconciliation, usage and discovery projections with idempotent keys/constraints.
-- HTTPS-only configured production routes, bounded upstream responses, redirect rejection where financial routing requires it, and fail-closed behavior when required protection is unavailable.
-- Per-client/public rate limits plus dedicated upstream quota protection on the current mainnet route.
-- Production API keys are stored as hashes rather than plaintext credentials.
-- Structured logs and sanitized error responses; raw payment bodies and secret values are not intentionally emitted as telemetry.
-- Public discovery metadata is treated as untrusted input and kept separate from settlement correctness.
-- Secret scanning, dependency audit, release verification, CodeQL, Dependabot, unit/concurrency/worker tests, and post-deploy live mainnet smoke checks.
-- The legacy/local Node gateway remains compile-time blocked from mainnet; environment variables cannot promote that code path into the production Worker.
+## Request controls
 
-## Billing security invariant
+- 1 MiB request-body limit.
+- Strict OpenAI-compatible message envelope validation.
+- Per-client and global Cloudflare rate limits.
+- Model-scoped Durable Object concurrency leases with expiry.
+- Upstream timeout and bounded non-streaming response size.
+- HTTPS-only upstream base URLs with optional exact hostname allowlist.
+- Cloudflare `global_fetch_strictly_public` to reduce SSRF exposure.
+- Retry only for transport, 429, and 5xx failures.
 
-The canonical public x402 service fee is **$0.03 / 30,000 micro-USD once per accepted authenticated economic attempt**. Acceptance requires authentication, supported-request parsing, `logicalPaymentKey` derivation and successful prepaid-balance reservation. The fee is earned before downstream execution and is non-refundable merely because downstream execution later fails.
+## Financial controls
 
-This billing rule must not weaken settlement safety: an uncertain or failed downstream result is still handled through settlement truth/reconciliation, and XGuard must never create a second onchain submission to “make up” for a paid attempt.
+- Integer micro-USD accounting.
+- Profit guard includes upstream, network, and variable infrastructure cost before execution.
+- Daily-loss circuit breaker.
+- No active model without legal evidence, price, credential, and health.
+- `PENDING` revenue excluded from settled revenue and profit.
+- Automatic payout disabled while DGrid's provider payout contract is unpublished.
 
-## Secret rules
+## Deployment controls
 
-Never commit seed phrases, private keys, production API keys, webhook secrets, provider credentials, personal payout destinations, or banking data. Store only secret names/references in code and documentation where a secret is required. Deployment credentials must use the platform encrypted secret store; local secrets belong in untracked `.env` or `.dev.vars` files.
+CI runs formatting, lint, strict type checking, Worker/D1 integration tests, invariant validation, secret scanning, and Wrangler dry build. Production deploy applies D1 migrations before Worker publication and verifies the canonical domain afterward.
 
-Public blockchain addresses, including the configured mainnet treasury address, are identifiers rather than private credentials and must never be confused with the private keys that control them.
-
-The repository scanner intentionally prints only the file and finding class, never the matching secret value.
-
-## Mainnet security status
-
-The production Worker is protected by repository CI, CodeQL, adversarial/replay/concurrency tests, Cloudflare/D1/Durable Object controls, independent finality checks, and live mainnet smoke monitoring. Those are first-party controls and operational evidence, not an independent external security attestation.
-
-Any future claim of independent certification, completed third-party audit, regulatory approval, provider-contract completion, or guaranteed security requires separate evidence outside this repository. External limitations are tracked in [DEPLOYMENT.md](DEPLOYMENT.md) and [docs/EXTERNAL_BLOCKERS.md](docs/EXTERNAL_BLOCKERS.md).
+Cloudflare invocation logs are sampled and must never log request bodies or secrets. The runtime contains no `console` calls.
