@@ -1,8 +1,9 @@
-FROM apify/actor-node:22
+FROM apify/actor-node:24
 
-WORKDIR /usr/src/app
-COPY package*.json ./
-RUN npm install --omit=dev --no-audit --no-fund
-COPY . ./
+COPY --chown=myuser:myuser package*.json ./
+RUN npm --quiet set progress=false \
+  && npm install --omit=dev --no-audit --no-fund
+
+COPY --chown=myuser:myuser . ./
 
 CMD ["npm", "start"]
