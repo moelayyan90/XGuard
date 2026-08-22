@@ -1,0 +1,10 @@
+{
+  "name": "@xguard/browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "XGuard floating Pay All browser layer",
+  "scripts": {
+    "check": "node --check background.js && node --check content.js && node --check popup.js"
+  }
+}
