@@ -64,8 +64,7 @@
     },
     { "tag": "v2", "new_sqlite_classes": ["XPayGlobalRateGate"] },
     { "tag": "v3", "new_sqlite_classes": ["WebhookDeliveryQueue"] },
-    { "tag": "v4", "new_sqlite_classes": ["GatewayRequestCoordinator"] },
-    { "tag": "v5", "new_sqlite_classes": ["InferenceCoordinator"] },
+    { "tag": "v4", "new_sqlite_classes": ["InferenceCoordinator"] },
   ],
   "d1_databases": [
     {
