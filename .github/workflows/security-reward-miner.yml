@@ -1,0 +1,56 @@
+name: XGuard Security Reward Miner
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_repos:
+        description: Maximum official reward-program repositories to inspect
+        required: false
+        default: "40"
+  schedule:
+    - cron: "17 2 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xguard-security-reward-miner
+  cancel-in-progress: false
+
+jobs:
+  mine-public-source-candidates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Inspect official reward-program repositories
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          XGUARD_REWARD_MAX_REPOS: ${{ inputs.max_repos || '40' }}
+        run: node scripts/security-reward-miner.mjs
+
+      - name: Publish run summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f artifacts/security-reward-candidates/candidates.md ]]; then
+            cat artifacts/security-reward-candidates/candidates.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: security-reward-candidates
+          path: artifacts/security-reward-candidates/
+          if-no-files-found: error
+          retention-days: 14
