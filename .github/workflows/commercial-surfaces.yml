@@ -1,0 +1,45 @@
+name: Commercial Surfaces
+
+on:
+  pull_request:
+    paths:
+      - "commercial/**"
+      - ".github/workflows/commercial-surfaces.yml"
+  push:
+    branches: [main]
+    paths:
+      - "commercial/**"
+      - ".github/workflows/commercial-surfaces.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  commercial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Validate Actor metadata JSON
+        run: |
+          python -m json.tool commercial/apify-xguard/.actor/actor.json >/dev/null
+          python -m json.tool commercial/apify-xguard/.actor/input_schema.json >/dev/null
+          python -m json.tool commercial/apify-xguard/.actor/dataset_schema.json >/dev/null
+          python -m json.tool commercial/apify-xguard/.actor/pay_per_event.json >/dev/null
+
+      - name: Install and check Apify Actor
+        working-directory: commercial/apify-xguard
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run check
+
+      - name: Install and test RapidAPI service
+        working-directory: commercial/rapidapi-xguard
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run check
+          npm test

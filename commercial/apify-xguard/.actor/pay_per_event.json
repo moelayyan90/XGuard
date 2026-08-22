@@ -1,0 +1,7 @@
+{
+  "page-result": {
+    "eventTitle": "Extracted page",
+    "eventDescription": "Charged once only when a successfully extracted page is saved to the dataset.",
+    "eventPriceUsd": 0.004
+  }
+}
