@@ -1,0 +1,11 @@
+{
+  "actorSpecification": 1,
+  "name": "xguard-web-extractor",
+  "title": "XGuard Web Extractor",
+  "description": "Fast pay-per-result website extraction to clean Markdown, text, metadata, and links for AI agents and RAG.",
+  "version": "1.0",
+  "build": {
+    "dockerfile": "../Dockerfile"
+  },
+  "input": "./input_schema.json"
+}
