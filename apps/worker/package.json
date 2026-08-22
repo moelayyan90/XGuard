@@ -9,7 +9,7 @@
     "@x402/core": "2.22.0",
     "@xguard/core": "0.1.0-alpha.0",
     "ajv": "8.20.0",
-    "hono": "4.13.2",
+    "hono": "4.13.3",
     "zod": "4.4.3"
   },
   "devDependencies": {
