@@ -61,6 +61,7 @@ function normalizeText(value) {
 }
 
 function absoluteUrl(value, base) {
+  if (!value) return null;
   try {
     const resolved = new URL(value, base);
     return ['http:', 'https:'].includes(resolved.protocol) ? resolved.href : null;
@@ -172,8 +173,6 @@ try {
         return;
       }
 
-      // Apify stores the result first and then charges the custom event. Failed or
-      // empty pages never reach this line, so they are not charged.
       const charge = await Actor.pushData(result, 'page-result');
       chargeLimitReached = Boolean(charge?.eventChargeLimitReached);
 
