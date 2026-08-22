@@ -16,11 +16,11 @@ const maxReposArg = process.argv.find((arg) => arg.startsWith("--max-repos="));
 const MAX_REPOS = Math.max(
   1,
   Math.min(
-    100,
+    200,
     Number(
       maxReposArg?.split("=")[1] ??
         process.env.XGUARD_REWARD_MAX_REPOS ??
-        40,
+        115,
     ),
   ),
 );
@@ -133,9 +133,6 @@ function mergeTargets(ossRows, patchRows) {
 function selectTargets(targets, maxRepos, now = Date.now()) {
   if (maxRepos >= targets.length) return targets;
 
-  // Keep the highest-value official targets in every run, then rotate through
-  // the remainder by UTC day so coverage expands without sacrificing the best
-  // reward candidates.
   const coreCount = Math.min(10, maxRepos);
   const selected = targets.slice(0, coreCount);
   const remainder = targets.slice(coreCount);
