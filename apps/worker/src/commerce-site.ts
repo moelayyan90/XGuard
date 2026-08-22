@@ -97,10 +97,10 @@ function renderPage(
   const statHtml = stats
     .map(
       ([value, label]) => `
-        <article class="stat">
+        <div class="stat">
           <strong>${value}</strong>
           <span>${label}</span>
-        </article>`,
+        </div>`,
     )
     .join("");
 
@@ -109,150 +109,331 @@ function renderPage(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#07110d">
-  <meta name="description" content="XGuard is an autonomous global B2B commerce engine that discovers verified demand, matches lower-cost supply, validates landed economics, and moves only after buyer funding or approved escrow is secured.">
+  <meta name="theme-color" content="#f4f2ed">
+  <meta name="description" content="XGuard is a global B2B commerce engine that identifies documented demand, matches qualified supply, validates transaction economics, and proceeds only after funding or approved escrow is secured.">
   <title>XGuard — Global Commerce Engine</title>
   <style>
+    :root {
+      --page: #f4f2ed;
+      --surface: #ffffff;
+      --surface-soft: #efede7;
+      --text: #24282b;
+      --muted: #687078;
+      --border: #d9d6cf;
+      --accent: #385365;
+      --accent-dark: #2c4351;
+    }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
-    body { margin: 0; background: #07110d; color: #f2f7f4; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
     a { color: inherit; }
-    .shell { width: min(1180px, calc(100% - 36px)); margin: 0 auto; }
-    .nav { min-height: 78px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid rgba(255,255,255,.09); }
-    .brand { display: flex; align-items: center; gap: 12px; font-weight: 900; letter-spacing: .06em; }
-    .mark { width: 34px; height: 34px; border: 1px solid #56f39a; border-radius: 9px; display: grid; place-items: center; color: #56f39a; font-size: 18px; }
-    .badge { padding: 8px 12px; border: 1px solid rgba(86,243,154,.34); color: #9bffc6; border-radius: 999px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; background: rgba(86,243,154,.05); }
-    .hero { padding: 88px 0 56px; display: grid; grid-template-columns: 1.25fr .75fr; gap: 60px; align-items: end; }
-    .eyebrow { color: #56f39a; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .16em; margin: 0 0 20px; }
-    h1 { margin: 0; font-size: clamp(52px, 8vw, 104px); line-height: .9; letter-spacing: -.065em; max-width: 900px; }
-    h1 em { color: #56f39a; font-style: normal; }
-    .lead { margin: 28px 0 0; color: #aab9b1; font-size: clamp(18px, 2.1vw, 24px); line-height: 1.55; max-width: 760px; }
-    .hero-side { border-left: 1px solid rgba(255,255,255,.12); padding-left: 26px; }
-    .hero-side p { margin: 0 0 22px; color: #c4d0ca; line-height: 1.65; }
-    .link { display: inline-flex; gap: 10px; align-items: center; color: #56f39a; text-decoration: none; font-weight: 800; }
-    .strip { display: flex; gap: 10px; flex-wrap: wrap; padding: 0 0 44px; }
-    .pill { border: 1px solid rgba(255,255,255,.1); border-radius: 999px; padding: 10px 14px; color: #c8d4ce; font-size: 13px; background: rgba(255,255,255,.025); }
-    .stats { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid rgba(255,255,255,.1); border-bottom: 1px solid rgba(255,255,255,.1); }
-    .stat { padding: 28px 22px; min-height: 132px; border-right: 1px solid rgba(255,255,255,.1); }
-    .stat:last-child { border-right: 0; }
-    .stat strong { display: block; font-size: clamp(30px, 4vw, 48px); letter-spacing: -.045em; color: #f6fff9; }
-    .stat span { display: block; margin-top: 8px; color: #819188; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
-    .section { padding: 82px 0; }
-    .section-head { display: grid; grid-template-columns: .7fr 1.3fr; gap: 40px; margin-bottom: 36px; }
-    .section h2 { margin: 0; font-size: clamp(38px, 5vw, 68px); line-height: .98; letter-spacing: -.05em; }
-    .section-copy { color: #9baba2; font-size: 18px; line-height: 1.65; max-width: 720px; }
-    .flow { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid rgba(255,255,255,.1); border-radius: 20px; overflow: hidden; }
-    .step { padding: 28px; min-height: 220px; border-right: 1px solid rgba(255,255,255,.1); border-bottom: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.02); }
+    .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+
+    .site-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .header-inner {
+      min-height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 28px;
+    }
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .brand-name { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
+    .brand-desc { color: var(--muted); font-size: 13px; font-weight: 400; }
+    .nav-links { display: flex; align-items: center; gap: 26px; font-size: 14px; }
+    .nav-links a { text-decoration: none; color: #4d555b; }
+    .nav-links a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
+    .status-link {
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      background: #faf9f6;
+    }
+
+    .hero { padding: 76px 0 66px; }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr);
+      gap: 72px;
+      align-items: center;
+    }
+    .kicker { margin: 0 0 16px; color: var(--accent); font-size: 14px; font-weight: 600; }
+    h1 {
+      margin: 0;
+      max-width: 760px;
+      font-size: clamp(40px, 5vw, 58px);
+      line-height: 1.08;
+      letter-spacing: -.035em;
+      font-weight: 600;
+    }
+    .lead {
+      max-width: 740px;
+      margin: 24px 0 0;
+      color: #555e64;
+      font-size: 19px;
+      line-height: 1.7;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+    .button {
+      display: inline-block;
+      padding: 11px 17px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .button:hover { background: var(--accent-dark); }
+    .text-link {
+      display: inline-block;
+      padding: 11px 4px;
+      color: var(--accent-dark);
+      font-size: 14px;
+      font-weight: 600;
+      text-underline-offset: 4px;
+    }
+    .hero-note {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 26px;
+    }
+    .hero-note h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
+    .hero-note p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+    .hero-note dl { margin: 22px 0 0; }
+    .hero-note .row {
+      padding: 11px 0;
+      border-top: 1px solid #e6e3dd;
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      font-size: 13px;
+    }
+    .hero-note dt { color: var(--muted); }
+    .hero-note dd { margin: 0; font-weight: 600; text-align: right; }
+
+    .metrics-section { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .metrics-head { padding: 28px 0 0; }
+    .metrics-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+    .metrics-head p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); padding: 22px 0 30px; }
+    .stat { padding: 12px 22px; border-left: 1px solid var(--border); }
+    .stat:first-child { border-left: 0; padding-left: 0; }
+    .stat strong { display: block; font-size: 30px; line-height: 1.2; font-weight: 600; letter-spacing: -.025em; }
+    .stat span { display: block; margin-top: 7px; color: var(--muted); font-size: 13px; }
+
+    .section { padding: 72px 0; }
+    .section + .section { border-top: 1px solid var(--border); }
+    .section-heading { max-width: 720px; margin-bottom: 34px; }
+    .section-heading h2 { margin: 0; font-size: 32px; line-height: 1.25; font-weight: 600; letter-spacing: -.02em; }
+    .section-heading p { margin: 13px 0 0; color: var(--muted); font-size: 16px; }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .step { padding: 26px; min-height: 210px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
     .step:nth-child(3n) { border-right: 0; }
     .step:nth-child(n+4) { border-bottom: 0; }
-    .num { color: #56f39a; font-size: 12px; font-weight: 900; letter-spacing: .15em; }
-    .step h3 { font-size: 23px; margin: 46px 0 10px; letter-spacing: -.02em; }
-    .step p { margin: 0; color: #8fa097; line-height: 1.55; }
-    .rules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-    .rule { border: 1px solid rgba(255,255,255,.09); border-radius: 16px; padding: 22px; display: flex; gap: 16px; align-items: flex-start; background: rgba(255,255,255,.018); }
-    .tick { color: #56f39a; font-weight: 900; }
-    .rule strong { display: block; margin-bottom: 5px; }
-    .rule span { color: #8fa097; line-height: 1.45; }
-    .note { margin-top: 28px; padding: 20px 22px; border-left: 3px solid #56f39a; background: rgba(86,243,154,.055); color: #bad0c4; line-height: 1.6; }
-    footer { padding: 34px 0 50px; border-top: 1px solid rgba(255,255,255,.09); color: #708078; display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; font-size: 13px; }
-    @media (max-width: 860px) {
-      .hero, .section-head { grid-template-columns: 1fr; gap: 30px; }
-      .hero-side { border-left: 0; border-top: 1px solid rgba(255,255,255,.12); padding: 24px 0 0; }
-      .stats { grid-template-columns: repeat(2, 1fr); }
-      .stat:nth-child(2) { border-right: 0; }
-      .stat:nth-child(-n+2) { border-bottom: 1px solid rgba(255,255,255,.1); }
-      .flow { grid-template-columns: 1fr; }
-      .step { border-right: 0 !important; border-bottom: 1px solid rgba(255,255,255,.1) !important; }
-      .step:last-child { border-bottom: 0 !important; }
-      .rules { grid-template-columns: 1fr; }
+    .step-number { display: block; color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+    .step h3 { margin: 0 0 9px; font-size: 18px; line-height: 1.35; font-weight: 600; }
+    .step p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+
+    .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .control {
+      padding: 24px 26px;
+      background: var(--surface);
+      border: 1px solid var(--border);
     }
-    @media (max-width: 520px) {
-      .shell { width: min(100% - 24px, 1180px); }
-      .nav { min-height: 68px; }
-      .badge { display: none; }
-      .hero { padding-top: 60px; }
+    .control h3 { margin: 0 0 7px; font-size: 17px; font-weight: 600; }
+    .control p { margin: 0; color: var(--muted); font-size: 14px; }
+    .operational-note {
+      margin-top: 22px;
+      padding: 20px 22px;
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      color: #555d62;
+      font-size: 14px;
+    }
+
+    .principles {
+      padding: 0 0 58px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .principles span { padding-right: 18px; margin-right: 18px; border-right: 1px solid #c9c5bc; }
+    .principles span:last-child { border-right: 0; }
+
+    footer { background: #2f3437; color: #d9dde0; }
+    .footer-inner {
+      min-height: 118px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 30px;
+      font-size: 13px;
+    }
+    .footer-inner strong { color: #fff; font-size: 15px; font-weight: 600; }
+    .footer-copy { color: #aeb5ba; text-align: right; }
+
+    @media (max-width: 900px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 34px; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .stat:nth-child(3) { border-left: 0; padding-left: 0; }
+      .stat:nth-child(n+3) { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
+      .steps { grid-template-columns: 1fr 1fr; }
+      .step { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+      .step:nth-child(3n) { border-right: 1px solid var(--border); }
+      .step:nth-child(2n) { border-right: 0; }
+      .step:nth-child(n+4) { border-bottom: 1px solid var(--border); }
+      .step:nth-last-child(-n+2) { border-bottom: 0; }
+    }
+    @media (max-width: 700px) {
+      .header-inner { align-items: flex-start; padding: 18px 0; }
+      .brand-desc { display: none; }
+      .nav-links a:not(.status-link) { display: none; }
+      .hero { padding: 54px 0 46px; }
+      h1 { font-size: clamp(36px, 11vw, 48px); }
+      .lead { font-size: 17px; }
+      .controls-grid { grid-template-columns: 1fr; }
+      .principles { display: block; }
+      .principles span { display: block; border-right: 0; margin: 0; padding: 5px 0; }
+      .footer-inner { align-items: flex-start; flex-direction: column; padding: 28px 0; }
+      .footer-copy { text-align: left; }
+    }
+    @media (max-width: 540px) {
+      .wrap { width: min(100% - 28px, 1120px); }
       .stats { grid-template-columns: 1fr; }
-      .stat { border-right: 0; border-bottom: 1px solid rgba(255,255,255,.1); }
-      .stat:last-child { border-bottom: 0; }
+      .stat, .stat:first-child, .stat:nth-child(3) { padding: 18px 0; border-left: 0; border-top: 1px solid var(--border); margin: 0; }
+      .stat:first-child { border-top: 0; }
+      .steps { grid-template-columns: 1fr; }
+      .step, .step:nth-child(2n), .step:nth-child(3n), .step:nth-child(n+4), .step:nth-last-child(-n+2) { border-right: 0; border-bottom: 1px solid var(--border); }
+      .step:last-child { border-bottom: 0; }
     }
   </style>
 </head>
 <body>
-  <main>
-    <div class="shell">
-      <nav class="nav" aria-label="Primary">
-        <div class="brand"><span class="mark">X</span><span>XGUARD</span></div>
-        <div class="badge">Global commerce engine · live</div>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="/" aria-label="XGuard home">
+        <span class="brand-name">XGuard</span>
+        <span class="brand-desc">Global Commerce Engine</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="#controls">Transaction controls</a>
+        <a class="status-link" href="/v1/commerce/status">Live status</a>
       </nav>
+    </div>
+  </header>
 
-      <section class="hero">
+  <main>
+    <section class="hero">
+      <div class="wrap hero-grid">
         <div>
-          <p class="eyebrow">Autonomous B2B deal intelligence</p>
-          <h1>Demand first.<br><em>Supply second.</em><br>Margin captured.</h1>
-          <p class="lead">XGuard finds real purchase demand, matches lower-cost supply, validates the full landed economics, and moves only when buyer funding or approved escrow is in place.</p>
+          <p class="kicker">B2B transaction intelligence</p>
+          <h1>Verified demand. Qualified supply. Better transactions.</h1>
+          <p class="lead">XGuard identifies documented purchase demand, compares qualified supply, calculates the full landed economics, and proceeds only when the transaction meets its funding, margin and compliance requirements.</p>
+          <div class="actions">
+            <a class="button" href="/v1/commerce/status">View live engine status</a>
+            <a class="text-link" href="#how-it-works">See how XGuard works</a>
+          </div>
         </div>
-        <aside class="hero-side">
-          <p>This is not a consumer storefront. XGuard operates between documented demand and documented supply, turning price and information gaps into defensible B2B transactions.</p>
-          <a class="link" href="/v1/commerce/status">View live engine status →</a>
+
+        <aside class="hero-note">
+          <h2>Operating model</h2>
+          <p>XGuard is a B2B transaction engine rather than a consumer store. It works between documented buyer demand and documented supplier availability.</p>
+          <dl>
+            <div class="row"><dt>Inventory policy</dt><dd>No speculative stock</dd></div>
+            <div class="row"><dt>Minimum profit gate</dt><dd>$${minProfit.toLocaleString("en-US")}</dd></div>
+            <div class="row"><dt>Minimum gross margin</dt><dd>${minMarginPct.toLocaleString("en-US")}%</dd></div>
+            <div class="row"><dt>Execution</dt><dd>Funding or approved escrow first</dd></div>
+          </dl>
         </aside>
-      </section>
-
-      <div class="strip" aria-label="Operating constraints">
-        <span class="pill">No speculative inventory</span>
-        <span class="pill">Buyer funds / escrow before purchase</span>
-        <span class="pill">Minimum qualified profit: $${minProfit.toLocaleString("en-US")}</span>
-        <span class="pill">Minimum gross margin: ${minMarginPct.toLocaleString("en-US")}%</span>
-        <span class="pill">Restricted goods excluded</span>
       </div>
+    </section>
 
-      <section class="stats" aria-label="Live engine metrics">
-        ${statHtml}
-      </section>
+    <section class="metrics-section" aria-label="Live engine metrics">
+      <div class="wrap">
+        <div class="metrics-head">
+          <h2>Current engine activity</h2>
+          <p>Live operational figures from the commerce engine.</p>
+        </div>
+        <div class="stats">${statHtml}</div>
+      </div>
+    </section>
 
-      <section class="section">
-        <div class="section-head">
-          <p class="eyebrow">How money moves</p>
-          <div>
-            <h2>A transaction engine, not an online shop.</h2>
-            <p class="section-copy">The system starts with evidence that someone already wants to buy. It then searches for a compliant source whose all-in cost leaves enough room to create real value and real margin.</p>
-          </div>
+    <section class="section" id="how-it-works">
+      <div class="wrap">
+        <div class="section-heading">
+          <h2>How XGuard works</h2>
+          <p>The process begins with evidence of purchase demand and ends only when the transaction has passed commercial, operational and compliance checks.</p>
         </div>
 
-        <div class="flow">
-          <article class="step"><span class="num">01 — DEMAND</span><h3>Discover buyer intent</h3><p>Monitor public RFQs, tenders, procurement notices and structured commercial demand with traceable evidence.</p></article>
-          <article class="step"><span class="num">02 — SUPPLY</span><h3>Find lower-cost supply</h3><p>Match the exact product or specification across suppliers and jurisdictions without buying stock in advance.</p></article>
-          <article class="step"><span class="num">03 — ECONOMICS</span><h3>Calculate the real spread</h3><p>Include unit cost, shipping, duties, tax, payment fees, insurance, reserves and lead time before calling anything profitable.</p></article>
-          <article class="step"><span class="num">04 — VERIFY</span><h3>Reject weak deals</h3><p>Discard restricted goods, identity mismatches, inadequate margins, weak evidence, expired demand and unverified availability.</p></article>
-          <article class="step"><span class="num">05 — FUND</span><h3>Secure buyer money first</h3><p>The supplier purchase is triggered only after buyer funding or approved escrow is secured under the transaction terms.</p></article>
-          <article class="step"><span class="num">06 — EXECUTE</span><h3>Fulfil and retain margin</h3><p>Funds move through the transaction, supplier cost is paid, delivery is completed, and the remaining verified spread is the gross transaction margin.</p></article>
+        <div class="steps">
+          <article class="step"><span class="step-number">01</span><h3>Document buyer demand</h3><p>Monitor public RFQs, tenders, procurement notices and structured commercial demand with traceable evidence.</p></article>
+          <article class="step"><span class="step-number">02</span><h3>Identify qualified supply</h3><p>Match the required product or specification across suppliers and jurisdictions without purchasing stock in advance.</p></article>
+          <article class="step"><span class="step-number">03</span><h3>Calculate landed economics</h3><p>Include unit cost, shipping, duties, tax, payment fees, insurance, reserves and lead time before qualifying a margin.</p></article>
+          <article class="step"><span class="step-number">04</span><h3>Verify the transaction</h3><p>Reject restricted goods, identity mismatches, inadequate margins, weak evidence, expired demand and unverified availability.</p></article>
+          <article class="step"><span class="step-number">05</span><h3>Secure buyer funding</h3><p>A supplier purchase is triggered only after buyer funding or approved escrow is secured under the applicable terms.</p></article>
+          <article class="step"><span class="step-number">06</span><h3>Execute and fulfil</h3><p>Supplier cost is paid, delivery is completed, and the remaining verified spread becomes the gross transaction margin.</p></article>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section class="section">
-        <div class="section-head">
-          <p class="eyebrow">Hard gates</p>
-          <div>
-            <h2>Most “opportunities” are supposed to die.</h2>
-            <p class="section-copy">XGuard is designed to reject attractive-looking deals unless the buyer, supplier, economics and legal constraints survive verification.</p>
-          </div>
-        </div>
-
-        <div class="rules">
-          <div class="rule"><span class="tick">✓</span><div><strong>Evidence-backed demand</strong><span>No invented buyers, no assumed willingness to pay.</span></div></div>
-          <div class="rule"><span class="tick">✓</span><div><strong>Verified economics</strong><span>Revenue is never treated as profit; landed costs and reserves come first.</span></div></div>
-          <div class="rule"><span class="tick">✓</span><div><strong>No inventory gamble</strong><span>XGuard does not buy products hoping a customer appears later.</span></div></div>
-          <div class="rule"><span class="tick">✓</span><div><strong>Compliance before execution</strong><span>Restricted goods and unclear jurisdictions are rejected rather than routed around.</span></div></div>
+    <section class="section" id="controls">
+      <div class="wrap">
+        <div class="section-heading">
+          <h2>Transaction controls</h2>
+          <p>Potential deals are rejected unless the buyer, supplier, economics and legal constraints survive verification.</p>
         </div>
 
-        <div class="note">Live operations are intentionally private. Public visitors can see what the engine is and whether it is active; buyer emails, supplier contacts and executable deal data stay behind the administrative boundary.</div>
-      </section>
+        <div class="controls-grid">
+          <article class="control"><h3>Evidence-backed demand</h3><p>No invented buyers and no assumed willingness to pay. Commercial demand must have traceable support.</p></article>
+          <article class="control"><h3>Verified economics</h3><p>Revenue is not treated as profit. Landed costs, transaction fees and required reserves are included first.</p></article>
+          <article class="control"><h3>No inventory speculation</h3><p>XGuard does not purchase products in anticipation of a customer appearing later.</p></article>
+          <article class="control"><h3>Compliance before execution</h3><p>Restricted goods and unclear jurisdictions are rejected rather than routed around.</p></article>
+        </div>
 
-      <footer>
-        <span>XGuard Global Commerce Engine</span>
-        <span>Public demand → verified supply → funded transaction → margin</span>
-      </footer>
+        <div class="operational-note">Live operations are intentionally private. Public visitors can see what the engine does and whether it is active; buyer emails, supplier contacts and executable deal data remain behind the administrative boundary.</div>
+      </div>
+    </section>
+
+    <div class="wrap principles" aria-label="Operating principles">
+      <span>No speculative inventory</span>
+      <span>Buyer funding or escrow before purchase</span>
+      <span>Restricted goods excluded</span>
+      <span>Qualified economics required</span>
     </div>
   </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <strong>XGuard</strong>
+      <div class="footer-copy">Global Commerce Engine<br>Documented demand · Qualified supply · Funded execution</div>
+    </div>
+  </footer>
 </body>
 </html>`;
 }
