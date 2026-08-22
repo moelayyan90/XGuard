@@ -11,7 +11,7 @@ on:
       max_repos:
         description: Maximum official reward-program repositories to inspect
         required: false
-        default: "40"
+        default: "115"
   schedule:
     - cron: "17 2 * * *"
 
@@ -40,7 +40,7 @@ jobs:
       - name: Inspect official reward-program repositories
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          XGUARD_REWARD_MAX_REPOS: ${{ inputs.max_repos || '40' }}
+          XGUARD_REWARD_MAX_REPOS: ${{ inputs.max_repos || '115' }}
         run: node scripts/security-reward-miner.mjs
 
       - name: Publish run summary
