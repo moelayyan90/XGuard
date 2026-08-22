@@ -1,6 +1,11 @@
 name: XGuard Security Reward Miner
 
 on:
+  pull_request:
+    paths:
+      - "scripts/security-reward-miner.mjs"
+      - ".github/workflows/security-reward-miner.yml"
+      - "SECURITY_REWARDS.md"
   workflow_dispatch:
     inputs:
       max_repos:
@@ -14,8 +19,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: xguard-security-reward-miner
-  cancel-in-progress: false
+  group: xguard-security-reward-miner-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   mine-public-source-candidates:
@@ -35,7 +40,7 @@ jobs:
       - name: Inspect official reward-program repositories
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          XGUARD_REWARD_MAX_REPOS: ${{ inputs.max_repos || '40' }}
+          XGUARD_REWARD_MAX_REPOS: ${{ inputs.max_repos || '10' }}
         run: node scripts/security-reward-miner.mjs
 
       - name: Publish run summary
