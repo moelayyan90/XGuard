@@ -20,7 +20,7 @@ const MAX_REPOS = Math.max(
     Number(
       maxReposArg?.split("=")[1] ??
         process.env.XGUARD_REWARD_MAX_REPOS ??
-        30,
+        40,
     ),
   ),
 );
@@ -128,6 +128,26 @@ function mergeTargets(ossRows, patchRows) {
           : 0);
     return score(b) - score(a) || a.repo.localeCompare(b.repo);
   });
+}
+
+function selectTargets(targets, maxRepos, now = Date.now()) {
+  if (maxRepos >= targets.length) return targets;
+
+  // Keep the highest-value official targets in every run, then rotate through
+  // the remainder by UTC day so coverage expands without sacrificing the best
+  // reward candidates.
+  const coreCount = Math.min(10, maxRepos);
+  const selected = targets.slice(0, coreCount);
+  const remainder = targets.slice(coreCount);
+  const rotatingSlots = maxRepos - coreCount;
+  if (rotatingSlots <= 0 || remainder.length === 0) return selected;
+
+  const dayNumber = Math.floor(now / 86_400_000);
+  const start = (dayNumber * rotatingSlots) % remainder.length;
+  for (let index = 0; index < rotatingSlots; index += 1) {
+    selected.push(remainder[(start + index) % remainder.length]);
+  }
+  return selected;
 }
 
 function normalizeEvents(doc) {
@@ -248,9 +268,6 @@ function scanWorkflow(target, workflowPath, raw) {
       if (mutable) mutableActions.push(mutable);
     }
 
-    // GitHub explicitly strips Actions secrets and forces a read-only token when
-    // pull_request_target is initiated by Dependabot and the PR author is
-    // dependabot[bot]. Do not elevate this pattern to a vulnerability candidate.
     if (
       privilegedPr &&
       !dependabotOnly &&
@@ -346,7 +363,7 @@ async function main() {
     parseOssTiers(ossMarkdown),
     parsePatchScope(patchMarkdown),
   );
-  const selected = targets.slice(0, MAX_REPOS);
+  const selected = selectTargets(targets, MAX_REPOS);
   const findings = [];
   const errors = [];
 
@@ -386,6 +403,7 @@ async function main() {
       findings: ranked.length,
       errors: errors.length,
     },
+    scannedTargets: selected.map((target) => target.repo),
     findings: ranked,
     errors,
   };
