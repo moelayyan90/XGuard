@@ -42,6 +42,16 @@ for (const [pattern, label] of [
 }
 if (/XGUARD_PAY_TO|0x[0-9a-f]{40}/iu.test(config))
   throw new Error("production config contains a hard-coded payout destination");
+if (/GatewayRequestCoordinator/u.test(config))
+  throw new Error(
+    "production config contains an unapplied legacy DO migration",
+  );
+if (
+  !/"tag"\s*:\s*"v4"[\s\S]*?"new_sqlite_classes"\s*:\s*\["InferenceCoordinator"\]/u.test(
+    config,
+  )
+)
+  throw new Error("production inference DO migration is not v4");
 
 const migration = read(
   "apps/worker/migrations/0028_autonomous_inference_provider.sql",
