@@ -91,6 +91,7 @@ function normalizeText(value) {
 }
 
 function absoluteUrl(value, base) {
+  if (!value) return null;
   try {
     const resolved = new URL(value, base);
     if (!['http:', 'https:'].includes(resolved.protocol)) return null;
