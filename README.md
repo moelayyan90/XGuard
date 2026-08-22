@@ -1,195 +1,86 @@
-# XGuard — Smart Cross-Border Operations Employee
+# XGuard Autonomous AI Inference Provider
 
-[![CI](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/codeql.yml)
-[![Mainnet](https://github.com/moelayyan90/XGuard/actions/workflows/deploy-mainnet.yml/badge.svg)](https://github.com/moelayyan90/XGuard/actions/workflows/deploy-mainnet.yml)
+XGuard is a production-oriented, profit-protected AI inference provider built on Cloudflare Workers, Durable Objects, Cron Triggers, and D1. Its first network target is [DGrid Model Marketplace](https://dgrid.ai/marketplace).
 
-**XGuard is an operations execution layer for companies dealing with government, customs, compliance, suppliers and cross-border workflows.**
+Production URL: [https://xguardgate.com](https://xguardgate.com)  
+Repository: [https://github.com/moelayyan90/XGuard](https://github.com/moelayyan90/XGuard)
 
-The product goal is deliberately different from a traditional dashboard:
+## Truthful current state
 
-> **Give XGuard the objective. XGuard performs the repeatable operational work, tracks the deadline, chases missing inputs, prepares the case, hands it to an authorised execution route and returns the result or the exact exception that still needs a responsible person.**
+The software is deployable, but inference is deliberately **not live** until all activation gates pass:
 
-XGuard starts with a focused EUDR operations workflow and expands only into government/customs workflows that are actually configured, validated and operationally supportable.
+1. an upstream endpoint and credential exist;
+2. resale authority or self-hosted compute authority is documented;
+3. input and output costs are configured in integer micro-USD;
+4. network fees and per-request variable infrastructure cost are explicitly configured;
+5. the route passes a current health check;
+6. the quoted request passes `MIN_MARGIN_USD`, `MIN_MARGIN_PERCENT`, and `MAX_DAILY_LOSS_USD`;
+7. a network credential is configured.
 
-## Why XGuard exists
+No migration seeds an active model. No pending revenue is reported as settled revenue or profit.
 
-Cross-border operations often fail for ordinary reasons rather than exotic ones:
+## Provider API
 
-- a supplier never sent one required field;
-- a deadline lived in somebody's mailbox;
-- the same data was copied between several systems;
-- a reference was not handed to the next party;
-- an employee was overloaded and a follow-up was delayed;
-- the company rebuilt the same evidence package repeatedly;
-- a government/customs response was received but not converted into the next task.
+XGuard exposes a standard OpenAI-compatible surface:
 
-Automation is useful precisely because repetitive work does not benefit from fatigue, mood or memory. XGuard therefore focuses on **consistent execution and visible exceptions**, not on pretending software replaces legal judgment.
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+- SSE streaming with upstream usage collection
+- `GET /healthz` for liveness
+- `GET /readyz` for route readiness
+- `GET /v1/status` for public network/API/model status
 
-## Product model
+The public site shows only active models, availability, latest latency, and network/API state. `/owner` and `/v1/admin/*` require the `XGUARD_ADMIN_TOKEN` bearer secret.
 
-```text
-SHIPMENT / PO / GOVERNMENT REQUEST / CUSTOMS REQUEST / COMPLIANCE TASK
-        |
-        v
-configured country + authority + workflow
-        |
-        v
-XGuard case
-        |
-        +--> reuse current authorised data
-        +--> identify missing facts/evidence
-        +--> request / remind / escalate
-        +--> validate completeness
-        +--> prepare forms/references/package
-        +--> track deadline and state
-        |
-        v
-READY or EXCEPTION
-        |
-        v
-authorised execution / filing / handoff when supported
-        |
-        v
-acknowledgement / status / reference
-        |
-        v
-ERP / broker / customer / audit record
-```
+DGrid documents an OpenAI-compatible **consumer** Model API, but its public documentation does not publish the provider-channel handshake. XGuard therefore does not claim DGrid provider compatibility or acceptance until onboarding verifies that contract. See [DGRID.md](DGRID.md).
 
-## The XGuard jobs
+## Runtime secrets
 
-### Government Runner
+Never commit these values:
 
-Turns a supported government request into requirements, tasks, documents, deadlines and an operational execution path.
+- `DGRID_PROVIDER_API_KEY`
+- `XGUARD_ADMIN_TOKEN`
+- `XGUARD_PAYOUT_DESTINATION`
+- `XGUARD_UPSTREAM_1_API_KEY` through `XGUARD_UPSTREAM_3_API_KEY`
 
-### Customs Coordinator
+Each upstream slot also requires non-secret runtime configuration for base URL, upstream model, DGrid-facing model, token prices, legal evidence URL, and `RESALE_APPROVED=true`. The attestation alone does not replace legal review.
 
-Maps shipment identifiers, required references and handoffs so customs-facing work does not live across disconnected email and spreadsheets.
+## Profit protection
 
-### Compliance Desk
+Before every upstream call, XGuard computes conservative maximum-token upstream, network-fee, and variable-infrastructure costs plus revenue. An unknown cost blocks the route. A request is blocked unless both dollar and percentage margin thresholds pass. It also blocks new work after the configured maximum daily loss.
 
-Builds repeatable case files, checks completeness, preserves evidence and escalates matters that require a legally responsible person.
+After a successful response, XGuard records:
 
-### Supplier Chaser
+- an upstream cost as `USAGE_REPORTED` or `ESTIMATED`;
+- network revenue as `PENDING`;
+- settled revenue only after independently evidenced settlement.
 
-Requests missing information, follows up, reminds and records supplier responses.
+The accounting state machine is `QUOTED → PENDING → SETTLED → WITHDRAWABLE → WITHDRAWN → RECEIVED_BY_OWNER`. See [PROFIT_MODEL.md](PROFIT_MODEL.md) and [PAYOUTS.md](PAYOUTS.md).
 
-### Multilingual Relay
-
-Normalises supported operational communications across languages while preserving source material and an audit trail.
-
-### Deadline Engine
-
-Keeps unresolved requests, due dates and exceptions visible until closure.
-
-### Evidence Vault
-
-Preserves input evidence, versions, hashes, handoffs, transformations and status history.
-
-### ERP / API Worker
-
-Accepts work through supported API/webhook/CSV/inbox paths and returns state, reference or exception to the system the customer already uses.
-
-## First focused workflow: EUDR
-
-XGuard's first production focus is EUDR operations:
-
-- readiness assessment;
-- supplier/reference Inbox;
-- supplier follow-up;
-- product/CN and origin mapping;
-- evidence organisation;
-- geodata preflight;
-- case assembly;
-- reference handoff;
-- audit history;
-- annual-review support.
-
-EU Information System execution must only be enabled when the participant's authority/credentials and XGuard's current production integration have been validated. XGuard must never call a statement verified or submitted merely because an internal workflow completed.
-
-See [Cross-Border Operations](CROSS_BORDER_OPERATIONS.md), [EUDR Operations Engine](EUDR_OPERATIONS_ENGINE.md) and [EUDR Network](EUDR_NETWORK.md).
-
-## Operating principle
-
-> **90% is readiness. The final 10% is live execution.**
-
-This is an XGuard product framework, not an official legal/statistical claim. Nine explicit readiness checks make up the pre-transaction 90%; the final 10% is reserved for the real movement/execution event.
-
-## Launch pricing
-
-| Service                                         |        XGuard launch price |
-| ----------------------------------------------- | -------------------------: |
-| Readiness + basic EUDR supplier/reference Inbox |                     **€0** |
-| Completed EUDR operational case                 |              **€9 / case** |
-| Recurring volume / embedded EUDR workflow       | **€4–€6 / completed case** |
-
-No monthly seat subscription is required for these launch offers.
-
-These are XGuard's own launch prices, not market averages. Government/customs workflows outside the published supported catalog are not charged as if they were automated. Third-party government, customs, data-provider, payment, translation or filing fees remain separate where applicable and must be disclosed before use.
-
-## Commercial rule
-
-XGuard should charge for **completed value-producing operational events**, not for promises.
-
-A success-linked filing or execution fee is earned only when the defined event actually succeeds. Preparation or exception-handling services may have separate disclosed event prices where they perform real work.
-
-## Product boundaries
-
-XGuard must not:
-
-- claim to be a government, customs authority, competent authority, law firm or certification body;
-- claim a jurisdiction/workflow is supported until it is actually configured and validated;
-- claim legal compliance merely because an internal readiness score is high;
-- fabricate legal conclusions, official approvals, regulatory statuses or filing references;
-- silently submit on behalf of a company without the required authority/credentials;
-- hide mandatory third-party fees inside an apparently free or fixed-price operation;
-- describe XGuard itself as legally mandatory.
-
-The legally responsible company remains responsible for decisions and declarations that law assigns to it.
-
-## Developer and legacy documentation
-
-The repository still contains earlier child-safety, x402/payment, MCP, A2A, webhook, routing, billing and security components. They remain available as reusable infrastructure or legacy surfaces while the primary product identity moves to cross-border operations.
-
-- [Quickstart](QUICKSTART.md)
-- [API](docs/API.md)
-- [facilitators](docs/FACILITATORS.md)
-- [Child Safety](docs/CHILD_SAFETY.md)
-
-The legacy Child Safety API includes `/v1/child-safety/scan` and actions such as `FREEZE_CHAT`; its billing and behavior remain governed by the dedicated legacy documentation and contracts. The earlier x402 adapter and payment/protocol infrastructure remain available to support existing integrations.
-
-Existing machine/developer surfaces include:
-
-```text
-/.well-known/xguard/payment-layer.json
-/.well-known/xguard/protocols.json
-/.well-known/mcp/server.json
-/.well-known/agent-card.json
-/openapi.json
-/mcp
-```
-
-The legacy remote MCP surface remains available at `/mcp` with the synchronized tool set:
-
-- `xguard_payment_offer` — prepare the optional pre-payment XGuard offer without executing the underlying payment.
-- `xguard_payment_decision` — evaluate a declared payment intent and return the current decision/evidence result.
-- `xguard_discover` — search or list XGuard's x402 resource catalog.
-- `xguard_resource_details` — inspect one exact catalog resource.
-- `xguard_status` — return live gateway and discovery status.
-
-## Development and verification
+## Verification
 
 ```bash
-npm run check
-npm run verify:release
-npm --workspace @xguard/worker run build:mainnet
+npm ci --ignore-scripts
+npm run inference:verify
 ```
 
-## Contact
+This runs formatting, lint, strict type checks, unit tests, Cloudflare Worker integration tests with all D1 migrations, invariant validation, secret scanning, and a Wrangler production dry build.
 
-**info@xguardgate.com**
+An opt-in production smoke test performs real inference only when a network credential and an active model exist:
 
-XGuard is an independent project and is not an official product of the European Commission, TRACES, any customs or government authority, Coinbase, Cloudflare, Base, Circle, x402 Foundation, Google, Microsoft or any other third party unless an explicit agreement states otherwise.
+```bash
+DGRID_PROVIDER_API_KEY='from-secret-store' npm run inference:smoke
+```
 
-Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md).
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [DGRID.md](DGRID.md)
+- [PROFIT_MODEL.md](PROFIT_MODEL.md)
+- [PAYOUTS.md](PAYOUTS.md)
+- [PROVIDERS.md](PROVIDERS.md)
+- [SECURITY.md](SECURITY.md)
+- [OPERATIONS.md](OPERATIONS.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+
+The `$350/day` figure is an operator target, not a forecast or claim. XGuard reports it as achieved only from settled revenue minus real recorded cost.

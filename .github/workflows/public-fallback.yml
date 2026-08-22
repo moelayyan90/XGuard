@@ -1,4 +1,4 @@
-name: Deploy XGuard public fallback
+name: Deploy XGuard inference public fallback
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches: [main]
     paths:
       - "apps/worker/wrangler.public-fallback.jsonc"
-      - "apps/worker/src/**"
+      - "apps/worker/src/inference-provider*.ts"
       - "apps/worker/migrations/**"
       - ".github/workflows/public-fallback.yml"
 
@@ -27,11 +27,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Verify production code
-        run: npm run verify:mainnet-release
+      - run: npm run inference:verify
         env:
           WRANGLER_SEND_METRICS: "false"
-      - name: Resolve D1, migrate, and deploy fallback
+      - name: Resolve D1 and deploy fallback
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -40,34 +39,35 @@ jobs:
         run: |
           set -euo pipefail
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
-          [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare deployment credentials unavailable'; exit 1; }
+          [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || exit 1
           export CLOUDFLARE_API_TOKEN="$token"
-          CONFIG_PATH="${GITHUB_WORKSPACE}/apps/worker/wrangler.public-fallback.resolved.jsonc"
-          node scripts/resolve-cloudflare-config.mjs --template apps/worker/wrangler.public-fallback.jsonc --output "$CONFIG_PATH" --database-name xguard-mainnet
-          npx wrangler d1 migrations apply xguard-mainnet --remote --config "$CONFIG_PATH"
-          npx wrangler deploy --config "$CONFIG_PATH" 2>&1 | tee /tmp/deploy.log
+          config_path="${GITHUB_WORKSPACE}/apps/worker/wrangler.public-fallback.resolved.jsonc"
+          node scripts/resolve-cloudflare-config.mjs --template apps/worker/wrangler.public-fallback.jsonc --output "$config_path" --database-name xguard-mainnet
+          node - "$config_path" "$GITHUB_SHA" <<'NODE'
+          const fs = require('node:fs');
+          const [file, sha] = process.argv.slice(2);
+          let source = fs.readFileSync(file, 'utf8');
+          source = source.replace(/("XGUARD_GIT_COMMIT"\s*:\s*)"[^"]*"/, `$1${JSON.stringify(sha)}`);
+          source = source.replace(/("XGUARD_DEPLOYED_AT"\s*:\s*)"[^"]*"/, `$1${JSON.stringify(new Date().toISOString())}`);
+          if (/XGUARD_PAY_TO|0x[0-9a-fA-F]{40}/.test(source)) throw new Error('hard-coded payout destination');
+          fs.writeFileSync(file, source);
+          NODE
+          npx wrangler d1 migrations apply xguard-mainnet --remote --config "$config_path"
+          npx wrangler deploy --config "$config_path" 2>&1 | tee /tmp/deploy.log
           url="$(grep -Eo 'https://[A-Za-z0-9._-]+\.workers\.dev' /tmp/deploy.log | tail -1 || true)"
-          [[ -n "$url" ]] || { echo 'workers.dev URL not emitted'; exit 1; }
+          [[ -n "$url" ]] || exit 1
           echo "PUBLIC_FALLBACK_URL=$url" >> "$GITHUB_ENV"
-      - name: Verify fallback live
+      - name: Verify fallback truth surface
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${PUBLIC_FALLBACK_URL:-}"
           for attempt in {1..18}; do
-            commerce_code="$(curl -sS -o /tmp/status.json -w '%{http_code}' --max-time 15 "${PUBLIC_FALLBACK_URL}/v1/commerce/status?attempt=${attempt}" || true)"
-            execution_code="$(curl -sS -o /tmp/execution-status.json -w '%{http_code}' --max-time 15 "${PUBLIC_FALLBACK_URL}/v1/commerce/execution/status?attempt=${attempt}" || true)"
-            if [[ "$commerce_code" == "200" && "$execution_code" == "200" ]] && \
-              node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/status.json","utf8"));const y=JSON.parse(fs.readFileSync("/tmp/execution-status.json","utf8"));if(x.mode!=="global-commerce-hunter"||x.inventoryPolicy!=="no speculative inventory"||y.mode!=="verified-execution"||y.autoExecute!==false)process.exit(1)'; then
-              echo "Fallback live: ${PUBLIC_FALLBACK_URL}"
-              exit 0
-            fi
+            code="$(curl -sS -o /tmp/status.json -w '%{http_code}' --max-time 15 "${PUBLIC_FALLBACK_URL}/v1/status?attempt=${attempt}" || true)"
+            if [[ "$code" == '200' ]] && node -e 'const x=require("/tmp/status.json");if(x.service!=="XGuard Autonomous AI Inference Provider")process.exit(1)'; then exit 0; fi
             sleep 5
           done
-          cat /tmp/status.json || true
-          cat /tmp/execution-status.json || true
           exit 1
-      - name: Publish fallback URL status
+      - name: Publish fallback status
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,19 +75,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          state='failure'
-          description='XGuard public fallback deployment failed'
+          state=failure
+          description='XGuard inference fallback failed'
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          if [[ "${JOB_STATUS}" == 'success' && -n "${PUBLIC_FALLBACK_URL:-}" ]]; then
-            state='success'
-            description='XGuard public fallback is live'
-            target_url="${PUBLIC_FALLBACK_URL}"
-          fi
-          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-public-fallback",description,target_url}))' "$state" "$description" "$target_url")"
-          curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            --data "$payload" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" >/dev/null
+          if [[ "$JOB_STATUS" == success && -n "${PUBLIC_FALLBACK_URL:-}" ]]; then state=success; description='XGuard inference fallback is verified'; target_url="$PUBLIC_FALLBACK_URL"; fi
+          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-inference-fallback",description,target_url}))' "$state" "$description" "$target_url")"
+          curl --fail-with-body --silent --show-error --request POST --header "Authorization: Bearer ${GH_TOKEN}" --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28' --data "$payload" "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" >/dev/null

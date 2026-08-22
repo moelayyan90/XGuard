@@ -1,49 +1,49 @@
 # Operations
 
-XGuard production operations are centered on the `xguard-mainnet` Cloudflare Worker. Normal traffic is designed to require no owner processing. Financial ambiguity is the exception: automation quarantines it and waits for independent evidence rather than risking a second transfer.
+## Scheduled control loop
 
-| Cadence / trigger                 | Implemented automatic action                                                               | Failure behavior                                |
-| --------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| every request                     | structured request/latency/result metrics; no raw payment body                             | sanitized error and request ID                  |
-| every minute on mainnet Worker    | refresh facilitator health; expire stale payment IDs/top-up intents; process finality jobs | degrade/open/quarantine route or reconciliation |
-| every 5 minutes on mainnet Worker | scan relevant recent top-up intents with bounded Base RPC failover                         | defer transient RPC outages; log fatal failures |
-| every 30 minutes on GitHub        | non-billable live smoke check of `xguard-mainnet`                                          | open one monitor issue; auto-close on recovery  |
-| each started Durable Object       | stale-submission alarm and durable outbox retry                                            | mark ambiguous; never retry settlement          |
-| operator reconciliation command   | ledger/ambiguity/recovery report                                                           | non-zero exit; payout considered suspended      |
-| weekly / dependency event         | locked build, tests, audit, CodeQL/Dependabot review                                       | block release on high/critical finding          |
+Cloudflare Cron runs at minute 0 every hour.
 
-The production Worker, Durable Objects, D1 projection, one-minute scheduled maintenance, five-minute automatic top-up scan cadence, and GitHub live mainnet monitor are configured. The live monitor performs no payment: it checks public health/readiness/capabilities, provider and discovery surfaces, MCP/Glama exposure, reconciliation state, billing metadata privacy, and the Base mainnet contract. Repeated failures are deduplicated into one GitHub issue and a later successful run closes that issue automatically.
+- Every run synchronizes safe runtime configuration and checks each approved upstream with `GET /models`.
+- At UTC hours divisible by six, the optimizer ranks routes and records an `optimization_runs` audit row.
+- Profit buckets are refreshed from D1 truth states.
 
-Automatic testnet deployment is disabled. The separate Base Sepolia Worker remains available only through its manual deployment workflow for explicit non-billable testing and is not part of production monitoring.
+The optimizer can change only XGuard's internal primary/failover status. It cannot claim or change DGrid routing share or external marketplace price because DGrid has not published those APIs.
 
-## Portable local commands
+## Health states
 
-```bash
-npm run ops:reconcile -- ./xguard.db
-npm run ops:backup -- ./xguard.db ./backups
-npm run ops:payout-check -- ./xguard.db
-```
+- `UNCONFIGURED`: missing legal activation gate.
+- `HEALTHY`: current 2xx model-list response.
+- `DEGRADED`: current 429 health response.
+- `UNHEALTHY`: timeout, transport failure, or other non-2xx response.
 
-These commands operate on the legacy/local Node SQLite path; they are not the deployment mechanism for `xguard-mainnet`. `ops:reconcile` exits non-zero for a ledger imbalance or open ambiguity and also recovers stale/prepared local records. `ops:payout-check` reports a decision but neither prepares nor submits a transfer.
+Health older than two hours is stale and cannot activate a route.
 
-The production Cloudflare Worker uses Durable Object alarms for stale-start recovery and durable coordination, D1 for mainnet state, and scheduled Worker maintenance for facilitator health, finality, cleanup, reconciliation, and top-up discovery.
+## Owner control plane
 
-## Service objectives
+Use a bearer `XGUARD_ADMIN_TOKEN` with:
 
-Track gateway availability plus p50, p95, and p99 added latency; verification/settlement success; facilitator health; replay/duplicate prevention; ambiguity; usage events; gross revenue; downstream/infrastructure/off-ramp cost; contribution; reserve; and payout state. Targets are established only after a representative live baseline. XGuard makes no fabricated uptime or latency claim.
+- `GET /owner` — private HTML dashboard;
+- `GET /v1/admin/metrics` — private machine-readable accounting;
+- `POST /v1/admin/maintenance` — run one health/optimization cycle.
 
-## Capacity and safe scaling
+Do not put the bearer token in a URL, browser history, issue, log, or chat message.
 
-Alert at 70% of a free quota, investigate at 80%, and block growth-sensitive operations before hard exhaustion. Upgrade only for sustained saturation, objective latency/reliability breach, forecast quota exhaustion, or a required control unavailable on the free tier. Before any paid upgrade, verify:
+## Incident response
 
-```text
-earned available funds - customer liabilities - unpaid costs - required reserve >= upgrade cost
-```
+1. Set the affected upstream `RESALE_APPROVED=false` or remove its API key.
+2. Deploy; runtime sync marks its provider and models disabled.
+3. Inspect `provider_health`, `upstream_requests`, `network_requests`, `costs`, and `revenue` by request ID.
+4. Do not convert `PENDING` revenue to `SETTLED` during an incident without external settlement evidence.
+5. Rotate the affected upstream or network secret.
+6. Re-enable only after health, legal authority, pricing, and the profit guard pass.
 
-An upgrade also requires an authorized business payment method. Otherwise the service remains on the best free architecture and the upgrade alone is an external blocker.
+## Financial reconciliation
 
-## Backup and restore
+Daily reports use UTC. Real requests are successful upstream executions. Cost is recorded on successful execution even when network revenue is still pending. Net profit uses only `SETTLED` revenue.
 
-The legacy/local Node backup command uses SQLite's online backup API and immediately runs `PRAGMA integrity_check`. Restore is performed into a new path, integrity-checked, reconciled, and smoke-tested before changing local service configuration. Never overwrite the only database copy.
+DGrid settlement import remains disabled until its provider-channel supplies an authenticated settlement contract. Operators must not write optimistic rows directly to D1. Once official fields exist, implement an idempotent importer keyed by DGrid's external settlement ID and require an evidence reference.
 
-Production mainnet persistence is Cloudflare D1 and must be treated separately from the local SQLite backup path. Cloudflare's native recovery features do not replace the need for an independent encrypted production export and a recorded restore exercise before claiming an off-platform backup objective is satisfied.
+## Target handling
+
+`$350/day` is an operational target. It is `ACHIEVED` only when UTC-day settled revenue minus real cost is at least 350,000,000 micro-USD. There is no traffic generation, self-calling, fake demand, or synthetic revenue mechanism.
