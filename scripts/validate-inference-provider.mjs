@@ -103,6 +103,12 @@ for (const required of [
   "daily_loss_limit_reached",
   "NOT_SUPPORTED",
   "scheduledMaintenance",
+  "PaymentCoordinator",
+  "RequestGate",
+  "MainnetPaymentCoordinator",
+  "MainnetRequestGate",
+  "XPayGlobalRateGate",
+  "WebhookDeliveryQueue",
 ]) {
   if (!source.includes(required))
     throw new Error(`missing runtime gate: ${required}`);

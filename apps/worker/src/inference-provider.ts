@@ -27,6 +27,15 @@ import {
 } from "./inference-provider-site.js";
 
 export { InferenceCoordinator };
+// Cloudflare requires every previously migrated Durable Object class to remain
+// exported until an explicit delete/rename migration is intentionally applied.
+export { PaymentCoordinator, RequestGate } from "./index.js";
+export {
+  MainnetPaymentCoordinator,
+  MainnetRequestGate,
+} from "./mainnet-coordinator.js";
+export { WebhookDeliveryQueue } from "./resilient-webhook-ingress.js";
+export { XPayGlobalRateGate } from "./xpay-rate-gate.js";
 
 export default {
   async fetch(
