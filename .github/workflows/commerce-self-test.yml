@@ -1,13 +1,13 @@
-name: XGuard Global Commerce self-test
+name: XGuard inference mainnet self-test
 
 on:
   pull_request:
     paths:
-      - "apps/worker/src/global-commerce.ts"
-      - "apps/worker/src/commerce-mainnet.ts"
-      - "apps/worker/migrations/0025_global_commerce.sql"
+      - "apps/worker/src/inference-provider*.ts"
+      - "apps/worker/migrations/0028_autonomous_inference_provider.sql"
       - "apps/worker/wrangler.mainnet.jsonc"
-      - "scripts/commerce-self-test.mjs"
+      - "scripts/validate-inference-provider.mjs"
+      - "package.json"
       - ".github/workflows/commerce-self-test.yml"
 
 permissions:
@@ -21,4 +21,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - run: node scripts/commerce-self-test.mjs
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run inference:validate
