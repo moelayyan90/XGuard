@@ -15,7 +15,14 @@ const OUT_DIR = path.resolve("artifacts/security-reward-candidates");
 const maxReposArg = process.argv.find((arg) => arg.startsWith("--max-repos="));
 const MAX_REPOS = Math.max(
   1,
-  Math.min(100, Number(maxReposArg?.split("=")[1] ?? process.env.XGUARD_REWARD_MAX_REPOS ?? 30)),
+  Math.min(
+    100,
+    Number(
+      maxReposArg?.split("=")[1] ??
+        process.env.XGUARD_REWARD_MAX_REPOS ??
+        30,
+    ),
+  ),
 );
 
 const githubToken = process.env.GITHUB_TOKEN?.trim();
@@ -45,7 +52,9 @@ async function fetchJson(url) {
 }
 
 function repoFromGithubUrl(url) {
-  const match = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/#?]+)\/?$/i);
+  const match = url.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/#?]+)\/?$/i,
+  );
   if (!match) return null;
   return `${match[1]}/${match[2].replace(/\.git$/i, "")}`;
 }
@@ -53,10 +62,18 @@ function repoFromGithubUrl(url) {
 function parseOssTiers(markdown) {
   const rows = [];
   for (const line of markdown.split(/\r?\n/)) {
-    const match = line.match(/^\|\s*(https:\/\/github\.com\/[^|\s]+)\s*\|\s*(OT[01])\s*\|/i);
+    const match = line.match(
+      /^\|\s*(https:\/\/github\.com\/[^|\s]+)\s*\|\s*(OT[01])\s*\|/i,
+    );
     if (!match) continue;
     const repo = repoFromGithubUrl(match[1]);
-    if (repo) rows.push({ repo, tier: match[2].toUpperCase(), source: "google-oss-vrp" });
+    if (repo) {
+      rows.push({
+        repo,
+        tier: match[2].toUpperCase(),
+        source: "google-oss-vrp",
+      });
+    }
   }
   return rows;
 }
@@ -93,14 +110,22 @@ function mergeTargets(ossRows, patchRows) {
       programs: [],
     };
     existing.patchArea = row.area;
-    if (!existing.programs.includes(row.source)) existing.programs.push(row.source);
+    if (!existing.programs.includes(row.source)) {
+      existing.programs.push(row.source);
+    }
     map.set(key, existing);
   }
 
   return [...map.values()].sort((a, b) => {
     const score = (x) =>
       (x.ossTier === "OT0" ? 100 : x.ossTier === "OT1" ? 80 : 0) +
-      (x.patchArea?.toLowerCase().includes("core infrastructure data parsers") ? 40 : x.patchArea ? 20 : 0);
+      (x.patchArea
+        ?.toLowerCase()
+        .includes("core infrastructure data parsers")
+        ? 40
+        : x.patchArea
+          ? 20
+          : 0);
     return score(b) - score(a) || a.repo.localeCompare(b.repo);
   });
 }
@@ -116,7 +141,17 @@ function normalizeEvents(doc) {
 function permissionsWritable(permissions) {
   if (permissions === "write-all") return true;
   if (!permissions || typeof permissions !== "object") return false;
-  return Object.values(permissions).some((value) => String(value).toLowerCase() === "write");
+  return Object.values(permissions).some(
+    (value) => String(value).toLowerCase() === "write",
+  );
+}
+
+function isDependabotOnlyJob(job) {
+  const condition = String(job?.if ?? "").toLowerCase().replace(/\s+/g, " ");
+  return (
+    condition.includes("github.event.pull_request.user.login") &&
+    condition.includes("dependabot[bot]")
+  );
 }
 
 const UNTRUSTED_EXPRESSIONS = [
@@ -132,12 +167,21 @@ const UNTRUSTED_EXPRESSIONS = [
 
 function containsUntrustedExpression(text) {
   const lower = String(text ?? "").toLowerCase();
-  return UNTRUSTED_EXPRESSIONS.find((expr) => lower.includes(`\${{ ${expr}`) || lower.includes(`\${{${expr}`));
+  return UNTRUSTED_EXPRESSIONS.find(
+    (expr) =>
+      lower.includes(`\${{ ${expr}`) || lower.includes(`\${{${expr}`),
+  );
 }
 
 function controlledCheckoutRef(step) {
   if (!step || typeof step !== "object") return null;
-  if (!String(step.uses ?? "").toLowerCase().startsWith("actions/checkout@")) return null;
+  if (
+    !String(step.uses ?? "")
+      .toLowerCase()
+      .startsWith("actions/checkout@")
+  ) {
+    return null;
+  }
   const ref = String(step.with?.ref ?? "");
   const lower = ref.toLowerCase();
   const patterns = [
@@ -185,6 +229,7 @@ function scanWorkflow(target, workflowPath, raw) {
   const findings = [];
 
   for (const [jobName, job] of Object.entries(doc?.jobs ?? {})) {
+    const dependabotOnly = isDependabotOnlyJob(job);
     const jobWritable = writableTop || permissionsWritable(job?.permissions);
     const steps = Array.isArray(job?.steps) ? job.steps : [];
     let untrustedCheckout = null;
@@ -203,7 +248,15 @@ function scanWorkflow(target, workflowPath, raw) {
       if (mutable) mutableActions.push(mutable);
     }
 
-    if (privilegedPr && untrustedCheckout && (jobWritable || secretUse)) {
+    // GitHub explicitly strips Actions secrets and forces a read-only token when
+    // pull_request_target is initiated by Dependabot and the PR author is
+    // dependabot[bot]. Do not elevate this pattern to a vulnerability candidate.
+    if (
+      privilegedPr &&
+      !dependabotOnly &&
+      untrustedCheckout &&
+      (jobWritable || secretUse)
+    ) {
       findings.push({
         repo: target.repo,
         workflow: workflowPath,
@@ -215,11 +268,17 @@ function scanWorkflow(target, workflowPath, raw) {
         confidence: "high",
         score: 100,
         evidence: `pull_request_target checks out attacker-controlled ref (${untrustedCheckout}) while job has ${jobWritable ? "write permissions" : "secret access"}`,
-        action: "manual-validate-and-report-only-if-reproducible-without-impact",
+        action:
+          "manual-validate-and-report-only-if-reproducible-without-impact",
       });
     }
 
-    if (privilegedPr && untrustedRun && (jobWritable || secretUse)) {
+    if (
+      privilegedPr &&
+      !dependabotOnly &&
+      untrustedRun &&
+      (jobWritable || secretUse)
+    ) {
       findings.push({
         repo: target.repo,
         workflow: workflowPath,
@@ -231,7 +290,8 @@ function scanWorkflow(target, workflowPath, raw) {
         confidence: "high",
         score: 95,
         evidence: `attacker-controlled expression (${untrustedRun}) is interpolated into a shell step in pull_request_target context`,
-        action: "manual-validate-and-report-only-if-reproducible-without-impact",
+        action:
+          "manual-validate-and-report-only-if-reproducible-without-impact",
       });
     }
 
@@ -247,7 +307,9 @@ function scanWorkflow(target, workflowPath, raw) {
         confidence: "medium",
         score: target.patchArea ? 45 : 30,
         evidence: `privileged workflow uses action(s) not pinned to a full commit SHA: ${mutableActions.join(", ")}`,
-        action: target.patchArea ? "consider-security-hardening-patch" : "review-only-do-not-report-as-vulnerability-without-impact",
+        action: target.patchArea
+          ? "consider-security-hardening-patch"
+          : "review-only-do-not-report-as-vulnerability-without-impact",
       });
     }
   }
@@ -256,11 +318,20 @@ function scanWorkflow(target, workflowPath, raw) {
 }
 
 async function listWorkflowFiles(repo) {
-  const data = await fetchJson(`${API}/repos/${repo}/contents/.github/workflows`);
+  const data = await fetchJson(
+    `${API}/repos/${repo}/contents/.github/workflows`,
+  );
   if (!Array.isArray(data)) return [];
   return data
-    .filter((entry) => entry?.type === "file" && /\.ya?ml$/i.test(entry.name ?? ""))
-    .map((entry) => ({ name: entry.name, path: entry.path, downloadUrl: entry.download_url }))
+    .filter(
+      (entry) =>
+        entry?.type === "file" && /\.ya?ml$/i.test(entry.name ?? ""),
+    )
+    .map((entry) => ({
+      name: entry.name,
+      path: entry.path,
+      downloadUrl: entry.download_url,
+    }))
     .filter((entry) => entry.downloadUrl);
 }
 
@@ -271,7 +342,10 @@ async function main() {
     fetchText(OSS_TIERS_URL),
     fetchText(PATCH_SCOPE_URL),
   ]);
-  const targets = mergeTargets(parseOssTiers(ossMarkdown), parsePatchScope(patchMarkdown));
+  const targets = mergeTargets(
+    parseOssTiers(ossMarkdown),
+    parsePatchScope(patchMarkdown),
+  );
   const selected = targets.slice(0, MAX_REPOS);
   const findings = [];
   const errors = [];
@@ -317,7 +391,11 @@ async function main() {
   };
 
   const jsonPath = path.join(OUT_DIR, "candidates.json");
-  await fs.writeFile(jsonPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await fs.writeFile(
+    jsonPath,
+    `${JSON.stringify(payload, null, 2)}\n`,
+    "utf8",
+  );
 
   const lines = [
     "# XGuard Security Reward Candidates",
@@ -354,7 +432,11 @@ async function main() {
     lines.push("");
   }
 
-  await fs.writeFile(path.join(OUT_DIR, "candidates.md"), `${lines.join("\n")}\n`, "utf8");
+  await fs.writeFile(
+    path.join(OUT_DIR, "candidates.md"),
+    `${lines.join("\n")}\n`,
+    "utf8",
+  );
   console.log(JSON.stringify(payload.stats));
 }
 
