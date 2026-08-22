@@ -40,7 +40,7 @@ jobs:
       - name: Inspect official reward-program repositories
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          XGUARD_REWARD_MAX_REPOS: ${{ inputs.max_repos || '10' }}
+          XGUARD_REWARD_MAX_REPOS: ${{ inputs.max_repos || '40' }}
         run: node scripts/security-reward-miner.mjs
 
       - name: Publish run summary
