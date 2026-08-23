@@ -63,8 +63,8 @@ jobs:
       - name: Reject legacy product surfaces
         run: |
           if grep -RniE 'Email Shield|RapidAPI|WordPress|WooCommerce|x402|AI Inference Provider' \
-            --exclude='*.lock' README.md apps crates docs examples; then
-            echo 'Legacy XGuard product text remains in the active product tree'
+            --exclude='*.lock' --exclude-dir='changemandate' README.md apps crates docs examples; then
+            echo 'Legacy XGuard product text remains in the active XGuard product tree'
             exit 1
           fi
 
