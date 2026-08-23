@@ -5,11 +5,15 @@ on:
     paths:
       - "commercial/**"
       - ".github/workflows/commercial-surfaces.yml"
+      - ".github/workflows/deploy-commercial-extractor.yml"
+      - ".github/workflows/publish-apify-actor.yml"
   push:
     branches: [main]
     paths:
       - "commercial/**"
       - ".github/workflows/commercial-surfaces.yml"
+      - ".github/workflows/deploy-commercial-extractor.yml"
+      - ".github/workflows/publish-apify-actor.yml"
 
 permissions:
   contents: read
@@ -17,12 +21,13 @@ permissions:
 jobs:
   commercial:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+          cache: npm
 
       - name: Validate Actor metadata JSON
         run: |
@@ -43,3 +48,10 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund
           npm run check
           npm test
+
+      - name: Validate Cloudflare production origin
+        run: |
+          npm ci --ignore-scripts
+          node --check commercial/cloudflare-xguard/src/index.js
+          npx wrangler deploy --dry-run --config commercial/cloudflare-xguard/wrangler.jsonc --outdir /tmp/xguard-extractor-dry-run
+          test -s /tmp/xguard-extractor-dry-run/index.js
