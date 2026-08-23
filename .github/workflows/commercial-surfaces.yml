@@ -33,6 +33,7 @@ jobs:
         run: |
           python -m json.tool commercial/apify-xguard/.actor/actor.json >/dev/null
           python -m json.tool commercial/apify-xguard/.actor/input_schema.json >/dev/null
+          python -m json.tool commercial/apify-xguard/.actor/output_schema.json >/dev/null
           python -m json.tool commercial/apify-xguard/.actor/dataset_schema.json >/dev/null
           python -m json.tool commercial/apify-xguard/.actor/pay_per_event.json >/dev/null
 
