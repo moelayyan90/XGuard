@@ -7,6 +7,7 @@ on:
       - ".github/workflows/commercial-surfaces.yml"
       - ".github/workflows/deploy-commercial-extractor.yml"
       - ".github/workflows/publish-apify-actor.yml"
+      - ".github/workflows/publish-rapidapi-listing.yml"
   push:
     branches: [main]
     paths:
@@ -14,6 +15,7 @@ on:
       - ".github/workflows/commercial-surfaces.yml"
       - ".github/workflows/deploy-commercial-extractor.yml"
       - ".github/workflows/publish-apify-actor.yml"
+      - ".github/workflows/publish-rapidapi-listing.yml"
 
 permissions:
   contents: read
@@ -50,6 +52,8 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund
           npm run check
           npm test
+          python -m json.tool openapi.json >/dev/null
+          node -e 'const x=require("./openapi.json"); if(!x.openapi.startsWith("3.0")||x.info.title!=="XGuard Web Extractor API"||x.servers?.[0]?.url!=="https://extract.xguardgate.com"||!x.paths?.["/v1/extract"]) process.exit(1)'
 
       - name: Validate Cloudflare production origin
         run: |
