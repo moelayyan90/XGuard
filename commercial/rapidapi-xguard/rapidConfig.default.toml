@@ -1,0 +1,19 @@
+[general]
+create_as = "active"
+allow_update_existing = true
+allow_update_deprecated = true
+
+[major]
+update_policy = "create"
+allow_older = false
+auto_current = true
+
+[minor]
+update_policy = "update"
+allow_older = false
+auto_current = true
+
+[patch]
+update_policy = "update"
+allow_older = false
+auto_current = true
