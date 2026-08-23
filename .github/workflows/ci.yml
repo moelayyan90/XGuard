@@ -4,12 +4,13 @@ on:
   push:
     branches: [main, "bam/**"]
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  group: xguard-ace-ci-${{ github.ref }}
+  group: xguard-ace-ci-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -55,6 +56,10 @@ jobs:
         run: |
           node --check apps/portal/src/index.js
           node -e "JSON.parse(require('node:fs').readFileSync('apps/portal/wrangler.jsonc','utf8'))"
+      - name: Cloudflare dry run
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/portal/wrangler.jsonc --outdir /tmp/xguard-ace-dry-run
       - name: Reject legacy product surfaces
         run: |
           if grep -RniE 'Email Shield|RapidAPI|WordPress|WooCommerce|x402|AI Inference Provider' \
@@ -62,3 +67,16 @@ jobs:
             echo 'Legacy XGuard product text remains in the active product tree'
             exit 1
           fi
+
+  verify:
+    needs: [rust, portal]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce required checks
+        env:
+          RUST_RESULT: ${{ needs.rust.result }}
+          PORTAL_RESULT: ${{ needs.portal.result }}
+        run: |
+          test "$RUST_RESULT" = success
+          test "$PORTAL_RESULT" = success
