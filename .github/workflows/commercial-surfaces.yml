@@ -59,5 +59,6 @@ jobs:
         run: |
           npm ci --ignore-scripts
           node --check commercial/cloudflare-xguard/src/index.js
+          node --check commercial/cloudflare-xguard/src/secure-entry.js
           npx wrangler deploy --dry-run --config commercial/cloudflare-xguard/wrangler.jsonc --outdir /tmp/xguard-extractor-dry-run
-          test -s /tmp/xguard-extractor-dry-run/index.js
+          test -s /tmp/xguard-extractor-dry-run/secure-entry.js
