@@ -1,0 +1,65 @@
+name: Deploy ChangeMandate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/changemandate/**"
+      - ".github/workflows/deploy-changemandate.yml"
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: changemandate-mainnet
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Test and validate
+        run: |
+          set -euo pipefail
+          cd apps/changemandate
+          npm test
+          npm run check
+          node -e "JSON.parse(require('node:fs').readFileSync('wrangler.jsonc','utf8'))"
+      - name: Deploy to Cloudflare Workers
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
+          export CLOUDFLARE_API_TOKEN="$token"
+          npx --yes wrangler@latest deploy --config apps/changemandate/wrangler.jsonc 2>&1 | tee /tmp/changemandate-deploy.log
+          url="$(grep -Eo 'https://[^[:space:]]+workers\.dev' /tmp/changemandate-deploy.log | tail -1 || true)"
+          [[ -n "$url" ]] || url="https://changemandate.workers.dev"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Verify production
+        env:
+          BASE_URL: ${{ steps.deploy.outputs.url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error --max-time 10 "${BASE_URL}/healthz" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="ChangeMandate")process.exit(1)})'; then
+              exit 0
+            fi
+            sleep 4
+          done
+          exit 1
