@@ -1,0 +1,76 @@
+name: Verify Updated XGuard Live Product
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/verify-updated-product-live.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify Cloudflare domain bindings
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          account="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n ')"
+          [[ -n "$token" && -n "$account" ]] || { echo 'Cloudflare credentials unavailable'; exit 1; }
+          curl -fsS \
+            -H "Authorization: Bearer ${token}" \
+            -H 'Content-Type: application/json' \
+            "https://api.cloudflare.com/client/v4/accounts/${account}/workers/domains" > /tmp/domains.json
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const x = JSON.parse(fs.readFileSync('/tmp/domains.json','utf8'));
+          if (!x.success) process.exit(1);
+          const wanted = {
+            'xguardgate.com': 'xguard-web-extractor',
+            'www.xguardgate.com': 'xguard-web-extractor',
+            'extract.xguardgate.com': 'xguard-web-extractor',
+            'app.xguardgate.com': 'xguard-mainnet',
+            'inference.xguardgate.com': 'xguard-mainnet',
+            'legacy.xguardgate.com': 'xguard-mainnet',
+          };
+          const map = new Map((x.result || []).map(r => [r.hostname, r.service]));
+          for (const [host, service] of Object.entries(wanted)) {
+            const actual = map.get(host);
+            console.log(`${host}: ${actual || 'UNBOUND'} (expected ${service})`);
+            if (actual !== service) process.exitCode = 1;
+          }
+          NODE
+
+      - name: Verify updated canonical product and legacy availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          for host in xguardgate.com www.xguardgate.com extract.xguardgate.com; do
+            echo "--- ${host} ---"
+            code="$(curl -sS -A 'Mozilla/5.0 XGuard-Live-Verify' -o /tmp/root.html -w '%{http_code}' --max-time 20 "https://${host}/?verify=${GITHUB_RUN_ID}" || true)"
+            echo "GET / => ${code}"
+            [[ "$code" == '200' ]]
+            grep -q '<title>XGuard Web Extractor</title>' /tmp/root.html
+            curl -fsS --max-time 20 "https://${host}/healthz?verify=${GITHUB_RUN_ID}" > /tmp/health.json
+            node -e 'const x=require("/tmp/health.json"); if(x.service!=="xguard-web-extractor"||x.live!==true) process.exit(1)'
+          done
+
+          curl -fsS --max-time 20 "https://xguardgate.com/openapi.json?verify=${GITHUB_RUN_ID}" > /tmp/openapi.json
+          node -e 'const x=require("/tmp/openapi.json"); if(!x.paths?.["/v1/extract"]) process.exit(1)'
+
+          for host in app.xguardgate.com inference.xguardgate.com legacy.xguardgate.com; do
+            echo "--- ${host} ---"
+            code="$(curl -sS -A 'Mozilla/5.0 XGuard-Live-Verify' -o /tmp/legacy.html -w '%{http_code}' --max-time 20 "https://${host}/?verify=${GITHUB_RUN_ID}" || true)"
+            echo "GET / => ${code}"
+            [[ "$code" == '200' ]]
+            grep -q '<title>XGuard Autonomous AI Inference Provider</title>' /tmp/legacy.html
+            curl -fsS --max-time 20 "https://${host}/healthz?verify=${GITHUB_RUN_ID}" > /tmp/legacy-health.json
+            node -e 'const x=require("/tmp/legacy-health.json"); if(x.service!=="xguard-autonomous-ai-inference-provider") process.exit(1)'
+          done
