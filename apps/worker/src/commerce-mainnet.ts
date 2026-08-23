@@ -15,6 +15,11 @@ import {
   globalCommerceScheduled,
   type GlobalCommerceEnv,
 } from "./global-commerce.js";
+import {
+  officialCommerceSourcesResponse,
+  refreshOfficialCommerceSources,
+  type OfficialCommerceSourceEnv,
+} from "./official-commerce-sources.js";
 
 export {
   MainnetPaymentCoordinator,
@@ -23,7 +28,9 @@ export {
   XPayGlobalRateGate,
 };
 
-type CommerceMainnetEnv = GlobalCommerceEnv & CommerceExecutionEnv;
+type CommerceMainnetEnv = GlobalCommerceEnv &
+  CommerceExecutionEnv &
+  OfficialCommerceSourceEnv;
 type MainnetHandler = ExportedHandler<CommerceMainnetEnv>;
 const base = universalMainnet as unknown as MainnetHandler;
 
@@ -34,6 +41,12 @@ export default {
 
     const execution = await commerceExecutionResponse(request as Request, env);
     if (execution !== null) return execution;
+
+    const sources = await officialCommerceSourcesResponse(
+      request as Request,
+      env,
+    );
+    if (sources !== null) return sources;
 
     const commerce = await globalCommerceResponse(request as Request, env);
     if (commerce !== null) return commerce;
@@ -48,6 +61,7 @@ export default {
   },
 
   async scheduled(controller, env, ctx): Promise<void> {
+    await refreshOfficialCommerceSources(env);
     await globalCommerceScheduled(env);
     await commerceExecutionScheduled(env);
     if (base.scheduled) await base.scheduled(controller, env, ctx);
