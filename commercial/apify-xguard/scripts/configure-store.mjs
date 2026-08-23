@@ -25,30 +25,6 @@ const items = Array.isArray(list?.items) ? list.items : [];
 const actor = items.find((item) => item?.name === 'xguard-web-extractor');
 if (!actor?.id) throw new Error('xguard-web-extractor was not found after push');
 
-const now = new Date().toISOString();
-const metadata = {
-  title: 'XGuard Web Extractor for AI & RAG',
-  description: 'Fast website extraction to clean Markdown, text, metadata, and normalized links for AI agents, RAG pipelines, and research automation.',
-  seoTitle: 'XGuard Web Extractor for AI and RAG',
-  seoDescription: 'Extract public websites into clean Markdown, text, metadata, and links for AI agents, RAG pipelines, research, and data ingestion.',
-  isPublic: true,
-  categories: ['AI'],
-  actorPermissionLevel: 'LIMITED_PERMISSIONS',
-  exampleRunInput: {
-    body: JSON.stringify({ startUrls: [{ url: 'https://example.com' }], maxPages: 10, followLinks: true, sameDomain: true, includeLinks: true }),
-    contentType: 'application/json; charset=utf-8',
-  },
-  defaultRunOptions: {
-    build: 'latest',
-    timeoutSecs: 900,
-    memoryMbytes: 256,
-    restartOnError: false,
-    maxItems: 100,
-  },
-};
-
-await request(`/actors/${actor.id}`, { method: 'PUT', body: JSON.stringify(metadata) });
-
 const current = await request(`/actors/${actor.id}`);
 const alreadyPriced = Array.isArray(current?.pricingInfos) && current.pricingInfos.some((info) => {
   if (info?.pricingModel !== 'PAY_PER_EVENT') return false;
@@ -56,7 +32,10 @@ const alreadyPriced = Array.isArray(current?.pricingInfos) && current.pricingInf
   return Number(event?.eventPriceUsd) === 0.004;
 });
 
+// Establish monetization while the Actor is still private. This avoids exposing
+// a public Store listing before its intended pay-per-event price is active.
 if (!alreadyPriced) {
+  const now = new Date().toISOString();
   const pricingInfos = [{
     pricingModel: 'PAY_PER_EVENT',
     apifyMarginPercentage: 0.2,
@@ -83,9 +62,40 @@ if (!alreadyPriced) {
   await request(`/actors/${actor.id}`, { method: 'PUT', body: JSON.stringify({ pricingInfos }) });
 }
 
+const priced = await request(`/actors/${actor.id}`);
+const activePricing = Array.isArray(priced?.pricingInfos)
+  ? priced.pricingInfos.find((info) => info?.pricingModel === 'PAY_PER_EVENT' && Number(info?.pricingPerEvent?.actorChargeEvents?.['page-result']?.eventPriceUsd) === 0.004)
+  : null;
+if (!activePricing) throw new Error('Pay-per-event pricing was not established before publication');
+
+const metadata = {
+  title: 'XGuard Web Extractor for AI & RAG',
+  description: 'Fast website extraction to clean Markdown, text, metadata, and normalized links for AI agents, RAG pipelines, and research automation.',
+  seoTitle: 'XGuard Web Extractor for AI and RAG',
+  seoDescription: 'Extract public websites into clean Markdown, text, metadata, and links for AI agents, RAG pipelines, research, and data ingestion.',
+  isPublic: true,
+  categories: ['AI'],
+  actorPermissionLevel: 'LIMITED_PERMISSIONS',
+  exampleRunInput: {
+    body: JSON.stringify({ startUrls: [{ url: 'https://example.com' }], maxPages: 10, followLinks: true, sameDomain: true, includeLinks: true }),
+    contentType: 'application/json; charset=utf-8',
+  },
+  defaultRunOptions: {
+    build: 'latest',
+    timeoutSecs: 900,
+    memoryMbytes: 256,
+    restartOnError: false,
+    maxItems: 100,
+  },
+};
+
+await request(`/actors/${actor.id}`, { method: 'PUT', body: JSON.stringify(metadata) });
+
 const verified = await request(`/actors/${actor.id}`);
 if (verified?.isPublic !== true) throw new Error('Actor is not public after publication update');
-const pricing = Array.isArray(verified?.pricingInfos) ? verified.pricingInfos.find((x) => x?.pricingModel === 'PAY_PER_EVENT') : null;
+const pricing = Array.isArray(verified?.pricingInfos)
+  ? verified.pricingInfos.find((x) => x?.pricingModel === 'PAY_PER_EVENT')
+  : null;
 const pageEvent = pricing?.pricingPerEvent?.actorChargeEvents?.['page-result'];
 if (Number(pageEvent?.eventPriceUsd) !== 0.004) throw new Error('Pay-per-event pricing is not active at $0.004/page-result');
 
