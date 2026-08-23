@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "commercial/**"
+      - "scripts/rebind-worker-domains.mjs"
       - ".github/workflows/commercial-surfaces.yml"
       - ".github/workflows/deploy-commercial-extractor.yml"
       - ".github/workflows/pin-commercial-domains.yml"
@@ -13,6 +14,7 @@ on:
     branches: [main]
     paths:
       - "commercial/**"
+      - "scripts/rebind-worker-domains.mjs"
       - ".github/workflows/commercial-surfaces.yml"
       - ".github/workflows/deploy-commercial-extractor.yml"
       - ".github/workflows/pin-commercial-domains.yml"
@@ -62,5 +64,6 @@ jobs:
           npm ci --ignore-scripts
           node --check commercial/cloudflare-xguard/src/safe-index.js
           node --check commercial/cloudflare-xguard/src/secure-entry.js
+          node --check scripts/rebind-worker-domains.mjs
           npx wrangler deploy --dry-run --config commercial/cloudflare-xguard/wrangler.jsonc --outdir /tmp/xguard-extractor-dry-run
           test -s /tmp/xguard-extractor-dry-run/secure-entry.js
