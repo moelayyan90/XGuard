@@ -36,7 +36,7 @@ jobs:
 
       - name: Validate Worker source
         run: |
-          node --check commercial/cloudflare-xguard/src/index.js
+          node --check commercial/cloudflare-xguard/src/safe-index.js
           node --check commercial/cloudflare-xguard/src/secure-entry.js
 
       - name: Deploy Worker
