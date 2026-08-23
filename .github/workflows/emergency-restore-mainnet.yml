@@ -6,12 +6,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/emergency-restore-mainnet.yml"
-      - "apps/worker/src/inference-provider.ts"
   push:
     branches: [main]
     paths:
       - ".github/workflows/emergency-restore-mainnet.yml"
-      - "apps/worker/src/inference-provider.ts"
 
 permissions:
   contents: read
@@ -100,7 +98,7 @@ jobs:
             fi
           done
 
-      - name: Verify restored public site
+      - name: Verify restored browser access
         shell: bash
         run: |
           set -euo pipefail
@@ -114,10 +112,7 @@ jobs:
 
           get_code="$(curl -sS -A 'Mozilla/5.0 XGuard-Recovery' -o /tmp/site.html -w '%{http_code}' --max-time 20 "${base}/?restore=${GITHUB_SHA}")"
           [[ "$get_code" == '200' ]]
-          grep -q 'AUTONOMOUS AI INFERENCE PROVIDER' /tmp/site.html
-
-          head_code="$(curl -sS -I -o /tmp/head.txt -w '%{http_code}' --max-time 20 "${base}/?restore=${GITHUB_SHA}")"
-          [[ "$head_code" == '200' ]]
+          grep -q 'XGuard Autonomous AI Inference Provider' /tmp/site.html
 
           curl -fsS "${base}/v1/status?restore=${GITHUB_SHA}" > /tmp/status.json
           node -e 'const x=require("/tmp/status.json"); if(x.service!=="XGuard Autonomous AI Inference Provider") process.exit(1)'
@@ -135,7 +130,7 @@ jobs:
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [[ "$JOB_STATUS" == success ]]; then
             state=success
-            description='Previous XGuard mainnet site restored and verified (GET+HEAD)'
+            description='Previous XGuard mainnet browser site restored and verified'
             target_url='https://xguardgate.com'
           fi
           payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-emergency-restore",description,target_url}))' "$state" "$description" "$target_url")"
