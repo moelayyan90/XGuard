@@ -2,6 +2,10 @@ name: Emergency Restore XGuard Mainnet
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/emergency-restore-mainnet.yml"
   push:
     branches: [main]
     paths:
