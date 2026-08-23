@@ -3,22 +3,16 @@ name: Commercial Surfaces
 on:
   pull_request:
     paths:
-      - "commercial/**"
-      - "scripts/rebind-worker-domains.mjs"
+      - "apps/email-shield/**"
+      - "commercial/rapidapi-xguard/openapi.json"
       - ".github/workflows/commercial-surfaces.yml"
-      - ".github/workflows/deploy-commercial-extractor.yml"
-      - ".github/workflows/pin-commercial-domains.yml"
-      - ".github/workflows/publish-apify-actor.yml"
       - ".github/workflows/publish-rapidapi-listing.yml"
   push:
     branches: [main]
     paths:
-      - "commercial/**"
-      - "scripts/rebind-worker-domains.mjs"
+      - "apps/email-shield/**"
+      - "commercial/rapidapi-xguard/openapi.json"
       - ".github/workflows/commercial-surfaces.yml"
-      - ".github/workflows/deploy-commercial-extractor.yml"
-      - ".github/workflows/pin-commercial-domains.yml"
-      - ".github/workflows/publish-apify-actor.yml"
       - ".github/workflows/publish-rapidapi-listing.yml"
 
 permissions:
@@ -35,35 +29,25 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Validate Actor metadata JSON
+      - name: Validate Email Shield runtime
         run: |
-          python -m json.tool commercial/apify-xguard/.actor/actor.json >/dev/null
-          python -m json.tool commercial/apify-xguard/.actor/input_schema.json >/dev/null
-          python -m json.tool commercial/apify-xguard/.actor/output_schema.json >/dev/null
-          python -m json.tool commercial/apify-xguard/.actor/dataset_schema.json >/dev/null
-          python -m json.tool commercial/apify-xguard/.actor/pay_per_event.json >/dev/null
-          node --check commercial/apify-xguard/scripts/configure-store.mjs
+          node --check apps/email-shield/src/index.js
+          node --check apps/email-shield/src/verifier.js
+          node --check apps/email-shield/src/site.js
 
-      - name: Install and check Apify Actor
-        working-directory: commercial/apify-xguard
+      - name: Validate RapidAPI contract
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
-          npm run check
+          python -m json.tool commercial/rapidapi-xguard/openapi.json >/dev/null
+          node -e 'const x=require("./commercial/rapidapi-xguard/openapi.json"); if(!x.openapi.startsWith("3.0")||x.info.title!=="XGuard Email Shield API"||x.servers?.[0]?.url!=="https://api.xguardgate.com"||!x.paths?.["/v1/verify"]||!x.paths?.["/v1/verify/batch"]) process.exit(1)'
 
-      - name: Install and test RapidAPI service
-        working-directory: commercial/rapidapi-xguard
+      - name: Validate D1 migration and Wrangler config
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
-          npm run check
-          npm test
-          python -m json.tool openapi.json >/dev/null
-          node -e 'const x=require("./openapi.json"); if(!x.openapi.startsWith("3.0")||x.info.title!=="XGuard Web Extractor API"||x.servers?.[0]?.url!=="https://extract.xguardgate.com"||!x.paths?.["/v1/extract"]) process.exit(1)'
-
-      - name: Validate Cloudflare production origin
-        run: |
+          python - <<'PY'
+          import json, sqlite3
+          json.load(open('apps/email-shield/wrangler.jsonc', encoding='utf-8'))
+          db=sqlite3.connect(':memory:')
+          db.executescript(open('apps/email-shield/migrations/0001_email_shield.sql', encoding='utf-8').read())
+          assert db.execute("select count(*) from sqlite_master where type='table' and name='api_keys'").fetchone()[0] == 1
+          PY
           npm ci --ignore-scripts
-          node --check commercial/cloudflare-xguard/src/safe-index.js
-          node --check commercial/cloudflare-xguard/src/secure-entry.js
-          node --check scripts/rebind-worker-domains.mjs
-          npx wrangler deploy --dry-run --config commercial/cloudflare-xguard/wrangler.jsonc --outdir /tmp/xguard-extractor-dry-run
-          test -s /tmp/xguard-extractor-dry-run/secure-entry.js
+          npx wrangler deploy --dry-run --config apps/email-shield/wrangler.jsonc --outdir /tmp/xguard-email-shield-dry-run
