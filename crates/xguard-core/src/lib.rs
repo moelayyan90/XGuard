@@ -94,31 +94,72 @@ impl Decision {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConfigError {
-    TooManyRules { count: usize, max: usize },
-    InvalidProgramId { program_id: String },
-    DuplicateProgramId { program_id: String },
-    DelayOutOfRange { program_id: String, delay_ms: u8 },
-    TooManyMarkers { program_id: String, count: usize, max: usize },
-    EmptyMarker { program_id: String },
-    MarkerTooLong { program_id: String, len: usize, max: usize },
+    TooManyRules {
+        count: usize,
+        max: usize,
+    },
+    InvalidProgramId {
+        program_id: String,
+    },
+    DuplicateProgramId {
+        program_id: String,
+    },
+    DelayOutOfRange {
+        program_id: String,
+        delay_ms: u8,
+    },
+    TooManyMarkers {
+        program_id: String,
+        count: usize,
+        max: usize,
+    },
+    EmptyMarker {
+        program_id: String,
+    },
+    MarkerTooLong {
+        program_id: String,
+        len: usize,
+        max: usize,
+    },
 }
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TooManyRules { count, max } => write!(f, "too many rules: {count} > {max}"),
-            Self::InvalidProgramId { program_id } => write!(f, "invalid Solana program id: {program_id}"),
-            Self::DuplicateProgramId { program_id } => write!(f, "duplicate program id: {program_id}"),
-            Self::DelayOutOfRange { program_id, delay_ms } => write!(
+            Self::InvalidProgramId { program_id } => {
+                write!(f, "invalid Solana program id: {program_id}")
+            }
+            Self::DuplicateProgramId { program_id } => {
+                write!(f, "duplicate program id: {program_id}")
+            }
+            Self::DelayOutOfRange {
+                program_id,
+                delay_ms,
+            } => write!(
                 f,
                 "delay for {program_id} must be between {MIN_DELAY_MS}ms and {MAX_DELAY_MS}ms, got {delay_ms}ms"
             ),
-            Self::TooManyMarkers { program_id, count, max } => {
-                write!(f, "too many bypass markers for {program_id}: {count} > {max}")
+            Self::TooManyMarkers {
+                program_id,
+                count,
+                max,
+            } => {
+                write!(
+                    f,
+                    "too many bypass markers for {program_id}: {count} > {max}"
+                )
             }
             Self::EmptyMarker { program_id } => write!(f, "empty bypass marker for {program_id}"),
-            Self::MarkerTooLong { program_id, len, max } => {
-                write!(f, "bypass marker for {program_id} is too long: {len} > {max}")
+            Self::MarkerTooLong {
+                program_id,
+                len,
+                max,
+            } => {
+                write!(
+                    f,
+                    "bypass marker for {program_id} is too long: {len} > {max}"
+                )
             }
         }
     }
@@ -285,7 +326,10 @@ mod tests {
         };
         let decision = classify(&config(), &tx);
         assert_eq!(decision.delay_ms, 20);
-        assert_eq!(decision.matches[0].reason, MatchReason::ProtectedTopLevelInstruction);
+        assert_eq!(
+            decision.matches[0].reason,
+            MatchReason::ProtectedTopLevelInstruction
+        );
     }
 
     #[test]
@@ -326,7 +370,10 @@ mod tests {
         };
         let decision = classify(&config(), &tx);
         assert_eq!(decision.delay_ms, 20);
-        assert_eq!(decision.matches[0].reason, MatchReason::IndirectOrCpiReference);
+        assert_eq!(
+            decision.matches[0].reason,
+            MatchReason::IndirectOrCpiReference
+        );
     }
 
     #[test]
