@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 env:
   APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
@@ -65,3 +66,29 @@ jobs:
         if: ${{ env.APIFY_TOKEN == '' }}
         run: |
           echo 'APIFY_TOKEN is not present in repository secrets. Actor code is validated but account-level publication cannot authenticate.'
+
+      - name: Publish truthful Apify status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=failure
+          description='Apify publication did not complete'
+          target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [[ -z "${APIFY_TOKEN:-}" ]]; then
+            description='Apify account token is not configured'
+          elif [[ "$JOB_STATUS" == 'success' ]]; then
+            state=success
+            description='XGuard Actor is published and pricing verified'
+            target_url='https://apify.com/store'
+          fi
+          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-apify-publication",description,target_url}))' "$state" "$description" "$target_url")"
+          curl --fail-with-body --silent --show-error --request POST \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data "$payload" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" >/dev/null

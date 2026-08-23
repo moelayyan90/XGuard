@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "commercial/cloudflare-xguard/**"
+      - "scripts/rebind-worker-domains.mjs"
       - ".github/workflows/deploy-commercial-extractor.yml"
       - ".github/workflows/pin-commercial-domains.yml"
 
@@ -38,6 +39,7 @@ jobs:
         run: |
           node --check commercial/cloudflare-xguard/src/safe-index.js
           node --check commercial/cloudflare-xguard/src/secure-entry.js
+          node --check scripts/rebind-worker-domains.mjs
 
       - name: Deploy Worker
         env:
@@ -71,30 +73,17 @@ jobs:
             echo 'RAPIDAPI_PROXY_SECRET is not configured; direct origin remains public until Rapid assigns and exposes the per-API proxy secret.'
           fi
 
-      - name: Bind canonical XGuard domains
+      - name: Transfer canonical XGuard domains
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        shell: bash
         run: |
-          set -euo pipefail
-          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
-          account="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n ')"
-          api="https://api.cloudflare.com/client/v4/accounts/${account}/workers/domains"
-          bind() {
-            local hostname="$1" service="$2"
-            local payload response
-            payload="$(node -e 'const [h,s]=process.argv.slice(1);process.stdout.write(JSON.stringify({hostname:h,service:s,zone_name:"xguardgate.com"}))' "$hostname" "$service")"
-            response="$(curl --fail-with-body -sS --retry 4 --retry-all-errors -X PUT \
-              -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
-              --data "$payload" "$api")"
-            printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);if(j.success!==true){console.error(s);process.exit(1)}})'
-          }
-          bind xguardgate.com xguard-web-extractor
-          bind www.xguardgate.com xguard-web-extractor
-          bind extract.xguardgate.com xguard-web-extractor
-          bind inference.xguardgate.com xguard-mainnet
-          bind legacy.xguardgate.com xguard-mainnet
+          node scripts/rebind-worker-domains.mjs \
+            xguardgate.com=xguard-web-extractor \
+            www.xguardgate.com=xguard-web-extractor \
+            extract.xguardgate.com=xguard-web-extractor \
+            inference.xguardgate.com=xguard-mainnet \
+            legacy.xguardgate.com=xguard-mainnet
 
       - name: Verify live production endpoint
         env:
