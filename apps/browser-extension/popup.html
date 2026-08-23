@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>XGuard Pay All</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { width: 360px; margin: 0; background: #f6f9f9; color: #10242d; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+      header { display:flex; align-items:center; gap:10px; padding:15px 16px; background:#10272e; color:#fff; }
+      .logo { width:34px; height:34px; display:grid; place-items:center; border-radius:11px; background:linear-gradient(135deg,#26c9c2,#0d8a91); font-weight:900; font-size:18px; }
+      h1 { margin:0; font-size:15px; }
+      header p { margin:3px 0 0; color:#bcd0d2; font-size:10px; }
+      main { padding:13px; }
+      .session { display:none; padding:11px 12px; margin-bottom:10px; border-radius:13px; background:#e9fffc; border:1px solid #bfe9e5; color:#17635f; font-size:11px; font-weight:700; }
+      .items { display:grid; gap:7px; }
+      .item { display:grid; grid-template-columns:1fr auto; gap:8px; padding:10px; border:1px solid #e1eceb; border-radius:13px; background:#fff; }
+      .title { font-size:11px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .merchant { margin-top:2px; color:#82969a; font-size:9px; direction:ltr; text-align:right; }
+      .price { font-size:11px; font-weight:850; white-space:nowrap; }
+      button { font:inherit; cursor:pointer; }
+      .remove { margin-top:5px; padding:0; border:0; background:transparent; color:#9e5555; font-size:9px; }
+      .empty { padding:28px 10px; text-align:center; color:#789095; font-size:11px; }
+      .totals { margin-top:10px; padding:10px; border-radius:12px; background:#edf3f2; display:grid; gap:5px; }
+      .total { display:flex; justify-content:space-between; font-size:11px; font-weight:800; }
+      .primary { width:100%; margin-top:10px; border:0; border-radius:12px; padding:11px; background:#0d918c; color:#fff; font-weight:850; font-size:11px; }
+      .primary:disabled { opacity:.45; cursor:not-allowed; }
+      .secondary { width:100%; margin-top:7px; border:1px solid #d3e1df; border-radius:12px; padding:9px; background:#fff; color:#39565c; font-weight:750; font-size:10px; }
+      .note { margin:10px 3px 0; color:#83979b; font-size:9px; line-height:1.55; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo">X</div>
+      <div><h1>XGuard Pay All</h1><p>سلة دفع عائمة بين المواقع</p></div>
+    </header>
+    <main>
+      <div class="session" id="session"></div>
+      <div class="items" id="items"></div>
+      <div class="totals" id="totals" hidden></div>
+      <button class="primary" id="payAll" disabled>ادفع الكل</button>
+      <button class="secondary" id="clear" hidden>مسح السلة</button>
+      <div class="note">السلة محفوظة محليًا في متصفحك. XGuard لا يخزن أرقام البطاقات أو كلمات المرور.</div>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

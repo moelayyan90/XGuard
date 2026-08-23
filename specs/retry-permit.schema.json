@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xguardgate.com/specs/retry-permit.schema.json",
+  "title": "XGuard Retry Permit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "permitId",
+    "logicalPaymentId",
+    "priorAttemptId",
+    "decision",
+    "operation",
+    "rail",
+    "amount",
+    "currency",
+    "issuedAt",
+    "expiresAt",
+    "nonce",
+    "reason"
+  ],
+  "properties": {
+    "version": { "const": "xguard-retry-permit/1" },
+    "permitId": { "type": "string", "minLength": 16, "maxLength": 200 },
+    "logicalPaymentId": { "type": "string", "minLength": 16, "maxLength": 300 },
+    "priorAttemptId": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "decision": { "enum": ["ALLOW_ONCE", "DENY", "WAIT"] },
+    "priorOutcome": { "enum": ["FINALIZED", "PROVEN_FAILED", "AMBIGUOUS", "MANUAL_REVIEW"] },
+    "operation": { "enum": ["AUTHORIZE", "CAPTURE", "SALE", "REFUND", "PAYOUT", "SETTLE"] },
+    "rail": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "amount": { "type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+)?$" },
+    "currency": { "type": "string", "minLength": 2, "maxLength": 20 },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "nonce": { "type": "string", "minLength": 16, "maxLength": 200 },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "evidenceRefs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 },
+      "maxItems": 50
+    },
+    "signature": { "type": "string", "minLength": 16, "maxLength": 2000 }
+  }
+}

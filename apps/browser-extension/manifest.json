@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "XGuard Pay All",
+  "version": "0.1.0",
+  "description": "A user-side floating payment cart that collects checkout amounts across websites and coordinates Pay All.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "XGuard Pay All",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
