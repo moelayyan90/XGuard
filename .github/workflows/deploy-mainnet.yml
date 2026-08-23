@@ -56,7 +56,7 @@ jobs:
           fi
 
           db_id="$(npx wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);const x=a.find(v=>v?.name==="xguard-email-shield");if(!x?.uuid&&!x?.id)process.exit(1);process.stdout.write(x.uuid||x.id)})')"
-          config="${RUNNER_TEMP}/xguard-email-shield.resolved.jsonc"
+          config="${GITHUB_WORKSPACE}/apps/email-shield/wrangler.resolved.jsonc"
           node - apps/email-shield/wrangler.jsonc "$config" "$db_id" <<'NODE'
           const fs = require('node:fs');
           const [source, target, id] = process.argv.slice(2);
