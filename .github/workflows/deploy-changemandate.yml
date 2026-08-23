@@ -30,6 +30,7 @@ jobs:
           node-version: 24
 
       - name: Test and validate
+        id: test
         run: |
           set -euo pipefail
           cd apps/changemandate
@@ -37,8 +38,8 @@ jobs:
           npm run check
           node -e "JSON.parse(require('node:fs').readFileSync('wrangler.jsonc','utf8'))"
 
-      - name: Deploy to Cloudflare Workers
-        id: deploy
+      - name: Upload Worker to Cloudflare
+        id: upload
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -47,54 +48,132 @@ jobs:
         run: |
           set -euo pipefail
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
-          [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
+          if [[ -z "$token" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "reason=missing_cloudflare_repository_secrets" >> "$GITHUB_OUTPUT"
+            : > /tmp/changemandate-deploy.log
+            exit 0
+          fi
           export CLOUDFLARE_API_TOKEN="$token"
-          npx --yes wrangler@latest deploy --config apps/changemandate/wrangler.jsonc 2>&1 | tee /tmp/changemandate-deploy.log
-          url="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' /tmp/changemandate-deploy.log | tail -1 || true)"
-          [[ -n "$url" ]] || { echo 'Wrangler did not emit a workers.dev production URL'; cat /tmp/changemandate-deploy.log; exit 1; }
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "Deployed URL: $url"
+          set +e
+          npx --yes wrangler@4.123.0 deploy --config apps/changemandate/wrangler.jsonc 2>&1 | tee /tmp/changemandate-deploy.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [[ "$rc" -eq 0 ]]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "reason=uploaded" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            reason="$(tail -n 20 /tmp/changemandate-deploy.log | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-220)"
+            echo "reason=${reason:-wrangler_failed}" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Verify production
-        id: verify
-        env:
-          BASE_URL: ${{ steps.deploy.outputs.url }}
+      - name: Resolve production URL
+        id: resolve
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
+          url=""
+          if [[ -f /tmp/changemandate-deploy.log ]]; then
+            url="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' /tmp/changemandate-deploy.log | tail -1 || true)"
+          fi
+          if [[ -n "$url" ]]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "url=$url" >> "$GITHUB_OUTPUT"
+            echo "reason=resolved" >> "$GITHUB_OUTPUT"
+            echo "Resolved URL: $url"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "url=" >> "$GITHUB_OUTPUT"
+            echo "reason=no_workers_dev_url_in_wrangler_output" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify production
+        id: verify
+        if: always()
+        env:
+          BASE_URL: ${{ steps.resolve.outputs.url }}
+          UPLOAD_OK: ${{ steps.upload.outputs.ok }}
+          URL_OK: ${{ steps.resolve.outputs.ok }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$UPLOAD_OK" != "true" ]]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "reason=upload_failed" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$URL_OK" != "true" || -z "$BASE_URL" ]]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "reason=url_unresolved" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           for attempt in {1..30}; do
-            if curl --fail --silent --show-error --max-time 10 "${BASE_URL}/healthz" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="ChangeMandate")process.exit(1)})'; then
-              curl --fail --silent --show-error --max-time 10 "${BASE_URL}/.well-known/changemandate" >/dev/null
-              code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "${BASE_URL}/mcp")"
-              [[ "$code" = "405" ]] || { echo "Expected GET /mcp to return 405, got $code"; exit 1; }
-              echo "Production verification passed"
+            if body="$(curl --fail --silent --show-error --max-time 10 "${BASE_URL}/healthz" 2>/dev/null)" && \
+               printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="ChangeMandate")process.exit(1)})'; then
+              discovery_ct="$(curl --fail --silent --show-error --max-time 10 -D - -o /tmp/cm-discovery.json "${BASE_URL}/.well-known/changemandate" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print tolower($2); exit}')"
+              node -e 'const x=JSON.parse(require("node:fs").readFileSync("/tmp/cm-discovery.json","utf8")); if(x.name!=="ChangeMandate") process.exit(1)'
+              [[ "$discovery_ct" == application/json* ]] || { echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=discovery_content_type_invalid" >> "$GITHUB_OUTPUT"; exit 0; }
+              code="$(curl --silent --output /tmp/cm-mcp-get.json --write-out '%{http_code}' --max-time 10 "${BASE_URL}/mcp")"
+              [[ "$code" = "405" ]] || { echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=mcp_get_expected_405_got_${code}" >> "$GITHUB_OUTPUT"; exit 0; }
+              echo "ok=true" >> "$GITHUB_OUTPUT"
+              echo "reason=production_verified" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 4
           done
-          exit 1
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          echo "reason=health_check_failed" >> "$GITHUB_OUTPUT"
 
-      - name: Report deployment status
+      - name: Publish diagnostic statuses
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
-          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          UPLOAD_OK: ${{ steps.upload.outputs.ok }}
+          UPLOAD_REASON: ${{ steps.upload.outputs.reason }}
+          URL_OK: ${{ steps.resolve.outputs.ok }}
+          URL_REASON: ${{ steps.resolve.outputs.reason }}
+          DEPLOY_URL: ${{ steps.resolve.outputs.url }}
+          VERIFY_OK: ${{ steps.verify.outputs.ok }}
+          VERIFY_REASON: ${{ steps.verify.outputs.reason }}
         shell: bash
         run: |
           set -euo pipefail
-          state="failure"
-          description="ChangeMandate Cloudflare deployment failed"
-          if [[ "$DEPLOY_OUTCOME" = "success" && "$VERIFY_OUTCOME" = "success" ]]; then
-            state="success"
-            description="ChangeMandate deployed and verified"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          post_status() {
+            local context="$1" state="$2" description="$3" target="$4"
+            description="$(printf '%s' "$description" | tr '\n' ' ' | cut -c1-140)"
+            payload="$(node -e 'const [state,context,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context,description,target_url}))' "$state" "$context" "$description" "$target")"
+            curl --fail --silent --show-error -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+              -d "$payload" >/dev/null
+          }
+          [[ "$UPLOAD_OK" = "true" ]] && upload_state=success || upload_state=failure
+          [[ "$URL_OK" = "true" ]] && url_state=success || url_state=failure
+          [[ "$VERIFY_OK" = "true" ]] && verify_state=success || verify_state=failure
+          post_status "changemandate/cloudflare/upload" "$upload_state" "${UPLOAD_REASON:-unknown_upload_state}" "$run_url"
+          if [[ "$url_state" = success && -n "${DEPLOY_URL:-}" ]]; then
+            post_status "changemandate/cloudflare/url" success "workers.dev URL resolved" "$DEPLOY_URL"
+          else
+            post_status "changemandate/cloudflare/url" failure "${URL_REASON:-unknown_url_state}" "$run_url"
           fi
-          payload="$(node -e 'const [state,description,url]=process.argv.slice(1); const x={state,context:"changemandate/cloudflare",description}; if(url)x.target_url=url; process.stdout.write(JSON.stringify(x))' "$state" "$description" "${DEPLOY_URL:-}")"
-          curl --fail --silent --show-error \
-            -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
-            -d "$payload"
+          if [[ "$verify_state" = success && -n "${DEPLOY_URL:-}" ]]; then
+            post_status "changemandate/cloudflare/verify" success "production health, discovery and MCP verified" "$DEPLOY_URL"
+          else
+            post_status "changemandate/cloudflare/verify" failure "${VERIFY_REASON:-unknown_verify_state}" "$run_url"
+          fi
+
+      - name: Enforce deployment success
+        if: always()
+        env:
+          UPLOAD_OK: ${{ steps.upload.outputs.ok }}
+          URL_OK: ${{ steps.resolve.outputs.ok }}
+          VERIFY_OK: ${{ steps.verify.outputs.ok }}
+        run: |
+          test "$UPLOAD_OK" = true
+          test "$URL_OK" = true
+          test "$VERIFY_OK" = true
