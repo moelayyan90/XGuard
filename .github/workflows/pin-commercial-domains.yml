@@ -18,40 +18,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
       - name: Rebind canonical and legacy domains
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        shell: bash
         run: |
-          set -euo pipefail
-          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
-          account="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n ')"
-          [[ -n "$token" && -n "$account" ]] || { echo 'Cloudflare deployment credentials unavailable'; exit 1; }
-          api="https://api.cloudflare.com/client/v4/accounts/${account}/workers/domains"
-          bind() {
-            local hostname="$1" service="$2"
-            local payload response
-            payload="$(node -e 'const [h,s]=process.argv.slice(1);process.stdout.write(JSON.stringify({hostname:h,service:s,zone_name:"xguardgate.com"}))' "$hostname" "$service")"
-            response="$(curl --fail-with-body -sS --retry 4 --retry-all-errors -X PUT \
-              -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
-              --data "$payload" "$api")"
-            printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);if(j.success!==true){console.error(s);process.exit(1)}})'
-          }
-          bind xguardgate.com xguard-web-extractor
-          bind www.xguardgate.com xguard-web-extractor
-          bind extract.xguardgate.com xguard-web-extractor
-          bind inference.xguardgate.com xguard-mainnet
-          bind legacy.xguardgate.com xguard-mainnet
+          node scripts/rebind-worker-domains.mjs \
+            xguardgate.com=xguard-web-extractor \
+            www.xguardgate.com=xguard-web-extractor \
+            extract.xguardgate.com=xguard-web-extractor \
+            inference.xguardgate.com=xguard-mainnet \
+            legacy.xguardgate.com=xguard-mainnet
 
       - name: Verify canonical product identity
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in {1..20}; do
+          for attempt in {1..30}; do
             code="$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 15 "https://xguardgate.com/healthz?pin=${GITHUB_RUN_ID}&attempt=${attempt}" || true)"
             if [[ "$code" == '200' ]] && node -e 'const x=require("/tmp/health.json");if(x.service!=="xguard-web-extractor"||x.live!==true)process.exit(1)'; then exit 0; fi
-            sleep 3
+            sleep 4
           done
           cat /tmp/health.json || true
           exit 1
