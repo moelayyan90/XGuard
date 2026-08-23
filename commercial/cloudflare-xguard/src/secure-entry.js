@@ -58,6 +58,31 @@ function blockedResponse() {
   );
 }
 
+// xguard-mainnet previously created SQLite Durable Object classes. Cloudflare
+// requires those class exports to remain present on future versions unless an
+// explicit destructive delete-class migration is applied. XGuard Web Extractor
+// does not use them, but preserving inert compatibility classes lets us replace
+// the live Worker without deleting historical Durable Object storage.
+class RetiredDurableObject {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async fetch() {
+    return new Response('Legacy XGuard Durable Object retired', {
+      status: 410,
+      headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+    });
+  }
+}
+
+export class MainnetPaymentCoordinator extends RetiredDurableObject {}
+export class MainnetRequestGate extends RetiredDurableObject {}
+export class XPayGlobalRateGate extends RetiredDurableObject {}
+export class WebhookDeliveryQueue extends RetiredDurableObject {}
+export class InferenceCoordinator extends RetiredDurableObject {}
+
 export default {
   async fetch(request, env, ctx) {
     const requestUrl = new URL(request.url);
