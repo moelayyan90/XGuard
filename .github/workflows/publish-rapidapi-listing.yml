@@ -35,7 +35,7 @@ jobs:
       - name: Create or update RapidAPI listing
         if: ${{ env.RAPIDAPI_OWNER_ID != '' && env.RAPIDAPI_PROVIDER_KEY != '' && env.RAPIDAPI_GRAPHQL_HOST != '' }}
         id: rapidapi-upload
-        uses: RapidAPI/create_or_update_rapidapi_listing@v0
+        uses: RapidAPI/create_or_update_rapidapi_listing@main
         with:
           spec_path: commercial/rapidapi-xguard/openapi.json
           owner_id: ${{ env.RAPIDAPI_OWNER_ID }}
