@@ -27,8 +27,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci --ignore-scripts
       - name: Validate Email Shield source
         run: |
           set -euo pipefail
@@ -50,12 +48,13 @@ jobs:
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
           export CLOUDFLARE_API_TOKEN="$token"
+          wrangler='npx --yes wrangler@4.123.0'
 
-          if ! npx wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);process.exit(Array.isArray(a)&&a.some(x=>x?.name==="xguard-email-shield")?0:1)})'; then
-            npx wrangler d1 create xguard-email-shield
+          if ! $wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);process.exit(Array.isArray(a)&&a.some(x=>x?.name==="xguard-email-shield")?0:1)})'; then
+            $wrangler d1 create xguard-email-shield
           fi
 
-          db_id="$(npx wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);const x=a.find(v=>v?.name==="xguard-email-shield");if(!x?.uuid&&!x?.id)process.exit(1);process.stdout.write(x.uuid||x.id)})')"
+          db_id="$($wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);const x=a.find(v=>v?.name==="xguard-email-shield");if(!x?.uuid&&!x?.id)process.exit(1);process.stdout.write(x.uuid||x.id)})')"
           config="${GITHUB_WORKSPACE}/apps/email-shield/wrangler.resolved.jsonc"
           node - apps/email-shield/wrangler.jsonc "$config" "$db_id" <<'NODE'
           const fs = require('node:fs');
@@ -67,8 +66,9 @@ jobs:
           fs.writeFileSync(target, JSON.stringify(config, null, 2));
           NODE
 
-          npx wrangler d1 migrations apply xguard-email-shield --remote --config "$config"
-          npx wrangler deploy --config "$config"
+          $wrangler d1 migrations apply xguard-email-shield --remote --config "$config"
+          $wrangler deploy --config "$config"
+          rm -f "$config"
       - name: Verify production
         shell: bash
         run: |
@@ -76,12 +76,12 @@ jobs:
           for base in 'https://api.xguardgate.com' 'https://xguardgate.com'; do
             ok=0
             for attempt in {1..30}; do
-              if curl --fail --silent --show-error --max-time 10 "${base}/healthz" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="XGuard Email Shield")process.exit(1)})'; then ok=1; break; fi
+              if body="$(curl --fail --silent --show-error --max-time 10 "${base}/healthz" 2>/dev/null)" && printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="XGuard Email Shield")process.exit(1)})'; then ok=1; break; fi
               sleep 4
             done
             [[ "$ok" == 1 ]]
           done
-          curl --fail --silent --show-error https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.title!=="XGuard Email Shield API"||!x.paths?.["/v1/verify"])process.exit(1)})'
+          curl --fail --silent --show-error https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.title!=="XGuard Email Shield API"||!x.paths?.["/v1/verify"]||!x.paths?.["/v1/verify/batch"])process.exit(1)})'
       - name: Publish deployment status
         if: always()
         env:

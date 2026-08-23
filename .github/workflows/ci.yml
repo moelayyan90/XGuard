@@ -22,26 +22,28 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - name: Verify Email Shield source
-        shell: bash
+      - name: Verify Worker source
         run: |
           set -euo pipefail
           node --check apps/email-shield/src/index.js
           node --check apps/email-shield/src/verifier.js
           node --check apps/email-shield/src/site.js
+      - name: Verify D1 schema and Wrangler config
+        run: |
           python - <<'PY'
           import json, sqlite3
           json.load(open('apps/email-shield/wrangler.jsonc', encoding='utf-8'))
-          sql=open('apps/email-shield/migrations/0001_email_shield.sql', encoding='utf-8').read()
           db=sqlite3.connect(':memory:')
-          db.executescript(sql)
+          db.executescript(open('apps/email-shield/migrations/0001_email_shield.sql', encoding='utf-8').read())
           expected={'api_keys','free_key_claims','usage_daily'}
           found={r[0] for r in db.execute("select name from sqlite_master where type='table'")}
           assert expected <= found
           PY
-      - name: Verify WordPress plugin syntax
-        shell: bash
+      - name: Verify WordPress plugin
         run: |
-          if command -v php >/dev/null 2>&1; then php -l apps/email-shield/integrations/wordpress/xguard-email-shield.php; else echo 'PHP CLI not installed; syntax covered by CodeQL.'; fi
+          if command -v php >/dev/null 2>&1; then php -l apps/email-shield/integrations/wordpress/xguard-email-shield.php; fi
+      - name: Cloudflare dry run
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          npx --yes wrangler@4.123.0 deploy --dry-run --config apps/email-shield/wrangler.jsonc --outdir /tmp/xguard-email-shield-dry-run
