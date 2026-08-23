@@ -4,9 +4,9 @@ info:
   version: 1.0.0
   description: Convert a public web page into clean Markdown, text, metadata, and normalized links for AI agents and RAG pipelines.
 servers:
-  - url: https://YOUR_PROVIDER_ORIGIN
+  - url: https://extract.xguardgate.com
 paths:
-  /health:
+  /healthz:
     get:
       operationId: health
       summary: Service health
@@ -17,13 +17,16 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [ok, service, live]
                 properties:
                   ok: { type: boolean }
+                  service: { type: string }
+                  live: { type: boolean }
   /v1/extract:
     post:
       operationId: extractPage
       summary: Extract one public web page
-      description: Billing is managed by RapidAPI. The provider origin accepts calls only from the configured RapidAPI proxy in production.
+      description: Billing and consumer authentication are managed by RapidAPI. The provider origin supports X-RapidAPI-Proxy-Secret enforcement once the marketplace secret is configured.
       requestBody:
         required: true
         content:
@@ -36,7 +39,7 @@ paths:
                   type: string
                   format: uri
                   maxLength: 4096
-                  example: https://example.com/article
+                  example: https://example.com
                 includeLinks:
                   type: boolean
                   default: true
@@ -45,16 +48,6 @@ paths:
                   minimum: 1000
                   maximum: 1000000
                   default: 200000
-                timeoutMs:
-                  type: integer
-                  minimum: 1000
-                  maximum: 60000
-                  default: 20000
-                maxHtmlBytes:
-                  type: integer
-                  minimum: 100000
-                  maximum: 10000000
-                  default: 5000000
       responses:
         '200':
           description: Successful extraction
@@ -62,26 +55,21 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ok, result]
+                required: [url, statusCode, markdown, text, product]
                 properties:
-                  ok: { type: boolean, const: true }
-                  result:
-                    type: object
-                    properties:
-                      url: { type: string }
-                      statusCode: { type: integer }
-                      title: { type: string }
-                      description: { type: string }
-                      lang: { type: [string, 'null'] }
-                      canonical: { type: [string, 'null'] }
-                      markdown: { type: string }
-                      text: { type: string }
-                      links: { type: array, items: { type: object } }
-                      contentLength: { type: integer }
-                      extractedAt: { type: string, format: date-time }
+                  url: { type: string }
+                  statusCode: { type: integer }
+                  contentType: { type: string }
+                  title: { type: string }
+                  description: { type: string }
+                  lang: { type: [string, 'null'] }
+                  canonical: { type: [string, 'null'] }
+                  markdown: { type: string }
+                  text: { type: string }
+                  links: { type: array, items: { type: object } }
+                  contentLength: { type: integer }
+                  extractedAt: { type: string, format: date-time }
+                  product: { type: string, const: XGuard Web Extractor }
         '400': { description: Invalid URL or request }
-        '401': { description: Request not authorized by provider proxy secret }
-        '413': { description: Request body too large }
-        '422': { description: Unsupported or oversized upstream content }
-        '502': { description: Upstream fetch or extraction failed }
-        '504': { description: Upstream timeout }
+        '401': { description: RapidAPI proxy secret mismatch }
+        '422': { description: Upstream fetch or extraction failed }

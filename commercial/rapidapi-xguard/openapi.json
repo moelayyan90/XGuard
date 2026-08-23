@@ -1,0 +1,59 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "XGuard Web Extractor API",
+    "version": "1.0.0",
+    "description": "Convert a public web page into clean Markdown, text, metadata, and normalized links for AI agents and RAG pipelines.",
+    "x-long-description": "XGuard Web Extractor turns public web pages into clean Markdown, plain text, page metadata, canonical URLs, language information, and normalized links. It is designed for AI agents, RAG ingestion, research automation, knowledge pipelines, and structured web ingestion. The production origin validates redirects and blocks private, loopback, link-local, multicast, and internal destinations while applying request, response-size, timeout, and content limits.",
+    "x-category": "Data",
+    "x-website": "https://xguardgate.com",
+    "x-public": true,
+    "x-version-lifecycle": "ACTIVE"
+  },
+  "x-documentation": {
+    "readme": "## XGuard Web Extractor\n\nSend a public HTTP or HTTPS URL to `POST /v1/extract`. The response contains Markdown, plain text, title, description, language, canonical URL, normalized links, content length, and extraction metadata.\n\n### Example\n\n```json\n{\"url\":\"https://example.com\",\"includeLinks\":true}\n```\n\nThe service applies redirect validation, private-network blocking, DNS checks, timeouts, and response-size limits."
+  },
+  "servers": [
+    { "url": "https://extract.xguardgate.com", "description": "XGuard production origin" }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "health",
+        "summary": "Service health",
+        "responses": {
+          "200": { "description": "Healthy" }
+        }
+      }
+    },
+    "/v1/extract": {
+      "post": {
+        "operationId": "extractPage",
+        "summary": "Extract one public web page",
+        "description": "Billing and consumer authentication are managed by RapidAPI. The provider origin supports X-RapidAPI-Proxy-Secret enforcement once the marketplace proxy secret is configured.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                  "url": { "type": "string", "format": "uri", "maxLength": 4096, "example": "https://example.com" },
+                  "includeLinks": { "type": "boolean", "default": true },
+                  "maxContentChars": { "type": "integer", "minimum": 1000, "maximum": 1000000, "default": 200000 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Successful extraction" },
+          "400": { "description": "Invalid URL or request" },
+          "401": { "description": "RapidAPI proxy secret mismatch" },
+          "422": { "description": "Upstream fetch or extraction failed" }
+        }
+      }
+    }
+  }
+}

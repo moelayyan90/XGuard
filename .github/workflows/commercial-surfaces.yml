@@ -5,11 +5,19 @@ on:
     paths:
       - "commercial/**"
       - ".github/workflows/commercial-surfaces.yml"
+      - ".github/workflows/deploy-commercial-extractor.yml"
+      - ".github/workflows/pin-commercial-domains.yml"
+      - ".github/workflows/publish-apify-actor.yml"
+      - ".github/workflows/publish-rapidapi-listing.yml"
   push:
     branches: [main]
     paths:
       - "commercial/**"
       - ".github/workflows/commercial-surfaces.yml"
+      - ".github/workflows/deploy-commercial-extractor.yml"
+      - ".github/workflows/pin-commercial-domains.yml"
+      - ".github/workflows/publish-apify-actor.yml"
+      - ".github/workflows/publish-rapidapi-listing.yml"
 
 permissions:
   contents: read
@@ -17,19 +25,22 @@ permissions:
 jobs:
   commercial:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+          cache: npm
 
       - name: Validate Actor metadata JSON
         run: |
           python -m json.tool commercial/apify-xguard/.actor/actor.json >/dev/null
           python -m json.tool commercial/apify-xguard/.actor/input_schema.json >/dev/null
+          python -m json.tool commercial/apify-xguard/.actor/output_schema.json >/dev/null
           python -m json.tool commercial/apify-xguard/.actor/dataset_schema.json >/dev/null
           python -m json.tool commercial/apify-xguard/.actor/pay_per_event.json >/dev/null
+          node --check commercial/apify-xguard/scripts/configure-store.mjs
 
       - name: Install and check Apify Actor
         working-directory: commercial/apify-xguard
@@ -43,3 +54,13 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund
           npm run check
           npm test
+          python -m json.tool openapi.json >/dev/null
+          node -e 'const x=require("./openapi.json"); if(!x.openapi.startsWith("3.0")||x.info.title!=="XGuard Web Extractor API"||x.servers?.[0]?.url!=="https://extract.xguardgate.com"||!x.paths?.["/v1/extract"]) process.exit(1)'
+
+      - name: Validate Cloudflare production origin
+        run: |
+          npm ci --ignore-scripts
+          node --check commercial/cloudflare-xguard/src/safe-index.js
+          node --check commercial/cloudflare-xguard/src/secure-entry.js
+          npx wrangler deploy --dry-run --config commercial/cloudflare-xguard/wrangler.jsonc --outdir /tmp/xguard-extractor-dry-run
+          test -s /tmp/xguard-extractor-dry-run/secure-entry.js

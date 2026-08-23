@@ -1,0 +1,59 @@
+name: Publish XGuard API to RapidAPI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "commercial/rapidapi-xguard/openapi.json"
+      - "commercial/rapidapi-xguard/rapidConfig.default.toml"
+      - ".github/workflows/publish-rapidapi-listing.yml"
+
+permissions:
+  contents: read
+
+env:
+  RAPIDAPI_OWNER_ID: ${{ secrets.RAPIDAPI_OWNER_ID }}
+  RAPIDAPI_PROVIDER_KEY: ${{ secrets.RAPIDAPI_PROVIDER_KEY }}
+  RAPIDAPI_IDENTITY_KEY: ${{ secrets.RAPIDAPI_IDENTITY_KEY }}
+  RAPIDAPI_GRAPHQL_HOST: ${{ secrets.RAPIDAPI_GRAPHQL_HOST }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate publication contract
+        run: |
+          python -m json.tool commercial/rapidapi-xguard/openapi.json >/dev/null
+          node -e 'const x=require("./commercial/rapidapi-xguard/openapi.json"); if(!x.openapi.startsWith("3.0")||x.info.title!=="XGuard Web Extractor API"||x.servers?.[0]?.url!=="https://extract.xguardgate.com"||!x.paths?.["/v1/extract"]) process.exit(1)'
+
+      - name: Create or update RapidAPI listing
+        if: ${{ env.RAPIDAPI_OWNER_ID != '' && env.RAPIDAPI_PROVIDER_KEY != '' && env.RAPIDAPI_GRAPHQL_HOST != '' }}
+        id: rapidapi-upload
+        uses: RapidAPI/create_or_update_rapidapi_listing@v0
+        with:
+          spec_path: commercial/rapidapi-xguard/openapi.json
+          owner_id: ${{ env.RAPIDAPI_OWNER_ID }}
+          graphql_url: https://graphql-platform.p.rapidapi.com/
+          x_rapidapi_key: ${{ env.RAPIDAPI_PROVIDER_KEY }}
+          x_rapidapi_identity_key: ${{ env.RAPIDAPI_IDENTITY_KEY }}
+          x_rapidapi_graphql_host: ${{ env.RAPIDAPI_GRAPHQL_HOST }}
+
+      - name: Verify listing output
+        if: ${{ env.RAPIDAPI_OWNER_ID != '' && env.RAPIDAPI_PROVIDER_KEY != '' && env.RAPIDAPI_GRAPHQL_HOST != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_id='${{ steps.rapidapi-upload.outputs.api_id }}'
+          version_id='${{ steps.rapidapi-upload.outputs.api_version_id }}'
+          [[ -n "$api_id" && -n "$version_id" ]]
+          echo "RapidAPI API ID: $api_id"
+          echo "RapidAPI version ID: $version_id"
+
+      - name: Record missing provider credentials
+        if: ${{ env.RAPIDAPI_OWNER_ID == '' || env.RAPIDAPI_PROVIDER_KEY == '' || env.RAPIDAPI_GRAPHQL_HOST == '' }}
+        run: |
+          echo 'RapidAPI provider credentials are not present in repository secrets. Publication contract is validated, but account-level creation cannot authenticate.'

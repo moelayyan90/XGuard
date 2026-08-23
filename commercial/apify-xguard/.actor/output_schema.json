@@ -1,0 +1,14 @@
+{
+  "$schema": "https://apify-projects.github.io/actor-json-schemas/output.json?v=0.3",
+  "actorOutputSchemaVersion": 1,
+  "title": "XGuard Web Extractor output",
+  "description": "Successful page extraction results written to the default dataset.",
+  "properties": {
+    "results": {
+      "type": "string",
+      "title": "Extracted pages",
+      "description": "Clean Markdown, text, metadata, and normalized links for every successfully extracted page.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    }
+  }
+}
