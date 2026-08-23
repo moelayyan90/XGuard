@@ -1,20 +1,26 @@
-name: Deploy Isolated XGuard Web Extractor
+name: Deploy XGuard Web Extractor Canonical
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "commercial/cloudflare-xguard/**"
+      - "scripts/rebind-worker-domains.mjs"
+      - ".github/workflows/deploy-commercial-extractor.yml"
 
 permissions:
   contents: read
   statuses: write
 
 concurrency:
-  group: xguard-web-extractor-production
+  group: xguard-production-domain-routing
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
@@ -28,20 +34,18 @@ jobs:
       - name: Install repository dependencies
         run: npm ci --ignore-scripts
 
-      - name: Validate isolated Worker source
-        run: |
-          node --check commercial/cloudflare-xguard/src/safe-index.js
-          node --check commercial/cloudflare-xguard/src/secure-entry.js
-
-      - name: Refuse to target xguard-mainnet
+      - name: Validate commercial Worker source and isolation
         shell: bash
         run: |
           set -euo pipefail
+          node --check commercial/cloudflare-xguard/src/safe-index.js
+          node --check commercial/cloudflare-xguard/src/secure-entry.js
+          node --check scripts/rebind-worker-domains.mjs
           node - <<'NODE'
           const fs = require('node:fs');
           const source = fs.readFileSync('commercial/cloudflare-xguard/wrangler.jsonc', 'utf8');
           if (!source.includes('"name": "xguard-web-extractor"')) {
-            console.error('Commercial Worker must remain isolated as xguard-web-extractor');
+            console.error('Commercial Worker must deploy as xguard-web-extractor');
             process.exit(1);
           }
           if (source.includes('"name": "xguard-mainnet"')) {
@@ -50,7 +54,7 @@ jobs:
           }
           NODE
 
-      - name: Deploy isolated Web Extractor
+      - name: Deploy XGuard Web Extractor as separate Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -80,23 +84,67 @@ jobs:
             printf '%s' "$RAPIDAPI_PROXY_SECRET" | npx wrangler secret put RAPIDAPI_PROXY_SECRET --config commercial/cloudflare-xguard/wrangler.jsonc
           fi
 
-      - name: Verify isolated endpoint without touching XGuard mainnet domains
+      - name: Restore intended product domain architecture
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/rebind-worker-domains.mjs \
+            xguardgate.com=xguard-web-extractor \
+            www.xguardgate.com=xguard-web-extractor \
+            extract.xguardgate.com=xguard-web-extractor \
+            app.xguardgate.com=xguard-mainnet \
+            inference.xguardgate.com=xguard-mainnet \
+            legacy.xguardgate.com=xguard-mainnet
+
+      - name: Verify canonical Web Extractor product
         env:
           RAPIDAPI_PROXY_SECRET: ${{ secrets.RAPIDAPI_PROXY_SECRET }}
         shell: bash
         run: |
           set -euo pipefail
-          base='https://xguard-web-extractor.maqamapp.workers.dev'
-          for attempt in {1..20}; do
+          base='https://xguardgate.com'
+          for attempt in {1..30}; do
             code="$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 15 "${base}/healthz?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             if [[ "$code" == '200' ]] && node -e 'const x=require("/tmp/health.json");if(x.service!=="xguard-web-extractor"||x.live!==true)process.exit(1)'; then break; fi
-            [[ "$attempt" != '20' ]] || { cat /tmp/health.json || true; exit 1; }
+            [[ "$attempt" != '30' ]] || { cat /tmp/health.json || true; exit 1; }
             sleep 5
           done
+
+          curl -fsS -A 'Mozilla/5.0 XGuard-Production-Verify' "${base}/?deploy=${GITHUB_SHA}" > /tmp/site.html
+          grep -q '<title>XGuard Web Extractor</title>' /tmp/site.html
+
+          curl -fsS "${base}/openapi.json?deploy=${GITHUB_SHA}" > /tmp/openapi.json
+          node -e 'const x=require("/tmp/openapi.json");if(x.openapi!=="3.1.0"||!x.paths?.["/v1/extract"])process.exit(1)'
+
           headers=(-H 'content-type: application/json')
           if [[ -n "${RAPIDAPI_PROXY_SECRET:-}" ]]; then headers+=(-H "x-rapidapi-proxy-secret: ${RAPIDAPI_PROXY_SECRET}"); fi
           curl -fsS --max-time 30 "${headers[@]}" --data '{"url":"https://example.com","includeLinks":true}' "${base}/v1/extract" > /tmp/extract.json
-          node -e 'const x=require("/tmp/extract.json");if(x.product!=="XGuard Web Extractor")process.exit(1)'
+          node -e 'const x=require("/tmp/extract.json");if(x.product!=="XGuard Web Extractor"||!String(x.title).includes("Example Domain"))process.exit(1)'
+
+      - name: Verify aliases and preserved legacy product
+        shell: bash
+        run: |
+          set -euo pipefail
+          for host in www.xguardgate.com extract.xguardgate.com; do
+            for attempt in {1..20}; do
+              code="$(curl -sS -o /tmp/alias-health.json -w '%{http_code}' --max-time 15 "https://${host}/healthz?verify=${GITHUB_SHA}&attempt=${attempt}" || true)"
+              if [[ "$code" == '200' ]] && node -e 'const x=require("/tmp/alias-health.json");if(x.service!=="xguard-web-extractor")process.exit(1)'; then break; fi
+              [[ "$attempt" != '20' ]] || { cat /tmp/alias-health.json || true; exit 1; }
+              sleep 3
+            done
+          done
+
+          for host in app.xguardgate.com inference.xguardgate.com legacy.xguardgate.com; do
+            for attempt in {1..30}; do
+              code="$(curl -sS -o /tmp/legacy-health.json -w '%{http_code}' --max-time 15 "https://${host}/healthz?verify=${GITHUB_SHA}&attempt=${attempt}" || true)"
+              if [[ "$code" == '200' ]] && node -e 'const x=require("/tmp/legacy-health.json");if(x.service!=="xguard-autonomous-ai-inference-provider")process.exit(1)'; then break; fi
+              [[ "$attempt" != '30' ]] || { cat /tmp/legacy-health.json || true; exit 1; }
+              sleep 3
+            done
+          done
 
       - name: Publish deployment status
         if: always()
@@ -107,14 +155,14 @@ jobs:
         run: |
           set -euo pipefail
           state=failure
-          description='Isolated XGuard Web Extractor deployment failed'
+          description='Canonical XGuard Web Extractor deployment failed'
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [[ "$JOB_STATUS" == success ]]; then
             state=success
-            description='xguard-web-extractor deployed without touching xguard-mainnet'
-            target_url='https://xguard-web-extractor.maqamapp.workers.dev'
+            description='Web Extractor canonical; legacy XGuard preserved separately'
+            target_url='https://xguardgate.com'
           fi
-          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-web-extractor-isolated",description,target_url}))' "$state" "$description" "$target_url")"
+          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-web-extractor-production",description,target_url}))' "$state" "$description" "$target_url")"
           curl --fail-with-body --silent --show-error --request POST \
             --header "Authorization: Bearer ${GH_TOKEN}" \
             --header 'Accept: application/vnd.github+json' \
