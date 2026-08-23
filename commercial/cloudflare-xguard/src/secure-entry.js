@@ -1,4 +1,4 @@
-import worker from './index.js';
+import worker from './safe-index.js';
 
 function isBlockedIpv4Octets([a, b, c, d]) {
   if (![a, b, c, d].every((x) => Number.isInteger(x) && x >= 0 && x <= 255)) return true;
