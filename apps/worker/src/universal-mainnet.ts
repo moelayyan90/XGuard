@@ -6,6 +6,7 @@ import monetizedMainnet, {
 import { a2aGatewayV1Response } from "./a2a-gateway-v1.js";
 import { buyerPassResponse } from "./buyer-pass.js";
 import { buyerPortalResponse } from "./buyer-portal.js";
+import { childSafetyComplianceInfrastructureResponse } from "./child-safety-compliance-infrastructure.js";
 import { childSafetyContactResponse } from "./child-safety-contact.js";
 import { childSafetyControlResponse } from "./child-safety-control.js";
 import { childSafetyInstitutionalResponse } from "./child-safety-institutional.js";
@@ -167,6 +168,10 @@ export default {
       env,
     );
     if (childSafetyContact !== null) return childSafetyContact;
+
+    const childSafetyCompliance =
+      await childSafetyComplianceInfrastructureResponse(standardRequest, env);
+    if (childSafetyCompliance !== null) return childSafetyCompliance;
 
     const childSafetyReporting =
       childSafetyReportingDirectoryResponse(standardRequest);
