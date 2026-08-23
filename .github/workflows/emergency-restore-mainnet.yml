@@ -1,0 +1,134 @@
+name: Emergency Restore XGuard Mainnet
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/emergency-restore-mainnet.yml"
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: xguard-mainnet-emergency-restore
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Verify legacy mainnet build
+        run: npm run inference:verify
+        env:
+          WRANGLER_SEND_METRICS: "false"
+
+      - name: Resolve D1, migrate, and restore xguard-mainnet
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare deployment credentials unavailable'; exit 1; }
+          export CLOUDFLARE_API_TOKEN="$token"
+
+          if ! npx wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);process.exit(Array.isArray(a)&&a.some(x=>x?.name==="xguard-mainnet")?0:1)})'; then
+            npx wrangler d1 create xguard-mainnet
+          fi
+
+          config_path="${GITHUB_WORKSPACE}/apps/worker/wrangler.mainnet.resolved.jsonc"
+          node scripts/resolve-cloudflare-config.mjs \
+            --template apps/worker/wrangler.mainnet.jsonc \
+            --output "$config_path" \
+            --database-name xguard-mainnet
+
+          node - "$config_path" "$GITHUB_SHA" <<'NODE'
+          const fs = require('node:fs');
+          const [file, sha] = process.argv.slice(2);
+          let source = fs.readFileSync(file, 'utf8');
+          source = source.replace(/("XGUARD_GIT_COMMIT"\s*:\s*)"[^"]*"/, `$1${JSON.stringify(sha)}`);
+          source = source.replace(/("XGUARD_DEPLOYED_AT"\s*:\s*)"[^"]*"/, `$1${JSON.stringify(new Date().toISOString())}`);
+          fs.writeFileSync(file, source);
+          NODE
+
+          npx wrangler d1 migrations apply xguard-mainnet --remote --config "$config_path"
+          npx wrangler deploy --config "$config_path"
+          echo "XGUARD_RESOLVED_CONFIG=$config_path" >> "$GITHUB_ENV"
+
+      - name: Restore optional runtime secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DGRID_PROVIDER_API_KEY: ${{ secrets.DGRID_PROVIDER_API_KEY }}
+          XGUARD_ADMIN_TOKEN: ${{ secrets.XGUARD_ADMIN_TOKEN }}
+          XGUARD_PAYOUT_DESTINATION: ${{ secrets.XGUARD_PAYOUT_DESTINATION }}
+          XGUARD_UPSTREAM_1_API_KEY: ${{ secrets.XGUARD_UPSTREAM_1_API_KEY }}
+          XGUARD_UPSTREAM_2_API_KEY: ${{ secrets.XGUARD_UPSTREAM_2_API_KEY }}
+          XGUARD_UPSTREAM_3_API_KEY: ${{ secrets.XGUARD_UPSTREAM_3_API_KEY }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          export CLOUDFLARE_API_TOKEN="$token"
+          for name in DGRID_PROVIDER_API_KEY XGUARD_ADMIN_TOKEN XGUARD_PAYOUT_DESTINATION XGUARD_UPSTREAM_1_API_KEY XGUARD_UPSTREAM_2_API_KEY XGUARD_UPSTREAM_3_API_KEY; do
+            value="${!name:-}"
+            if [[ -n "$value" ]]; then
+              printf '%s' "$value" | npx wrangler secret put "$name" --config "$XGUARD_RESOLVED_CONFIG"
+            fi
+          done
+
+      - name: Verify restored public site
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://xguardgate.com'
+          for attempt in {1..30}; do
+            code="$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 15 "${base}/healthz?restore=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            if [[ "$code" == '200' ]] && grep -q 'xguard-autonomous-ai-inference-provider' /tmp/health.json; then break; fi
+            [[ "$attempt" != '30' ]] || { cat /tmp/health.json || true; exit 1; }
+            sleep 5
+          done
+          curl -fsS "${base}/" > /tmp/site.html
+          grep -q 'AUTONOMOUS AI INFERENCE PROVIDER' /tmp/site.html
+          curl -fsS "${base}/v1/status" > /tmp/status.json
+
+      - name: Publish restore status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=failure
+          description='Emergency XGuard restore failed'
+          target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [[ "$JOB_STATUS" == success ]]; then
+            state=success
+            description='Previous XGuard mainnet site restored and verified'
+            target_url='https://xguardgate.com'
+          fi
+          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-emergency-restore",description,target_url}))' "$state" "$description" "$target_url")"
+          curl --fail-with-body --silent --show-error --request POST \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data "$payload" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" >/dev/null
