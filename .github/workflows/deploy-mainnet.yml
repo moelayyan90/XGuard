@@ -52,7 +52,7 @@ jobs:
             ok=0
             for attempt in {1..30}; do
               if body="$(curl --fail --silent --show-error --max-time 10 "${base}/healthz" 2>/dev/null)" && \
-                printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="XGuard ACE")process.exit(1)})'; then
+                printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="XGuard ACE"||x.site_version!=="xguard-site-v4")process.exit(1)})'; then
                 ok=1
                 break
               fi
@@ -62,7 +62,12 @@ jobs:
           done
           curl --fail --silent --show-error https://xguardgate.com/spec.json | \
             node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard ACE"||x.primitive!=="application-speed-bump"||x.critical_path_ai!==false)process.exit(1)})'
-          curl --fail --silent --show-error https://xguardgate.com/ | grep -q 'Protect market makers from stale-quote flow.'
+          curl --fail --silent --show-error https://xguardgate.com/ | grep -q 'data-site-version="xguard-site-v4"'
+          for path in product architecture security docs status; do
+            curl --fail --silent --show-error "https://xguardgate.com/${path}" | grep -q 'data-site-version="xguard-site-v4"'
+          done
+          curl --fail --silent --show-error https://xguardgate.com/sitemap.xml | grep -q '<loc>https://xguardgate.com/docs</loc>'
+          curl --fail --silent --show-error https://xguardgate.com/favicon.svg | grep -q '<svg'
       - name: Publish deployment status
         if: always()
         env:
@@ -75,7 +80,7 @@ jobs:
           description='XGuard ACE portal deployment failed'
           if [[ "$JOB_STATUS" == 'success' ]]; then
             state=success
-            description='XGuard ACE portal is live and health-checked on Cloudflare'
+            description='XGuard ACE website is live and health-checked on Cloudflare'
           fi
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-ace-deploy",description,target_url}))' "$state" "$description" "$target_url")"
