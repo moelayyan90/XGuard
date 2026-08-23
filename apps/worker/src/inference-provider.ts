@@ -46,20 +46,10 @@ export default {
     const url = new URL(request.url);
     try {
       if (request.method === "OPTIONS") return preflight();
-      if (
-        (request.method === "GET" || request.method === "HEAD") &&
-        url.pathname === "/"
-      ) {
-        const response = renderPublicSite(await publicStatus(env));
-        return request.method === "HEAD" ? headOnly(response) : response;
-      }
-      if (
-        (request.method === "GET" || request.method === "HEAD") &&
-        url.pathname === "/healthz"
-      ) {
-        const response = json({ status: "ok", service: SERVICE, version: VERSION });
-        return request.method === "HEAD" ? headOnly(response) : response;
-      }
+      if (request.method === "GET" && url.pathname === "/")
+        return renderPublicSite(await publicStatus(env));
+      if (request.method === "GET" && url.pathname === "/healthz")
+        return json({ status: "ok", service: SERVICE, version: VERSION });
       if (request.method === "GET" && url.pathname === "/readyz") {
         const models = await activeModels(env);
         return json(
@@ -210,14 +200,6 @@ function preflight(): Response {
         "authorization,content-type,idempotency-key,x-request-id",
       "access-control-max-age": "86400",
     },
-  });
-}
-
-function headOnly(response: Response): Response {
-  return new Response(null, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
   });
 }
 
