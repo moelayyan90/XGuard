@@ -16,6 +16,13 @@
     { "pattern": "xguardgate.com", "custom_domain": true },
     { "pattern": "api.xguardgate.com", "custom_domain": true }
   ],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["MainnetPaymentCoordinator", "MainnetRequestGate"] },
+    { "tag": "v2", "new_sqlite_classes": ["XPayGlobalRateGate"] },
+    { "tag": "v3", "new_sqlite_classes": ["WebhookDeliveryQueue"] },
+    { "tag": "v4", "new_sqlite_classes": ["InferenceCoordinator"] },
+    { "tag": "v5-email-shield", "deleted_classes": ["InferenceCoordinator"] }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
