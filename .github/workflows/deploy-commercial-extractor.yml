@@ -7,6 +7,7 @@ on:
     paths:
       - "commercial/cloudflare-xguard/**"
       - ".github/workflows/deploy-commercial-extractor.yml"
+      - ".github/workflows/pin-commercial-domains.yml"
 
 permissions:
   contents: read
@@ -34,7 +35,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Validate Worker source
-        run: node --check commercial/cloudflare-xguard/src/index.js
+        run: |
+          node --check commercial/cloudflare-xguard/src/index.js
+          node --check commercial/cloudflare-xguard/src/secure-entry.js
 
       - name: Deploy Worker
         env:
@@ -65,10 +68,10 @@ jobs:
           if [[ -n "${RAPIDAPI_PROXY_SECRET:-}" ]]; then
             printf '%s' "$RAPIDAPI_PROXY_SECRET" | npx wrangler secret put RAPIDAPI_PROXY_SECRET --config commercial/cloudflare-xguard/wrangler.jsonc
           else
-            echo 'RAPIDAPI_PROXY_SECRET is not configured; direct origin remains public until marketplace proxy setup.'
+            echo 'RAPIDAPI_PROXY_SECRET is not configured; direct origin remains public until Rapid assigns and exposes the per-API proxy secret.'
           fi
 
-      - name: Bind canonical extractor domain
+      - name: Bind canonical XGuard domains
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -78,11 +81,20 @@ jobs:
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           account="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n ')"
           api="https://api.cloudflare.com/client/v4/accounts/${account}/workers/domains"
-          payload='{"hostname":"extract.xguardgate.com","service":"xguard-web-extractor","zone_name":"xguardgate.com"}'
-          response="$(curl --fail-with-body -sS --retry 4 --retry-all-errors -X PUT \
-            -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
-            --data "$payload" "$api")"
-          printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);if(j.success!==true){console.error(s);process.exit(1)}})'
+          bind() {
+            local hostname="$1" service="$2"
+            local payload response
+            payload="$(node -e 'const [h,s]=process.argv.slice(1);process.stdout.write(JSON.stringify({hostname:h,service:s,zone_name:"xguardgate.com"}))' "$hostname" "$service")"
+            response="$(curl --fail-with-body -sS --retry 4 --retry-all-errors -X PUT \
+              -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+              --data "$payload" "$api")"
+            printf '%s' "$response" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);if(j.success!==true){console.error(s);process.exit(1)}})'
+          }
+          bind xguardgate.com xguard-web-extractor
+          bind www.xguardgate.com xguard-web-extractor
+          bind extract.xguardgate.com xguard-web-extractor
+          bind inference.xguardgate.com xguard-mainnet
+          bind legacy.xguardgate.com xguard-mainnet
 
       - name: Verify live production endpoint
         env:
@@ -90,7 +102,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base='https://extract.xguardgate.com'
+          base='https://xguardgate.com'
           for attempt in {1..30}; do
             code="$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 15 "${base}/healthz?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             if [[ "$code" == '200' ]] && node -e 'const x=require("/tmp/health.json");if(x.service!=="xguard-web-extractor"||x.live!==true)process.exit(1)'; then break; fi
@@ -103,6 +115,9 @@ jobs:
           if [[ -n "${RAPIDAPI_PROXY_SECRET:-}" ]]; then headers+=(-H "x-rapidapi-proxy-secret: ${RAPIDAPI_PROXY_SECRET}"); fi
           curl -fsS --max-time 30 "${headers[@]}" --data '{"url":"https://example.com","includeLinks":true}' "${base}/v1/extract" > /tmp/extract.json
           node -e 'const x=require("/tmp/extract.json");if(x.product!=="XGuard Web Extractor"||!String(x.title).includes("Example Domain")||!String(x.markdown).includes("Example Domain"))process.exit(1)'
+          for host in www.xguardgate.com extract.xguardgate.com; do
+            curl -fsS --max-time 15 "https://${host}/healthz" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.service!=="xguard-web-extractor"||x.live!==true)process.exit(1)})'
+          done
 
       - name: Publish deployment status
         if: always()
@@ -118,7 +133,7 @@ jobs:
           if [[ "$JOB_STATUS" == success ]]; then
             state=success
             description='XGuard Web Extractor is production-verified'
-            target_url='https://extract.xguardgate.com'
+            target_url='https://xguardgate.com'
           fi
           payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-web-extractor-production",description,target_url}))' "$state" "$description" "$target_url")"
           curl --fail-with-body --silent --show-error --request POST \
