@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Inspect Cloudflare Worker domains and DNS
+      - name: Inspect Cloudflare Worker domains
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -24,41 +24,29 @@ jobs:
           set -uo pipefail
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           account="$(printf '%s' "${CLOUDFLARE_ACCOUNT_ID:-}" | tr -d '\r\n ')"
-          echo "credential_present=$([[ -n "$token" && -n "$account" ]] && echo yes || echo no)"
           auth=(-H "Authorization: Bearer ${token}" -H 'Content-Type: application/json')
           api='https://api.cloudflare.com/client/v4'
-
-          echo '--- Worker custom domains ---'
           curl -fsS "${auth[@]}" "${api}/accounts/${account}/workers/domains" | node -e '
-            let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify({success:x.success,result:(x.result||[]).map(r=>({id:r.id,hostname:r.hostname,service:r.service,zone_id:r.zone_id}))},null,2))})' || true
+            let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify({success:x.success,result:(x.result||[]).filter(r=>String(r.hostname).includes("xguardgate.com")).map(r=>({hostname:r.hostname,service:r.service,zone_id:r.zone_id}))},null,2))})' || true
 
-          echo '--- DNS records ---'
-          zones="$(curl -fsS "${auth[@]}" "${api}/zones?name=xguardgate.com&account.id=${account}" || true)"
-          zone_id="$(printf '%s' "$zones" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);process.stdout.write((x.result||[])[0]?.id||"")}catch{}})' || true)"
-          echo "zone_found=$([[ -n "$zone_id" ]] && echo yes || echo no)"
-          if [[ -n "$zone_id" ]]; then
-            for host in xguardgate.com www.xguardgate.com extract.xguardgate.com; do
-              echo "DNS ${host}:"
-              curl -fsS "${auth[@]}" "${api}/zones/${zone_id}/dns_records?name=${host}" | node -e '
-                let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify((x.result||[]).map(r=>({type:r.type,name:r.name,content:r.content,proxied:r.proxied,ttl:r.ttl})),null,2))})' || true
-            done
-          fi
-
-      - name: Check public DNS and HTTPS
+      - name: Check real browser-style GET and DNS
         shell: bash
         run: |
           set -uo pipefail
           sudo apt-get update -qq >/dev/null 2>&1 || true
           sudo apt-get install -y -qq dnsutils >/dev/null 2>&1 || true
-          for host in xguardgate.com www.xguardgate.com extract.xguardgate.com; do
+          for host in xguardgate.com www.xguardgate.com app.xguardgate.com; do
             echo "--- ${host} ---"
-            echo 'resolver 1.1.1.1 A:'; dig @1.1.1.1 +time=3 +tries=1 +short A "$host" || true
-            echo 'resolver 8.8.8.8 A:'; dig @8.8.8.8 +time=3 +tries=1 +short A "$host" || true
-            echo 'resolver 1.1.1.1 AAAA:'; dig @1.1.1.1 +time=3 +tries=1 +short AAAA "$host" || true
-            echo 'HTTPS headers:'; curl -kIsS --connect-timeout 10 --max-time 15 "https://${host}/" | head -20 || true
-            echo 'health:'; curl -ksS --connect-timeout 10 --max-time 15 "https://${host}/healthz" || true
-            echo
+            echo '1.1.1.1 A:'; dig @1.1.1.1 +time=3 +tries=1 +short A "$host" || true
+            echo '8.8.8.8 A:'; dig @8.8.8.8 +time=3 +tries=1 +short A "$host" || true
+            echo 'HEAD:'; curl -kIsS --connect-timeout 10 --max-time 15 "https://${host}/" | head -12 || true
+            echo 'GET status/body:'
+            code="$(curl -ksS --connect-timeout 10 --max-time 20 -A 'Mozilla/5.0 XGuard-Recovery' -D /tmp/headers.txt -o /tmp/root.html -w '%{http_code}' "https://${host}/?recovery=${GITHUB_RUN_ID}" || true)"
+            echo "GET_HTTP=${code}"
+            head -20 /tmp/headers.txt || true
+            echo "BODY_BYTES=$(wc -c < /tmp/root.html 2>/dev/null || echo 0)"
+            echo 'BODY_PREFIX:'; head -c 600 /tmp/root.html 2>/dev/null || true; echo
+            echo 'TITLE:'; grep -o -m1 '<title>[^<]*</title>' /tmp/root.html 2>/dev/null || true
+            echo 'health:'; curl -ksS --connect-timeout 10 --max-time 15 "https://${host}/healthz?recovery=${GITHUB_RUN_ID}" || true
+            echo 'status:'; curl -ksS --connect-timeout 10 --max-time 15 "https://${host}/v1/status?recovery=${GITHUB_RUN_ID}" | head -c 1000 || true; echo
           done
-          echo '--- workers.dev ---'
-          curl -kIsS --connect-timeout 10 --max-time 15 https://xguard-mainnet.maqamapp.workers.dev/ | head -20 || true
-          curl -ksS --connect-timeout 10 --max-time 15 https://xguard-mainnet.maqamapp.workers.dev/healthz || true
