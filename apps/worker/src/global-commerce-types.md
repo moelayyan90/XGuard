@@ -1,1 +1,0 @@
-Global commerce matching is exact on normalized product key. READY requires buyer price, exact identity, verified stock, supplier confidence, buyer-demand evidence, buyer funding before supplier purchase, buyer contact, jurisdiction/restricted-goods gates, and configured profit/margin thresholds.
