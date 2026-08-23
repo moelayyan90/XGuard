@@ -1,0 +1,11 @@
+{
+  "name": "@xguard/email-shield",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "description": "XGuard Email Shield — automatic email risk verification on Cloudflare Workers",
+  "scripts": {
+    "check": "node --check src/index.js && node --check src/verifier.js && node --check src/site.js",
+    "deploy": "wrangler deploy --config wrangler.jsonc"
+  }
+}
