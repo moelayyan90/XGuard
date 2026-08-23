@@ -1,5 +1,4 @@
-# publication trigger: 2026-08-23T10:21+03:00
-name: Publish XGuard API to RapidAPI
+name: Publish XGuard Email Shield to RapidAPI
 
 on:
   workflow_dispatch:
@@ -30,7 +29,7 @@ jobs:
       - name: Validate publication contract
         run: |
           python -m json.tool commercial/rapidapi-xguard/openapi.json >/dev/null
-          node -e 'const x=require("./commercial/rapidapi-xguard/openapi.json"); if(!x.openapi.startsWith("3.0")||x.info.title!=="XGuard Web Extractor API"||x.servers?.[0]?.url!=="https://extract.xguardgate.com"||!x.paths?.["/v1/extract"]) process.exit(1)'
+          node -e 'const x=require("./commercial/rapidapi-xguard/openapi.json"); if(!x.openapi.startsWith("3.0")||x.info.title!=="XGuard Email Shield API"||x.servers?.[0]?.url!=="https://api.xguardgate.com"||!x.paths?.["/v1/verify"]) process.exit(1)'
 
       - name: Create or update RapidAPI listing
         if: ${{ env.RAPIDAPI_OWNER_ID != '' && env.RAPIDAPI_PROVIDER_KEY != '' && env.RAPIDAPI_GRAPHQL_HOST != '' }}
@@ -57,10 +56,9 @@ jobs:
 
       - name: Record missing provider credentials
         if: ${{ env.RAPIDAPI_OWNER_ID == '' || env.RAPIDAPI_PROVIDER_KEY == '' || env.RAPIDAPI_GRAPHQL_HOST == '' }}
-        run: |
-          echo 'RapidAPI provider credentials are not present in repository secrets. Publication contract is validated, but account-level creation cannot authenticate.'
+        run: echo 'RapidAPI provider credentials are not configured in repository secrets.'
 
-      - name: Publish truthful RapidAPI status
+      - name: Publish RapidAPI status
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,7 +73,7 @@ jobs:
             description='RapidAPI provider credentials are not configured'
           elif [[ "$JOB_STATUS" == 'success' ]]; then
             state=success
-            description='XGuard RapidAPI listing is created or updated'
+            description='XGuard Email Shield RapidAPI listing is created or updated'
             target_url='https://rapidapi.com/hub'
           fi
           payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-rapidapi-publication",description,target_url}))' "$state" "$description" "$target_url")"
