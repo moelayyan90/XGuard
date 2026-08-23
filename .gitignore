@@ -1,5 +1,5 @@
-node_modules/
-dist/
-apps/email-shield/wrangler.resolved.jsonc
-.wrangler/
+/target/
+/node_modules/
+/.wrangler/
+*.log
 .DS_Store

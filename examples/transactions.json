@@ -1,0 +1,26 @@
+[
+  {
+    "name": "protected taker flow",
+    "transaction": {
+      "top_level_instructions": [
+        {
+          "program_id": "11111111111111111111111111111111",
+          "data": [1, 2, 3]
+        }
+      ],
+      "account_keys": ["11111111111111111111111111111111"]
+    }
+  },
+  {
+    "name": "explicit bypass flow",
+    "transaction": {
+      "top_level_instructions": [
+        {
+          "program_id": "11111111111111111111111111111111",
+          "data": [7, 2, 3]
+        }
+      ],
+      "account_keys": ["11111111111111111111111111111111"]
+    }
+  }
+]

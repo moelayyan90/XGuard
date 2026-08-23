@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/xguard-core",
+  "crates/xguard-sim",
+]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.85"
+repository = "https://github.com/moelayyan90/XGuard"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
