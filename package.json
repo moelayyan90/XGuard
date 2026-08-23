@@ -62,7 +62,7 @@
     "commander": "14.0.3",
     "express": "5.2.1",
     "fast-glob": "3.3.3",
-    "hono": "4.13.2",
+    "hono": "4.13.3",
     "ipaddr.js": "2.5.0",
     "picocolors": "1.1.1",
     "undici": "8.10.0",
