@@ -1,0 +1,60 @@
+name: Publish XGuard Actor to Apify
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "commercial/apify-xguard/**"
+      - ".github/workflows/publish-apify-actor.yml"
+
+permissions:
+  contents: read
+
+env:
+  APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Validate Actor before publication
+        working-directory: commercial/apify-xguard
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run check
+          python -m json.tool .actor/actor.json >/dev/null
+          python -m json.tool .actor/input_schema.json >/dev/null
+          python -m json.tool .actor/dataset_schema.json >/dev/null
+          python -m json.tool .actor/pay_per_event.json >/dev/null
+
+      - name: Publish and build Actor
+        if: ${{ env.APIFY_TOKEN != '' }}
+        id: push
+        uses: apify/push-actor-action@v1
+        with:
+          token: ${{ env.APIFY_TOKEN }}
+          working-directory: commercial/apify-xguard
+          build-tag: latest
+          version: "1.0"
+
+      - name: Verify Apify build result
+        if: ${{ env.APIFY_TOKEN != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status='${{ steps.push.outputs.build-status }}'
+          echo "Apify build status: ${status}"
+          [[ "$status" == 'SUCCEEDED' ]]
+
+      - name: Record missing publication credential
+        if: ${{ env.APIFY_TOKEN == '' }}
+        run: |
+          echo 'APIFY_TOKEN is not present in repository secrets. Actor code is validated but account-level publication cannot authenticate.'
