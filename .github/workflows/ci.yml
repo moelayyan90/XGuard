@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: inference-ci-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
+  group: email-shield-ci-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -16,7 +16,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -24,7 +24,24 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Verify autonomous inference provider
-        run: npm run inference:verify
-        env:
-          WRANGLER_SEND_METRICS: "false"
+      - name: Verify Email Shield source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check apps/email-shield/src/index.js
+          node --check apps/email-shield/src/verifier.js
+          node --check apps/email-shield/src/site.js
+          python - <<'PY'
+          import json, sqlite3
+          json.load(open('apps/email-shield/wrangler.jsonc', encoding='utf-8'))
+          sql=open('apps/email-shield/migrations/0001_email_shield.sql', encoding='utf-8').read()
+          db=sqlite3.connect(':memory:')
+          db.executescript(sql)
+          expected={'api_keys','free_key_claims','usage_daily'}
+          found={r[0] for r in db.execute("select name from sqlite_master where type='table'")}
+          assert expected <= found
+          PY
+      - name: Verify WordPress plugin syntax
+        shell: bash
+        run: |
+          if command -v php >/dev/null 2>&1; then php -l apps/email-shield/integrations/wordpress/xguard-email-shield.php; else echo 'PHP CLI not installed; syntax covered by CodeQL.'; fi
