@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{env, fs, path::Path};
-use xguard_core::{classify, Decision, PolicyConfig, TransactionView};
+use xguard_core::{Decision, PolicyConfig, TransactionView, classify};
 
 #[derive(Debug, Deserialize)]
 struct Fixture {
