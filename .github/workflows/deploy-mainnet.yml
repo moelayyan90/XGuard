@@ -1,11 +1,11 @@
-name: Deploy XGuard Email Shield
+name: Deploy XGuard ACE Portal
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "apps/email-shield/**"
+      - "apps/portal/**"
       - ".github/workflows/deploy-mainnet.yml"
 
 permissions:
@@ -13,13 +13,13 @@ permissions:
   statuses: write
 
 concurrency:
-  group: xguard-email-shield-mainnet
+  group: xguard-ace-portal-mainnet
   cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
@@ -27,17 +27,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Validate Email Shield source
+      - name: Validate portal
         run: |
           set -euo pipefail
-          node --check apps/email-shield/src/index.js
-          node --check apps/email-shield/src/verifier.js
-          node --check apps/email-shield/src/site.js
-          python - <<'PY'
-          import json
-          json.load(open('apps/email-shield/wrangler.jsonc', encoding='utf-8'))
-          PY
-      - name: Create database, migrate and deploy
+          node --check apps/portal/src/index.js
+          node -e "JSON.parse(require('node:fs').readFileSync('apps/portal/wrangler.jsonc','utf8'))"
+      - name: Deploy to Cloudflare Workers
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -48,27 +43,7 @@ jobs:
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
           export CLOUDFLARE_API_TOKEN="$token"
-          wrangler='npx --yes wrangler@4.123.0'
-
-          if ! $wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);process.exit(Array.isArray(a)&&a.some(x=>x?.name==="xguard-email-shield")?0:1)})'; then
-            $wrangler d1 create xguard-email-shield
-          fi
-
-          db_id="$($wrangler d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);const x=a.find(v=>v?.name==="xguard-email-shield");if(!x?.uuid&&!x?.id)process.exit(1);process.stdout.write(x.uuid||x.id)})')"
-          config="${GITHUB_WORKSPACE}/apps/email-shield/wrangler.resolved.jsonc"
-          node - apps/email-shield/wrangler.jsonc "$config" "$db_id" <<'NODE'
-          const fs = require('node:fs');
-          const [source, target, id] = process.argv.slice(2);
-          const config = JSON.parse(fs.readFileSync(source, 'utf8'));
-          const db = config.d1_databases?.find((x) => x.binding === 'DB');
-          if (!db) throw new Error('DB binding missing');
-          db.database_id = id;
-          fs.writeFileSync(target, JSON.stringify(config, null, 2));
-          NODE
-
-          $wrangler d1 migrations apply xguard-email-shield --remote --config "$config"
-          $wrangler deploy --config "$config"
-          rm -f "$config"
+          npx --yes wrangler@4.123.0 deploy --config apps/portal/wrangler.jsonc
       - name: Verify production
         shell: bash
         run: |
@@ -76,12 +51,18 @@ jobs:
           for base in 'https://api.xguardgate.com' 'https://xguardgate.com'; do
             ok=0
             for attempt in {1..30}; do
-              if body="$(curl --fail --silent --show-error --max-time 10 "${base}/healthz" 2>/dev/null)" && printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="XGuard Email Shield")process.exit(1)})'; then ok=1; break; fi
+              if body="$(curl --fail --silent --show-error --max-time 10 "${base}/healthz" 2>/dev/null)" && \
+                printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="XGuard ACE")process.exit(1)})'; then
+                ok=1
+                break
+              fi
               sleep 4
             done
             [[ "$ok" == 1 ]]
           done
-          curl --fail --silent --show-error https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.title!=="XGuard Email Shield API"||!x.paths?.["/v1/verify"]||!x.paths?.["/v1/verify/batch"])process.exit(1)})'
+          curl --fail --silent --show-error https://xguardgate.com/spec.json | \
+            node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard ACE"||x.primitive!=="application-speed-bump"||x.critical_path_ai!==false)process.exit(1)})'
+          curl --fail --silent --show-error https://xguardgate.com/ | grep -q 'Protect market makers from stale-quote flow.'
       - name: Publish deployment status
         if: always()
         env:
@@ -91,13 +72,13 @@ jobs:
         run: |
           set -euo pipefail
           state=failure
-          description='XGuard Email Shield production deployment failed'
+          description='XGuard ACE portal deployment failed'
           if [[ "$JOB_STATUS" == 'success' ]]; then
             state=success
-            description='XGuard Email Shield is live and health-checked on Cloudflare'
+            description='XGuard ACE portal is live and health-checked on Cloudflare'
           fi
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-email-shield-deploy",description,target_url}))' "$state" "$description" "$target_url")"
+          payload="$(node -e 'const [state,description,target_url]=process.argv.slice(1);process.stdout.write(JSON.stringify({state,context:"xguard-ace-deploy",description,target_url}))' "$state" "$description" "$target_url")"
           curl --fail-with-body --silent --show-error --request POST \
             --header "Authorization: Bearer ${GH_TOKEN}" \
             --header 'Accept: application/vnd.github+json' \

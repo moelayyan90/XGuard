@@ -1,49 +1,64 @@
-name: CI
+name: XGuard ACE CI
 
 on:
-  pull_request:
-  merge_group:
   push:
-    branches: [main]
-
-concurrency:
-  group: email-shield-ci-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
-  cancel-in-progress: true
+    branches: [main, "bam/**"]
+  pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: xguard-ace-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  verify:
+  rust:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Tests
+        run: cargo test --workspace
+      - name: Reference simulation
+        run: cargo run --quiet -p xguard-sim -- examples/rules.json examples/transactions.json > /tmp/xguard-decisions.json
+      - name: Verify reference decisions
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const rows = JSON.parse(fs.readFileSync('/tmp/xguard-decisions.json', 'utf8'));
+          if (rows.length !== 2) throw new Error('expected two fixtures');
+          if (rows[0].decision.delay_ms !== 20) throw new Error('protected flow must be delayed 20ms');
+          if (rows[1].decision.delay_ms !== 0) throw new Error('bypass flow must remain on normal path');
+          NODE
+
+  portal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Verify Worker source
+      - name: Validate Worker
         run: |
-          set -euo pipefail
-          node --check apps/email-shield/src/index.js
-          node --check apps/email-shield/src/verifier.js
-          node --check apps/email-shield/src/site.js
-      - name: Verify D1 schema and Wrangler config
+          node --check apps/portal/src/index.js
+          node -e "JSON.parse(require('node:fs').readFileSync('apps/portal/wrangler.jsonc','utf8'))"
+      - name: Reject legacy product surfaces
         run: |
-          python - <<'PY'
-          import json, sqlite3
-          json.load(open('apps/email-shield/wrangler.jsonc', encoding='utf-8'))
-          db=sqlite3.connect(':memory:')
-          db.executescript(open('apps/email-shield/migrations/0001_email_shield.sql', encoding='utf-8').read())
-          expected={'api_keys','free_key_claims','usage_daily'}
-          found={r[0] for r in db.execute("select name from sqlite_master where type='table'")}
-          assert expected <= found
-          PY
-      - name: Verify WordPress plugin
-        run: |
-          if command -v php >/dev/null 2>&1; then php -l apps/email-shield/integrations/wordpress/xguard-email-shield.php; fi
-      - name: Cloudflare dry run
-        env:
-          WRANGLER_SEND_METRICS: "false"
-        run: |
-          npx --yes wrangler@4.123.0 deploy --dry-run --config apps/email-shield/wrangler.jsonc --outdir /tmp/xguard-email-shield-dry-run
+          if grep -RniE 'Email Shield|RapidAPI|WordPress|WooCommerce|x402|AI Inference Provider' \
+            --exclude-dir=.git --exclude='*.lock' .; then
+            echo 'Legacy XGuard product text remains in the active tree'
+            exit 1
+          fi

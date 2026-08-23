@@ -1,0 +1,11 @@
+{
+  "rules": [
+    {
+      "program_id": "11111111111111111111111111111111",
+      "bypass_markers": [
+        { "data_offset": 0, "bytes": [7] }
+      ],
+      "delay_ms": 20
+    }
+  ]
+}
