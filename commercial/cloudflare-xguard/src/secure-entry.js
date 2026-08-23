@@ -86,6 +86,19 @@ export class InferenceCoordinator extends RetiredDurableObject {}
 export default {
   async fetch(request, env, ctx) {
     const requestUrl = new URL(request.url);
+
+    // Browsers, CDNs, monitoring systems, and link previewers may probe a URL
+    // with HEAD before issuing GET. The primary handler intentionally models
+    // GET routes, so mirror HEAD through GET and return headers/status only.
+    if (request.method === 'HEAD') {
+      const getRequest = new Request(request.url, {
+        method: 'GET',
+        headers: request.headers,
+      });
+      const response = await worker.fetch(getRequest, env, ctx);
+      return new Response(null, { status: response.status, headers: response.headers });
+    }
+
     if (request.method === 'POST' && requestUrl.pathname === '/v1/extract') {
       try {
         const copy = request.clone();
