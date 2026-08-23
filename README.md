@@ -1,62 +1,57 @@
-# XGuard Web Extractor
+# XGuard Email Shield
 
-XGuard is a usage-priced web extraction product for AI agents, RAG pipelines, research automation, and structured ingestion. It converts public web pages into clean Markdown, text, metadata, and normalized links while enforcing hard safety and cost limits.
+XGuard is a self-service email-risk verification layer for signup, checkout, registration and form workflows.
 
-Production domain retained from the existing system: [https://xguardgate.com](https://xguardgate.com)  
-Repository: [https://github.com/moelayyan90/XGuard](https://github.com/moelayyan90/XGuard)
+## What it does
 
-## Primary commercial surfaces
+- Validates practical email syntax before network work.
+- Resolves MX and RFC-compatible fallback address records through DNS-over-HTTPS.
+- Detects Null MX domains that explicitly accept no email.
+- Rejects known and heuristic disposable email domains.
+- Flags role addresses and likely typos in common mailbox providers.
+- Optionally delegates mailbox-level verification to a configured upstream without pretending SMTP probing is available when it is not.
+- Does **not** store submitted email addresses.
 
-### Apify Store Actor
+## API
 
-Source: [`commercial/apify-xguard`](commercial/apify-xguard)
+Production: `https://api.xguardgate.com`
 
-- crawl one page or a same-domain site
-- clean boilerplate and convert main content to Markdown
-- emit text, title, description, canonical URL, language, links, and metadata
-- hard page/content limits
-- `$0.004` `page-result` pay-per-event price
-- failed, empty, or non-HTML pages do not intentionally emit a billable event
-
-### RapidAPI service
-
-Source: [`commercial/rapidapi-xguard`](commercial/rapidapi-xguard)
-
-- `POST /v1/extract`
-- synchronous public-page extraction
-- OpenAPI 3.1 definition included
-- production requests gated by `X-RapidAPI-Proxy-Secret`
-- guarded DNS resolution, redirect validation, private-network blocking, timeout limits, and response-size limits
-- billing and consumer authentication delegated to RapidAPI
-
-See [`commercial/README.md`](commercial/README.md) for the commercial architecture.
-
-## Truthful current state
-
-The repository contains deployable source for both commercial surfaces. Marketplace listing, payout configuration, provider-origin assignment, and publication are external account-level operations and are not represented as complete until those platforms confirm them.
-
-## Legacy XGuard infrastructure
-
-The previous autonomous AI inference/x402/Cloudflare implementation is preserved rather than deleted. Existing Worker, gateway, billing, MCP, settlement, CLI, SDK, D1 migrations, and operational tooling remain in the repository for compatibility and future routing use.
-
-Legacy documentation:
-
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [DGRID.md](DGRID.md)
-- [PROFIT_MODEL.md](PROFIT_MODEL.md)
-- [PAYOUTS.md](PAYOUTS.md)
-- [PROVIDERS.md](PROVIDERS.md)
-- [SECURITY.md](SECURITY.md)
-- [OPERATIONS.md](OPERATIONS.md)
-- [DEPLOYMENT.md](DEPLOYMENT.md)
-
-## Existing inference verification
+Create a free key:
 
 ```bash
-npm ci --ignore-scripts
-npm run inference:verify
+curl -X POST https://api.xguardgate.com/v1/keys/free
 ```
 
-## Commercial verification
+Verify:
 
-The `Commercial Surfaces` GitHub Actions workflow validates Actor metadata, installs the isolated commercial dependencies, syntax-checks both services, and runs extraction/security tests for the RapidAPI engine.
+```bash
+curl https://api.xguardgate.com/v1/verify \
+  -H "Authorization: Bearer xg_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com"}'
+```
+
+Batch verification supports up to 100 addresses per request.
+
+## WordPress / WooCommerce
+
+The packaged plugin is published automatically from `apps/email-shield/integrations/wordpress/` as a GitHub release asset. Install it, paste an XGuard API key once, and WordPress registration plus WooCommerce checkout validation become automatic.
+
+## Pricing model
+
+Target public price: **$0.003 per verification**, with 100 free checks for self-service evaluation. Marketplace billing can be distributed through the XGuard RapidAPI listing; direct keys use prepaid credits in D1.
+
+## Cloudflare
+
+The production Worker is `xguard-mainnet`, deployed to:
+
+- `https://xguardgate.com`
+- `https://api.xguardgate.com`
+
+State is stored in D1 database `xguard-email-shield`. Deployment and migrations run from `.github/workflows/deploy-mainnet.yml` using repository Cloudflare secrets.
+
+## Privacy and correctness
+
+Email inputs are processed transiently and are not persisted. API key secrets are persisted only as SHA-256 hashes. Without an explicitly configured mailbox-verification upstream, XGuard reports mailbox deliverability as `unknown`; it never labels an address mailbox-deliverable based only on DNS.
+
+Legacy XGuard experiments remain in repository history, but the production deployment and public product surface are Email Shield.
