@@ -36,6 +36,7 @@ jobs:
           python -m json.tool commercial/apify-xguard/.actor/output_schema.json >/dev/null
           python -m json.tool commercial/apify-xguard/.actor/dataset_schema.json >/dev/null
           python -m json.tool commercial/apify-xguard/.actor/pay_per_event.json >/dev/null
+          node --check commercial/apify-xguard/scripts/configure-store.mjs
 
       - name: Install and check Apify Actor
         working-directory: commercial/apify-xguard
