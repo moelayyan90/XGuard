@@ -46,8 +46,8 @@ async function findDomain(hostname) {
 }
 
 async function detach(domain) {
-  const { response, payload } = await call(`${base}/${encodeURIComponent(domain.id)}`, { method: 'DELETE' });
-  if (!response.ok || payload?.success !== true) {
+  const { response } = await call(`${base}/${encodeURIComponent(domain.id)}`, { method: 'DELETE' });
+  if (!response.ok) {
     throw new Error(`Unable to detach ${domain.hostname} from ${domain.service || 'unknown'} (HTTP ${response.status})`);
   }
 
@@ -65,8 +65,6 @@ async function attach(hostname, service) {
     const { response, payload } = await call(base, { method: 'PUT', body });
     if (response.ok && payload?.success === true) return;
 
-    // A 409 can occur briefly while Cloudflare removes the prior custom-domain
-    // record/certificate. If the desired binding already won the race, accept it.
     const current = await findDomain(hostname).catch(() => null);
     if (current?.service === service) return;
 
