@@ -17,7 +17,7 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
 
@@ -30,12 +30,14 @@ jobs:
         run: |
           npm install --ignore-scripts --no-audit --no-fund
           npm run check
+          node --check scripts/configure-store.mjs
           python -m json.tool .actor/actor.json >/dev/null
           python -m json.tool .actor/input_schema.json >/dev/null
+          python -m json.tool .actor/output_schema.json >/dev/null
           python -m json.tool .actor/dataset_schema.json >/dev/null
           python -m json.tool .actor/pay_per_event.json >/dev/null
 
-      - name: Publish and build Actor
+      - name: Push and build Actor
         if: ${{ env.APIFY_TOKEN != '' }}
         id: push
         uses: apify/push-actor-action@v1
@@ -53,6 +55,11 @@ jobs:
           status='${{ steps.push.outputs.build-status }}'
           echo "Apify build status: ${status}"
           [[ "$status" == 'SUCCEEDED' ]]
+
+      - name: Publish to Store and configure pay-per-event pricing
+        if: ${{ env.APIFY_TOKEN != '' }}
+        working-directory: commercial/apify-xguard
+        run: node scripts/configure-store.mjs
 
       - name: Record missing publication credential
         if: ${{ env.APIFY_TOKEN == '' }}
