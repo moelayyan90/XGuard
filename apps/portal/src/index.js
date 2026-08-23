@@ -38,239 +38,252 @@ function html() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#0a0a09">
-<title>XGuard ACE — Stale-Quote Protection for BAM</title>
-<meta name="description" content="XGuard ACE is a deterministic application-speed-bump policy engine for BAM on Solana, designed to reduce stale-quote exposure without putting AI in the critical path.">
+<meta name="theme-color" content="#f4f3ee">
+<title>XGuard ACE — Deterministic Execution Policy for BAM</title>
+<meta name="description" content="XGuard ACE is a deterministic application speed-bump policy engine for BAM on Solana.">
 <style>
 :root{
-  color-scheme:dark;
-  --bg:#0a0a09;
-  --bg-soft:#10100f;
-  --ink:#f2efe8;
-  --muted:#9a968f;
-  --faint:#5f5c56;
-  --line:#292824;
-  --line-hot:#4e251c;
-  --signal:#ff5a36;
-  --signal-soft:#a83a24;
-  --ok:#b9c7a2;
-  --max:1320px;
-  --pad:clamp(20px,4vw,56px);
-  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
-  --sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color-scheme:light;
+  --paper:#f4f3ee;
+  --ink:#101010;
+  --muted:#66645f;
+  --line:#c8c5bd;
+  --soft:#e9e7df;
+  --blue:#1757ff;
+  --max:1240px;
+  --pad:clamp(20px,4vw,48px);
+  --sans:Arial,Helvetica,sans-serif;
+  --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;background:var(--bg)}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.5;overflow-x:hidden}
-body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-2;background-image:linear-gradient(to right,rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.022) 1px,transparent 1px);background-size:80px 80px;background-position:center top}
-body:after{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:radial-gradient(circle at 78% 12%,rgba(255,90,54,.08),transparent 29rem)}
+html{background:var(--paper);scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.45 var(--sans)}
 a{color:inherit}
-::selection{background:var(--signal);color:#090909}
-.shell{width:min(calc(100% - (var(--pad) * 2)),var(--max));margin-inline:auto}
+::selection{background:var(--blue);color:#fff}
+.wrap{width:min(calc(100% - var(--pad)*2),var(--max));margin:0 auto}
 .mono{font-family:var(--mono)}
-.eyebrow{font:700 11px/1.2 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
-.topbar{border-bottom:1px solid var(--line);background:rgba(10,10,9,.84);backdrop-filter:blur(16px);position:sticky;top:0;z-index:30}
-.nav{height:74px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:20px}
-.brand{display:inline-flex;align-items:center;gap:12px;text-decoration:none;width:max-content;font-weight:800;letter-spacing:-.02em}
-.mark{width:28px;height:28px;border:1px solid #5a5750;position:relative;display:grid;place-items:center}
-.mark:before,.mark:after{content:"";position:absolute;width:15px;height:1px;background:var(--signal);transform-origin:center}.mark:before{transform:rotate(45deg)}.mark:after{transform:rotate(-45deg)}
-.nav-center{display:flex;gap:26px;font:600 12px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:#b9b5ae}
-.nav-center a{text-decoration:none}.nav-center a:hover{color:var(--ink)}
-.nav-right{justify-self:end;display:flex;align-items:center;gap:10px;font:600 11px/1 var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-.dot{width:7px;height:7px;background:var(--signal);box-shadow:0 0 0 4px rgba(255,90,54,.08)}
-.hero{min-height:calc(100svh - 74px);display:grid;grid-template-columns:minmax(0,7fr) minmax(340px,5fr);border-left:1px solid var(--line);border-right:1px solid var(--line)}
-.hero-copy{padding:clamp(72px,10vw,142px) clamp(24px,5vw,72px) 72px;display:flex;flex-direction:column;justify-content:space-between;min-height:760px}
-.hero-copy h1{font-size:clamp(58px,7.3vw,118px);line-height:.88;letter-spacing:-.07em;font-weight:750;margin:26px 0 30px;max-width:900px}
-.hero-copy h1 em{font-style:normal;color:var(--signal)}
-.lead{font-size:clamp(18px,1.7vw,25px);line-height:1.42;color:#b9b5ae;max-width:760px;margin:0}
-.hero-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:36px}
-.button{display:inline-flex;align-items:center;gap:12px;text-decoration:none;border:1px solid #46433d;padding:13px 16px;font:700 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.04em;transition:background .18s ease,border-color .18s ease,color .18s ease}
-.button.primary{background:var(--ink);color:#10100f;border-color:var(--ink)}
-.button.primary:hover{background:var(--signal);border-color:var(--signal)}
-.button.ghost:hover{border-color:var(--ink)}
-.hero-note{padding-top:60px;display:flex;gap:28px;align-items:flex-end;color:var(--faint);font:12px/1.45 var(--mono);max-width:690px}
-.hero-note strong{color:#aaa69f;font-weight:500}
-.execution{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:760px;background:rgba(16,16,15,.52)}
-.execution-head{padding:24px 28px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font:700 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.execution-screen{flex:1;display:flex;flex-direction:column;justify-content:center;padding:clamp(28px,4vw,48px);position:relative;overflow:hidden}
-.execution-screen:before{content:"";position:absolute;left:0;right:0;top:47%;height:1px;background:#383631}
-.screen-label{position:absolute;top:32px;left:clamp(28px,4vw,48px);font:600 11px/1.3 var(--mono);color:var(--faint);letter-spacing:.06em;text-transform:uppercase}
-.window-number{font:500 clamp(82px,9vw,150px)/.8 var(--mono);letter-spacing:-.08em;color:var(--ink)}
-.window-number span{font-size:.24em;letter-spacing:0;color:var(--muted);margin-left:10px}
-.window-caption{font:13px/1.6 var(--mono);color:var(--muted);max-width:400px;margin:28px 0 58px}
-.timeline{position:relative;height:118px;border-top:1px solid #47443e;border-bottom:1px solid #24231f}
-.tick{position:absolute;top:-6px;width:1px;height:12px;background:#777269}.tick:after{position:absolute;top:20px;transform:translateX(-50%);font:10px/1 var(--mono);color:#706c65}.t0{left:0}.t0:after{content:"0"}.t10{left:20%}.t10:after{content:"10"}.t20{left:40%}.t20:after{content:"20"}.t30{left:60%}.t30:after{content:"30"}.t40{left:80%}.t40:after{content:"40"}.t50{left:100%}.t50:after{content:"50"}
-.delay-band{position:absolute;left:20%;right:0;top:54px;height:16px;background:repeating-linear-gradient(90deg,var(--signal) 0 8px,transparent 8px 12px);opacity:.88}
-.normal-band{position:absolute;left:0;width:20%;top:54px;height:16px;background:#68645c}
-.sweep{position:absolute;top:-1px;bottom:-1px;width:1px;background:#fff;left:0;box-shadow:0 0 18px rgba(255,255,255,.45);animation:sweep 4.2s cubic-bezier(.6,0,.2,1) infinite}
-@keyframes sweep{0%{left:0;opacity:0}8%{opacity:1}82%{left:100%;opacity:1}100%{left:100%;opacity:0}}
-.legend{margin-top:26px;display:grid;grid-template-columns:1fr 1fr;gap:14px;font:11px/1.5 var(--mono);color:var(--muted)}
-.legend span{display:flex;align-items:center;gap:9px}.legend i{width:16px;height:2px;background:#68645c}.legend .hot i{background:var(--signal)}
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-top:0}
-.metric{padding:26px clamp(18px,3vw,32px);border-right:1px solid var(--line)}.metric:last-child{border-right:0}
-.metric b{display:block;font:500 clamp(27px,3.4vw,46px)/1 var(--mono);letter-spacing:-.05em;margin-bottom:12px}.metric small{display:block;color:var(--muted);font:11px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.07em}
-.section{border-left:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
-.section-head{display:grid;grid-template-columns:1fr 2fr;border-bottom:1px solid var(--line)}
-.section-index{padding:34px 28px;border-right:1px solid var(--line);font:12px/1 var(--mono);color:var(--signal)}
-.section-title{padding:32px clamp(28px,5vw,64px)}
-.section-title h2{font-size:clamp(36px,5vw,68px);line-height:.98;letter-spacing:-.055em;margin:0;font-weight:700;max-width:900px}
-.section-title p{color:var(--muted);max-width:760px;margin:22px 0 0;font-size:18px}
-.architecture{display:grid;grid-template-columns:1.05fr 2fr}
-.arch-notes{padding:48px 28px;border-right:1px solid var(--line);font:12px/1.65 var(--mono);color:var(--muted)}
-.arch-notes strong{color:var(--ink);font-weight:500}.arch-steps{padding:0}
-.arch-row{display:grid;grid-template-columns:90px 1fr 190px;align-items:center;min-height:130px;border-bottom:1px solid var(--line)}.arch-row:last-child{border-bottom:0}
-.arch-num{height:100%;display:grid;place-items:center;border-right:1px solid var(--line);font:13px/1 var(--mono);color:var(--signal)}
-.arch-main{padding:28px 34px}.arch-main b{display:block;font-size:22px;letter-spacing:-.025em;margin-bottom:5px}.arch-main span{color:var(--muted)}
-.arch-state{padding:0 24px;font:11px/1.5 var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.arch-state .state{display:inline-flex;align-items:center;gap:8px}.arch-state .state:before{content:"";width:6px;height:6px;background:var(--ok)}.arch-state .protected:before{background:var(--signal)}
-.policy-wrap{display:grid;grid-template-columns:1.1fr .9fr}
-.policy-table{border-right:1px solid var(--line)}
-.policy-row{display:grid;grid-template-columns:1.2fr 1fr .75fr;min-height:92px;border-bottom:1px solid var(--line);align-items:center}.policy-row:last-child{border-bottom:0}
-.policy-row>div{padding:20px 26px}.policy-row>div:not(:last-child){border-right:1px solid var(--line)}
-.policy-row.head{min-height:54px;color:var(--faint);font:10px/1 var(--mono);text-transform:uppercase;letter-spacing:.09em}
-.policy-row .event{font-weight:650}.policy-row .route{font:12px/1.4 var(--mono);color:#c5c0b8}.policy-row .delay{font:12px/1 var(--mono);color:var(--signal)}
-.code-panel{padding:34px;display:flex;flex-direction:column;justify-content:space-between;background:#0d0d0c}
-.code-panel pre{margin:0;white-space:pre-wrap;font:12px/1.75 var(--mono);color:#bbb7af}.code-panel .key{color:#77736c}.code-panel .value{color:#ece8e0}.code-panel .hot{color:var(--signal)}
-.code-caption{padding-top:42px;color:var(--faint);font:10px/1.5 var(--mono);text-transform:uppercase;letter-spacing:.07em}
-.principles{display:grid;grid-template-columns:repeat(2,1fr)}
-.principle{padding:48px clamp(26px,4vw,48px);min-height:300px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.principle:nth-child(2n){border-right:0}.principle:nth-last-child(-n+2){border-bottom:0}
-.principle .num{font:11px/1 var(--mono);color:var(--signal)}.principle h3{font-size:clamp(28px,3vw,42px);line-height:1.02;letter-spacing:-.045em;margin:58px 0 20px}.principle p{color:var(--muted);max-width:520px;margin:0;font-size:17px}
-.status-band{display:grid;grid-template-columns:1.4fr .6fr;align-items:stretch}
-.status-copy{padding:64px clamp(28px,5vw,64px);border-right:1px solid var(--line)}.status-copy h2{font-size:clamp(36px,5vw,72px);letter-spacing:-.055em;line-height:.95;margin:0 0 26px}.status-copy p{color:var(--muted);max-width:760px;font-size:18px}.status-copy .hero-actions{margin-top:30px}
-.status-side{padding:38px 28px;display:flex;flex-direction:column;justify-content:space-between;background:var(--bg-soft)}
-.status-side .stamp{font:700 11px/1.45 var(--mono);color:var(--signal);letter-spacing:.08em;text-transform:uppercase}.status-side .fine{font:11px/1.55 var(--mono);color:var(--faint)}
-.footer{border-left:1px solid var(--line);border-right:1px solid var(--line);padding:28px;display:flex;justify-content:space-between;gap:30px;color:var(--faint);font:10px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.08em}
-@media(max-width:980px){
-  .nav{grid-template-columns:1fr auto}.nav-center{display:none}.hero{grid-template-columns:1fr}.hero-copy{min-height:650px}.execution{border-left:0;border-top:1px solid var(--line);min-height:610px}.metrics{grid-template-columns:repeat(2,1fr)}.metric:nth-child(2){border-right:0}.metric:nth-child(-n+2){border-bottom:1px solid var(--line)}.section-head,.architecture,.policy-wrap,.status-band{grid-template-columns:1fr}.section-index,.arch-notes,.policy-table,.status-copy{border-right:0;border-bottom:1px solid var(--line)}.arch-row{grid-template-columns:72px 1fr}.arch-state{grid-column:2;padding:0 34px 24px}.principles{grid-template-columns:1fr}.principle{border-right:0!important;border-bottom:1px solid var(--line)!important}.principle:last-child{border-bottom:0!important}
+header{border-bottom:1px solid var(--ink)}
+.nav{min-height:68px;display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:28px}
+.brand{font-size:17px;font-weight:800;letter-spacing:-.02em;text-decoration:none}
+.brand span{font-weight:400;color:var(--muted);margin-left:8px}
+nav{display:flex;gap:24px;font:12px/1 var(--mono);text-transform:uppercase;letter-spacing:.04em}
+nav a{text-decoration:none}
+nav a:hover{text-decoration:underline;text-underline-offset:4px}
+.status{justify-self:end;font:11px/1 var(--mono);text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.status i{display:block;width:8px;height:8px;background:var(--blue)}
+.hero{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(320px,.8fr);border-bottom:1px solid var(--ink)}
+.hero-main{padding:clamp(70px,10vw,138px) 0 clamp(64px,8vw,104px);padding-right:clamp(28px,6vw,86px)}
+.kicker{font:12px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--blue);margin-bottom:26px}
+h1{font-size:clamp(54px,7.2vw,102px);line-height:.92;letter-spacing:-.065em;margin:0;max-width:920px;font-weight:760}
+.hero-main p{font-size:clamp(19px,1.8vw,25px);line-height:1.35;max-width:760px;color:#393834;margin:34px 0 0}
+.hero-main p strong{color:var(--ink)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:34px}
+.btn{display:inline-block;border:1px solid var(--ink);padding:12px 15px;text-decoration:none;font:12px/1 var(--mono);text-transform:uppercase;letter-spacing:.03em}
+.btn.primary{background:var(--ink);color:var(--paper)}
+.btn:hover{background:var(--blue);border-color:var(--blue);color:white}
+.hero-side{border-left:1px solid var(--ink);padding:32px 30px;display:flex;flex-direction:column;justify-content:space-between}
+.side-label{font:11px/1 var(--mono);text-transform:uppercase;color:var(--muted);letter-spacing:.06em}
+.contract{margin-top:52px;border-top:1px solid var(--ink)}
+.contract-row{display:grid;grid-template-columns:1fr auto;gap:24px;padding:14px 0;border-bottom:1px solid var(--line);font:12px/1.35 var(--mono)}
+.contract-row span:last-child{text-align:right}
+.contract-row .blue{color:var(--blue)}
+.side-foot{margin-top:54px;font:11px/1.45 var(--mono);color:var(--muted)}
+.band{border-bottom:1px solid var(--ink);background:var(--ink);color:var(--paper)}
+.band-inner{display:grid;grid-template-columns:1.5fr .5fr;align-items:end;min-height:260px;padding:38px 0}
+.big-number{font:700 clamp(82px,12vw,176px)/.78 var(--mono);letter-spacing:-.09em}
+.big-number small{font-size:.18em;letter-spacing:.02em;margin-left:10px;color:#a9a9a9}
+.band-note{font:13px/1.55 var(--mono);color:#bdbdbd;padding-bottom:7px}
+.section{border-bottom:1px solid var(--ink)}
+.section-grid{display:grid;grid-template-columns:220px 1fr}
+.section-label{padding:30px 24px 30px 0;border-right:1px solid var(--ink);font:11px/1.4 var(--mono);text-transform:uppercase;color:var(--muted);letter-spacing:.06em}
+.section-body{padding:clamp(44px,6vw,82px) 0 clamp(56px,7vw,96px) clamp(28px,5vw,70px)}
+.section-body h2{font-size:clamp(38px,5vw,70px);line-height:.98;letter-spacing:-.055em;margin:0 0 28px;font-weight:740;max-width:900px}
+.section-body>p{font-size:19px;line-height:1.5;color:#3e3d39;max-width:800px;margin:0}
+.flow{margin-top:54px;border-top:1px solid var(--ink)}
+.flow-row{display:grid;grid-template-columns:110px minmax(0,1fr) 190px;align-items:center;min-height:104px;border-bottom:1px solid var(--line)}
+.flow-row:last-child{border-bottom:0}
+.flow-n{font:11px/1 var(--mono);color:var(--blue)}
+.flow-main b{display:block;font-size:20px;margin-bottom:4px;letter-spacing:-.02em}
+.flow-main span{color:var(--muted)}
+.flow-state{text-align:right;font:11px/1.35 var(--mono);text-transform:uppercase}
+.flow-state.protected{color:var(--blue)}
+.matrix{margin-top:52px;border-top:1px solid var(--ink)}
+.mrow{display:grid;grid-template-columns:1.25fr 1fr .7fr;min-height:72px;border-bottom:1px solid var(--line);align-items:center}
+.mrow>div{padding:16px 18px 16px 0}
+.mrow.head{font:10px/1 var(--mono);text-transform:uppercase;color:var(--muted);letter-spacing:.07em;min-height:48px}
+.mrow .mono{font-size:12px}
+.mrow .result{color:var(--blue)}
+.quote{margin-top:52px;padding-top:22px;border-top:1px solid var(--ink);font-size:clamp(28px,3.2vw,46px);line-height:1.08;letter-spacing:-.035em;max-width:900px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;margin-top:54px;border-top:1px solid var(--ink)}
+.principle{padding:30px 34px 36px 0;border-bottom:1px solid var(--line)}
+.principle:nth-child(odd){border-right:1px solid var(--ink);padding-right:40px}
+.principle:nth-child(even){padding-left:40px}
+.principle b{display:block;font-size:22px;margin:10px 0 9px;letter-spacing:-.025em}
+.principle p{margin:0;color:var(--muted);max-width:520px}
+.principle .n{font:11px/1 var(--mono);color:var(--blue)}
+.review{display:grid;grid-template-columns:1.3fr .7fr}
+.review-main{padding-right:54px}
+.review-side{border-left:1px solid var(--ink);padding-left:32px}
+.review-side dl{margin:0}
+.review-side div{padding:14px 0;border-bottom:1px solid var(--line)}
+.review-side dt{font:10px/1 var(--mono);text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.review-side dd{margin:0;font:12px/1.4 var(--mono)}
+footer{padding:28px 0 40px}
+.footer{display:flex;justify-content:space-between;gap:24px;font:11px/1.4 var(--mono);color:var(--muted)}
+@media(max-width:900px){
+  .nav{grid-template-columns:1fr auto}.status{display:none}nav{justify-self:end}
+  .hero{grid-template-columns:1fr}.hero-side{border-left:0;border-top:1px solid var(--ink)}
+  .band-inner{grid-template-columns:1fr}.band-note{margin-top:24px}
+  .section-grid{grid-template-columns:1fr}.section-label{border-right:0;border-bottom:1px solid var(--ink);padding-right:0}.section-body{padding-left:0}
+  .review{grid-template-columns:1fr}.review-main{padding-right:0}.review-side{border-left:0;border-top:1px solid var(--ink);padding:30px 0 0;margin-top:40px}
 }
 @media(max-width:640px){
-  .nav{height:66px}.nav-right{font-size:9px}.hero{border-left:0;border-right:0}.hero-copy{padding:62px 20px 48px;min-height:620px}.hero-copy h1{font-size:clamp(54px,17vw,76px)}.hero-note{display:block}.hero-note span{display:block;margin-top:10px}.execution-screen{padding:28px 20px}.execution-head{padding:20px}.window-number{font-size:88px}.legend{grid-template-columns:1fr}.metrics{border-left:0;border-right:0}.metric{padding:22px 20px}.section{border-left:0;border-right:0}.section-title{padding:28px 20px}.section-index{padding:22px 20px}.arch-notes{padding:30px 20px}.arch-row{grid-template-columns:58px 1fr;min-height:120px}.arch-main{padding:24px 20px}.arch-state{padding:0 20px 22px}.policy-row{grid-template-columns:1.1fr .9fr}.policy-row .delay{grid-column:1/-1;border-top:1px solid var(--line);border-right:0!important}.policy-row.head .delay{display:none}.code-panel{padding:28px 20px}.principle{padding:36px 20px;min-height:260px}.principle h3{margin-top:44px}.status-copy{padding:48px 20px}.status-side{padding:28px 20px}.footer{border-left:0;border-right:0;flex-direction:column;padding:24px 20px}
+  nav{display:none}.nav{grid-template-columns:1fr}
+  h1{font-size:clamp(50px,16vw,78px)}
+  .hero-main{padding-top:62px}
+  .flow-row{grid-template-columns:52px 1fr}.flow-state{grid-column:2;text-align:left;padding:0 0 18px}
+  .mrow{grid-template-columns:1fr}.mrow.head{display:none}.mrow>div{padding:10px 0}.mrow{padding:12px 0}
+  .two-col{grid-template-columns:1fr}.principle:nth-child(odd){border-right:0;padding-right:0}.principle:nth-child(even){padding-left:0}
+  .footer{flex-direction:column}
 }
-@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.sweep{animation:none;left:40%}}
 </style>
 </head>
 <body>
-<header class="topbar">
-  <div class="shell nav">
-    <a class="brand" href="/" aria-label="XGuard ACE home"><span class="mark" aria-hidden="true"></span><span>XGuard ACE</span></a>
-    <nav class="nav-center" aria-label="Primary"><a href="#architecture">Architecture</a><a href="#policy">Policy</a><a href="#principles">Principles</a></nav>
-    <div class="nav-right"><span class="dot" aria-hidden="true"></span>BAM early-access candidate</div>
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="/">XGuard <span>ACE</span></a>
+    <nav>
+      <a href="#mechanism">Mechanism</a>
+      <a href="#policy">Policy</a>
+      <a href="/spec.json">Spec</a>
+      <a href="${GITHUB}">GitHub</a>
+    </nav>
+    <div class="status"><i></i>BAM early-access candidate</div>
   </div>
 </header>
-
-<main class="shell">
-  <section class="hero" aria-labelledby="hero-title">
-    <div class="hero-copy">
-      <div>
-        <div class="eyebrow">Application Controlled Execution / Solana</div>
-        <h1 id="hero-title">A 20ms advantage is still an <em>advantage.</em></h1>
-        <p class="lead">Protect market makers from stale-quote flow. XGuard applies a deterministic, application-defined execution delay inside BAM while explicitly marked critical instructions remain on the normal path.</p>
-        <div class="hero-actions">
-          <a class="button primary" href="${GITHUB}">Inspect the Rust core <span aria-hidden="true">↗</span></a>
-          <a class="button ghost" href="${ACE_DISCUSSION}">Read the BAM design basis</a>
-        </div>
+<main>
+  <section class="wrap hero">
+    <div class="hero-main">
+      <div class="kicker">Deterministic execution policy for BAM</div>
+      <h1>Order before execution.</h1>
+      <p><strong>Protect market makers from stale-quote flow.</strong> XGuard ACE applies a bounded application-level delay to protected transactions while explicitly marked critical instructions remain on the normal path.</p>
+      <div class="actions">
+        <a class="btn primary" href="${GITHUB}">Review implementation</a>
+        <a class="btn" href="${ACE_DISCUSSION}">BAM design basis</a>
       </div>
-      <div class="hero-note"><strong>No AI in the critical path.</strong><span>No custody. No transaction mutation. No private registration database. The same policy and transaction always produce the same decision.</span></div>
     </div>
-
-    <aside class="execution" aria-label="Policy window visualization">
-      <div class="execution-head"><span>Execution window</span><span>reference model / ms</span></div>
-      <div class="execution-screen">
-        <div class="screen-label">Bounded application delay</div>
-        <div class="window-number">10—50<span>ms</span></div>
-        <div class="window-caption">Illustrative policy window. XGuard classifies whether enrolled application flow remains on BAM's normal path or enters a bounded delayed pool.</div>
-        <div class="timeline" aria-hidden="true">
-          <span class="tick t0"></span><span class="tick t10"></span><span class="tick t20"></span><span class="tick t30"></span><span class="tick t40"></span><span class="tick t50"></span>
-          <span class="normal-band"></span><span class="delay-band"></span><span class="sweep"></span>
+    <aside class="hero-side">
+      <div>
+        <div class="side-label">Execution contract</div>
+        <div class="contract">
+          <div class="contract-row"><span>Unknown program</span><span>Normal path</span></div>
+          <div class="contract-row"><span>Protected top-level call</span><span class="blue">Delay</span></div>
+          <div class="contract-row"><span>Explicit bypass marker</span><span>Normal path</span></div>
+          <div class="contract-row"><span>Indirect / CPI reference</span><span class="blue">Delay</span></div>
+          <div class="contract-row"><span>Composition</span><span>Max delay wins</span></div>
         </div>
-        <div class="legend"><span><i></i>normal scheduling path</span><span class="hot"><i></i>application speed-bump range</span></div>
       </div>
+      <div class="side-foot">Pure Rust policy engine. No LLM, network request, database lookup, custody, signing, or transaction mutation in the critical path.</div>
     </aside>
   </section>
 
-  <section class="metrics" aria-label="XGuard characteristics">
-    <div class="metric"><b>10–50ms</b><small>bounded application delay</small></div>
-    <div class="metric"><b>0</b><small>model calls in critical path</small></div>
-    <div class="metric"><b>MAX</b><small>delay wins on composition</small></div>
-    <div class="metric"><b>RUST</b><small>deterministic policy core</small></div>
+  <section class="band">
+    <div class="wrap band-inner">
+      <div class="big-number">10–50<small>ms</small></div>
+      <div class="band-note">Bounded application speed-bump range described by BAM's public ACE design direction. XGuard never expands the configured delay beyond this policy boundary.</div>
+    </div>
   </section>
 
-  <section class="section" id="architecture">
-    <div class="section-head">
-      <div class="section-index">01 / ARCHITECTURE</div>
-      <div class="section-title"><h2>One decision before scheduler admission.</h2><p>XGuard is deliberately narrow. BAM provides the routing environment; XGuard resolves the application policy; the scheduler keeps ownership of execution.</p></div>
-    </div>
-    <div class="architecture">
-      <div class="arch-notes"><strong>Critical-path rule:</strong><br><br>Read only the transaction view required for policy classification. Do not call an RPC, database, LLM, remote API, or wall clock. Keep unrelated applications untouched.</div>
-      <div class="arch-steps">
-        <div class="arch-row"><div class="arch-num">01</div><div class="arch-main"><b>Transaction arrives</b><span>BAM router provides the transaction context.</span></div><div class="arch-state"><span class="state">normal ingestion</span></div></div>
-        <div class="arch-row"><div class="arch-num">02</div><div class="arch-main"><b>XGuard resolves policy</b><span>Program id, instruction markers, indirect references and composition are evaluated deterministically.</span></div><div class="arch-state"><span class="state protected">policy match</span></div></div>
-        <div class="arch-row"><div class="arch-num">03</div><div class="arch-main"><b>Route is selected</b><span>Zero delay stays on the normal path. Protected flow receives the configured bounded delay.</span></div><div class="arch-state"><span class="state">0ms or 10–50ms</span></div></div>
-        <div class="arch-row"><div class="arch-num">04</div><div class="arch-main"><b>BAM schedules execution</b><span>XGuard does not sign, mutate, settle or custody the transaction.</span></div><div class="arch-state"><span class="state">scheduler owned</span></div></div>
+  <section class="section" id="mechanism">
+    <div class="wrap section-grid">
+      <div class="section-label">01 / Mechanism</div>
+      <div class="section-body">
+        <h2>A small rule in the only place that matters.</h2>
+        <p>XGuard sits at the routing boundary before scheduler admission. It does not ask traders, wallets, or market makers to install anything. An enrolled application's policy is evaluated deterministically before the transaction continues.</p>
+        <div class="flow">
+          <div class="flow-row"><div class="flow-n">01</div><div class="flow-main"><b>Transaction enters BAM</b><span>Top-level instructions and referenced program keys are available to the routing layer.</span></div><div class="flow-state">input</div></div>
+          <div class="flow-row"><div class="flow-n">02</div><div class="flow-main"><b>XGuard evaluates policy</b><span>Program id, instruction marker, indirect references, and composition are checked.</span></div><div class="flow-state protected">deterministic</div></div>
+          <div class="flow-row"><div class="flow-n">03</div><div class="flow-main"><b>One scheduling decision</b><span>Normal path or bounded delay. Nothing else is modified.</span></div><div class="flow-state">0 / 10–50 ms</div></div>
+          <div class="flow-row"><div class="flow-n">04</div><div class="flow-main"><b>BAM scheduler continues</b><span>The application-specific guarantee is applied before normal execution proceeds.</span></div><div class="flow-state">output</div></div>
+        </div>
       </div>
     </div>
   </section>
 
   <section class="section" id="policy">
-    <div class="section-head">
-      <div class="section-index">02 / POLICY</div>
-      <div class="section-title"><h2>Predictable behavior. No hidden classifier.</h2><p>The policy is intentionally boring enough to audit. Every route comes from explicit application rules and transaction structure.</p></div>
-    </div>
-    <div class="policy-wrap">
-      <div class="policy-table" role="table" aria-label="XGuard policy matrix">
-        <div class="policy-row head" role="row"><div>Transaction condition</div><div>Route</div><div>Delay</div></div>
-        <div class="policy-row" role="row"><div class="event">Unknown program</div><div class="route">normal_path</div><div class="delay">0ms</div></div>
-        <div class="policy-row" role="row"><div class="event">Explicit bypass marker</div><div class="route">normal_path</div><div class="delay">0ms</div></div>
-        <div class="policy-row" role="row"><div class="event">Protected top-level call</div><div class="route">delayed_pool</div><div class="delay">10–50ms</div></div>
-        <div class="policy-row" role="row"><div class="event">Indirect / CPI reference</div><div class="route">delayed_pool</div><div class="delay">10–50ms</div></div>
-        <div class="policy-row" role="row"><div class="event">Multiple enrolled apps</div><div class="route">max_rule</div><div class="delay">MAX</div></div>
-      </div>
-      <div class="code-panel" aria-label="Reference decision example">
-        <pre><span class="key">{</span>
-  <span class="key">"program_id"</span>: <span class="value">"…"</span>,
-  <span class="key">"reason"</span>: <span class="value">"protected_top_level_instruction"</span>,
-  <span class="key">"delay_ms"</span>: <span class="hot">20</span>,
-  <span class="key">"critical_path_ai"</span>: <span class="value">false</span>
-<span class="key">}</span></pre>
-        <div class="code-caption">Reference output / deterministic decision object</div>
+    <div class="wrap section-grid">
+      <div class="section-label">02 / Policy</div>
+      <div class="section-body">
+        <h2>Protected by default. Bypass only when explicit.</h2>
+        <p>The rule is intentionally conservative: registered applications define exact top-level bypass markers. Everything else that matches the protected application is delayed.</p>
+        <div class="matrix">
+          <div class="mrow head"><div>Observed transaction state</div><div>Decision</div><div>Delay</div></div>
+          <div class="mrow"><div>Unregistered program</div><div class="mono">normal_path</div><div class="mono">0 ms</div></div>
+          <div class="mrow"><div>Registered + bypass marker</div><div class="mono">normal_path</div><div class="mono">0 ms</div></div>
+          <div class="mrow"><div>Registered + no bypass marker</div><div class="mono result">protected</div><div class="mono result">10–50 ms</div></div>
+          <div class="mrow"><div>Indirect / CPI-style reference</div><div class="mono result">protected</div><div class="mono result">10–50 ms</div></div>
+          <div class="mrow"><div>Multiple registered programs</div><div class="mono result">max_rule</div><div class="mono result">max match</div></div>
+        </div>
+        <div class="quote">The goal is not to predict a bad trade. The goal is to make stale-quote protection a deterministic scheduling property.</div>
       </div>
     </div>
   </section>
 
-  <section class="section" id="principles">
-    <div class="section-head">
-      <div class="section-index">03 / DESIGN PRINCIPLES</div>
-      <div class="section-title"><h2>The hard part is what XGuard refuses to do.</h2></div>
-    </div>
-    <div class="principles">
-      <article class="principle"><div class="num">A / 01</div><h3>Unrelated flow stays unrelated.</h3><p>Applications that never enroll are not delayed, classified or routed differently by XGuard.</p></article>
-      <article class="principle"><div class="num">A / 02</div><h3>Bypass must be explicit.</h3><p>Critical maker, oracle, liquidation or health instructions stay fast only through application-defined top-level markers.</p></article>
-      <article class="principle"><div class="num">A / 03</div><h3>Composition cannot weaken policy.</h3><p>If one transaction touches several enrolled programs, the longest matching delay wins instead of creating a shorter-path escape hatch.</p></article>
-      <article class="principle"><div class="num">A / 04</div><h3>No fake production claims.</h3><p>The Rust core and public review surface are live. Production BAM activation remains dependent on the official ACE integration and early-access path.</p></article>
+  <section class="section">
+    <div class="wrap section-grid">
+      <div class="section-label">03 / System design</div>
+      <div class="section-body">
+        <h2>No intelligence theater in the critical path.</h2>
+        <p>The implementation is deliberately narrow because execution guarantees are easier to review when the same inputs always produce the same output.</p>
+        <div class="two-col">
+          <div class="principle"><div class="n">A</div><b>Deterministic</b><p>No probabilistic classifier, model inference, or remote dependency during classification.</p></div>
+          <div class="principle"><div class="n">B</div><b>Application-scoped</b><p>Programs that do not opt in remain on BAM's normal scheduling path.</p></div>
+          <div class="principle"><div class="n">C</div><b>Composable</b><p>When several enrolled programs match one transaction, the maximum configured delay wins.</p></div>
+          <div class="principle"><div class="n">D</div><b>Reviewable</b><p>The core engine is pure Rust with bounded configuration size and fixture-driven tests.</p></div>
+        </div>
+      </div>
     </div>
   </section>
 
-  <section class="section status-band">
-    <div class="status-copy">
-      <div class="eyebrow">Current state</div>
-      <h2>Built for BAM review.</h2>
-      <p>The repository contains the deterministic policy core, correctness tests, fixture-driven simulator, security model, benchmark plan and the explicit BAM integration boundary.</p>
-      <div class="hero-actions"><a class="button primary" href="${GITHUB}">Review repository <span aria-hidden="true">↗</span></a><a class="button ghost" href="/spec.json">Machine-readable spec</a><a class="button ghost" href="${BAM}">BAM</a></div>
+  <section class="section">
+    <div class="wrap section-grid">
+      <div class="section-label">04 / Review status</div>
+      <div class="section-body review">
+        <div class="review-main">
+          <h2>Built. Tested. Waiting on the official BAM integration boundary.</h2>
+          <p>The policy engine, simulator, security model, benchmark plan, public specification, CI, CodeQL, and Cloudflare review surface are implemented. Production activation still depends on BAM early-access approval and the supported ACE/plugin interface.</p>
+          <div class="actions">
+            <a class="btn primary" href="${GITHUB}">Open repository</a>
+            <a class="btn" href="/spec.json">Machine spec</a>
+            <a class="btn" href="${BAM}">BAM</a>
+          </div>
+        </div>
+        <aside class="review-side">
+          <dl>
+            <div><dt>Core language</dt><dd>Rust</dd></div>
+            <div><dt>Critical-path AI</dt><dd>None</dd></div>
+            <div><dt>Delay bound</dt><dd>10–50 ms</dd></div>
+            <div><dt>Unknown programs</dt><dd>Unaffected</dd></div>
+            <div><dt>Public status</dt><dd>Early-access candidate</dd></div>
+          </dl>
+        </aside>
+      </div>
     </div>
-    <aside class="status-side"><div class="stamp">Status<br>BAM early-access candidate</div><div class="fine">Public web surface only.<br>Cloudflare is not in the Solana transaction critical path.<br><br>Apache-2.0</div></aside>
   </section>
 </main>
-
-<footer class="shell footer"><span>XGuard ACE / deterministic stale-quote protection</span><span>Solana · BAM · Application Controlled Execution</span></footer>
+<footer>
+  <div class="wrap footer"><span>XGuard ACE / Apache-2.0</span><span>Deterministic application scheduling policy for BAM</span></div>
+</footer>
 </body>
 </html>`, {
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "cache-control": "public, max-age=300",
+      "cache-control": "public, max-age=120",
       "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",
-      "x-frame-options": "DENY",
-      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()"
+      "x-frame-options": "DENY"
     }
   });
 }
