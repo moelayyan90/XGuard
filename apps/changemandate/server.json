@@ -9,11 +9,11 @@
     "source": "github",
     "subfolder": "apps/changemandate"
   },
-  "websiteUrl": "https://periodic-worthy-transversal.replit.app",
+  "websiteUrl": "https://changemandate.xguardgate.com",
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://periodic-worthy-transversal.replit.app/api/v1/mcp"
+      "url": "https://changemandate.xguardgate.com/mcp"
     }
   ]
 }
