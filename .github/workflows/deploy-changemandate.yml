@@ -71,22 +71,19 @@ jobs:
       - name: Resolve production URL
         id: resolve
         if: always()
+        env:
+          UPLOAD_OK: ${{ steps.upload.outputs.ok }}
         shell: bash
         run: |
           set -euo pipefail
-          url=""
-          if [[ -f /tmp/changemandate-deploy.log ]]; then
-            url="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' /tmp/changemandate-deploy.log | tail -1 || true)"
-          fi
-          if [[ -n "$url" ]]; then
+          if [[ "$UPLOAD_OK" = "true" ]]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
-            echo "url=$url" >> "$GITHUB_OUTPUT"
-            echo "reason=resolved" >> "$GITHUB_OUTPUT"
-            echo "Resolved URL: $url"
+            echo "url=https://changemandate.xguardgate.com" >> "$GITHUB_OUTPUT"
+            echo "reason=custom_domain_configured" >> "$GITHUB_OUTPUT"
           else
             echo "ok=false" >> "$GITHUB_OUTPUT"
             echo "url=" >> "$GITHUB_OUTPUT"
-            echo "reason=no_workers_dev_url_in_wrangler_output" >> "$GITHUB_OUTPUT"
+            echo "reason=upload_failed" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Verify production
@@ -109,10 +106,12 @@ jobs:
             echo "reason=url_unresolved" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          for attempt in {1..30}; do
+          for attempt in {1..45}; do
             if body="$(curl --fail --silent --show-error --max-time 10 "${BASE_URL}/healthz" 2>/dev/null)" && \
                printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="ChangeMandate")process.exit(1)})'; then
-              discovery_ct="$(curl --fail --silent --show-error --max-time 10 -D - -o /tmp/cm-discovery.json "${BASE_URL}/.well-known/changemandate" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print tolower($2); exit}')"
+              discovery_code="$(curl --silent --output /tmp/cm-discovery.json --write-out '%{http_code}' --max-time 10 "${BASE_URL}/.well-known/changemandate")"
+              [[ "$discovery_code" = "200" ]] || { echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=discovery_http_${discovery_code}" >> "$GITHUB_OUTPUT"; exit 0; }
+              discovery_ct="$(curl --silent --show-error --max-time 10 -D - -o /tmp/cm-discovery.json "${BASE_URL}/.well-known/changemandate" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print tolower($2); exit}')"
               node -e 'const x=JSON.parse(require("node:fs").readFileSync("/tmp/cm-discovery.json","utf8")); if(x.name!=="ChangeMandate") process.exit(1)'
               [[ "$discovery_ct" == application/json* ]] || { echo "ok=false" >> "$GITHUB_OUTPUT"; echo "reason=discovery_content_type_invalid" >> "$GITHUB_OUTPUT"; exit 0; }
               code="$(curl --silent --output /tmp/cm-mcp-get.json --write-out '%{http_code}' --max-time 10 "${BASE_URL}/mcp")"
@@ -157,7 +156,7 @@ jobs:
           [[ "$VERIFY_OK" = "true" ]] && verify_state=success || verify_state=failure
           post_status "changemandate/cloudflare/upload" "$upload_state" "${UPLOAD_REASON:-unknown_upload_state}" "$run_url"
           if [[ "$url_state" = success && -n "${DEPLOY_URL:-}" ]]; then
-            post_status "changemandate/cloudflare/url" success "workers.dev URL resolved" "$DEPLOY_URL"
+            post_status "changemandate/cloudflare/url" success "custom domain configured" "$DEPLOY_URL"
           else
             post_status "changemandate/cloudflare/url" failure "${URL_REASON:-unknown_url_state}" "$run_url"
           fi
