@@ -12,6 +12,9 @@
     "logs": { "enabled": true, "invocation_logs": true, "head_sampling_rate": 0.1 },
     "traces": { "enabled": true, "head_sampling_rate": 0.05 }
   },
+  "routes": [
+    { "pattern": "changemandate.xguardgate.com", "custom_domain": true }
+  ],
   "durable_objects": {
     "bindings": [
       { "name": "REPLAY_GUARD", "class_name": "ReplayGuard" }
