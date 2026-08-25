@@ -1,0 +1,43 @@
+name: Publish XGuard to MCP Registry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server.json"
+      - ".github/workflows/publish-mcp.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Wait for public MCP endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..30}; do
+            body="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"registry-smoke","version":"1.0.0"}}}' || true)"
+            if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-control-plane")process.exit(0)}catch{}process.exit(1)})'; then exit 0; fi
+            sleep 4
+          done
+          echo 'XGuard MCP endpoint is not live yet'
+          exit 1
+      - name: Install MCP publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --help >/dev/null
+      - name: Authenticate with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+      - name: Publish remote server
+        run: ./mcp-publisher publish server.json
