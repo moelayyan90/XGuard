@@ -7,6 +7,7 @@
   "workers_dev": true,
   "minify": true,
   "vars": {
+    "X402_GLOBAL_PRIMARY": "https://facilitator.payai.network",
     "X402_BASE_PRIMARY": "https://facilitator.xpay.sh",
     "X402_BASE_SECONDARY": "https://facilitator.openx402.ai",
     "X402_MULTI": "https://x402.dexter.cash",
