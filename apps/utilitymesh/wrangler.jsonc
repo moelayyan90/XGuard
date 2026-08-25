@@ -1,11 +1,14 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "xguard-mainnet",
-  "main": "src/index.js",
+  "main": "src/live.js",
   "compatibility_date": "2026-08-25",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "minify": true,
+  "vars": {
+    "XGUARD_TREASURY_USDC_ADDRESS": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07"
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.1,

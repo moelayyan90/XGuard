@@ -33,7 +33,7 @@ jobs:
       - name: Syntax and config
         run: |
           set -euo pipefail
-          node --check apps/utilitymesh/src/index.js
+          node --check apps/utilitymesh/src/live.js
           node -e "JSON.parse(require('node:fs').readFileSync('apps/utilitymesh/wrangler.jsonc','utf8'))"
       - name: Dry-run bundle
         run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/utilitymesh/wrangler.jsonc
@@ -64,18 +64,29 @@ jobs:
           [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
           export CLOUDFLARE_API_TOKEN="$token"
           npx --yes wrangler@4.123.0 deploy --config apps/utilitymesh/wrangler.jsonc
-      - name: Verify production
+      - name: Verify production and x402 payment rail
         shell: bash
         run: |
           set -euo pipefail
-          for base in 'https://api.xguardgate.com' 'https://xguardgate.com'; do
-            for attempt in {1..30}; do
-              if body="$(curl --fail --silent --show-error --max-time 10 "${base}/healthz" 2>/dev/null)" && \
-                printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="XGuard UtilityMesh"||x.paid_endpoints!==15)process.exit(1)})'; then
-                break
-              fi
-              sleep 4
-            done
+          health=""
+          for attempt in {1..30}; do
+            health="$(curl --fail --silent --show-error --max-time 10 https://api.xguardgate.com/healthz 2>/dev/null || true)"
+            if printf '%s' "$health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.status==="ok"&&x.service==="XGuard UtilityMesh"&&x.payment_ready===true&&x.paid_endpoints===15)process.exit(0)}catch{}process.exit(1)})'; then
+              break
+            fi
+            sleep 4
           done
-          curl --fail --silent --show-error https://api.xguardgate.com/catalog | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.endpoints)||x.endpoints.length!==15)process.exit(1)})'
-          curl --fail --silent --show-error https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.openapi!=="3.1.0")process.exit(1)})'
+          printf '%s' "$health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify({service:x.service,payment_ready:x.payment_ready,network:x.network,paid_endpoints:x.paid_endpoints}));if(x.payment_ready!==true)process.exit(1)})'
+          code="$(curl --silent --show-error --max-time 10 -D /tmp/xg-h -o /tmp/xg-b -w '%{http_code}' https://api.xguardgate.com/v1/chain/base/block)"
+          echo "paid_endpoint_http_status=${code}"
+          test "$code" = "402"
+          grep -qi '^payment-required:' /tmp/xg-h
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const hdr=fs.readFileSync('/tmp/xg-h','utf8').split(/\r?\n/).find(x=>/^payment-required:/i.test(x));
+          const raw=hdr.replace(/^[^:]+:\s*/,'').trim();
+          const p=JSON.parse(Buffer.from(raw,'base64').toString('utf8'));
+          const a=Array.isArray(p.accepts)?p.accepts[0]:null;
+          console.log(JSON.stringify({x402Version:p.x402Version,network:a?.network,scheme:a?.scheme,payTo_present:Boolean(a?.payTo)}));
+          if(p.x402Version!==2||a?.network!=='eip155:8453'||a?.scheme!=='exact'||!a?.payTo)process.exit(1);
+          NODE
