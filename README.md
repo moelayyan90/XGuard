@@ -2,8 +2,40 @@
 
 A protocol-neutral, non-custodial control layer for agent payments, commerce, MCP tools and machine-to-machine transactions.
 
+**Free Agent Transaction Safety Test:** https://xguardgate.com/test  
+**Safety Test API:** `POST https://api.xguardgate.com/v1/test`  
 **Production control plane:** https://api.xguardgate.com  
 **Website:** https://xguardgate.com
+
+## Free Agent Transaction Safety Test
+
+Before routing traffic through XGuard, a team can paste a **sample** agent transaction and receive a 0–100 structural runtime-readiness score.
+
+The free test checks:
+
+- protocol identification across x402, MPP, AP2, UCP, ACP, MCP and signed/generic HTTPS
+- mutation idempotency
+- recipient/resource/amount or mandate context binding
+- consume-once / replay uniqueness signals
+- expiry and freshness windows
+- request authorization and traceability
+
+The merchant endpoint is **not contacted**. The report is a structural safety test, not a certification.
+
+Example:
+
+```bash
+curl -X POST https://api.xguardgate.com/v1/test \
+  -H 'content-type: application/json' \
+  --data '{
+    "target":"https://merchant.example/checkout",
+    "method":"POST",
+    "headers":{"Idempotency-Key":"demo-123","Request-Id":"req-demo"},
+    "body":{"amount":"1000","transaction_id":"tx-demo","expires":"2026-08-26T00:00:00Z"}
+  }'
+```
+
+The report ends with the shortest in-path fix using XGuard Edge when application-level retry/replay controls are incomplete.
 
 ## One control point above the protocols
 
@@ -55,6 +87,9 @@ The x402 path additionally keeps multi-facilitator capability routing, failover,
 
 ## Discovery
 
+- free web safety test: https://xguardgate.com/test
+- safety test API: `POST https://api.xguardgate.com/v1/test`
+- safety test schema: https://api.xguardgate.com/v1/test/schema
 - universal protocol surface: https://api.xguardgate.com/v1/protocols
 - machine-readable manifest: https://api.xguardgate.com/.well-known/xguard.json
 - inspect a transaction without forwarding it: `POST https://api.xguardgate.com/v1/inspect`
@@ -68,6 +103,10 @@ The x402 path additionally keeps multi-facilitator capability routing, failover,
 `packages/edge` contains a protocol-neutral fetch adapter. It rewrites requests for an authorized merchant origin through the XGuard edge without changing application-level protocol code.
 
 ## Pricing
+
+### Safety test
+
+- web and API structural test: free
 
 ### Universal edge
 
