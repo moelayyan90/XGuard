@@ -1,5 +1,5 @@
 import worker from "./control-entry.js";
-import authority from "./authority.js";
+import authority, { enforceEdgeMandate } from "./authority.js";
 import { ownersMetadataResponse } from "./owners-metadata.js";
 
 export { MerchantQuota, SettlementReceipt } from "./control-entry.js";
@@ -23,7 +23,7 @@ function architectureResponse() {
         "human or organization issues scoped XGuard mandate",
         "agent or merchant request",
         "protocol detection and policy inspection",
-        "mandatory mandate authorization for billable agent actions",
+        "mandatory mandate authorization for financial agent actions",
         "request binding and safety checks",
         "authorized upstream forwarding",
         "successful transaction metering",
@@ -72,6 +72,17 @@ export default {
 
     const authorityResponse = await authority.fetch(request, env, ctx);
     if (authorityResponse) return authorityResponse;
+
+    if (pathname.startsWith("/edge/")) {
+      const spend = await enforceEdgeMandate(request, env);
+      if (spend instanceof Response) return spend;
+      if (spend?.authorization_id) {
+        const headers = new Headers(request.headers);
+        headers.set("x-xguard-authorization-id", spend.authorization_id);
+        headers.set("x-xguard-agent-id", spend.agent_id || "agent");
+        request = new Request(request, { headers });
+      }
+    }
 
     return worker.fetch(request, env, ctx);
   },
