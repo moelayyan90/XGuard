@@ -12,6 +12,12 @@
     "logs": { "enabled": true, "invocation_logs": true, "head_sampling_rate": 0.1 },
     "traces": { "enabled": true, "head_sampling_rate": 0.05 }
   },
+  "durable_objects": {
+    "bindings": [{ "name": "CREDITS", "class_name": "CreditLedger" }]
+  },
+  "migrations": [
+    { "tag": "lemonhook-v1", "new_sqlite_classes": ["CreditLedger"] }
+  ],
   "routes": [
     { "pattern": "hooks.xguardgate.com", "custom_domain": true }
   ]
