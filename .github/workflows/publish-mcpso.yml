@@ -1,0 +1,48 @@
+name: Submit XGuard to community directories
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server.json"
+      - "README.md"
+      - ".github/workflows/publish-mcpso.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Submit public XGuard repository to mcp.so
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --max-time 20 -o /tmp/mcpso-response -w '%{http_code}' -X POST https://mcp.so/api/submit-project -H 'content-type: application/json' --data '{"url":"https://github.com/moelayyan90/XGuard","avatar_url":""}' || true)"
+          echo "mcpso_http_status=${status}"
+          cat /tmp/mcpso-response || true
+          if [[ "$status" =~ ^20[0-9]$ || "$status" = "409" || "$status" = "429" ]]; then
+            exit 0
+          fi
+          echo "::warning::mcp.so submission returned HTTP ${status}; official MCP Registry publication remains authoritative"
+
+      - name: Submit XGuard to AllMCPs directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          email="$(git log -1 --pretty=format:%ae)"
+          payload="$(node -e 'const email=process.argv[1];process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"submit_mcp_server",arguments:{name:"XGuard Settlement Control Plane",url:"https://github.com/moelayyan90/XGuard",email,category:"Security",websiteUrl:"https://xguardgate.com",description:"In-path x402 payment firewall with facilitator failover, replay protection and settlement reconciliation."}}}))' "$email")"
+          status="$(curl --silent --show-error --max-time 25 -o /tmp/allmcps-response -w '%{http_code}' -X POST https://allmcps.com/api/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' --data "$payload" || true)"
+          echo "allmcps_http_status=${status}"
+          cat /tmp/allmcps-response || true
+          if [[ "$status" =~ ^20[0-9]$ ]]; then
+            exit 0
+          fi
+          echo "::warning::AllMCPs submission returned HTTP ${status}; no money was spent"
