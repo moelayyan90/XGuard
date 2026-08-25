@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard-control-plane",
-  "title": "XGuard Settlement Control Plane",
-  "description": "In-path x402 payment firewall with facilitator failover, replay protection and reconciliation.",
-  "version": "3.0.0",
+  "title": "XGuard Universal Agent Transaction Control Plane",
+  "description": "Protocol-neutral in-path control layer for agent payments, commerce, MCP tools and machine transactions.",
+  "version": "4.0.0",
   "websiteUrl": "https://xguardgate.com",
   "remotes": [
     {
