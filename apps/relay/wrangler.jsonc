@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "xguard-mainnet",
-  "main": "src/index.js",
+  "main": "src/gateway.js",
   "compatibility_date": "2026-08-25",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
@@ -14,15 +14,18 @@
     "XGUARD_CHECKOUT_URL": "https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab",
     "BASE_RPC_URL": "https://mainnet.base.org",
     "FREE_SETTLEMENTS": "25",
-    "SETTLEMENT_CREDITS": "2"
+    "SETTLEMENT_CREDITS": "2",
+    "RECOVERY_WINDOW_MS": "24000"
   },
   "durable_objects": {
     "bindings": [
-      { "name": "QUOTAS", "class_name": "MerchantQuota" }
+      { "name": "QUOTAS", "class_name": "MerchantQuota" },
+      { "name": "RECEIPTS", "class_name": "SettlementReceipt" }
     ]
   },
   "migrations": [
-    { "tag": "relay-v1", "new_sqlite_classes": ["MerchantQuota"] }
+    { "tag": "relay-v1", "new_sqlite_classes": ["MerchantQuota"] },
+    { "tag": "relay-v2", "new_sqlite_classes": ["SettlementReceipt"] }
   ],
   "observability": {
     "enabled": true,
