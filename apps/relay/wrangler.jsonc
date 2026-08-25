@@ -23,12 +23,14 @@
   "durable_objects": {
     "bindings": [
       { "name": "QUOTAS", "class_name": "MerchantQuota" },
-      { "name": "RECEIPTS", "class_name": "SettlementReceipt" }
+      { "name": "RECEIPTS", "class_name": "SettlementReceipt" },
+      { "name": "AUTHORITY", "class_name": "AgentAuthority" }
     ]
   },
   "migrations": [
     { "tag": "relay-v1", "new_sqlite_classes": ["MerchantQuota"] },
-    { "tag": "relay-v2", "new_sqlite_classes": ["SettlementReceipt"] }
+    { "tag": "relay-v2", "new_sqlite_classes": ["SettlementReceipt"] },
+    { "tag": "relay-v3", "new_sqlite_classes": ["AgentAuthority"] }
   ],
   "observability": {
     "enabled": true,
