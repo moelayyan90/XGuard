@@ -38,14 +38,27 @@ jobs:
           set -euo pipefail
           for i in {1..30}; do
             h="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/healthz || true)"
-            if printf '%s' "$h" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.service==="XGuard Reliability Gateway"&&x.version==="2.2.0"&&x.non_custodial===true&&x.durable_receipts===true&&Array.isArray(x.upstreams)&&x.upstreams.some(u=>u.ok))process.exit(0)}catch{}process.exit(1)})'; then break; fi
+            if printf '%s' "$h" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.service==="XGuard Settlement Control Plane"&&x.version==="3.0.0"&&x.non_custodial===true&&x.payment_firewall===true&&x.durable_replay_guard===true&&Array.isArray(x.upstreams)&&x.upstreams.some(u=>u.ok))process.exit(0)}catch{}process.exit(1)})'; then break; fi
             sleep 4
           done
-          printf '%s' "$h" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify(x));if(x.service!=="XGuard Reliability Gateway"||x.version!=="2.2.0"||x.durable_receipts!==true||!x.upstreams?.some(u=>u.ok))process.exit(1)})'
+          printf '%s' "$h" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify(x));if(x.service!=="XGuard Settlement Control Plane"||x.version!=="3.0.0"||x.payment_firewall!==true||x.recipient_amount_binding!==true||x.durable_replay_guard!==true||!x.upstreams?.some(u=>u.ok))process.exit(1)})'
+
           code="$(curl --silent --show-error --max-time 8 -o /tmp/supported -w '%{http_code}' https://api.xguardgate.com/supported)"
           test "$code" = "200"
           test -s /tmp/supported
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/docs | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Reliability Gateway"||x.behavior?.durable_idempotency_receipts!==true||x.pricing?.credits_per_successful_settlement!==2)process.exit(1)})'
+
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/docs | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Settlement Control Plane"||x.mandatory_when_configured!==true||x.firewall?.recipient_binding!==true||x.firewall?.amount_binding!==true||x.routing?.failover!==true)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.openapi!=="3.1.0"||!x.paths?.["/verify"]||!x.paths?.["/settle"])process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/agent-card.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Settlement Control Plane"||!Array.isArray(x.skills)||x.skills.length<4)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/skill.md | grep -q 'Settlement Control Plane'
+
+          mcp="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"1.0.0"}}}')"
+          printf '%s' "$mcp" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-control-plane"||x.result?.serverInfo?.version!=="3.0.0")process.exit(1)})'
+
+          blocked="$(curl --silent --show-error --max-time 8 -D /tmp/xg-fw-h -o /tmp/xg-fw-b -w '%{http_code}' -X POST https://api.xguardgate.com/verify -H 'content-type: application/json' --data '{"paymentPayload":{"x402Version":2,"accepted":{"scheme":"exact","network":"eip155:8453","asset":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","payTo":"0x0000000000000000000000000000000000000001","amount":"1"},"payload":{"authorization":{"from":"0x0000000000000000000000000000000000000002","to":"0x0000000000000000000000000000000000000003","value":"1","validAfter":"0","validBefore":"9999999999","nonce":"0x0000000000000000000000000000000000000000000000000000000000000001"}}},"paymentRequirements":{"scheme":"exact","network":"eip155:8453","asset":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","payTo":"0x0000000000000000000000000000000000000001","amount":"1"}}')"
+          test "$blocked" = "400"
+          grep -qi '^x-xguard-firewall: block' /tmp/xg-fw-h
+          grep -q 'authorization_recipient_mismatch' /tmp/xg-fw-b
 
           live_ok=0
           for i in {1..30}; do
@@ -56,7 +69,7 @@ jobs:
                printf '%s' "$page" | grep -q "Reliable payments. Zero surprises." && \
                ! printf '%s' "$page" | grep -q "Gateway health"; then
               live_ok=1
-              echo "Reference homepage is live on xguardgate.com"
+              echo "XGuard homepage is live on xguardgate.com"
               break
             fi
             sleep 3
