@@ -7,7 +7,8 @@
   "workers_dev": true,
   "minify": true,
   "vars": {
-    "XGUARD_TREASURY_USDC_ADDRESS": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07"
+    "XGUARD_TREASURY_USDC_ADDRESS": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
+    "X402_FACILITATOR": "https://facilitator.xpay.sh"
   },
   "observability": {
     "enabled": true,
