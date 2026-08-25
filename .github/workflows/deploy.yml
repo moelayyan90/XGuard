@@ -47,4 +47,9 @@ jobs:
           test -s /tmp/supported
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/docs | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Reliability Gateway"||x.behavior?.durable_idempotency_receipts!==true||x.pricing?.credits_per_successful_settlement!==2)process.exit(1)})'
           page="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/)"
-          printf '%s' "$page" | grep -q "Don't lose paid requests"
+          printf '%s' "$page" | grep -q "settlement failures"
+          printf '%s' "$page" | grep -q "Reliable payments. Zero surprises."
+          if printf '%s' "$page" | grep -q "top-block"; then
+            echo "Oversized legacy top banner is still present"
+            exit 1
+          fi
