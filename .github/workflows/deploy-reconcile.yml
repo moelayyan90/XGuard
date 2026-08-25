@@ -73,3 +73,18 @@ jobs:
           console.log(JSON.stringify({x402Version:p.x402Version,network:a?.network,scheme:a?.scheme,payTo_present:Boolean(a?.payTo)}));
           if(p.x402Version!==2||a?.network!=='eip155:8453'||a?.scheme!=='exact'||!a?.payTo)process.exit(1);
           NODE
+      - name: Submit live service to x402 List
+        shell: bash
+        run: |
+          set -euo pipefail
+          email="$(git log -1 --pretty=format:%ae)"
+          payload="$(node -e 'const email=process.argv[1]; process.stdout.write(JSON.stringify({url:"https://reconcile.xguardgate.com",email,service_name:"XGuard Reconcile",description:"Post-timeout Base x402 EIP-3009 settlement reconciliation. Checks authorization state and returns the settlement transaction hash when observed. Non-custodial; no private keys.",website_url:"https://xguardgate.com",category:"Verification",endpoints:["/v1/reconcile"],notes:"Companion discovery/recovery endpoint for the XGuard multi-facilitator reliability relay at https://api.xguardgate.com."}))' "$email")"
+          status="$(curl --silent --show-error --max-time 20 -o /tmp/x402-list-submit -w '%{http_code}' -X POST https://x402-list.com/api/v1/submit -H 'content-type: application/json' --data "$payload" || true)"
+          echo "x402_list_submission_http_status=${status}"
+          if [[ "$status" =~ ^20[0-9]$ ]]; then
+            echo "x402-list submission accepted for review"
+          elif [[ "$status" = "409" || "$status" = "429" ]]; then
+            echo "x402-list already has or is already reviewing this service"
+          else
+            echo "::warning::x402-list submission did not enter review; deployment remains healthy (HTTP ${status})"
+          fi
