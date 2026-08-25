@@ -1,88 +1,95 @@
-# XGuard Settlement Control Plane
+# XGuard Universal Agent Transaction Control Plane
 
-A non-custodial universal facilitator control plane for production x402 servers.
+A protocol-neutral, non-custodial control layer for agent payments, commerce, MCP tools and machine-to-machine transactions.
 
-**Production facilitator:** https://api.xguardgate.com  
-**Website:** https://xguardgate.com  
-**Standalone timeout reconciliation:** https://reconcile.xguardgate.com
+**Production control plane:** https://api.xguardgate.com  
+**Website:** https://xguardgate.com
 
-## One facilitator URL
+## One control point above the protocols
 
-XGuard aggregates multiple production facilitators behind the standard x402 interface:
+XGuard no longer depends on a single payment standard. It can sit in-path for:
+
+- x402
+- MPP / Payment HTTP Authentication
+- AP2 mandates
+- UCP commerce traffic
+- ACP checkout/order traffic
+- MCP JSON-RPC tool calls
+- Visa-style trusted-agent HTTP signatures
+- generic HTTPS machine transactions
+
+The existing x402 facilitator surface remains native:
 
 - `GET /supported`
 - `POST /verify`
 - `POST /settle`
 
-Resource servers keep one facilitator URL while XGuard performs capability-aware routing, health failover, payment-context enforcement, durable receipts and Base timeout reconciliation.
+The protocol-neutral edge is:
 
-## Official x402 SDK compatibility
-
-The official x402 SDK already accepts any facilitator URL. Zero-package configuration:
-
-```js
-import { HTTPFacilitatorClient } from "@x402/core/server";
-
-const facilitatorClient = new HTTPFacilitatorClient({
-  url: "https://api.xguardgate.com",
-});
+```text
+https://api.xguardgate.com/edge/<merchant-host>/<path>
 ```
 
-Or install the XGuard adapter directly from GitHub:
+A merchant authorizes its hostname without creating an XGuard account by publishing:
 
-```bash
-npm install github:moelayyan90/XGuard#main
+```dns
+_xguard.<merchant-host> TXT "xguard-edge=enabled"
 ```
 
-```js
-import { createXGuardFacilitator } from "xguard-x402-control-plane";
-const facilitatorClient = createXGuardFacilitator({
-  licenseKey: process.env.XGUARD_LICENSE_KEY,
-});
-```
+This prevents XGuard from becoming an open proxy: only hosts that explicitly opt in can be reached through the edge, and private/local network targets are blocked.
 
-## What XGuard does
+## What happens in-path
 
-- aggregates supported payment kinds from multiple facilitators
-- routes by network/capability and live upstream health
-- failover between production facilitator providers
-- validates requirement-to-payload bindings before upstream processing
-- enforces recipient and amount binding
-- direct Base polling after ambiguous settlement failures
-- EIP-3009 authorization-state reconciliation
-- durable idempotency receipts for confirmed settlements
-- replayed settlement authorizations return the stored result instead of broadcasting again
-- no custody, no merchant private keys, no change to signed amount or recipient
+For every edge request XGuard:
 
-## Pricing
+1. detects the transaction protocol
+2. derives the operation type (settlement, payment, checkout, tool call, mandate, read/write)
+3. computes a deterministic request digest
+4. applies protocol-aware policy checks
+5. blocks clear binding failures before the origin
+6. forwards the request to the merchant/API
+7. meters only successful billable transaction calls
+8. leaves reads and failed transactions uncharged
 
-- `/verify`: free
-- first 25 successful routed settlements per merchant: free
-- after that: 2 XGuard Usage Credits per successful routed settlement
-- failed settlements: no credits consumed
-- no subscription
-
-Usage credits: https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab
-
-## Settlement receipts
-
-A confirmed settlement can include:
-
-```http
-X-XGuard-Receipt-Id: xgr_...
-X-XGuard-Resolution: upstream | authorization_recovered | confirmed_late
-```
-
-Retrieve the durable receipt:
-
-```http
-GET https://api.xguardgate.com/v1/receipts/xgr_...
-```
+The x402 path additionally keeps multi-facilitator capability routing, failover, EIP-3009 checks, durable receipts and timeout reconciliation.
 
 ## Discovery
 
-- capabilities: https://api.xguardgate.com/supported
-- health: https://api.xguardgate.com/healthz
+- universal protocol surface: https://api.xguardgate.com/v1/protocols
+- machine-readable manifest: https://api.xguardgate.com/.well-known/xguard.json
+- inspect a transaction without forwarding it: `POST https://api.xguardgate.com/v1/inspect`
+- x402 capabilities: https://api.xguardgate.com/supported
 - OpenAPI: https://api.xguardgate.com/openapi.json
 - MCP: https://api.xguardgate.com/mcp
 - Agent Card: https://api.xguardgate.com/.well-known/agent-card.json
+
+## Drop-in edge adapter
+
+`packages/edge` contains a protocol-neutral fetch adapter. It rewrites requests for an authorized merchant origin through the XGuard edge without changing application-level protocol code.
+
+## Pricing
+
+### Universal edge
+
+- first 1,000 successful billable transactions per hostname: free
+- then 1 XGuard Usage Credit per successful billable transaction
+- GET/HEAD/OPTIONS: free
+- failed transactions: free
+
+### Native x402 settlement control plane
+
+- `/verify`: free
+- first 25 successful settlements per merchant: free
+- then 2 XGuard Usage Credits per successful settlement
+- failed settlements: free
+
+Usage credits: https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab
+
+## Security posture
+
+- no custody of buyer or merchant funds
+- no merchant private keys
+- no mutation of signed payment amounts or recipients
+- private/local proxy targets are blocked
+- merchant edge activation requires DNS ownership proof
+- x402 requirement/accepted binding failures are fail-closed

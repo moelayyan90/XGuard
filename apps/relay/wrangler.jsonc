@@ -16,7 +16,9 @@
     "BASE_RPC_URL": "https://mainnet.base.org",
     "FREE_SETTLEMENTS": "25",
     "SETTLEMENT_CREDITS": "2",
-    "RECOVERY_WINDOW_MS": "24000"
+    "RECOVERY_WINDOW_MS": "24000",
+    "FREE_EDGE_TRANSACTIONS": "1000",
+    "EDGE_TRANSACTION_CREDITS": "1"
   },
   "durable_objects": {
     "bindings": [
