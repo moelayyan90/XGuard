@@ -1,11 +1,16 @@
 import site from "./site-entry.js";
 import controlPlane from "./control-plane.js";
+import universalEdge from "./universal-edge.js";
 
 export { MerchantQuota, SettlementReceipt } from "./gateway.js";
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    const edgeResponse = await universalEdge.fetch(request, env, ctx);
+    if (edgeResponse) return edgeResponse;
+
     if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) return site.fetch(request, env, ctx);
     if (url.pathname === "/a2a" && request.method === "GET") {
       const agentCardUrl = new URL("/.well-known/agent-card.json", request.url);
@@ -18,7 +23,7 @@ export default {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "no-store",
         "x-content-type-options": "nosniff",
-        "x-xguard-control-plane": "3.0.0"
+        "x-xguard-control-plane": "4.0.0"
       }
     });
     return controlPlane.fetch(request, env, ctx);
