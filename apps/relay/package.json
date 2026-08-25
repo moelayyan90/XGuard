@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/index.js"
+    "check": "node --check src/index.js && node --check src/gateway.js"
   },
   "dependencies": {
     "viem": "^2.37.6"
