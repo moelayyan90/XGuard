@@ -1,0 +1,42 @@
+name: Diagnose XGuard Universal v4
+on:
+  pull_request:
+    paths:
+      - "server.json"
+      - ".github/workflows/diag-live-v4.yml"
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dump production discovery surfaces
+        shell: bash
+        run: |
+          set -u
+          for u in \
+            https://api.xguardgate.com/healthz \
+            https://api.xguardgate.com/v1/protocols \
+            https://api.xguardgate.com/docs \
+            https://api.xguardgate.com/openapi.json \
+            https://api.xguardgate.com/.well-known/agent-card.json \
+            https://api.xguardgate.com/skill.md; do
+            echo "===== $u ====="
+            curl --silent --show-error --max-time 10 -w '\nHTTP=%{http_code}\n' "$u" | head -c 12000
+            echo
+          done
+          echo '===== MCP ====='
+          curl --silent --show-error --max-time 10 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"diag","version":"1"}}}'
+          echo
+          echo '===== INSPECT MPP ====='
+          curl --silent --show-error --max-time 10 -X POST https://api.xguardgate.com/v1/inspect -H 'content-type: application/json' --data '{"target":"https://example.com/pay","method":"POST","headers":{"authorization":"Payment credential=abc"},"body":{"amount":"1"}}'
+          echo
+          echo '===== EDGE UNAUTHORIZED ====='
+          curl --silent --show-error --max-time 10 -w '\nHTTP=%{http_code}\n' https://api.xguardgate.com/edge/example.com/
+          echo
+          echo '===== HOMEPAGE MARKERS ====='
+          page="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/?diag=v4')"
+          for s in 'One control layer in front of' 'The chokepoint' 'Protocol-neutral by design' 'One transaction gate. Every agent rail.'; do
+            if printf '%s' "$page" | grep -Fq "$s"; then echo "FOUND: $s"; else echo "MISSING: $s"; fi
+          done
