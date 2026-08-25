@@ -1,4 +1,5 @@
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
+const STANDARD = "XGuard ATS-100";
 const API = "https://api.xguardgate.com";
 const MAX = 262144;
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
@@ -8,6 +9,7 @@ const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(b
     "cache-control": "no-store",
     "x-content-type-options": "nosniff",
     "x-xguard-safety-test": VERSION,
+    "x-xguard-score-standard": "ATS-100",
     ...headers
   }
 });
@@ -59,7 +61,6 @@ function evaluate(input) {
   const risks = [];
   const fixes = [];
   let score = 0;
-
   const add = (id, max, earned, detail) => { score += earned; checks.push({ id, earned, max, pass: earned === max, detail }); };
 
   if (protocol !== "http") add("protocol_identification", 15, 15, `${protocol} was structurally identifiable`);
@@ -106,6 +107,8 @@ function evaluate(input) {
   const host = u.host;
   return {
     name: "XGuard Agent Transaction Safety Test",
+    score_standard: STANDARD,
+    standard_version: "2026-08-25",
     version: VERSION,
     protocol,
     operation: mutation(method) ? "mutation" : "read",
@@ -120,7 +123,7 @@ function evaluate(input) {
       authorize: `_xguard.${u.hostname} TXT \"xguard-edge=enabled\"`,
       edge_url: `${API}/edge/${host}${u.pathname}`
     },
-    evidence_note: "This is a structural runtime-readiness test of the supplied sample, not a certification or proof that the remote merchant endpoint behaves correctly.",
+    evidence_note: "ATS-100 is a structural runtime-readiness score of the supplied sample, not a certification or proof that the remote merchant endpoint behaves correctly.",
     privacy_note: "Do not submit live card data, private keys, bearer secrets or production credentials. XGuard does not echo submitted secret values in the report."
   };
 }
@@ -128,13 +131,26 @@ function evaluate(input) {
 function schema() {
   return {
     name: "XGuard Agent Transaction Safety Test",
+    score_standard: STANDARD,
+    standard_version: "2026-08-25",
     version: VERSION,
     free: true,
+    score_range: [0, 100],
+    weights: {
+      protocol_identification: 15,
+      idempotency: 20,
+      context_binding: 25,
+      replay_uniqueness: 15,
+      freshness_window: 10,
+      traceability_authorization: 15
+    },
+    grades: { A: "90-100", B: "80-89", C: "70-79", D: "60-69", F: "0-59" },
     protocols: ["x402", "MPP", "AP2", "UCP", "ACP", "MCP", "signed HTTP", "generic HTTPS"],
     endpoint: "POST /v1/test",
     input: { target: "https://merchant.example/checkout", method: "POST", headers: { "Idempotency-Key": "demo-123" }, body: {} },
     checks: ["protocol identification", "idempotency", "context binding", "replay uniqueness", "freshness window", "traceability/authorization"],
-    web_test: "https://xguardgate.com/test"
+    web_test: "https://xguardgate.com/test",
+    specification: "https://github.com/moelayyan90/XGuard/blob/main/specs/ATS-100.md"
   };
 }
 
