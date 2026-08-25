@@ -46,12 +46,19 @@ jobs:
           test "$code" = "200"
           test -s /tmp/supported
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/docs | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Reliability Gateway"||x.behavior?.durable_idempotency_receipts!==true||x.pricing?.credits_per_successful_settlement!==2)process.exit(1)})'
-          page="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/?build=reference-v3)"
-          printf '%s' "$page" | grep -q "Keep paid requests moving through"
-          printf '%s' "$page" | grep -q "Core payment philosophy"
-          printf '%s' "$page" | grep -q "Operational impact"
-          printf '%s' "$page" | grep -q "Reliable payments. Zero surprises."
-          if printf '%s' "$page" | grep -q "Gateway health"; then
-            echo "Legacy dashboard section is still present"
-            exit 1
-          fi
+
+          live_ok=0
+          for i in {1..30}; do
+            page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${GITHUB_SHA}-${i}" || true)"
+            if printf '%s' "$page" | grep -q "Keep paid requests moving through" && \
+               printf '%s' "$page" | grep -q "Core payment philosophy" && \
+               printf '%s' "$page" | grep -q "Operational impact" && \
+               printf '%s' "$page" | grep -q "Reliable payments. Zero surprises." && \
+               ! printf '%s' "$page" | grep -q "Gateway health"; then
+              live_ok=1
+              echo "Reference homepage is live on xguardgate.com"
+              break
+            fi
+            sleep 3
+          done
+          test "$live_ok" = "1"
