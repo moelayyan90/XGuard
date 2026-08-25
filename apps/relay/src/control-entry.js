@@ -1,4 +1,4 @@
-import site from "./site-entry.js";
+import site from "./site-universal.js";
 import controlPlane from "./control-plane.js";
 import universalEdge from "./universal-edge.js";
 
