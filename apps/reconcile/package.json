@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/index.js"
+    "check": "node --check src/index.js && node --check src/entry.js"
   },
   "dependencies": {
     "@x402/core": "^2.17.0",
