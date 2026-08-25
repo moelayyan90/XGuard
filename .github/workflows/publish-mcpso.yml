@@ -1,0 +1,30 @@
+name: Submit XGuard to mcp.so
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server.json"
+      - "README.md"
+      - ".github/workflows/publish-mcpso.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Submit public XGuard repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --max-time 20 -o /tmp/mcpso-response -w '%{http_code}' -X POST https://mcp.so/api/submit-project -H 'content-type: application/json' --data '{"url":"https://github.com/moelayyan90/XGuard","avatar_url":""}' || true)"
+          echo "mcpso_http_status=${status}"
+          cat /tmp/mcpso-response || true
+          if [[ "$status" =~ ^20[0-9]$ || "$status" = "409" || "$status" = "429" ]]; then
+            exit 0
+          fi
+          echo "::warning::mcp.so submission returned HTTP ${status}; official MCP Registry publication remains authoritative"
