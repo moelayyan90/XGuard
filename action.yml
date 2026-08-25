@@ -1,0 +1,29 @@
+name: XGuard ATS-100 Agent Transaction Safety Gate
+description: Fail CI when an agent payment or commerce transaction sample scores below the required ATS-100 threshold.
+author: XGuard
+branding:
+  icon: shield
+  color: blue
+inputs:
+  sample:
+    description: Path to a JSON transaction sample containing target, method, headers and body.
+    required: false
+    default: .xguard/transaction.json
+  min-score:
+    description: Minimum ATS-100 score required to pass CI.
+    required: false
+    default: "90"
+  api-url:
+    description: XGuard ATS-100 API endpoint.
+    required: false
+    default: https://api.xguardgate.com/v1/test
+runs:
+  using: composite
+  steps:
+    - name: Run XGuard ATS-100 safety gate
+      shell: bash
+      env:
+        XGUARD_SAMPLE: ${{ inputs.sample }}
+        XGUARD_MIN_SCORE: ${{ inputs.min-score }}
+        XGUARD_API_URL: ${{ inputs.api-url }}
+      run: node "$GITHUB_ACTION_PATH/scripts/ats100-ci.mjs"
