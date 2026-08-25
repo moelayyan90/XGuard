@@ -4,12 +4,35 @@ A protocol-neutral, non-custodial control layer for agent payments, commerce, MC
 
 **Free Agent Transaction Safety Test:** https://xguardgate.com/test  
 **Safety Test API:** `POST https://api.xguardgate.com/v1/test`  
+**ATS-100 specification:** `specs/ATS-100.md`  
 **Production control plane:** https://api.xguardgate.com  
 **Website:** https://xguardgate.com
 
+## XGuard ATS-100
+
+ATS-100 is the open 0–100 Agent Transaction Safety Score used by the free XGuard test. It scores the runtime controls that autonomous retries make critical: protocol clarity, idempotency, context binding, replay uniqueness, freshness and authorization/auditability.
+
+Teams can use the web test once or make ATS-100 a **required CI gate** so unsafe agent transaction samples cannot merge.
+
+```yaml
+name: Agent transaction safety
+on: [pull_request]
+jobs:
+  ats100:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: moelayyan90/XGuard@main
+        with:
+          sample: .xguard/transaction.json
+          min-score: "90"
+```
+
+The included `.xguard/transaction.json` is a non-production example. Do not commit live card data, private keys, bearer secrets or payment credentials.
+
 ## Free Agent Transaction Safety Test
 
-Before routing traffic through XGuard, a team can paste a **sample** agent transaction and receive a 0–100 structural runtime-readiness score.
+Before routing traffic through XGuard, a team can paste a **sample** agent transaction and receive an ATS-100 structural runtime-readiness score.
 
 The free test checks:
 
@@ -107,6 +130,7 @@ The x402 path additionally keeps multi-facilitator capability routing, failover,
 ### Safety test
 
 - web and API structural test: free
+- GitHub Action safety gate: free
 
 ### Universal edge
 
