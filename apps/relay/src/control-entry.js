@@ -148,5 +148,13 @@ export default {
     if (url.pathname === "/mcp" && request.method === "POST") return mcp(request, env, ctx);
     if (url.pathname === "/mcp" && request.method === "HEAD") return new Response(null, { status: 200, headers: { allow: "POST, HEAD", "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-xguard-control-plane": VERSION } });
     return controlPlane.fetch(request, env, ctx);
+  },
+  async scheduled(controller) {
+    console.log(JSON.stringify({
+      event: "scheduled",
+      cron: controller.cron,
+      scheduledTime: controller.scheduledTime,
+      service: "xguard-mainnet"
+    }));
   }
 };
