@@ -1,0 +1,16 @@
+{
+  "target": "https://merchant.example/checkout",
+  "method": "POST",
+  "headers": {
+    "Idempotency-Key": "demo-123",
+    "Request-Id": "req-demo",
+    "Timestamp": "2026-08-25T19:00:00Z",
+    "Signature": "sample-signature-not-a-production-secret"
+  },
+  "body": {
+    "amount": "1000",
+    "recipient": "merchant-demo",
+    "transaction_id": "tx-demo",
+    "expires": "2026-08-26T00:00:00Z"
+  }
+}
