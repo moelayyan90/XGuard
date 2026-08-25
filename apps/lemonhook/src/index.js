@@ -1,4 +1,4 @@
-const EXPECTED_PATH_SECRET_HASH="211cd6e8f1e2cba26142d9afe3e5f4398c532d70db1e6dec2e03e6d9464cc53d";
+const EXPECTED_PATH_SECRET_HASH="69c82b71630e802bbfa2b18beafe756e4ff1e51624954c171b1c5a8be4218bfd";
 const enc=new TextEncoder();
 const json=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});
 const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
