@@ -1,0 +1,8 @@
+{
+  "name": "@xguard/edge",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Protocol-neutral fetch adapter for routing agent transactions through XGuard.",
+  "exports": "./index.js",
+  "license": "MIT"
+}
