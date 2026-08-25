@@ -1,26 +1,58 @@
-# XGuard Relay
+# XGuard Reliability Gateway
 
-Fault-tolerant, non-custodial x402 facilitator routing for production merchants.
+A non-custodial reliability layer for production x402 servers.
 
-- Standard `/supported`, `/verify`, `/settle` surface
-- Health-aware upstream selection
-- Base EIP-3009 timeout reconciliation before failover
-- No custody and no private keys: buyer USDC still moves directly to the merchant
-- `/verify` is free
-- 25 successful settlements per merchant are free for evaluation
-- Paid settlement routing consumes 2 XGuard Usage Credits only after a successful settlement
-- Buy credits: https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab
+**Production:** https://api.xguardgate.com  
+**Website:** https://xguardgate.com  
+**Standalone timeout reconciliation:** https://reconcile.xguardgate.com
 
-Production: https://api.xguardgate.com
+## What XGuard does
 
-## Merchant configuration
+- Drop-in `/supported`, `/verify`, `/settle` facilitator surface
+- Health-aware multi-facilitator routing
+- Direct Base polling after settlement errors to catch late confirmations
+- EIP-3009 authorization-state reconciliation before declaring failure
+- Durable idempotency receipts for confirmed settlements
+- Replayed settlement authorizations return the stored result instead of broadcasting again
+- No custody, no private keys, no change to the signed amount or merchant recipient
 
-Set your x402 facilitator URL to `https://api.xguardgate.com`.
+## Pricing
 
-For paid volume, send the Lemon Squeezy license key on settle requests:
+- `/verify`: free
+- First 25 successful routed settlements per merchant: free
+- After that: 2 XGuard Usage Credits per successful routed settlement
+- Failed settlements: no credits consumed
+- No subscription
+
+Usage credits: https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab
+
+## Integrate
+
+Use XGuard as the facilitator URL:
+
+```text
+https://api.xguardgate.com
+```
+
+Paid volume sends the existing XGuard Usage Credits license key on settlement requests:
 
 ```http
 Authorization: Bearer YOUR_XGUARD_LICENSE_KEY
 ```
 
-The payment authorization itself is never modified. XGuard does not receive buyer funds, hold merchant funds, or sign on behalf of either party.
+A confirmed settlement includes:
+
+```http
+X-XGuard-Receipt-Id: xgr_...
+X-XGuard-Resolution: upstream | authorization_recovered | confirmed_late
+```
+
+Retrieve a durable receipt:
+
+```http
+GET https://api.xguardgate.com/v1/receipts/xgr_...
+```
+
+## Why this exists
+
+A facilitator can stop waiting before a Base transaction confirms. That creates a gap where the client sees failure even though USDC may settle later. XGuard keeps the server in the payment path long enough to reconcile that state and makes confirmed results idempotent across retries.
