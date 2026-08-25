@@ -1,0 +1,18 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "xguard-lemonhook",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "minify": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+    "logs": { "enabled": true, "invocation_logs": true, "head_sampling_rate": 0.1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.05 }
+  },
+  "routes": [
+    { "pattern": "hooks.xguardgate.com", "custom_domain": true }
+  ]
+}
