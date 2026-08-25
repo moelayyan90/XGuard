@@ -1,7 +1,6 @@
 const CHECKOUT = "https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab";
 const API = "https://hooks.xguardgate.com";
 
-const esc = (s = "") => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 const json = (x, status = 200) => new Response(JSON.stringify(x), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 
 function page() {
@@ -13,7 +12,7 @@ function page() {
   -H "Content-Type: application/json" \\
   -d '{"units":1}'</pre></section></div><section class="card checker"><h2>Check your balance</h2><p>Paste your XGuard license key. It is sent only to XGuard to query your current balance and is not stored by this page.</p><form id="f"><input id="k" type="password" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX..." required><button type="submit">Check balance</button></form><div id="r" class="result"></div><div class="small">API responses are returned from XGuard's live credit ledger.</div></section><footer>XGuard Usage Credits · Powered by Lemon Squeezy checkout and XGuard credit ledger.</footer></div><script>
   const f=document.getElementById('f'),k=document.getElementById('k'),r=document.getElementById('r');
-  f.addEventListener('submit',async e=>{e.preventDefault();r.textContent='Checking…';try{const x=await fetch('/api/balance',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:k.value.trim()})});const d=await x.json();r.textContent=x.ok?`Balance: ${d.credits} credits`:(d.error==='unknown_key'?'Key not found.':'Could not check this key.')}catch{r.textContent='Could not reach XGuard.'}});
+  f.addEventListener('submit',async e=>{e.preventDefault();r.textContent='Checking…';try{const x=await fetch('/api/balance',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:k.value.trim()})});const d=await x.json();r.textContent=x.ok?('Balance: '+d.credits+' credits'):(d.error==='unknown_key'?'Key not found.':'Could not check this key.')}catch{r.textContent='Could not reach XGuard.'}});
   </script></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=120", "content-security-policy": "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action https://lfsystems.lemonsqueezy.com; frame-ancestors 'none'; base-uri 'none'", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "x-frame-options": "DENY" } });
 }
 
