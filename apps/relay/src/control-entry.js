@@ -7,6 +7,10 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) return site.fetch(request, env, ctx);
+    if (url.pathname === "/a2a" && request.method === "GET") {
+      const agentCardUrl = new URL("/.well-known/agent-card.json", request.url);
+      return controlPlane.fetch(new Request(agentCardUrl, request), env, ctx);
+    }
     if (url.pathname === "/mcp" && request.method === "HEAD") return new Response(null, {
       status: 200,
       headers: {
