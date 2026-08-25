@@ -13,10 +13,14 @@
     "traces": { "enabled": true, "head_sampling_rate": 0.05 }
   },
   "durable_objects": {
-    "bindings": [{ "name": "CREDITS", "class_name": "CreditLedger" }]
+    "bindings": [
+      { "name": "CREDITS", "class_name": "CreditLedger" },
+      { "name": "ORDERS", "class_name": "OrderIndex" }
+    ]
   },
   "migrations": [
-    { "tag": "lemonhook-v1", "new_sqlite_classes": ["CreditLedger"] }
+    { "tag": "lemonhook-v1", "new_sqlite_classes": ["CreditLedger"] },
+    { "tag": "lemonhook-v2", "new_sqlite_classes": ["OrderIndex"] }
   ],
   "routes": [
     { "pattern": "hooks.xguardgate.com", "custom_domain": true }
