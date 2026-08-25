@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard-control-plane",
   "title": "XGuard Universal Agent Transaction Control Plane",
-  "description": "Protocol-neutral in-path control layer for agent payments, commerce, MCP tools and machine transactions.",
+  "description": "Protocol-neutral control plane for agent payments, commerce, MCP tools and machine transactions.",
   "version": "4.0.0",
   "websiteUrl": "https://xguardgate.com",
   "remotes": [

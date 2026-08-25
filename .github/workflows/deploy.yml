@@ -70,7 +70,7 @@ jobs:
           live_ok=0
           for i in {1..30}; do
             page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${GITHUB_SHA}-${i}" || true)"
-            if printf '%s' "$page" | grep -q "One control layer in front of" && \
+            if printf '%s' "$page" | grep -q "Put one control layer in front of" && \
                printf '%s' "$page" | grep -q "The chokepoint" && \
                printf '%s' "$page" | grep -q "Protocol-neutral by design" && \
                printf '%s' "$page" | grep -q "One transaction gate. Every agent rail."; then
