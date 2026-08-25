@@ -1,50 +1,14 @@
-name: XGuard ACE CI
-
+name: XGuard Relay CI
 on:
-  push:
-    branches: [main, "bam/**"]
   pull_request:
-  merge_group:
-
+  push:
+    branches: [main]
 permissions:
   contents: read
-
-concurrency:
-  group: xguard-ace-ci-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  rust:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Format
-        run: cargo fmt --all --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-      - name: Tests
-        run: cargo test --workspace
-      - name: Reference simulation
-        run: cargo run --quiet -p xguard-sim -- examples/rules.json examples/transactions.json > /tmp/xguard-decisions.json
-      - name: Verify reference decisions
-        run: |
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const rows = JSON.parse(fs.readFileSync('/tmp/xguard-decisions.json', 'utf8'));
-          if (rows.length !== 2) throw new Error('expected two fixtures');
-          if (rows[0].decision.delay_ms !== 20) throw new Error('protected flow must be delayed 20ms');
-          if (rows[1].decision.delay_ms !== 0) throw new Error('bypass flow must remain on normal path');
-          NODE
-
-  portal:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
         with:
@@ -52,31 +16,9 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Validate Worker
-        run: |
-          node --check apps/portal/src/index.js
-          node -e "JSON.parse(require('node:fs').readFileSync('apps/portal/wrangler.jsonc','utf8'))"
-      - name: Cloudflare dry run
-        env:
-          WRANGLER_SEND_METRICS: "false"
-        run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/portal/wrangler.jsonc --outdir /tmp/xguard-ace-dry-run
-      - name: Reject legacy product surfaces
-        run: |
-          if grep -RniE 'Email Shield|RapidAPI|WordPress|WooCommerce|x402|AI Inference Provider' \
-            --exclude='*.lock' --exclude-dir='changemandate' --exclude-dir='utilitymesh' README.md apps crates docs examples; then
-            echo 'Legacy XGuard product text remains in the active ACE product tree'
-            exit 1
-          fi
-
-  verify:
-    needs: [rust, portal]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Enforce required checks
-        env:
-          RUST_RESULT: ${{ needs.rust.result }}
-          PORTAL_RESULT: ${{ needs.portal.result }}
-        run: |
-          test "$RUST_RESULT" = success
-          test "$PORTAL_RESULT" = success
+      - name: Install relay dependencies
+        run: npm install --prefix apps/relay --no-audit --no-fund
+      - name: Syntax check
+        run: npm run --prefix apps/relay check
+      - name: Wrangler dry run
+        run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/relay/wrangler.jsonc

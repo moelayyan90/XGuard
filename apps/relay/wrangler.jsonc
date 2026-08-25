@@ -1,0 +1,37 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "xguard-mainnet",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "minify": true,
+  "vars": {
+    "X402_BASE_PRIMARY": "https://facilitator.xpay.sh",
+    "X402_BASE_SECONDARY": "https://facilitator.openx402.ai",
+    "X402_MULTI": "https://x402.dexter.cash",
+    "XGUARD_BILLING_URL": "https://hooks.xguardgate.com",
+    "XGUARD_CHECKOUT_URL": "https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab",
+    "BASE_RPC_URL": "https://mainnet.base.org",
+    "FREE_SETTLEMENTS": "25",
+    "SETTLEMENT_CREDITS": "2"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "QUOTAS", "class_name": "MerchantQuota" }
+    ]
+  },
+  "migrations": [
+    { "tag": "relay-v1", "new_sqlite_classes": ["MerchantQuota"] }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.2,
+    "logs": { "enabled": true, "invocation_logs": true, "head_sampling_rate": 0.2 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  },
+  "routes": [
+    { "pattern": "xguardgate.com", "custom_domain": true },
+    { "pattern": "api.xguardgate.com", "custom_domain": true }
+  ]
+}
