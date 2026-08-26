@@ -28,6 +28,7 @@ jobs:
           node --check apps/relay/src/site-test.js
           node --check apps/relay/src/authority.js
           node --check apps/relay/src/entry.js
+          node --check apps/relay/src/entry-test.js
           node --check packages/edge/index.js
           node --check scripts/ats100-ci.mjs
           node -e "JSON.parse(require('node:fs').readFileSync('packages/edge/package.json','utf8'))"
@@ -36,6 +37,8 @@ jobs:
           grep -q 'min-score' action.yml
           grep -q 'AgentAuthority' apps/relay/wrangler.jsonc
           grep -q 'xguard_mandate_required' apps/relay/src/authority.js
+      - name: Discovery behavior tests
+        run: node --test apps/relay/src/entry-test.js
       - name: SDK syntax and package check
         run: |
           node --check sdk/index.js
