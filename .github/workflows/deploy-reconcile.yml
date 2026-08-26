@@ -43,6 +43,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
+          CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
           WRANGLER_SEND_METRICS: "false"
         shell: bash
         run: |
@@ -50,6 +52,13 @@ jobs:
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
           export CLOUDFLARE_API_TOKEN="$token"
+          if [[ -n "${CDP_API_KEY_ID:-}" && -n "${CDP_API_KEY_SECRET:-}" ]]; then
+            printf '%s' "$CDP_API_KEY_ID" | npx --yes wrangler@4.123.0 secret put CDP_API_KEY_ID --config apps/reconcile/wrangler.jsonc
+            printf '%s' "$CDP_API_KEY_SECRET" | npx --yes wrangler@4.123.0 secret put CDP_API_KEY_SECRET --config apps/reconcile/wrangler.jsonc
+            echo "CDP facilitator credentials provisioned"
+          else
+            echo "CDP facilitator credentials not configured; keeping fallback facilitator"
+          fi
           npx --yes wrangler@4.123.0 deploy --config apps/reconcile/wrangler.jsonc
       - name: Verify live x402 discovery and challenge
         shell: bash
@@ -62,7 +71,7 @@ jobs:
           done
           printf '%s' "$h" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify(x));if(x.status!=="ok"||x.payment_ready!==true||x.bazaar_metadata!==true||x.openapi!==true)process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://reconcile.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.openapi!=="3.1.0"||!x.paths?.["/v1/reconcile"])process.exit(1)})'
-          curl --fail --silent --show-error --max-time 8 https://reconcile.xguardgate.com/.well-known/x402.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.resources)||!x.resources.length)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://reconcile.xguardgate.com/.well-known/x402.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const r=x.resources?.[0];if(x.x402Version!==2||!r||r.resource!=="https://reconcile.xguardgate.com/v1/reconcile"||!Array.isArray(r.accepts)||!r.extensions?.bazaar)process.exit(1)})'
           code="$(curl --silent --show-error --max-time 8 -D /tmp/xg-h -o /tmp/xg-b -w '%{http_code}' 'https://reconcile.xguardgate.com/v1/reconcile?from=0x0000000000000000000000000000000000000001&nonce=0x0000000000000000000000000000000000000000000000000000000000000001')"
           echo "reconcile_http_status=${code}"
           test "$code" = "402"
@@ -73,15 +82,16 @@ jobs:
           const p=JSON.parse(Buffer.from(hdr.replace(/^[^:]+:\s*/,''),'base64').toString('utf8'));
           const a=Array.isArray(p.accepts)?p.accepts[0]:null;
           const bazaar=Boolean(p.extensions?.bazaar);
-          console.log(JSON.stringify({x402Version:p.x402Version,network:a?.network,scheme:a?.scheme,payTo_present:Boolean(a?.payTo),bazaar}));
-          if(p.x402Version!==2||a?.network!=='eip155:8453'||a?.scheme!=='exact'||!a?.payTo||!bazaar)process.exit(1);
+          console.log(JSON.stringify({x402Version:p.x402Version,resource:p.resource,network:a?.network,scheme:a?.scheme,payTo_present:Boolean(a?.payTo),bazaar}));
+          const resourceUrl=typeof p.resource==='string'?p.resource:p.resource?.url;
+          if(p.x402Version!==2||resourceUrl!=='https://reconcile.xguardgate.com/v1/reconcile'||a?.network!=='eip155:8453'||a?.scheme!=='exact'||!a?.payTo||!bazaar)process.exit(1);
           NODE
       - name: Submit or preserve x402 List review
         shell: bash
         run: |
           set -euo pipefail
           email="$(git log -1 --pretty=format:%ae)"
-          payload="$(node -e 'const email=process.argv[1]; process.stdout.write(JSON.stringify({url:"https://reconcile.xguardgate.com",email,service_name:"XGuard Reconcile",description:"Post-timeout Base x402 EIP-3009 settlement reconciliation. Checks authorization state and returns the settlement transaction hash when observed. Non-custodial; no private keys.",website_url:"https://xguardgate.com",category:"Verification",endpoints:["/v1/reconcile"],notes:"Companion recovery endpoint for the XGuard multi-facilitator reliability relay. Now publishes Bazaar metadata, OpenAPI and x402 well-known discovery."}))' "$email")"
+          payload="$(node -e 'const email=process.argv[1]; process.stdout.write(JSON.stringify({url:"https://reconcile.xguardgate.com",email,service_name:"XGuard Reconcile",description:"Post-timeout Base x402 EIP-3009 settlement reconciliation. Checks authorization state and returns the settlement transaction hash when observed. Non-custodial; no private keys.",website_url:"https://xguardgate.com",category:"Verification",endpoints:["/v1/reconcile"],notes:"Companion recovery endpoint for the XGuard multi-facilitator reliability relay. Publishes Bazaar metadata, OpenAPI and x402 well-known discovery."}))' "$email")"
           status="$(curl --silent --show-error --max-time 20 -o /tmp/x402-list-submit -w '%{http_code}' -X POST https://x402-list.com/api/v1/submit -H 'content-type: application/json' --data "$payload" || true)"
           echo "x402_list_submission_http_status=${status}"
           cat /tmp/x402-list-submit || true
