@@ -15,6 +15,31 @@ const PAYMENT_MANIFEST_PATHS = new Set([
   "/.well-known/payment-manifest.json"
 ]);
 
+const DISCOVERY_HEAD_PATHS = new Set([
+  "/docs",
+  "/openapi.json",
+  "/v1/protocols",
+  "/supported",
+  "/skill.md",
+  "/llms.txt",
+  "/a2a",
+  "/.well-known/agent-card.json",
+  "/.well-known/agent.json",
+  "/.well-known/x402",
+  "/.well-known/x402.json",
+  "/.well-known/x402-facilitator.json",
+  "/.well-known/xguard-authority.json",
+  "/.well-known/xguard.json"
+]);
+
+function headResponse(response) {
+  return new Response(null, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  });
+}
+
 function architectureResponse() {
   return new Response(JSON.stringify({
     name: "XGuard Universal Agent Transaction Control Plane",
@@ -65,7 +90,7 @@ async function paymentManifestAlias(request, env, ctx) {
   const canonicalUrl = new URL(request.url);
   canonicalUrl.pathname = "/.well-known/x402";
   const canonicalRequest = new Request(canonicalUrl.toString(), {
-    method: request.method,
+    method: "GET",
     headers: request.headers,
     redirect: request.redirect
   });
@@ -81,40 +106,78 @@ export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
 
-    if (pathname === "/architecture" && (request.method === "GET" || request.method === "HEAD")) {
-      const response = architectureResponse();
-      if (request.method === "HEAD") return new Response(null, { status: response.status, headers: response.headers });
-      return response;
-    }
-
-    if (PAYMENT_MANIFEST_PATHS.has(pathname) && (request.method === "GET" || request.method === "HEAD")) {
-      return paymentManifestAlias(request, env, ctx);
-    }
-
-    if (OWNER_PATHS.has(pathname) && (request.method === "GET" || request.method === "HEAD")) {
-      const response = ownersMetadataResponse();
-      if (request.method === "HEAD") return new Response(null, { status: response.status, headers: response.headers });
-      return response;
-    }
-
-    const authorityResponse = await authority.fetch(request, env, ctx);
-    if (authorityResponse) return authorityResponse;
-
-    if (pathname.startsWith("/edge/")) {
-      const spend = await enforceEdgeMandate(request, env);
-      if (spend instanceof Response) return spend;
-      if (spend?.authorization_id) {
-        const headers = new Headers(request.headers);
-        headers.set("x-xguard-authorization-id", spend.authorization_id);
-        headers.set("x-xguard-agent-id", spend.agent_id || "agent");
-        request = new Request(request, { headers });
+    try {
+      if (pathname === "/architecture" && (request.method === "GET" || request.method === "HEAD")) {
+        const response = architectureResponse();
+        if (request.method === "HEAD") return headResponse(response);
+        return response;
       }
-    }
 
-    return worker.fetch(request, env, ctx);
+      if (PAYMENT_MANIFEST_PATHS.has(pathname) && (request.method === "GET" || request.method === "HEAD")) {
+        return paymentManifestAlias(request, env, ctx);
+      }
+
+      if (OWNER_PATHS.has(pathname) && (request.method === "GET" || request.method === "HEAD")) {
+        const response = ownersMetadataResponse();
+        if (request.method === "HEAD") return headResponse(response);
+        return response;
+      }
+
+      if (request.method === "HEAD" && DISCOVERY_HEAD_PATHS.has(pathname)) {
+        const getRequest = new Request(request.url, {
+          method: "GET",
+          headers: request.headers,
+          redirect: request.redirect
+        });
+        const authorityResponse = await authority.fetch(getRequest, env, ctx);
+        if (authorityResponse) return headResponse(authorityResponse);
+        return headResponse(await worker.fetch(getRequest, env, ctx));
+      }
+
+      const authorityResponse = await authority.fetch(request, env, ctx);
+      if (authorityResponse) return authorityResponse;
+
+      if (pathname.startsWith("/edge/")) {
+        const spend = await enforceEdgeMandate(request, env);
+        if (spend instanceof Response) return spend;
+        if (spend?.authorization_id) {
+          const headers = new Headers(request.headers);
+          headers.set("x-xguard-authorization-id", spend.authorization_id);
+          headers.set("x-xguard-agent-id", spend.agent_id || "agent");
+          request = new Request(request, { headers });
+        }
+      }
+
+      return worker.fetch(request, env, ctx);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "entry_error",
+        method: request.method,
+        path: pathname,
+        error: String(error?.message || error)
+      }));
+      return new Response(JSON.stringify({ error: "internal_error" }), {
+        status: Number(error?.status || 500),
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff"
+        }
+      });
+    }
   },
 
   async scheduled(controller, env, ctx) {
-    if (typeof worker.scheduled === "function") return worker.scheduled(controller, env, ctx);
+    try {
+      if (typeof worker.scheduled === "function") return await worker.scheduled(controller, env, ctx);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "scheduled_error",
+        cron: controller?.cron || "",
+        scheduledTime: controller?.scheduledTime || null,
+        error: String(error?.message || error)
+      }));
+      throw error;
+    }
   }
 };
