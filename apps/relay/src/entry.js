@@ -18,6 +18,10 @@ const X402_MANIFEST_ALIASES = new Set([
 ]);
 
 const X402_MANIFEST_CANONICAL = "/.well-known/x402.json";
+const GLAMA_PATH = "/.well-known/glama.json";
+const ROBOTS_PATH = "/robots.txt";
+const SITEMAP_PATH = "/sitemap.xml";
+const GLAMA_MAINTAINER_EMAIL = "mo.elayyan2023@gmail.com";
 
 const DISCOVERY_HEAD_PATHS = new Set([
   "/docs",
@@ -29,7 +33,8 @@ const DISCOVERY_HEAD_PATHS = new Set([
   "/.well-known/agent-card.json",
   "/.well-known/agent.json",
   "/.well-known/xguard-authority.json",
-  "/.well-known/xguard.json"
+  "/.well-known/xguard.json",
+  X402_MANIFEST_CANONICAL
 ]);
 
 function headResponse(response) {
@@ -37,6 +42,62 @@ function headResponse(response) {
     status: response.status,
     statusText: response.statusText,
     headers: response.headers
+  });
+}
+
+function glamaResponse() {
+  return new Response(JSON.stringify({
+    $schema: "https://glama.ai/mcp/schemas/connector.json",
+    maintainers: [{ email: GLAMA_MAINTAINER_EMAIL }]
+  }), {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "public, max-age=300",
+      "x-content-type-options": "nosniff",
+      "x-xguard-discovery": "glama"
+    }
+  });
+}
+
+function robotsResponse(request) {
+  const origin = new URL(request.url).origin;
+  return new Response(`User-agent: *\nAllow: /\nSitemap: ${origin}${SITEMAP_PATH}\n`, {
+    status: 200,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "public, max-age=3600",
+      "x-content-type-options": "nosniff"
+    }
+  });
+}
+
+function sitemapResponse(request) {
+  const url = new URL(request.url);
+  const origin = url.origin;
+  const apiPaths = [
+    "/",
+    "/docs",
+    "/openapi.json",
+    "/.well-known/agent-card.json",
+    "/.well-known/agent.json",
+    "/.well-known/xguard.json",
+    "/.well-known/xguard-authority.json",
+    "/.well-known/x402.json",
+    GLAMA_PATH,
+    "/skill.md",
+    "/llms.txt"
+  ];
+  const sitePaths = ["/", "/test", "/agent-payment-safety-test"];
+  const paths = url.hostname === "api.xguardgate.com" ? apiPaths : sitePaths;
+  const body = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map(path => `<url><loc>${origin}${path}</loc></url>`).join("")}</urlset>`;
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "application/xml; charset=utf-8",
+      "cache-control": "public, max-age=3600",
+      "x-content-type-options": "nosniff"
+    }
   });
 }
 
@@ -71,8 +132,10 @@ function architectureResponse() {
       x402_alias: "https://api.xguardgate.com/.well-known/x402",
       payment_manifest: "https://api.xguardgate.com/.well-known/payment-manifest",
       agent_card: "https://api.xguardgate.com/.well-known/agent-card.json",
+      glama: "https://api.xguardgate.com/.well-known/glama.json",
       skill: "https://api.xguardgate.com/skill.md",
       llms: "https://api.xguardgate.com/llms.txt",
+      sitemap: "https://api.xguardgate.com/sitemap.xml",
       mcp: "https://api.xguardgate.com/mcp",
       a2a: "https://api.xguardgate.com/a2a"
     }
@@ -110,6 +173,24 @@ export default {
     try {
       if (pathname === "/architecture" && (request.method === "GET" || request.method === "HEAD")) {
         const response = architectureResponse();
+        if (request.method === "HEAD") return headResponse(response);
+        return response;
+      }
+
+      if (pathname === GLAMA_PATH && (request.method === "GET" || request.method === "HEAD")) {
+        const response = glamaResponse();
+        if (request.method === "HEAD") return headResponse(response);
+        return response;
+      }
+
+      if (pathname === ROBOTS_PATH && (request.method === "GET" || request.method === "HEAD")) {
+        const response = robotsResponse(request);
+        if (request.method === "HEAD") return headResponse(response);
+        return response;
+      }
+
+      if (pathname === SITEMAP_PATH && (request.method === "GET" || request.method === "HEAD")) {
+        const response = sitemapResponse(request);
         if (request.method === "HEAD") return headResponse(response);
         return response;
       }
