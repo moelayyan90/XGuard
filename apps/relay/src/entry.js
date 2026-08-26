@@ -10,6 +10,11 @@ const OWNER_PATHS = new Set([
   "/mcp/.well-known/owners.json"
 ]);
 
+const PAYMENT_MANIFEST_PATHS = new Set([
+  "/.well-known/payment-manifest",
+  "/.well-known/payment-manifest.json"
+]);
+
 function architectureResponse() {
   return new Response(JSON.stringify({
     name: "XGuard Universal Agent Transaction Control Plane",
@@ -37,6 +42,8 @@ function architectureResponse() {
       authority: "https://api.xguardgate.com/.well-known/xguard-authority.json",
       safety_test: "https://xguardgate.com/test",
       manifest: "https://api.xguardgate.com/.well-known/xguard.json",
+      x402: "https://api.xguardgate.com/.well-known/x402",
+      payment_manifest: "https://api.xguardgate.com/.well-known/payment-manifest",
       agent_card: "https://api.xguardgate.com/.well-known/agent-card.json",
       skill: "https://api.xguardgate.com/skill.md",
       llms: "https://api.xguardgate.com/llms.txt",
@@ -54,6 +61,22 @@ function architectureResponse() {
   });
 }
 
+async function paymentManifestAlias(request, env, ctx) {
+  const canonicalUrl = new URL(request.url);
+  canonicalUrl.pathname = "/.well-known/x402";
+  const canonicalRequest = new Request(canonicalUrl.toString(), {
+    method: request.method,
+    headers: request.headers,
+    redirect: request.redirect
+  });
+  const response = await worker.fetch(canonicalRequest, env, ctx);
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "public, max-age=120");
+  headers.set("x-xguard-discovery-alias", "/.well-known/x402");
+  if (request.method === "HEAD") return new Response(null, { status: response.status, headers });
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
@@ -62,6 +85,10 @@ export default {
       const response = architectureResponse();
       if (request.method === "HEAD") return new Response(null, { status: response.status, headers: response.headers });
       return response;
+    }
+
+    if (PAYMENT_MANIFEST_PATHS.has(pathname) && (request.method === "GET" || request.method === "HEAD")) {
+      return paymentManifestAlias(request, env, ctx);
     }
 
     if (OWNER_PATHS.has(pathname) && (request.method === "GET" || request.method === "HEAD")) {
