@@ -52,6 +52,18 @@ jobs:
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/agent-card.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Universal Agent Transaction Control Plane"||x.version!=="4.0.0"||!Array.isArray(x.skills)||x.skills.length<5)process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/skill.md | grep -q 'Universal Agent Transaction Control Plane'
 
+          for manifest_url in \
+            https://api.xguardgate.com/.well-known/x402.json \
+            https://api.xguardgate.com/.well-known/x402 \
+            https://api.xguardgate.com/.well-known/x402-facilitator.json \
+            https://api.xguardgate.com/.well-known/payment-manifest \
+            https://api.xguardgate.com/.well-known/payment-manifest.json \
+            https://xguard-mainnet.maqamapp.workers.dev/.well-known/payment-manifest; do
+            echo "Checking $manifest_url"
+            curl --fail --silent --show-error --max-time 8 "$manifest_url" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||typeof x.facilitator!=="string"||!x.facilitator.includes("xguardgate.com"))process.exit(1)})'
+          done
+          test "$(curl --silent --show-error --max-time 8 -o /dev/null -w '%{http_code}' -I https://api.xguardgate.com/.well-known/payment-manifest)" = "200"
+
           mcp="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"1.0.0"}}}')"
           printf '%s' "$mcp" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-control-plane"||x.result?.serverInfo?.version!=="4.0.0")process.exit(1)})'
 
