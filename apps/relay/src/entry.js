@@ -10,10 +10,14 @@ const OWNER_PATHS = new Set([
   "/mcp/.well-known/owners.json"
 ]);
 
-const PAYMENT_MANIFEST_PATHS = new Set([
+const X402_MANIFEST_ALIASES = new Set([
+  "/.well-known/x402",
+  "/.well-known/x402-facilitator.json",
   "/.well-known/payment-manifest",
   "/.well-known/payment-manifest.json"
 ]);
+
+const X402_MANIFEST_CANONICAL = "/.well-known/x402.json";
 
 function architectureResponse() {
   return new Response(JSON.stringify({
@@ -42,7 +46,8 @@ function architectureResponse() {
       authority: "https://api.xguardgate.com/.well-known/xguard-authority.json",
       safety_test: "https://xguardgate.com/test",
       manifest: "https://api.xguardgate.com/.well-known/xguard.json",
-      x402: "https://api.xguardgate.com/.well-known/x402",
+      x402: "https://api.xguardgate.com/.well-known/x402.json",
+      x402_alias: "https://api.xguardgate.com/.well-known/x402",
       payment_manifest: "https://api.xguardgate.com/.well-known/payment-manifest",
       agent_card: "https://api.xguardgate.com/.well-known/agent-card.json",
       skill: "https://api.xguardgate.com/skill.md",
@@ -61,18 +66,18 @@ function architectureResponse() {
   });
 }
 
-async function paymentManifestAlias(request, env, ctx) {
+async function x402ManifestAlias(request, env, ctx) {
   const canonicalUrl = new URL(request.url);
-  canonicalUrl.pathname = "/.well-known/x402";
+  canonicalUrl.pathname = X402_MANIFEST_CANONICAL;
   const canonicalRequest = new Request(canonicalUrl.toString(), {
-    method: request.method,
+    method: "GET",
     headers: request.headers,
     redirect: request.redirect
   });
   const response = await worker.fetch(canonicalRequest, env, ctx);
   const headers = new Headers(response.headers);
   headers.set("cache-control", "public, max-age=120");
-  headers.set("x-xguard-discovery-alias", "/.well-known/x402");
+  headers.set("x-xguard-discovery-alias", X402_MANIFEST_CANONICAL);
   if (request.method === "HEAD") return new Response(null, { status: response.status, headers });
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
@@ -87,8 +92,8 @@ export default {
       return response;
     }
 
-    if (PAYMENT_MANIFEST_PATHS.has(pathname) && (request.method === "GET" || request.method === "HEAD")) {
-      return paymentManifestAlias(request, env, ctx);
+    if (X402_MANIFEST_ALIASES.has(pathname) && (request.method === "GET" || request.method === "HEAD")) {
+      return x402ManifestAlias(request, env, ctx);
     }
 
     if (OWNER_PATHS.has(pathname) && (request.method === "GET" || request.method === "HEAD")) {
