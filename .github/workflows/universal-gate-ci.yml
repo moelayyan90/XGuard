@@ -5,12 +5,14 @@ on:
     paths:
       - "apps/edge-gate/**"
       - "apps/universal-gate/**"
+      - ".dockerignore"
       - ".github/workflows/universal-gate-ci.yml"
   push:
     branches: [main]
     paths:
       - "apps/edge-gate/**"
       - "apps/universal-gate/**"
+      - ".dockerignore"
       - ".github/workflows/universal-gate-ci.yml"
 
 permissions:
@@ -36,22 +38,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run -d --rm --name xguard-gate-ci -p 18080:8080 xguard-gate:ci
-          trap 'docker logs xguard-gate-ci 2>/dev/null || true; docker stop xguard-gate-ci >/dev/null 2>&1 || true' EXIT
+          docker rm -f xguard-gate-ci >/dev/null 2>&1 || true
+          docker run -d --name xguard-gate-ci -p 18080:8080 xguard-gate:ci
+          cleanup() {
+            docker logs xguard-gate-ci 2>/dev/null || true
+            docker rm -f xguard-gate-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
           healthy=false
           for i in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:18080/__xguard/health > /tmp/health.json; then
               healthy=true
               break
             fi
-            if ! docker inspect xguard-gate-ci >/dev/null 2>&1; then
+            if [ "$(docker inspect -f '{{.State.Running}}' xguard-gate-ci 2>/dev/null || echo false)" != "true" ]; then
               echo "Container exited before becoming healthy" >&2
+              docker logs xguard-gate-ci >&2 || true
               exit 1
             fi
             sleep 1
           done
           if [ "$healthy" != "true" ]; then
             echo "Container did not become healthy" >&2
+            docker logs xguard-gate-ci >&2 || true
             exit 1
           fi
           node -e '
