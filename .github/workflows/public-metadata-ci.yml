@@ -1,0 +1,46 @@
+name: XGuard Public Metadata CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/relay/src/public-metadata.js"
+      - "apps/relay/src/rail-entry.js"
+      - "apps/relay/test/public-metadata.mjs"
+      - ".github/workflows/public-metadata-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay/src/public-metadata.js"
+      - "apps/relay/src/rail-entry.js"
+      - "apps/relay/test/public-metadata.mjs"
+      - ".github/workflows/public-metadata-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  metadata-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Syntax checks
+        run: |
+          node --check apps/relay/src/public-metadata.js
+          node --check apps/relay/src/rail-entry.js
+          node --check apps/relay/test/public-metadata.mjs
+      - name: Canonical metadata contract
+        run: node apps/relay/test/public-metadata.mjs
+      - name: Prevent stale public identity regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'const VERSION = "5.0.1"' apps/relay/src/public-metadata.js
+          grep -q 'XGuard High-Velocity x402 Facilitator' apps/relay/src/public-metadata.js
+          grep -q 'settlement_transport_failover: "reconciliation-gated"' apps/relay/src/public-metadata.js
+          grep -q 'publicMetadata.fetch' apps/relay/src/rail-entry.js
