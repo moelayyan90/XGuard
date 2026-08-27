@@ -39,6 +39,7 @@ jobs:
           node --check apps/relay/src/discovery-entry.js
           node --check apps/relay/src/webmcp-entry.js
           node --check apps/relay/src/a2a-entry.js
+          node --check apps/relay/src/a2a-entry-test.js
           node --check apps/relay/src/product-entry-test.js
           node --check apps/relay/src/rail-entry.js
           node --check apps/relay/src/entry.js
@@ -81,9 +82,10 @@ jobs:
           grep -q 'egress_outcome_ambiguous' apps/relay/src/egress-vault.js
           grep -q 'billing_before_credential_release: true' apps/relay/src/public-metadata.js
           grep -q 'font-family:Arial' apps/relay/src/site-egress.js
-      - name: Discovery, Action Rail and Secretless Egress behavior tests
+      - name: Discovery, A2A, Action Rail and Secretless Egress behavior tests
         run: |
           node --test apps/relay/src/entry-test.js
+          node --test apps/relay/src/a2a-entry-test.js
           node --test apps/relay/src/action-rail-test.js
           node --test apps/relay/src/egress-vault-test.js
           node --test apps/relay/src/product-entry-test.js
