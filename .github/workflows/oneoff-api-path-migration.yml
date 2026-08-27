@@ -16,71 +16,42 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Make /api the canonical API path
+      - name: Fix and validate API path alias
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          OLD = "https://api.xguardgate.com"
-          NEW = "https://xguardgate.com/api"
-          ROOT = Path(".")
-          TEXT_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".json", ".jsonc", ".md", ".php", ".toml"}
-
-          for path in ROOT.rglob("*"):
-              if not path.is_file():
-                  continue
-              if ".git" in path.parts or ".github" in path.parts or "node_modules" in path.parts:
-                  continue
-              if path.suffix.lower() not in TEXT_SUFFIXES and path.name not in {"action.yml"}:
-                  continue
-              try:
-                  text = path.read_text(encoding="utf-8")
-              except UnicodeDecodeError:
-                  continue
-              if OLD in text:
-                  path.write_text(text.replace(OLD, NEW), encoding="utf-8")
-
           target = Path("apps/relay/src/discovery-entry.js")
           text = target.read_text(encoding="utf-8")
 
-          helper = '''\nfunction routeApiAlias(request) {\n  const originalUrl = new URL(request.url);\n  const isPathAlias =\n    (originalUrl.hostname === "xguardgate.com" || originalUrl.hostname === "www.xguardgate.com") &&\n    (originalUrl.pathname === "/api" || originalUrl.pathname.startsWith("/api/"));\n\n  if (!isPathAlias) {\n    return { request, url: originalUrl, apiAlias: false };\n  }\n\n  const routedUrl = new URL(originalUrl);\n  routedUrl.pathname = originalUrl.pathname === "/api" ? "/" : originalUrl.pathname.slice(4);\n  return {\n    request: new Request(routedUrl.toString(), request),\n    url: routedUrl,\n    apiAlias: true,\n  };\n}\n'''
+          bad = '''  headers.set("x-xguard-version", VERSION);\n    if (routed.apiAlias) headers.set("x-xguard-api-path", "/api");\n  return new Response(JSON.stringify(body), { status: response.status, statusText: response.statusText, headers });'''
+          good = '''  headers.set("x-xguard-version", VERSION);\n  return new Response(JSON.stringify(body), { status: response.status, statusText: response.statusText, headers });'''
+          text = text.replace(bad, good)
 
-          marker = "\nexport default {\n"
+          anchor = '''    headers.set("x-xguard-canonical-mcp", MCP);\n    headers.set("x-xguard-version", VERSION);\n    if (effectiveRequest.method === "GET" && url.pathname === "/" && !routed.apiAlias) {'''
+          replacement = '''    headers.set("x-xguard-canonical-mcp", MCP);\n    headers.set("x-xguard-version", VERSION);\n    if (routed.apiAlias) headers.set("x-xguard-api-path", "/api");\n    if (effectiveRequest.method === "GET" && url.pathname === "/" && !routed.apiAlias) {'''
+          if anchor in text:
+              text = text.replace(anchor, replacement, 1)
+          elif replacement not in text:
+              raise SystemExit("Could not place alias response header")
+
+          if 'const API = "https://xguardgate.com/api";' not in text:
+              raise SystemExit("Canonical API constant was not migrated")
           if "function routeApiAlias(request)" not in text:
-              if marker not in text:
-                  raise SystemExit("Could not find export marker in discovery-entry.js")
-              text = text.replace(marker, helper + marker, 1)
-
-          old_fetch = '''  async fetch(request, env, ctx) {\n    const url = new URL(request.url);\n    if (request.method === "GET") {'''
-          new_fetch = '''  async fetch(request, env, ctx) {\n    const routed = routeApiAlias(request);\n    const effectiveRequest = routed.request;\n    const url = routed.url;\n    if (effectiveRequest.method === "GET") {'''
-          if old_fetch in text:
-              text = text.replace(old_fetch, new_fetch, 1)
-          elif new_fetch not in text:
-              raise SystemExit("Could not patch fetch() prelude in discovery-entry.js")
-
-          text = text.replace(
-              'const mcpSnapshot = url.pathname === "/mcp" && request.method === "POST" ? request.clone() : null;',
-              'const mcpSnapshot = url.pathname === "/mcp" && effectiveRequest.method === "POST" ? effectiveRequest.clone() : null;',
-          )
-          text = text.replace(
-              'let response = await app.fetch(request, env, ctx);',
-              'let response = await app.fetch(effectiveRequest, env, ctx);',
-          )
-          text = text.replace(
-              'if (request.method === "GET" && url.pathname === "/") {',
-              'if (effectiveRequest.method === "GET" && url.pathname === "/" && !routed.apiAlias) {',
-          )
-
-          alias_header_anchor = 'headers.set("x-xguard-version", VERSION);'
-          alias_header = 'headers.set("x-xguard-version", VERSION);\n    if (routed.apiAlias) headers.set("x-xguard-api-path", "/api");'
-          if 'headers.set("x-xguard-api-path", "/api")' not in text:
-              text = text.replace(alias_header_anchor, alias_header, 1)
+              raise SystemExit("API alias router missing")
+          if 'app.fetch(effectiveRequest, env, ctx)' not in text:
+              raise SystemExit("API alias request is not routed to app")
+          if 'if (routed.apiAlias) headers.set("x-xguard-api-path", "/api");' not in text:
+              raise SystemExit("API alias response marker missing")
 
           target.write_text(text, encoding="utf-8")
           PY
 
-      - name: Commit migration
+          node --check apps/relay/src/discovery-entry.js
+          node --check apps/relay/src/product-entry.js
+
+      - name: Commit fix
         shell: bash
         run: |
           set -euo pipefail
@@ -90,6 +61,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "feat: expose XGuard API at /api"
+          git add apps/relay/src/discovery-entry.js
+          git commit -m "fix: place API alias header in request handler"
           git push origin HEAD:fix/api-path-alias
