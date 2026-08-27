@@ -59,12 +59,23 @@ function safeHttpsUrl(value) {
   }
 }
 
+function forwardedResourceUrl(request) {
+  const explicit = safeHttpsUrl(header(request, "x-xguard-resource-url", 4096));
+  if (explicit) return explicit;
+
+  const proto = header(request, "x-forwarded-proto", 32).toLowerCase();
+  const host = header(request, "x-forwarded-host", 512);
+  const uri = header(request, "x-forwarded-uri", 4096) || "/";
+  if (proto !== "https" || !host || !uri.startsWith("/") || uri.startsWith("//")) return null;
+  return safeHttpsUrl(`https://${host}${uri}`);
+}
+
 export function paymentRequirementFromRequest(request) {
   const network = header(request, "x-xguard-network", 128) || BASE_CAIP;
   const asset = header(request, "x-xguard-asset", 128) || (network === BASE_CAIP ? BASE_USDC : "");
   const payTo = header(request, "x-xguard-pay-to", 128);
   const amount = header(request, "x-xguard-amount", 128);
-  const resourceUrl = safeHttpsUrl(header(request, "x-xguard-resource-url", 4096));
+  const resourceUrl = forwardedResourceUrl(request);
   const description = header(request, "x-xguard-description", 512) || "Paid access through XGuard Hosted Gate";
   const mimeType = header(request, "x-xguard-mime-type", 128) || "application/json";
   const timeoutRaw = header(request, "x-xguard-timeout-seconds", 32) || "60";
@@ -122,9 +133,16 @@ export function acceptedMatches(payload, resource, requirements) {
   return true;
 }
 
-function paymentRequired(resource, requirements, error = "PAYMENT-SIGNATURE header is required") {
+function challengeStatus(request) {
+  return header(request, "x-xguard-gateway-mode", 64).toLowerCase() === "nginx-auth-request" ? 401 : 402;
+}
+
+function paymentRequired(request, resource, requirements, error = "PAYMENT-SIGNATURE header is required") {
   const body = { x402Version: 2, error, resource, accepts: [requirements], extensions: {} };
-  return json(body, 402, { "payment-required": utf8ToBase64(JSON.stringify(body)) });
+  const status = challengeStatus(request);
+  const headers = { "payment-required": utf8ToBase64(JSON.stringify(body)) };
+  if (status === 401) headers["www-authenticate"] = "X402";
+  return json(body, status, headers);
 }
 
 function internalHeaders(request) {
@@ -156,8 +174,9 @@ export async function hostedGateResponse(request, env, ctx, worker) {
       endpoint: `${API}/v1/gate/authorize`,
       facilitator: API,
       supported: [{ scheme: "exact", network: BASE_CAIP, asset: BASE_USDC }],
+      gateways: ["Traefik ForwardAuth", "Caddy forward_auth", "Nginx auth_request compatibility mode", "custom reverse proxies"],
       request_headers: {
-        resource: "X-XGuard-Resource-URL",
+        resource: "X-XGuard-Resource-URL or trusted X-Forwarded-Proto/Host/Uri",
         pay_to: "X-XGuard-Pay-To",
         amount_atomic: "X-XGuard-Amount",
         payment_signature: "PAYMENT-SIGNATURE",
@@ -169,7 +188,7 @@ export async function hostedGateResponse(request, env, ctx, worker) {
   }
 
   if (url.pathname !== "/v1/gate/authorize") return null;
-  if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST" });
+  if (request.method !== "GET" && request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "GET, POST" });
 
   let configured;
   try {
@@ -179,12 +198,12 @@ export async function hostedGateResponse(request, env, ctx, worker) {
   }
 
   const signature = request.headers.get("payment-signature");
-  if (!signature) return paymentRequired(configured.resource, configured.requirements);
+  if (!signature) return paymentRequired(request, configured.resource, configured.requirements);
 
   const paymentPayload = decodePaymentSignature(signature);
-  if (!paymentPayload) return paymentRequired(configured.resource, configured.requirements, "Invalid PAYMENT-SIGNATURE header");
+  if (!paymentPayload) return paymentRequired(request, configured.resource, configured.requirements, "Invalid PAYMENT-SIGNATURE header");
   if (!acceptedMatches(paymentPayload, configured.resource, configured.requirements)) {
-    return paymentRequired(configured.resource, configured.requirements, "Payment payload does not match this gateway policy");
+    return paymentRequired(request, configured.resource, configured.requirements, "Payment payload does not match this gateway policy");
   }
 
   const facilitatorBody = {
@@ -197,7 +216,7 @@ export async function hostedGateResponse(request, env, ctx, worker) {
   const verifyData = await verifyResponse.clone().json().catch(() => null);
   if (!verifyResponse.ok || verifyData?.isValid !== true) {
     const reason = verifyData?.invalidReason || "Payment verification failed";
-    return paymentRequired(configured.resource, configured.requirements, reason);
+    return paymentRequired(request, configured.resource, configured.requirements, reason);
   }
 
   const settleResponse = await callFacilitator(worker, "/settle", facilitatorBody, request, env, ctx);
@@ -209,7 +228,7 @@ export async function hostedGateResponse(request, env, ctx, worker) {
         "x-xguard-settlement-safety": settleResponse.headers.get("x-xguard-settlement-safety") || "fail-closed",
       });
     }
-    return paymentRequired(configured.resource, configured.requirements, settleData?.errorReason || "Payment settlement failed");
+    return paymentRequired(request, configured.resource, configured.requirements, settleData?.errorReason || "Payment settlement failed");
   }
 
   const headers = {
