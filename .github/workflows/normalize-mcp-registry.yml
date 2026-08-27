@@ -1,0 +1,111 @@
+name: Normalize XGuard MCP Registry Versions
+
+on:
+  pull_request:
+    paths:
+      - "server.json"
+      - ".github/workflows/normalize-mcp-registry.yml"
+  push:
+    branches: [main]
+    paths:
+      - "server.json"
+      - ".github/workflows/normalize-mcp-registry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install MCP publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --help >/dev/null
+
+      - name: Read official version history
+        shell: bash
+        run: |
+          set -euo pipefail
+          registry='https://registry.modelcontextprotocol.io'
+          encoded='io.github.moelayyan90%2Fxguard-control-plane'
+          curl --fail --silent --show-error --max-time 20 \
+            "$registry/v0.1/servers/$encoded/versions?include_deleted=true" \
+            -o /tmp/xguard-registry-versions.json
+          cat /tmp/xguard-registry-versions.json
+          jq -e '.servers | type == "array" and length > 0' /tmp/xguard-registry-versions.json >/dev/null
+          jq -r '.servers[] | [.server.version, (._meta["io.modelcontextprotocol.registry/official"].status // "active")] | @tsv' /tmp/xguard-registry-versions.json
+
+      - name: Verify official latest version is active 5.0.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          registry='https://registry.modelcontextprotocol.io'
+          encoded='io.github.moelayyan90%2Fxguard-control-plane'
+          curl --fail --silent --show-error --max-time 20 \
+            "$registry/v0.1/servers/$encoded/versions/latest" \
+            -o /tmp/xguard-registry-latest.json
+          cat /tmp/xguard-registry-latest.json
+          jq -e '.server.version == "5.0.1"' /tmp/xguard-registry-latest.json >/dev/null
+          jq -e '((._meta["io.modelcontextprotocol.registry/official"].status // "active") == "active")' /tmp/xguard-registry-latest.json >/dev/null
+
+      - name: Authenticate with GitHub OIDC
+        if: github.event_name != 'pull_request'
+        run: ./mcp-publisher login github-oidc
+
+      - name: Deprecate active versions older than 5.0.1
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          name='io.github.moelayyan90/xguard-control-plane'
+          target='5.0.1'
+          mapfile -t rows < <(jq -r --arg target "$target" '.servers[] | select(.server.version != $target) | [.server.version, (._meta["io.modelcontextprotocol.registry/official"].status // "active")] | @tsv' /tmp/xguard-registry-versions.json)
+          for row in "${rows[@]}"; do
+            version="${row%%$'\t'*}"
+            status="${row#*$'\t'}"
+            if [[ "$status" != "active" ]]; then
+              echo "Skipping $version: status=$status"
+              continue
+            fi
+            echo "Deprecating superseded XGuard MCP version $version"
+            ok=0
+            for attempt in 1 2 3; do
+              if ./mcp-publisher status --status deprecated \
+                --message "Superseded by XGuard 5.0.1; use https://api.xguardgate.com/mcp" \
+                "$name" "$version"; then
+                ok=1
+                break
+              fi
+              echo "status update attempt $attempt failed for $version"
+              sleep 8
+            done
+            test "$ok" = "1"
+          done
+
+      - name: Verify superseded versions are no longer active
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          registry='https://registry.modelcontextprotocol.io'
+          encoded='io.github.moelayyan90%2Fxguard-control-plane'
+          curl --fail --silent --show-error --max-time 20 \
+            "$registry/v0.1/servers/$encoded/versions?include_deleted=true" \
+            -o /tmp/xguard-registry-after.json
+          jq -e '.servers[] | select(.server.version == "5.0.1") | ((._meta["io.modelcontextprotocol.registry/official"].status // "active") == "active")' /tmp/xguard-registry-after.json >/dev/null
+          if jq -e '.servers[] | select(.server.version != "5.0.1") | select((._meta["io.modelcontextprotocol.registry/official"].status // "active") == "active")' /tmp/xguard-registry-after.json >/dev/null; then
+            echo 'A superseded XGuard MCP version is still active.'
+            cat /tmp/xguard-registry-after.json
+            exit 1
+          fi
+          jq -r '.servers[] | [.server.version, (._meta["io.modelcontextprotocol.registry/official"].status // "active")] | @tsv' /tmp/xguard-registry-after.json
