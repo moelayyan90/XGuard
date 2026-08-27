@@ -1,12 +1,19 @@
 name: Refresh XGuard Public Indexes
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/refresh-public-indexes.yml"
+      - "apps/relay/src/public-metadata.js"
+      - "apps/relay/src/site-universal.js"
+      - "apps/relay/src/secure-entry.js"
   push:
     branches: [main]
     paths:
       - "apps/relay/src/public-metadata.js"
       - "apps/relay/src/rail-entry.js"
       - "apps/relay/src/site-universal.js"
+      - "apps/relay/src/secure-entry.js"
       - ".github/workflows/refresh-public-indexes.yml"
   workflow_dispatch:
 
@@ -21,26 +28,37 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Wait for XGuard discovery surfaces
+
+      - name: Verify canonical homepage agent signals are live
         shell: bash
         run: |
           set -euo pipefail
           ready=0
           for i in {1..45}; do
-            plugin="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/.well-known/ai-plugin.json?build=${GITHUB_SHA}" || true)"
-            openapi="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/openapi.json?build=${GITHUB_SHA}" || true)"
-            if printf '%s' "$plugin" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.xguard?.version==="5.0.1"&&x.api?.url==="https://api.xguardgate.com/openapi.json")process.exit(0)}catch{}process.exit(1)})' && \
-               printf '%s' "$openapi" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.info?.version==="5.0.1"&&x.paths?.["/verify"]&&x.paths?.["/settle"])process.exit(0)}catch{}process.exit(1)})'; then
+            plugin="$(curl --silent --show-error --max-time 8 "https://xguardgate.com/.well-known/ai-plugin.json?build=${GITHUB_SHA}" || true)"
+            openapi="$(curl --silent --show-error --max-time 8 "https://xguardgate.com/openapi.json?build=${GITHUB_SHA}" || true)"
+            llms="$(curl --silent --show-error --max-time 8 "https://xguardgate.com/llms.txt?build=${GITHUB_SHA}" || true)"
+            home="$(curl --silent --show-error --max-time 8 "https://xguardgate.com/?build=${GITHUB_SHA}" || true)"
+            if printf '%s' "$plugin" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.xguard?.version==="5.0.1"&&x.api?.url==="https://api.xguardgate.com/openapi.json"&&x.xguard?.mcp_url==="https://api.xguardgate.com/mcp")process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$openapi" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.info?.version==="5.0.1"&&x.info?.title==="XGuard High-Velocity x402 Facilitator"&&x.paths?.["/verify"]&&x.paths?.["/settle"])process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$llms" | grep -q 'XGuard High-Velocity x402 Facilitator' && \
+               printf '%s' "$llms" | grep -q 'Version: 5.0.1' && \
+               printf '%s' "$home" | grep -q '<title>XGuard — High-Velocity x402 Facilitator</title>' && \
+               printf '%s' "$home" | grep -q 'application/ld+json'; then
               ready=1
               break
             fi
             sleep 4
           done
           test "$ready" = "1"
+
       - name: Submit canonical homepage to Not Human Search
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
+          submitted_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "NHS_SUBMITTED_AT=$submitted_at" >> "$GITHUB_ENV"
           headers="$(mktemp)"
           body="$(mktemp)"
           code="$(curl --silent --show-error --max-time 30 -D "$headers" -o "$body" -w '%{http_code}' \
@@ -49,19 +67,39 @@ jobs:
             --data '{"url":"https://xguardgate.com"}')"
           cat "$body"
           test "$code" -ge 200 -a "$code" -lt 300
-          echo "NHS submission HTTP $code"
-      - name: Read refreshed NHS site record
+          echo "NHS submission HTTP $code at $submitted_at"
+
+      - name: Require a genuinely refreshed NHS crawl
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
-          found=0
-          for i in {1..20}; do
+          fresh=0
+          for i in {1..40}; do
             body="$(curl --silent --show-error --max-time 15 'https://nothumansearch.ai/api/v1/site/xguardgate.com' || true)"
-            if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x&&typeof x==="object"&&!x.error)process.exit(0)}catch{}process.exit(1)})'; then
+            if printf '%s' "$body" | NHS_SUBMITTED_AT="$NHS_SUBMITTED_AT" node -e '
+              let s="";
+              process.stdin.on("data",d=>s+=d).on("end",()=>{
+                try {
+                  const x=JSON.parse(s);
+                  const submitted=Date.parse(process.env.NHS_SUBMITTED_AT||"");
+                  const crawled=Date.parse(x.last_crawled_at||"");
+                  const currentName=String(x.name||"").includes("High-Velocity x402 Facilitator");
+                  const currentLlms=String(x.llms_txt_content||"").includes("XGuard High-Velocity x402 Facilitator") && String(x.llms_txt_content||"").includes("Version: 5.0.1");
+                  const currentOpenApi=String(x.openapi_summary||"").includes("XGuard High-Velocity x402 Facilitator") && String(x.openapi_summary||"").includes("5.0.1");
+                  if (Number.isFinite(submitted) && Number.isFinite(crawled) && crawled >= submitted && x.has_ai_plugin===true && x.has_openapi===true && x.has_llms_txt===true && x.has_mcp_server===true && currentName && currentLlms && currentOpenApi) process.exit(0);
+                } catch {}
+                process.exit(1);
+              });
+            '; then
               printf '%s\n' "$body"
-              found=1
+              fresh=1
               break
             fi
-            sleep 3
+            sleep 5
           done
-          test "$found" = "1"
+          if [[ "$fresh" != "1" ]]; then
+            echo "NHS did not expose a fresh XGuard 5.0.1 crawl after submission."
+            curl --silent --show-error --max-time 15 'https://nothumansearch.ai/api/v1/site/xguardgate.com' || true
+            exit 1
+          fi
