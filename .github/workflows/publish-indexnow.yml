@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "apps/relay/src/discovery-entry.js"
+      - "apps/relay/src/webmcp-entry.js"
+      - "apps/relay/src/a2a-entry.js"
       - "apps/relay/src/site-egress.js"
       - ".github/workflows/publish-indexnow.yml"
   workflow_dispatch:
@@ -53,6 +55,8 @@ jobs:
               "https://xguardgate.com/llms.txt",
               "https://xguardgate.com/server.json",
               "https://xguardgate.com/.well-known/mcp/server-card.json",
+              "https://xguardgate.com/.well-known/agent-card.json",
+              "https://xguardgate.com/.well-known/agent.json",
               "https://xguardgate.com/.well-known/xguard.json",
               "https://xguardgate.com/sitemap.xml"
             ]}')"
