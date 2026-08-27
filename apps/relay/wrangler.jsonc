@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "xguard-mainnet",
-  "main": "src/trust-entry.js",
+  "main": "src/egress-entry.js",
   "compatibility_date": "2026-08-25",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
@@ -20,7 +20,8 @@
     "FREE_EDGE_TRANSACTIONS": "1000",
     "EDGE_TRANSACTION_CREDITS": "1",
     "RAIL_FEE_USD_MICROS": "1000",
-    "ACTION_EXECUTION_CREDITS": "1"
+    "ACTION_EXECUTION_CREDITS": "1",
+    "EGRESS_EXECUTION_CREDITS": "1"
   },
   "durable_objects": {
     "bindings": [
@@ -32,7 +33,12 @@
       { "name": "RAIL_METER", "class_name": "RailMeter" },
       { "name": "ACTION_KEYS", "class_name": "ActionKeyAuthority" },
       { "name": "ACTION_PERMITS", "class_name": "ActionPermitState" },
-      { "name": "ACTION_METER", "class_name": "ActionMeter" }
+      { "name": "ACTION_METER", "class_name": "ActionMeter" },
+      { "name": "EGRESS_KEYS", "class_name": "EgressKeyAuthority" },
+      { "name": "EGRESS_CREDENTIALS", "class_name": "EgressCredentialState" },
+      { "name": "EGRESS_TENANTS", "class_name": "EgressTenantIndex" },
+      { "name": "EGRESS_CAPABILITIES", "class_name": "EgressCapabilityState" },
+      { "name": "EGRESS_METER", "class_name": "EgressMeter" }
     ]
   },
   "migrations": [
@@ -40,7 +46,8 @@
     { "tag": "relay-v2", "new_sqlite_classes": ["SettlementReceipt"] },
     { "tag": "relay-v3", "new_sqlite_classes": ["AgentAuthority"] },
     { "tag": "relay-v4", "new_sqlite_classes": ["RailKeyAuthority", "RailPermitState", "RailMeter"] },
-    { "tag": "relay-v5", "new_sqlite_classes": ["ActionKeyAuthority", "ActionPermitState", "ActionMeter"] }
+    { "tag": "relay-v5", "new_sqlite_classes": ["ActionKeyAuthority", "ActionPermitState", "ActionMeter"] },
+    { "tag": "relay-v6", "new_sqlite_classes": ["EgressKeyAuthority", "EgressCredentialState", "EgressTenantIndex", "EgressCapabilityState", "EgressMeter"] }
   ],
   "observability": {
     "enabled": true,
