@@ -1,172 +1,140 @@
-# XGuard — Agent Spend Firewall + Universal Transaction Control Plane
+# XGuard — High-Velocity x402 Facilitator
 
-A protocol-neutral, non-custodial control layer for autonomous payments, commerce, MCP tools and machine-to-machine transactions.
-
-**Create scoped spend mandates:** `POST https://api.xguardgate.com/v1/mandates`  
-**Free ATS-100 safety test:** https://xguardgate.com/test  
-**Production control plane:** https://api.xguardgate.com
-
-## The problem XGuard makes non-optional
-
-An autonomous agent that can spend money or trigger paid actions needs deterministic authority: **who authorized it, how much may it spend, with which merchant, how often, and until when?**
-
-XGuard puts that decision in-path.
-
-For financial actions through XGuard Edge, a valid **XGuard Mandate is mandatory**. The mandate can enforce:
-
-- agent identity
-- merchant allowlist
-- action allowlist
-- maximum amount per transaction
-- daily authorization ceiling
-- maximum uses
-- expiry
-- immediate revocation
-
-Requests outside the mandate are rejected before the merchant origin is reached.
-
-Required headers for financial edge actions:
+**One public facilitator URL in the x402 money path:**
 
 ```text
-X-XGuard-Mandate: xgm_...
-X-XGuard-Amount-Minor: 2500
-X-XGuard-Currency: USD
+https://api.xguardgate.com
 ```
 
-Create a mandate with a valid XGuard Usage Credits license:
+XGuard is a non-custodial x402 v2 facilitator gateway for AI agents and resource servers. A seller configures one facilitator URL; XGuard then selects a compatible healthy downstream settlement path per request using **scheme/network capability → health → observed latency**, with failover, durable replay protection and Base USDC timeout reconciliation.
 
-```bash
-curl -X POST https://api.xguardgate.com/v1/mandates \
-  -H 'Authorization: Bearer <XGUARD_LICENSE_KEY>' \
-  -H 'Content-Type: application/json' \
-  --data '{
-    "agent_id":"procurement-agent-7",
-    "currency":"USD",
-    "max_amount_minor":"5000",
-    "daily_limit_minor":"25000",
-    "max_uses":20,
-    "allowed_merchants":["merchant.example"],
-    "allowed_actions":["checkout","payment","order"],
-    "ttl_seconds":86400
-  }'
-```
+The product is deliberately positioned **inside `/verify` and `/settle`**, not as an optional scanner beside the payment path.
 
-Machine-readable authority discovery:
+## Money-path endpoints
 
 ```text
-https://api.xguardgate.com/.well-known/xguard-authority.json
+GET  https://api.xguardgate.com/supported
+POST https://api.xguardgate.com/verify
+POST https://api.xguardgate.com/settle
 ```
 
-## ATS-100 — free acquisition and CI gate
+A resource server that configures XGuard as its facilitator sends its x402 verification and settlement traffic through XGuard. XGuard never changes the signed x402 `payTo` or payment amount.
 
-ATS-100 is the open 0–100 Agent Transaction Safety Score. It checks protocol clarity, idempotency, context binding, replay uniqueness, freshness and authorization/auditability without contacting the target merchant.
+## Automatic discovery
 
-Teams can use the web test or make ATS-100 a required pull-request gate:
-
-```yaml
-name: Agent transaction safety
-on: [pull_request]
-jobs:
-  ats100:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: moelayyan90/XGuard@main
-        with:
-          sample: .xguard/transaction.json
-          min-score: "90"
-```
-
-Do not put live card data, private keys, bearer secrets or production payment credentials in ATS-100 samples.
-
-## One control point above the protocols
-
-XGuard recognizes:
-
-- x402
-- MPP / Payment HTTP Authentication
-- AP2 mandates
-- UCP commerce traffic
-- ACP checkout/order traffic
-- MCP JSON-RPC tool calls
-- signed trusted-agent HTTP
-- generic HTTPS machine transactions
-
-The native x402 facilitator surface remains:
-
-- `GET /supported`
-- `POST /verify`
-- `POST /settle`
-
-The protocol-neutral edge is:
+XGuard exposes machine-readable discovery surfaces so agents, crawlers, registries and routing libraries do not need to discover the product from the website first:
 
 ```text
-https://api.xguardgate.com/edge/<merchant-host>/<path>
+GET https://api.xguardgate.com/facilitator
+GET https://api.xguardgate.com/.well-known/x402
+GET https://api.xguardgate.com/.well-known/x402.json
+GET https://api.xguardgate.com/discovery/resources
+GET https://api.xguardgate.com/discovery/search?query=...
+GET https://api.xguardgate.com/v1/facilitator/route?network=eip155:8453&scheme=exact
+GET https://api.xguardgate.com/supported
 ```
 
-A merchant authorizes its hostname by publishing:
+The public provider document reports current live capabilities. `batch-settlement` is advertised as live **only when a healthy configured upstream actually advertises `scheme=batch-settlement`**.
+
+### DNS compatibility discovery
+
+The repository Cloudflare workflow attempts to keep this compatibility record published:
 
 ```dns
-_xguard.<merchant-host> TXT "xguard-edge=enabled"
+_x402.xguardgate.com TXT "v=x402-1; wk=https://api.xguardgate.com/.well-known/x402; k=facilitator"
 ```
 
-Private/local targets are blocked, so XGuard Edge cannot be used as an open proxy.
+This is provided for emerging DNS/well-known x402 discovery resolvers; the live `/supported` response remains authoritative for actual payment capabilities.
 
-## What happens in-path
+## Bazaar aggregation
 
-For an agent-facing edge request XGuard:
+XGuard exposes both Bazaar-style discovery surfaces:
 
-1. detects the transaction protocol
-2. derives the operation type
-3. requires a scoped XGuard Mandate for financial actions
-4. atomically enforces merchant/action/amount/daily-limit/expiry/revocation rules
-5. derives a deterministic request digest
-6. blocks unsafe targets and clear binding failures
-7. forwards allowed requests to the merchant/API
-8. meters only successful billable transaction calls
+```text
+/discovery/resources
+/discovery/search
+```
 
-The native x402 path additionally keeps multi-facilitator routing, failover, EIP-3009 checks, durable receipts and timeout reconciliation.
+It queries the configured facilitator catalogs, merges and de-duplicates resources, and identifies the catalog source in `xguardDiscovery`. Discovery traffic is public and does not execute a payment.
 
-## Discovery
+## Automatic settlement routing
 
-- spend authority: https://api.xguardgate.com/.well-known/xguard-authority.json
-- create mandate: `POST https://api.xguardgate.com/v1/mandates`
-- mandate status: `GET https://api.xguardgate.com/v1/mandates/status`
-- revoke mandate: `POST https://api.xguardgate.com/v1/mandates/revoke`
-- ATS-100 web test: https://xguardgate.com/test
-- ATS-100 API: `POST https://api.xguardgate.com/v1/test`
-- protocol surface: https://api.xguardgate.com/v1/protocols
-- OpenAPI: https://api.xguardgate.com/openapi.json
-- MCP: https://api.xguardgate.com/mcp
-- Agent Card: https://api.xguardgate.com/.well-known/agent-card.json
+XGuard already sits above multiple configured x402 facilitators. For each request it:
 
-## Pricing
+1. parses the requested network and scheme;
+2. reads current `/supported` capabilities;
+3. removes incompatible routes;
+4. considers route health and observed latency;
+5. sends `/verify` or `/settle` through the best live compatible route;
+6. fails over on retryable transport, 5xx or rate-limit failure;
+7. on Base USDC, reconciles ambiguous authorization state before allowing a dangerous blind retry;
+8. stores durable settlement receipts to make successful replay idempotent.
 
-### ATS-100
+Use the route-inspection endpoint without pinning the returned downstream provider:
 
-Free.
+```bash
+curl 'https://api.xguardgate.com/v1/facilitator/route?network=eip155:8453&scheme=exact'
+```
 
-### XGuard Edge
+The configured facilitator remains XGuard even as the selected downstream route changes.
 
-- first 1,000 successful billable transactions per hostname: free
-- then 1 XGuard Usage Credit per successful billable transaction
-- reads and failed transactions: free
+## High-throughput schemes
 
-### Native x402 settlement control plane
+XGuard's routing is scheme-aware. It does not hard-code `exact` as the only possible scheme. If a configured live facilitator advertises `batch-settlement`, `/supported` exposes it and XGuard can route matching verification/settlement traffic to that provider.
+
+This is intentionally different from claiming that XGuard itself owns every batch-settlement escrow/channel contract. The live advertised capability is derived from reachable providers rather than marketing text.
+
+## Payment safety inside the route
+
+For x402 traffic XGuard also keeps:
+
+- requirement ↔ accepted binding checks;
+- Base USDC EIP-3009 recipient/value/nonce/time-window checks;
+- durable replay protection;
+- capability-aware multi-facilitator failover;
+- timeout reconciliation;
+- durable receipt lookup.
+
+Receipt lookup:
+
+```text
+GET https://api.xguardgate.com/v1/receipts/{receipt_id}
+```
+
+## Billing boundary
 
 - `/verify`: free
-- first 25 successful settlements per merchant: free
-- then 2 XGuard Usage Credits per successful settlement
 - failed settlements: free
+- first successful settlements per `payTo`: current free allowance exposed by `/facilitator`
+- successful paid settlements after the allowance: XGuard Usage Credits
 
-Usage credits: https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab
+Billing is attached to XGuard usage. XGuard does **not** silently divert any portion of the merchant's signed x402 transfer; the x402 recipient and amount remain bound to the payment requirements.
+
+## Agent / robot discovery
+
+XGuard is also published through:
+
+```text
+MCP:        https://api.xguardgate.com/mcp
+Agent Card: https://api.xguardgate.com/.well-known/agent-card.json
+OpenAPI:    https://api.xguardgate.com/openapi.json
+LLM hints:  https://api.xguardgate.com/llms.txt
+Skill:      https://api.xguardgate.com/skill.md
+Website:    https://xguardgate.com
+```
+
+The MCP server exposes facilitator metadata, route selection and Bazaar search directly to agents in addition to the existing safety and receipt tools.
+
+## Secondary capabilities
+
+XGuard also retains the protocol-neutral Agent Spend Firewall, scoped spend mandates, ATS-100 safety testing and merchant edge. These are supporting capabilities; the primary financial product is now the **x402 facilitator money path**.
 
 ## Security posture
 
-- no custody of buyer or merchant funds
-- no merchant private keys
-- no mutation of signed payment amounts or recipients
-- scoped spend mandates with immediate revocation
-- private/local proxy targets blocked
-- merchant edge activation requires DNS ownership proof
-- x402 requirement/accepted binding failures fail closed
+- non-custodial;
+- no buyer or merchant private keys stored by XGuard;
+- no mutation of signed payment amount or recipient;
+- private/local proxy targets blocked;
+- Base USDC recipient/amount/time-window mismatches fail closed;
+- durable replay/receipt state;
+- ambiguous Base authorization state is reconciled before retry.

@@ -1,0 +1,68 @@
+name: Verify XGuard x402 Facilitator Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay/**"
+      - "server.json"
+      - ".github/workflows/verify-x402-facilitator-production.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Wait for facilitator v5 deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in {1..40}; do
+            provider="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
+            if printf '%s' "$provider" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.kind==="facilitator"&&x.name==="XGuard High-Velocity x402 Facilitator"&&x.capabilities?.automatic_routing===true&&x.endpoints?.settle?.endsWith("/settle")&&x.discovery?.bazaar?.search)process.exit(0)}catch{}process.exit(1)})'; then
+              ok=1
+              break
+            fi
+            sleep 4
+          done
+          test "$ok" = "1"
+
+      - name: Verify public facilitator contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||x.kind!=="facilitator"||x.baseUrl!=="https://api.xguardgate.com"||x.capabilities?.verify!==true||x.capabilities?.settle!==true||x.capabilities?.bazaar_list!==true||x.capabilities?.bazaar_search!==true||x.routing?.mode!=="automatic")process.exit(1);console.log(JSON.stringify({name:x.name,live_upstreams:x.routing?.live_upstreams?.length||0,batch_settlement:x.capabilities?.batch_settlement}))})'
+
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/x402 | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="facilitator"||x.endpoints?.supported!=="https://api.xguardgate.com/supported")process.exit(1)})'
+
+          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/resources?limit=5' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items)||typeof x.pagination?.total!=="number")process.exit(1)})'
+
+          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/search?query=x402&limit=5' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items))process.exit(1)})'
+
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/supported | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||!x.xguard?.universal)process.exit(1)})'
+
+          route_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-route -w '%{http_code}' 'https://api.xguardgate.com/v1/facilitator/route?scheme=exact')"
+          test "$route_code" = "200"
+          node -e 'const x=require("/tmp/xg-route");if(x.facilitator!=="https://api.xguardgate.com"||x.automatic!==true||!x.selected_upstream_host)process.exit(1)'
+
+      - name: Verify MCP and website identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-smoke","version":"1.0.0"}}}' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-high-velocity-x402-facilitator"||x.result?.serverInfo?.version!=="5.0.0")process.exit(1)})'
+
+          tools="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
+          printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const names=(x.result?.tools||[]).map(t=>t.name);for(const n of ["xguard_facilitator","xguard_route","xguard_discovery_search"])if(!names.includes(n))process.exit(1)})'
+
+          page="$(curl --fail --silent --show-error --max-time 8 'https://xguardgate.com/?facilitator-v5=1')"
+          printf '%s' "$page" | grep -q 'One URL in the'
+          printf '%s' "$page" | grep -q 'x402 money path'
+          printf '%s' "$page" | grep -q 'Agents and crawlers should not need to know'
