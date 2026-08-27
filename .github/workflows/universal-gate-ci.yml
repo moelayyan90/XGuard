@@ -1,0 +1,59 @@
+name: XGuard Universal Gate CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/edge-gate/**"
+      - "apps/universal-gate/**"
+      - ".github/workflows/universal-gate-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/edge-gate/**"
+      - "apps/universal-gate/**"
+      - ".github/workflows/universal-gate-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify portable server syntax and local dependency install
+        working-directory: apps/universal-gate
+        run: |
+          npm install --no-audit --no-fund
+          npm run check
+      - name: Build container
+        run: docker build -f apps/universal-gate/Dockerfile -t xguard-gate:ci .
+      - name: Smoke-test container health
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name xguard-gate-ci -p 18080:8080 xguard-gate:ci
+          trap 'docker stop xguard-gate-ci >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18080/__xguard/health > /tmp/health.json; then
+              break
+            fi
+            sleep 1
+          done
+          node -e '
+            const fs = require("fs");
+            const x = JSON.parse(fs.readFileSync("/tmp/health.json", "utf8"));
+            if (x.product !== "XGuard Edge Gate") process.exit(1);
+            if (x.facilitator !== "https://api.xguardgate.com") process.exit(1);
+          '
+      - name: Verify Kubernetes manifest keeps origin behind the gate topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'image: ghcr.io/moelayyan90/xguard-gate:5.0.1' apps/universal-gate/kubernetes.yaml
+          grep -q 'name: xguard-gate' apps/universal-gate/kubernetes.yaml
+          grep -q 'FACILITATOR_URL' apps/universal-gate/kubernetes.yaml
