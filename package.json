@@ -1,9 +1,9 @@
 {
   "name": "xguard-x402-control-plane",
-  "version": "5.0.1",
+  "version": "5.0.2",
   "private": false,
   "type": "module",
-  "description": "Drop-in x402 v2 facilitator client for the XGuard high-velocity settlement control plane.",
+  "description": "x402 compatibility SDK for XGuard Secretless Agent Gateway; the primary XGuard product is Secretless Egress.",
   "main": "./sdk/index.js",
   "exports": {
     ".": "./sdk/index.js",
@@ -24,6 +24,10 @@
     "node": ">=20"
   },
   "keywords": [
+    "xguard",
+    "secretless-egress",
+    "ai-agent-security",
+    "credential-broker",
     "x402",
     "x402-v2",
     "facilitator",
@@ -32,8 +36,7 @@
     "agent-payments",
     "usdc",
     "base",
-    "solana",
-    "xguard"
+    "compatibility"
   ],
   "license": "Apache-2.0",
   "repository": {
