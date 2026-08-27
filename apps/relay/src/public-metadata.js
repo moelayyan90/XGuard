@@ -15,120 +15,84 @@ const headers = (contentType = "application/json; charset=utf-8") => ({
 });
 
 function response(request, body) {
-  return new Response(request.method === "HEAD" ? null : JSON.stringify(body), {
-    status: 200,
-    headers: headers(),
-  });
+  return new Response(request.method === "HEAD" ? null : JSON.stringify(body), { status: 200, headers: headers() });
 }
 
 function commonDiscovery() {
   return {
+    egress: `${API}/v1/egress`,
+    egress_manifest: `${API}/.well-known/xguard-egress.json`,
+    egress_key: `${API}/.well-known/xguard-egress-key.json`,
+    egress_providers: `${API}/v1/egress/providers`,
+    egress_pricing: `${API}/v1/egress/pricing`,
     actions: `${API}/v1/actions`,
     action_manifest: `${API}/.well-known/xguard-actions.json`,
     action_key: `${API}/.well-known/xguard-actions-key.json`,
     mandates: `${API}/.well-known/xguard-authority.json`,
-    protocols: `${API}/v1/protocols`,
-    inspect: `${API}/v1/inspect`,
-    facilitator: `${API}/facilitator`,
-    supported: `${API}/supported`,
-    verify: `${API}/verify`,
-    settle: `${API}/settle`,
-    route: `${API}/v1/facilitator/route`,
-    resources: `${API}/discovery/resources`,
-    search: `${API}/discovery/search`,
-    mcp: `${API}/mcp`,
-    openapi: `${API}/openapi.json`,
-    ai_plugin: `${API}/.well-known/ai-plugin.json`,
-    agent_card: `${API}/.well-known/agent-card.json`,
-    security: `${SITE}/.well-known/security.txt`,
+    protocols: `${API}/v1/protocols`, inspect: `${API}/v1/inspect`, facilitator: `${API}/facilitator`, supported: `${API}/supported`, verify: `${API}/verify`, settle: `${API}/settle`, route: `${API}/v1/facilitator/route`, resources: `${API}/discovery/resources`, search: `${API}/discovery/search`, mcp: `${API}/mcp`, openapi: `${API}/openapi.json`, ai_plugin: `${API}/.well-known/ai-plugin.json`, agent_card: `${API}/.well-known/agent-card.json`, security: `${SITE}/.well-known/security.txt`,
+  };
+}
+
+function egressContract() {
+  return {
+    manifest: `${API}/v1/egress`,
+    credential_management: `${API}/v1/egress/credentials`,
+    capability_issuance: `${API}/v1/egress/capabilities`,
+    fetch: `${API}/v1/egress/fetch`,
+    pricing: `${API}/v1/egress/pricing`,
+    stats: `${API}/v1/egress/stats`,
+    providers: ["openai", "anthropic", "github", "stripe", "slack", "notion", "cloudflare", "gemini", "custom"],
+    controls: ["encrypted reusable credential", "scoped capability", "host binding", "path-prefix allowlist", "method allowlist", "call budget", "billing before secret release", "manual redirects", "private-target block", "no blind replay"],
   };
 }
 
 function architecture() {
   return {
-    name: "XGuard Action Rail",
+    name: "XGuard Secretless Agent Gateway",
     version: VERSION,
     product_version: VERSION,
-    primary_role: "protocol-neutral execution control plane for irreversible AI side effects",
+    primary_role: "credential broker and egress choke point for AI agents",
     public_api: API,
-    custody: "none",
-    execution_model: [
-      "scoped delegated mandate",
-      "cryptographically signed request-bound action permit",
-      "atomic single-use transition to executing",
-      "one upstream execution with Idempotency-Key binding",
-      "durable executed, failed or ambiguous state",
-      "successful-execution Usage Credit consumption",
-      "durable action receipt",
-    ],
+    custody: "no custody of buyer or merchant private keys; encrypted upstream API credentials may be stored by operators",
+    execution_model: ["operator stores reusable credential", "XGuard encrypts credential", "operator issues scoped short-lived capability", "agent presents capability without upstream secret", "XGuard bills Usage Credits before egress", "XGuard decrypts and injects credential server-side", "one public HTTPS request is forwarded without automatic redirect or retry"],
     architecture: {
       edge: "Cloudflare Workers on xguardgate.com and api.xguardgate.com custom domains",
-      state: "Cloudflare Durable Objects for mandates, permits, signatures, replay state, receipts, quotas and meters",
+      state: "Cloudflare Durable Objects for credentials, encryption authority, capabilities, mandates, permits, replay state, receipts, quotas and meters",
       private_network_targets_blocked: true,
-      automatic_action_replay: false,
-      ambiguous_transport_or_5xx: "fail closed",
+      automatic_credential_redirect_forwarding: false,
+      automatic_egress_replay: false,
+      billing_before_credential_release: true,
     },
+    secretless_egress: egressContract(),
     action_rail: {
-      permit: `${API}/v1/actions/permits`,
-      execute: `${API}/v1/actions/execute`,
-      pricing: `${API}/v1/actions/pricing`,
-      stats: `${API}/v1/actions/stats`,
-      supported_action_classes: ["payment", "purchase", "booking", "message", "deploy", "delete", "create", "update", "tool_call", "external_action"],
-      protocols: ["http", "mcp", "x402", "mpp", "ap2", "acp", "ucp", "tap", "custom"],
+      permit: `${API}/v1/actions/permits`, execute: `${API}/v1/actions/execute`, pricing: `${API}/v1/actions/pricing`, stats: `${API}/v1/actions/stats`, supported_action_classes: ["payment", "purchase", "booking", "message", "deploy", "delete", "create", "update", "tool_call", "external_action"], protocols: ["http", "mcp", "x402", "mpp", "ap2", "acp", "ucp", "tap", "custom"],
     },
-    compatibility_products: {
-      x402: {
-        version: 2,
-        facilitator_url: API,
-        supported: `${API}/supported`,
-        verify: `${API}/verify`,
-        settle: `${API}/settle`,
-      },
-      universal_edge: `${API}/edge/<merchant-host>/<path>`,
-      legacy_settlement_rail: `${API}/v1/rail`,
-    },
+    compatibility_products: { x402: { version: 2, facilitator_url: API, supported: `${API}/supported`, verify: `${API}/verify`, settle: `${API}/settle` }, universal_edge: `${API}/edge/<merchant-host>/<path>`, legacy_settlement_rail: `${API}/v1/rail` },
     discovery: commonDiscovery(),
   };
 }
 
 function protocolManifest() {
   return {
-    name: "XGuard Action Rail",
+    name: "XGuard Secretless Agent Gateway",
     version: VERSION,
     product_version: VERSION,
-    primary_role: "AI action execution boundary",
+    primary_role: "credential broker and controlled egress boundary for AI agents",
     protocol_neutral: true,
+    secretless_egress: egressContract(),
     protocols: {
-      http: "native Action Rail target transport and generic machine-action edge",
-      mcp: "remote MCP discovery plus tool-action recognition",
-      x402: "native facilitator plus Action Rail compatibility",
+      http: "native secretless egress target transport and generic machine-action edge",
+      mcp: "remote discovery plus xguard_egress_fetch capability execution",
+      x402: "native facilitator plus Secretless Egress and Action Rail compatibility",
       mpp: "recognized payment HTTP authorization surface plus Action Rail compatibility",
       ap2: "mandate-aware transaction inspection plus Action Rail compatibility",
       acp: "agent checkout recognition plus Action Rail compatibility",
       ucp: "commerce action recognition plus Action Rail compatibility",
       tap: "trusted-agent identity recognition plus Action Rail compatibility",
     },
-    action_rail: {
-      permit: `POST ${API}/v1/actions/permits`,
-      execute: `POST ${API}/v1/actions/execute`,
-      status: `GET ${API}/v1/actions/permits/{permit_id}`,
-      key: `${API}/.well-known/xguard-actions-key.json`,
-      controls: ["mandate", "action allowlist", "merchant allowlist", "budget", "request binding", "single use", "replay rejection", "expiry", "fail-closed ambiguity", "receipt"],
-      billing: "Usage Credits consumed only after known successful Action Rail execution",
-    },
-    x402: {
-      version: 2,
-      facilitator_url: API,
-      automatic_routing: true,
-      durable_replay_guard: true,
-      settlement_ambiguous_fail_closed: true,
-      endpoints: { supported: `${API}/supported`, verify: `${API}/verify`, settle: `${API}/settle` },
-    },
-    edge: {
-      endpoint_format: `${API}/edge/<merchant-host>/<path>`,
-      merchant_authorization: "_xguard.<merchant-host> TXT \"xguard-edge=enabled\"",
-      private_network_targets_blocked: true,
-    },
+    action_rail: { permit: `POST ${API}/v1/actions/permits`, execute: `POST ${API}/v1/actions/execute`, status: `GET ${API}/v1/actions/permits/{permit_id}`, key: `${API}/.well-known/xguard-actions-key.json`, controls: ["mandate", "action allowlist", "merchant allowlist", "budget", "request binding", "single use", "replay rejection", "expiry", "fail-closed ambiguity", "receipt"] },
+    x402: { version: 2, facilitator_url: API, automatic_routing: true, durable_replay_guard: true, settlement_ambiguous_fail_closed: true, endpoints: { supported: `${API}/supported`, verify: `${API}/verify`, settle: `${API}/settle` } },
+    edge: { endpoint_format: `${API}/edge/<merchant-host>/<path>`, merchant_authorization: "_xguard.<merchant-host> TXT \"xguard-edge=enabled\"", private_network_targets_blocked: true },
     discovery: commonDiscovery(),
   };
 }
@@ -136,22 +100,14 @@ function protocolManifest() {
 function aiPluginManifest() {
   return {
     schema_version: "v1",
-    name_for_human: "XGuard Action Rail",
-    name_for_model: "xguard_action_rail",
-    description_for_human: "Protocol-neutral execution control for AI side effects with scoped mandates, signed single-use permits and durable receipts.",
-    description_for_model: "Use XGuard when an AI agent is about to cause an irreversible external side effect. Prepare a scoped mandate and a signed request-bound permit, then execute through the Action Rail. XGuard rejects replay, binds the exact target/method/action/request body, and fails closed on ambiguous transport or 5xx outcomes. Native x402 facilitator endpoints remain available as a compatibility capability.",
-    auth: { type: "service_http", authorization_type: "X-XGuard-Key plus X-XGuard-Mandate for protected action preparation" },
+    name_for_human: "XGuard Secretless Agent Gateway",
+    name_for_model: "xguard_secretless_agent_gateway",
+    description_for_human: "Keep reusable API credentials out of AI agents and inject them only at controlled egress.",
+    description_for_model: "Use XGuard when an AI agent needs a credential-protected HTTPS API. Operators provision encrypted credentials and scoped capabilities outside model context. Agents invoke xguard_egress_fetch with a capability and target; XGuard bills before egress, injects the upstream credential server-side, never follows redirects automatically and never returns the reusable secret.",
+    auth: { type: "service_http", authorization_type: "Operator management uses X-XGuard-Key; agent egress uses a scoped xgc_ capability" },
     api: { type: "openapi", url: `${API}/openapi.json`, is_user_authenticated: true },
-    logo_url: `${SITE}/logo.svg`,
-    contact_email: "mo.elayyan2023@gmail.com",
-    legal_info_url: "https://github.com/moelayyan90/XGuard",
-    xguard: {
-      version: VERSION,
-      action_manifest: `${API}/.well-known/xguard-actions.json`,
-      mcp_url: `${API}/mcp`,
-      facilitator_url: API,
-      custody: "none",
-    },
+    logo_url: `${SITE}/logo.svg`, contact_email: "mo.elayyan2023@gmail.com", legal_info_url: "https://github.com/moelayyan90/XGuard",
+    xguard: { version: VERSION, egress_manifest: `${API}/.well-known/xguard-egress.json`, action_manifest: `${API}/.well-known/xguard-actions.json`, mcp_url: `${API}/mcp`, facilitator_url: API, custody: "none" },
   };
 }
 
