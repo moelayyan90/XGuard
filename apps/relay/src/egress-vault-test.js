@@ -35,7 +35,9 @@ test("Provider presets bind credentials to known upstream hosts", () => {
 });
 
 test("Custom credentials require explicit public hosts and safe headers", () => {
-  assert.equal(__test.providerPolicy("custom", { header_name: "Authorization", allowed_hosts: ["127.0.0.1"] }), null);
+  const privateHostPolicy = __test.providerPolicy("custom", { header_name: "Authorization", allowed_hosts: ["127.0.0.1"] });
+  assert.ok(privateHostPolicy);
+  assert.equal(privateHostPolicy.allowed_hosts, null);
   assert.equal(__test.providerPolicy("custom", { header_name: "X-XGuard-Key", allowed_hosts: ["api.example.com"] }), null);
   const custom = __test.providerPolicy("custom", { header_name: "X-API-Key", allowed_hosts: ["api.example.com"], allowed_paths: ["/v1/"] });
   assert.equal(custom.injection.header, "x-api-key");
