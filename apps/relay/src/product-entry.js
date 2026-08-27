@@ -21,10 +21,10 @@ const VERSION = "5.0.1";
 const NAME = "xguard-secretless-agent-gateway";
 const MCP = "https://api.xguardgate.com/mcp";
 
-async function improveInitialize(request, response) {
-  if (!(response instanceof Response) || !response.ok || request.method !== "POST") return response;
+async function improveInitialize(snapshot, response) {
+  if (!(response instanceof Response) || !response.ok || !snapshot) return response;
   let message;
-  try { message = await request.clone().json(); } catch { return response; }
+  try { message = await snapshot.json(); } catch { return response; }
   if (message?.method !== "initialize") return response;
   const body = await response.clone().json().catch(() => null);
   if (!body?.result) return response;
@@ -39,8 +39,10 @@ async function improveInitialize(request, response) {
 
 export default {
   async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const snapshot = url.pathname === "/mcp" && request.method === "POST" ? request.clone() : null;
     const response = await app.fetch(request, env, ctx);
-    if (new URL(request.url).pathname === "/mcp") return improveInitialize(request, response);
+    if (snapshot) return improveInitialize(snapshot, response);
     return response;
   },
   async scheduled(controller, env, ctx) {
