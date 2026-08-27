@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard-control-plane",
   "title": "XGuard High-Velocity x402 Facilitator",
-  "description": "Public x402 facilitator with automatic routing, discovery, failover and replay protection.",
-  "version": "5.0.0",
+  "description": "Non-custodial x402 v2 facilitator gateway with capability/health routing, Bazaar discovery, replay protection and reconciliation-gated settlement failover.",
+  "version": "5.0.1",
   "websiteUrl": "https://xguardgate.com",
   "remotes": [
     {
