@@ -1,168 +1,170 @@
-# XGuard — Action Control Plane for AI Agents
+# XGuard — Secretless Agent Gateway
 
-**Canonical production API:**
+**Canonical production API**
 
 ```text
 https://api.xguardgate.com
 ```
 
-XGuard is a protocol-neutral execution control plane for AI side effects. It is designed for the moment an agent changes something outside itself: a payment, purchase, booking, message, deployment, delete, API write, tool call, or another irreversible action.
-
-The core flow is:
+XGuard keeps reusable upstream credentials **out of AI agents**. Operators store a Stripe, GitHub, OpenAI, Anthropic, Slack, Notion, Cloudflare, Gemini or custom API credential once, then give the agent only a short-lived scoped XGuard capability.
 
 ```text
-Agent intent
-    ↓
-Scoped XGuard Mandate
-    ↓
-Cryptographically signed Action Permit
-    ↓
-One request-bound execution
-    ↓
-Durable receipt / failed / ambiguous state
+Operator secret
+     ↓
+Encrypted XGuard credential vault
+     ↓
+Scoped capability
+     ↓
+AI agent
+     ↓
+XGuard Secretless Egress
+     ↓
+credential injected server-side
+     ↓
+upstream API
 ```
 
-The Action Rail is deliberately positioned **inside the execution path**, not as an optional scanner beside it.
+The agent never receives the reusable upstream credential.
 
-> XGuard becomes mandatory only for traffic an operator routes through the Action Rail, Universal Gate, or XGuard Edge. It does not claim the ability to force unrelated third-party Internet traffic through XGuard.
+> XGuard becomes an actual choke point when an operator keeps the reusable credential only in XGuard and delegates capabilities instead of redistributing that credential. XGuard does not claim control over unrelated Internet traffic.
 
-## Why Action Rail
+## Why Secretless Egress
 
-AI systems increasingly call tools and APIs that create real-world side effects. XGuard adds an execution boundary with:
+A reusable bearer token inside an autonomous agent can be copied, logged, placed in context, reused outside the intended request or leaked to an untrusted tool. XGuard changes the primitive from **secret possession** to **scoped capability possession**.
 
-- scoped delegated mandates;
-- merchant allowlists;
-- action allowlists;
-- per-action and daily budget limits;
-- cryptographically signed permits;
-- target, method, action, protocol, request-body and license binding;
-- atomic single-use execution state;
-- replay rejection;
-- automatic `Idempotency-Key` injection when the target has none;
-- expiry and revocation;
-- fail-closed handling of ambiguous transport and HTTP 5xx outcomes;
-- durable action receipts;
-- Usage Credit billing only after known successful Action Rail execution.
+The current egress boundary provides:
 
-## Action Rail API
+- encrypted reusable credential storage;
+- provider presets for OpenAI, Anthropic, GitHub, Stripe, Slack, Notion, Cloudflare and Gemini;
+- custom header-based credentials restricted to explicit public HTTPS hosts;
+- short-lived capabilities;
+- exact HTTPS origin binding;
+- path-prefix allowlists;
+- HTTP method allowlists;
+- maximum call counts;
+- Usage Credit billing before secret release and before outbound network egress;
+- no automatic credential forwarding across redirects;
+- private/local target blocking;
+- automatic `Idempotency-Key` injection for unsafe methods;
+- no blind automatic replay after network ambiguity;
+- MCP discovery and egress execution without exposing credential provisioning to model context.
 
-Machine-readable manifest:
+## Egress API
+
+Machine-readable contract:
 
 ```text
-GET https://api.xguardgate.com/v1/actions
-GET https://api.xguardgate.com/.well-known/xguard-actions.json
-GET https://api.xguardgate.com/.well-known/xguard-actions-key.json
+GET https://api.xguardgate.com/v1/egress
+GET https://api.xguardgate.com/.well-known/xguard-egress.json
+GET https://api.xguardgate.com/.well-known/xguard-egress-key.json
+GET https://api.xguardgate.com/v1/egress/providers
 ```
 
-Prepare an action:
+### 1. Operator stores a reusable credential
+
+Credential provisioning is intentionally an **operator API**, not an MCP tool.
 
 ```http
-POST /v1/actions/permits
-X-XGuard-Key: <usage-credit-license>
-X-XGuard-Mandate: <scoped-mandate>
+POST /v1/egress/credentials
+X-XGuard-Key: <usage-credit-key>
 Content-Type: application/json
 ```
 
 ```json
 {
-  "target": "https://api.example.com/orders",
+  "provider": "github",
+  "value": "<github-token>",
+  "label": "production-github",
+  "allowed_paths": ["/repos/"],
+  "allowed_methods": ["GET", "POST"]
+}
+```
+
+XGuard returns only credential metadata such as `xcred_...`; the reusable secret is not returned.
+
+### 2. Operator issues a short capability
+
+```http
+POST /v1/egress/capabilities
+X-XGuard-Key: <usage-credit-key>
+Content-Type: application/json
+```
+
+```json
+{
+  "credential_id": "xcred_...",
+  "target_origin": "https://api.github.com",
+  "path_prefix": "/repos/",
+  "allowed_methods": ["GET", "POST"],
+  "ttl_seconds": 300,
+  "max_calls": 10
+}
+```
+
+The returned `xgc_...` capability is what the agent receives.
+
+### 3. Agent executes without the upstream secret
+
+```http
+POST /v1/egress/fetch
+Content-Type: application/json
+```
+
+```json
+{
+  "capability": "xgc_...",
+  "target": "https://api.github.com/repos/org/repo/issues",
   "method": "POST",
-  "action": "purchase",
-  "protocol": "http",
-  "amount_minor": "2500",
-  "currency": "USD",
-  "request_body": {
-    "sku": "A-17",
-    "quantity": 1
+  "body_json": {
+    "title": "Example"
   }
 }
 ```
 
-XGuard returns a signed `xap_...` permit. Execute exactly that request once:
+XGuard validates capability scope and billing, injects the GitHub credential server-side, sends one HTTPS request and never exposes the reusable GitHub token to the agent.
 
-```http
-POST /v1/actions/execute
-X-XGuard-Key: <same-license>
-Content-Type: application/json
-```
-
-```json
-{
-  "permit": { "...": "signed permit returned by XGuard" },
-  "signature": "...",
-  "headers": {
-    "Authorization": "Bearer <upstream-credential>"
-  },
-  "request_body": {
-    "sku": "A-17",
-    "quantity": 1
-  }
-}
-```
-
-The permit is bound to the exact request-body digest. A second execution of the same permit is rejected by durable state.
-
-Status lookup:
+Pricing contract:
 
 ```text
-GET /v1/actions/permits/{permit_id}
+GET /v1/egress/pricing
 ```
 
-Pricing metadata and counters:
+The current configuration consumes **1 XGuard Usage Credit per authorized credential-backed egress attempt**. Billing is committed before credential decryption and before outbound network egress. If billing cannot commit, no upstream request is sent.
+
+## MCP
+
+Canonical MCP endpoint:
 
 ```text
-GET /v1/actions/pricing
-GET /v1/actions/stats
+https://api.xguardgate.com/mcp
 ```
 
-The current production configuration consumes **1 XGuard Usage Credit per known successful Action Rail execution**. Known failed and ambiguous Action Rail outcomes do not count as successful executions.
+Agent-facing tools include:
 
-## Scoped mandates
+```text
+xguard_secretless_egress
+xguard_egress_fetch
+xguard_action_rail
+```
 
-Create a delegated authority envelope before preparing actions:
+Reusable credential creation is deliberately **not** exposed as an MCP tool.
+
+## Action Rail underneath
+
+Secretless Egress is the primary product boundary. XGuard Action Rail remains available underneath for stronger execution controls around payments, purchases, bookings, messages, deployments, deletes, API writes and tool calls.
 
 ```text
 POST /v1/mandates
-GET  /v1/mandates/status
-POST /v1/mandates/revoke
+POST /v1/actions/permits
+POST /v1/actions/execute
+GET  /v1/actions/permits/{permit_id}
 ```
 
-A mandate can constrain:
+Action Rail adds scoped mandates, request-bound cryptographic permits, replay rejection, durable execution state and receipts.
 
-- `agent_id`;
-- `currency`;
-- maximum amount per action;
-- daily authorized amount;
-- maximum number of uses;
-- merchant/domain allowlist;
-- action allowlist;
-- expiry;
-- revocation.
+## Universal and Edge deployment
 
-Action classes can include `payment`, `purchase`, `booking`, `message`, `deploy`, `delete`, `create`, `update`, `tool_call`, or another explicit action label supported by the mandate.
-
-## Protocol-neutral placement
-
-The Action Rail executes ordinary public HTTPS targets and is not dependent on a single payment protocol.
-
-XGuard's existing universal transaction edge also recognizes these surfaces:
-
-```text
-HTTP
-MCP
-x402
-MPP
-AP2
-ACP
-UCP
-TAP
-```
-
-Recognition does not mean XGuard claims to implement every protocol's full payment stack. The Action Rail sits above the protocol-specific request as an authorization, execution and replay boundary.
-
-## Universal Gate
-
-For operator-controlled infrastructure, XGuard can sit directly in front of an existing origin:
+For operator-controlled infrastructure XGuard can also be placed in front of an origin:
 
 ```text
 Internet / Ingress
@@ -172,36 +174,11 @@ XGuard Universal Gate
 private origin
 ```
 
-The repository ships:
-
-- Cloudflare Edge Gate;
-- portable Node server;
-- Docker image build;
-- Docker Compose topology;
-- Kubernetes Deployment + Service topology;
-- OpenAPI AutoGate for paid API routes.
-
-See [`apps/universal-gate/README.md`](apps/universal-gate/README.md).
-
-## XGuard Edge
-
-A merchant can authorize XGuard Edge with DNS:
-
-```dns
-_xguard.example.com TXT "xguard-edge=enabled"
-```
-
-Then route agent-facing traffic through:
-
-```text
-https://api.xguardgate.com/edge/example.com/<path>
-```
-
-Private/local targets are blocked. XGuard inspects protocol and action shape, applies mandate enforcement for financial actions, forwards allowed traffic, and meters successful billable edge operations.
+The repository includes Cloudflare Edge Gate, portable Node deployment, Docker, Docker Compose, Kubernetes and OpenAPI AutoGate components.
 
 ## Native x402 compatibility
 
-x402 remains a supported compatibility product, but it no longer defines the whole platform.
+x402 remains a compatibility rail, not the definition of XGuard.
 
 ```text
 GET  /supported
@@ -212,33 +189,25 @@ GET  /.well-known/x402
 GET  /v1/facilitator/route
 ```
 
-XGuard remains a non-custodial x402 v2 facilitator gateway with capability-aware routing, durable replay protection, Base USDC reconciliation and fail-closed ambiguous-settlement behavior. XGuard does not mutate the signed x402 recipient or payment amount.
+XGuard remains a non-custodial x402 v2 facilitator gateway with capability-aware routing, replay protection, Base USDC reconciliation and fail-closed ambiguous settlement behavior.
 
-## Existing settlement rail
+## Security model
 
-The original signed settlement rail remains available for backward compatibility:
+- reusable upstream credentials are encrypted at rest using per-record AES-GCM keys wrapped by an XGuard RSA-OAEP authority;
+- secret values are not included in agent capabilities;
+- operator XGuard Usage Credit keys are encrypted into capability state and are not handed to agents;
+- capabilities bind an origin, path prefix, methods, expiry and maximum calls;
+- user-supplied headers cannot override the injected credential header or XGuard control headers;
+- private/local targets and XGuard self-targets are blocked;
+- redirects are not automatically followed with injected credentials;
+- billing commits before secret decryption and network egress;
+- unsafe methods receive an XGuard-generated `Idempotency-Key` when the caller did not supply one;
+- XGuard does not automatically replay a credential-backed request after a network ambiguity.
 
-```text
-GET  /v1/rail
-POST /v1/rail/permits
-POST /v1/rail/execute
-```
-
-New integrations should prefer the broader `/v1/actions/*` surface unless they specifically need the legacy settlement-oriented contract.
-
-## MCP and machine discovery
-
-Canonical remote MCP:
-
-```text
-https://api.xguardgate.com/mcp
-```
-
-The MCP tool list includes `xguard_action_rail` for Action Rail discovery in addition to facilitator, routing, inspection, safety and receipt tools.
-
-Other machine-readable surfaces:
+## Machine discovery
 
 ```text
+GET /.well-known/xguard-egress.json
 GET /.well-known/xguard-actions.json
 GET /.well-known/xguard.json
 GET /.well-known/ai-plugin.json
@@ -248,39 +217,20 @@ GET /v1/protocols
 GET /openapi.json
 GET /llms.txt
 GET /skill.md
+GET /sitemap.xml
 ```
 
-## Security model
-
-- no buyer or merchant private keys are required by the Action Rail;
-- private/local execution targets are blocked;
-- XGuard license keys are not embedded in the signed action permit; only their SHA-256 binding is stored in the permit;
-- permit signatures use ECDSA P-256 / SHA-256;
-- target, HTTP method, action, protocol, request digest, amount context and license binding are signed;
-- permit state is durable and single-use;
-- automatic replay is disabled after ambiguous outcomes;
-- upstream authorization headers are forwarded only as part of the explicit action request and are not reused as XGuard billing credentials;
-- XGuard billing uses the dedicated `X-XGuard-Key` header.
-
 ## Production domains
-
-Production is exposed through the custom domains:
 
 ```text
 https://xguardgate.com
 https://api.xguardgate.com
 ```
 
-The Cloudflare Worker configuration disables the public `workers.dev` route so XGuard's production identity does not depend on an unrelated account subdomain.
+The Cloudflare Worker configuration disables the public `workers.dev` route so XGuard's production identity is limited to the custom XGuard domains.
 
-## Repository
+Repository:
 
 ```text
 https://github.com/moelayyan90/XGuard
-```
-
-Website:
-
-```text
-https://xguardgate.com
 ```
