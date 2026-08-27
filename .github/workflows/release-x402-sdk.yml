@@ -45,13 +45,17 @@ jobs:
           pack_json="$(npm pack --json)"
           pack_file="$(printf '%s' "$pack_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);process.stdout.write(x[0].filename)})')"
           test -f "$pack_file"
-          mv "$pack_file" xguard-x402-control-plane-5.0.1.tgz
-          sha256sum xguard-x402-control-plane-5.0.1.tgz > SHA256SUMS.txt
+          final_pack="xguard-x402-control-plane-5.0.1.tgz"
+          if [ "$pack_file" != "$final_pack" ]; then
+            mv "$pack_file" "$final_pack"
+          fi
+          test -f "$final_pack"
+          sha256sum "$final_pack" > SHA256SUMS.txt
 
           mkdir -p /tmp/xguard-release-smoke
           cd /tmp/xguard-release-smoke
           npm init -y >/dev/null 2>&1
-          npm install --no-audit --no-fund "$GITHUB_WORKSPACE/xguard-x402-control-plane-5.0.1.tgz" @x402/core@^2.23.0
+          npm install --no-audit --no-fund "$GITHUB_WORKSPACE/$final_pack" @x402/core@^2.23.0
           node --input-type=module <<'NODE'
           import { XGUARD_VERSION, XGUARD_FACILITATOR_URL, facilitator, xguardSupported } from 'xguard-x402-control-plane';
           if (XGUARD_VERSION !== '5.0.1') throw new Error('wrong release version');
