@@ -31,6 +31,9 @@ jobs:
           node --check apps/relay/src/rail-entry.js
           node --check apps/relay/src/entry.js
           node --check apps/relay/src/secure-entry.js
+          node --check apps/relay/src/trust-entry.js
+          node --check apps/relay/src/hosted-gate.js
+          node --check apps/relay/src/gate-entry.js
           node --check apps/relay/src/entry-test.js
           node --check packages/edge/index.js
           node --check scripts/ats100-ci.mjs
@@ -46,6 +49,8 @@ jobs:
           grep -q 'execution_ambiguous' apps/relay/src/rail.js
       - name: Discovery behavior tests
         run: node --test apps/relay/src/entry-test.js
+      - name: Hosted Gate x402 v2 behavior tests
+        run: node --test apps/relay/test/hosted-gate.mjs
       - name: SDK syntax and package check
         run: |
           node --check sdk/index.js
