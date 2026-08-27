@@ -6,16 +6,19 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-# Copy the local Edge Gate package including runtime source before npm install.
-# The repository-level .dockerignore prevents host/CI node_modules from entering
-# the image, so the file: dependency is packed from a clean source tree.
-COPY apps/edge-gate ./apps/edge-gate
-COPY apps/universal-gate/package.json ./apps/universal-gate/package.json
+# Edge Gate executes from /app/apps/edge-gate, so its production dependencies
+# must exist in that package's own resolution path.
+COPY apps/edge-gate/package.json ./apps/edge-gate/package.json
+WORKDIR /app/apps/edge-gate
+RUN npm install --omit=dev --no-audit --no-fund \
+    && npm cache clean --force
+COPY apps/edge-gate/src ./src
 
+# Universal Gate is a thin Node adapter around the same Edge Gate runtime.
+COPY apps/universal-gate/package.json /app/apps/universal-gate/package.json
 WORKDIR /app/apps/universal-gate
 RUN npm install --omit=dev --no-audit --no-fund \
     && npm cache clean --force
-
 COPY apps/universal-gate/src ./src
 
 USER node
