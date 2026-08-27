@@ -36,6 +36,19 @@ GET https://api.xguardgate.com/supported
 
 The public provider document reports current live capabilities. `batch-settlement` is advertised as live **only when a healthy configured upstream actually advertises `scheme=batch-settlement`**.
 
+Stable public metadata:
+
+```text
+Logo:         https://xguardgate.com/logo.svg
+Security:     https://xguardgate.com/.well-known/security.txt
+MCP:          https://api.xguardgate.com/mcp
+Agent Card:   https://api.xguardgate.com/.well-known/agent-card.json
+OpenAPI:      https://api.xguardgate.com/openapi.json
+LLM hints:    https://api.xguardgate.com/llms.txt
+Skill:        https://api.xguardgate.com/skill.md
+Website:      https://xguardgate.com
+```
+
 ### DNS compatibility discovery
 
 The repository Cloudflare workflow attempts to keep this compatibility record published:
@@ -44,7 +57,7 @@ The repository Cloudflare workflow attempts to keep this compatibility record pu
 _x402.xguardgate.com TXT "v=x402-1; wk=https://api.xguardgate.com/.well-known/x402; k=facilitator"
 ```
 
-This is provided for emerging DNS/well-known x402 discovery resolvers; the live `/supported` response remains authoritative for actual payment capabilities.
+This record is **optional compatibility metadata**. If the Cloudflare token does not have Zone:DNS permission, the workflow reports `NOT PUBLISHED` rather than claiming success. The live HTTP discovery surfaces and `/supported` remain authoritative.
 
 ## Bazaar aggregation
 
@@ -59,16 +72,18 @@ It queries the configured facilitator catalogs, merges and de-duplicates resourc
 
 ## Automatic settlement routing
 
-XGuard already sits above multiple configured x402 facilitators. For each request it:
+XGuard sits above multiple configured x402 facilitators. For each request it:
 
 1. parses the requested network and scheme;
 2. reads current `/supported` capabilities;
 3. removes incompatible routes;
 4. considers route health and observed latency;
 5. sends `/verify` or `/settle` through the best live compatible route;
-6. fails over on retryable transport, 5xx or rate-limit failure;
-7. on Base USDC, reconciles ambiguous authorization state before allowing a dangerous blind retry;
-8. stores durable settlement receipts to make successful replay idempotent.
+6. freely fails over **verification** requests on retryable transport/5xx/429 errors because verification cannot spend the signed payment;
+7. for **settlement**, retries a different route only when the outcome is known to be safe: explicit rate limiting, or network-specific reconciliation proves the payment was not consumed;
+8. on Base USDC, checks EIP-3009 authorization state before any retry after an ambiguous settlement response;
+9. on networks without reconciliation, an ambiguous timeout/5xx fails closed instead of forwarding the same signed payment to another facilitator;
+10. stores durable settlement receipts to make successful replay idempotent.
 
 Use the route-inspection endpoint without pinning the returned downstream provider:
 
@@ -78,6 +93,15 @@ curl 'https://api.xguardgate.com/v1/facilitator/route?network=eip155:8453&scheme
 
 The configured facilitator remains XGuard even as the selected downstream route changes.
 
+Response telemetry exposes the actual route decision:
+
+```text
+x-xguard-upstream
+x-xguard-route-attempts
+x-xguard-settlement-safety
+server-timing
+```
+
 ## High-throughput schemes
 
 XGuard's routing is scheme-aware. It does not hard-code `exact` as the only possible scheme. If a configured live facilitator advertises `batch-settlement`, `/supported` exposes it and XGuard can route matching verification/settlement traffic to that provider.
@@ -86,13 +110,14 @@ This is intentionally different from claiming that XGuard itself owns every batc
 
 ## Payment safety inside the route
 
-For x402 traffic XGuard also keeps:
+For x402 traffic XGuard keeps:
 
 - requirement ↔ accepted binding checks;
 - Base USDC EIP-3009 recipient/value/nonce/time-window checks;
 - durable replay protection;
-- capability-aware multi-facilitator failover;
-- timeout reconciliation;
+- capability-aware multi-facilitator routing;
+- fail-closed handling of ambiguous settlement state;
+- Base timeout reconciliation;
 - durable receipt lookup.
 
 Receipt lookup:
@@ -112,18 +137,7 @@ Billing is attached to XGuard usage. XGuard does **not** silently divert any por
 
 ## Agent / robot discovery
 
-XGuard is also published through:
-
-```text
-MCP:        https://api.xguardgate.com/mcp
-Agent Card: https://api.xguardgate.com/.well-known/agent-card.json
-OpenAPI:    https://api.xguardgate.com/openapi.json
-LLM hints:  https://api.xguardgate.com/llms.txt
-Skill:      https://api.xguardgate.com/skill.md
-Website:    https://xguardgate.com
-```
-
-The MCP server exposes facilitator metadata, route selection and Bazaar search directly to agents in addition to the existing safety and receipt tools.
+The MCP server exposes facilitator metadata, route selection and Bazaar search directly to agents in addition to the existing safety and receipt tools. `robots.txt` and `sitemap.xml` are served by the public worker, while the provider metadata, OpenAPI, MCP and Agent Card expose machine-readable integration surfaces.
 
 ## Secondary capabilities
 
@@ -137,4 +151,5 @@ XGuard also retains the protocol-neutral Agent Spend Firewall, scoped spend mand
 - private/local proxy targets blocked;
 - Base USDC recipient/amount/time-window mismatches fail closed;
 - durable replay/receipt state;
-- ambiguous Base authorization state is reconciled before retry.
+- ambiguous Base authorization state is reconciled before retry;
+- ambiguous settlement state on networks without a reconciliation proof fails closed instead of risking cross-facilitator duplicate settlement.

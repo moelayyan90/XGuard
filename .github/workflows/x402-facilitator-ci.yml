@@ -3,20 +3,24 @@ name: XGuard x402 Facilitator CI
 on:
   pull_request:
     paths:
+      - "apps/relay/src/index.js"
       - "apps/relay/src/x402-market.js"
       - "apps/relay/src/rail-entry.js"
       - "apps/relay/src/secure-entry.js"
       - "apps/relay/src/site-universal.js"
+      - "apps/relay/test/settlement-safety.mjs"
       - "apps/relay/wrangler.jsonc"
       - "server.json"
       - ".github/workflows/x402-facilitator-ci.yml"
   push:
     branches: [main]
     paths:
+      - "apps/relay/src/index.js"
       - "apps/relay/src/x402-market.js"
       - "apps/relay/src/rail-entry.js"
       - "apps/relay/src/secure-entry.js"
       - "apps/relay/src/site-universal.js"
+      - "apps/relay/test/settlement-safety.mjs"
       - "apps/relay/wrangler.jsonc"
       - "server.json"
       - ".github/workflows/x402-facilitator-ci.yml"
@@ -39,10 +43,14 @@ jobs:
         run: npm install --prefix apps/relay --no-audit --no-fund
       - name: Syntax checks
         run: |
+          node --check apps/relay/src/index.js
           node --check apps/relay/src/x402-market.js
           node --check apps/relay/src/rail-entry.js
           node --check apps/relay/src/secure-entry.js
           node --check apps/relay/src/site-universal.js
+          node --check apps/relay/test/settlement-safety.mjs
+      - name: Settlement safety behavior
+        run: node apps/relay/test/settlement-safety.mjs
       - name: Contract assertions
         shell: bash
         run: |
@@ -53,6 +61,11 @@ jobs:
           grep -q 'batch-settlement' apps/relay/src/x402-market.js
           grep -q 'automatic_routing' apps/relay/src/x402-market.js
           grep -q 'xguard-high-velocity-x402-facilitator' apps/relay/src/secure-entry.js
+          grep -q 'settlement_state_ambiguous_no_reconciliation' apps/relay/src/index.js
+          grep -q 'ambiguous_settlement_fail_closed: true' apps/relay/src/index.js
+          grep -q 'x-xguard-settlement-safety' apps/relay/src/index.js
+          grep -q '/logo.svg' apps/relay/src/rail-entry.js
+          grep -q '/.well-known/security.txt' apps/relay/src/rail-entry.js
           node -e 'const x=require("./server.json"); if(x.version!=="5.0.0"||!String(x.title).includes("x402 Facilitator")) process.exit(1)'
       - name: Wrangler dry run
         run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/relay/wrangler.jsonc
