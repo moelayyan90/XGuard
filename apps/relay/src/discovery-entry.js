@@ -6,6 +6,7 @@ const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const MCP = `${API}/mcp`;
 const REPO = "https://github.com/moelayyan90/XGuard";
+const INDEXNOW_KEY = "f3fd1a3fde659a05a8dddfa614b408ac";
 const REGISTRY_DESCRIPTION = "Protect AI agents from API-key exposure with secretless credentials and signed execution proofs.";
 const DESCRIPTION = "Protect AI agents from API-key exposure with secretless credential custody, scoped capabilities, server-side credential injection, usage metering and signed execution proofs for OpenAI, Anthropic, GitHub, Stripe and public HTTPS APIs.";
 
@@ -14,69 +15,22 @@ const registryManifest = {
   name: "io.github.moelayyan90/xguard-control-plane",
   title: "XGuard Secretless Agent Gateway",
   description: REGISTRY_DESCRIPTION,
-  repository: {
-    url: REPO,
-    source: "github",
-  },
+  repository: { url: REPO, source: "github" },
   version: VERSION,
-  remotes: [
-    {
-      type: "streamable-http",
-      url: MCP,
-    },
-  ],
+  remotes: [{ type: "streamable-http", url: MCP }],
 };
 
 const serverCard = {
-  serverInfo: {
-    name: "XGuard Secretless Agent Gateway",
-    version: VERSION,
-  },
-  authentication: {
-    required: false,
-    schemes: [],
-  },
+  serverInfo: { name: "XGuard Secretless Agent Gateway", version: VERSION },
+  authentication: { required: false, schemes: [] },
   tools: [
-    {
-      name: "xguard_secretless_egress",
-      description: "Discover XGuard Secretless Egress for keeping reusable upstream API credentials outside AI-agent context.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: true },
-    },
-    {
-      name: "xguard_egress_fetch",
-      description: "Execute a scoped HTTPS request through XGuard while reusable upstream credentials remain server-side.",
-      inputSchema: { type: "object", additionalProperties: true },
-    },
-    {
-      name: "xguard_proofrail",
-      description: "Discover ProofRail signed execution evidence for credential-backed egress.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    },
-    {
-      name: "xguard_verify_proof",
-      description: "Verify an XGuard ProofRail ES256 execution proof.",
-      inputSchema: {
-        type: "object",
-        required: ["proof"],
-        properties: { proof: { type: "string" } },
-        additionalProperties: false,
-      },
-    },
-    {
-      name: "xguard_action_rail",
-      description: "Discover XGuard policy-gated Action Rail execution capabilities.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: true },
-    },
-    {
-      name: "xguard_facilitator",
-      description: "Discover XGuard x402 facilitator compatibility and settlement-routing capabilities.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: true },
-    },
-    {
-      name: "xguard_route",
-      description: "Inspect XGuard routing for supported x402 networks and schemes.",
-      inputSchema: { type: "object", additionalProperties: true },
-    },
+    { name: "xguard_secretless_egress", description: "Discover XGuard Secretless Egress for keeping reusable upstream API credentials outside AI-agent context.", inputSchema: { type: "object", properties: {}, additionalProperties: true } },
+    { name: "xguard_egress_fetch", description: "Execute a scoped HTTPS request through XGuard while reusable upstream credentials remain server-side.", inputSchema: { type: "object", additionalProperties: true } },
+    { name: "xguard_proofrail", description: "Discover ProofRail signed execution evidence for credential-backed egress.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+    { name: "xguard_verify_proof", description: "Verify an XGuard ProofRail ES256 execution proof.", inputSchema: { type: "object", required: ["proof"], properties: { proof: { type: "string" } }, additionalProperties: false } },
+    { name: "xguard_action_rail", description: "Discover XGuard policy-gated Action Rail execution capabilities.", inputSchema: { type: "object", properties: {}, additionalProperties: true } },
+    { name: "xguard_facilitator", description: "Discover XGuard x402 facilitator compatibility and settlement-routing capabilities.", inputSchema: { type: "object", properties: {}, additionalProperties: true } },
+    { name: "xguard_route", description: "Inspect XGuard routing for supported x402 networks and schemes.", inputSchema: { type: "object", additionalProperties: true } },
   ],
   resources: [],
   prompts: [],
@@ -95,12 +49,7 @@ const identity = {
   primary_product: "Secretless Egress",
   proof_layer: "ProofRail",
   providers: ["OpenAI", "Anthropic", "GitHub", "Stripe", "generic HTTPS APIs"],
-  problems_solved: [
-    "API key exposure inside agent context",
-    "over-broad reusable credentials",
-    "unverifiable credential-backed execution",
-    "unmetered agent API egress",
-  ],
+  problems_solved: ["API key exposure inside agent context", "over-broad reusable credentials", "unverifiable credential-backed execution", "unmetered agent API egress"],
   description: DESCRIPTION,
   discovery: {
     llms_txt: `${SITE}/llms.txt`,
@@ -109,6 +58,7 @@ const identity = {
     openapi: `${API}/openapi.json`,
     egress_manifest: `${API}/.well-known/xguard-egress.json`,
     proof_manifest: `${API}/v1/proof`,
+    indexnow_key: `${SITE}/${INDEXNOW_KEY}.txt`,
   },
 };
 
@@ -127,17 +77,11 @@ function commonHeaders(contentType, extra = {}) {
 }
 
 function json(body, status = 200, extra = {}) {
-  return new Response(JSON.stringify(body, null, 2), {
-    status,
-    headers: commonHeaders("application/json; charset=utf-8", extra),
-  });
+  return new Response(JSON.stringify(body, null, 2), { status, headers: commonHeaders("application/json; charset=utf-8", extra) });
 }
 
 function text(body, status = 200, extra = {}) {
-  return new Response(body, {
-    status,
-    headers: commonHeaders("text/plain; charset=utf-8", extra),
-  });
+  return new Response(body, { status, headers: commonHeaders("text/plain; charset=utf-8", extra) });
 }
 
 function llmsTxt() {
@@ -228,17 +172,7 @@ Sitemap: ${SITE}/sitemap.xml
 }
 
 function sitemapXml() {
-  const urls = [
-    SITE + "/",
-    SITE + "/llms.txt",
-    SITE + "/server.json",
-    SITE + "/.well-known/mcp/server-card.json",
-    SITE + "/.well-known/xguard.json",
-    API + "/openapi.json",
-    API + "/.well-known/xguard-egress.json",
-    API + "/v1/proof",
-    MCP,
-  ];
+  const urls = [SITE + "/", SITE + "/llms.txt", SITE + "/server.json", SITE + "/.well-known/mcp/server-card.json", SITE + "/.well-known/xguard.json", API + "/openapi.json", API + "/.well-known/xguard-egress.json", API + "/v1/proof", MCP];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.map(url => `\n  <url><loc>${url.replaceAll("&", "&amp;")}</loc></url>`).join("")}\n</urlset>\n`;
 }
 
@@ -260,6 +194,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method === "GET") {
+      if (url.pathname === `/${INDEXNOW_KEY}.txt`) return text(INDEXNOW_KEY, 200, { "cache-control": "public, max-age=86400" });
       if (url.pathname === "/llms.txt") return text(llmsTxt());
       if (url.pathname === "/robots.txt") return text(robotsTxt());
       if (url.pathname === "/sitemap.xml") return new Response(sitemapXml(), { status: 200, headers: commonHeaders("application/xml; charset=utf-8") });
