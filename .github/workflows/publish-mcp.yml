@@ -7,6 +7,7 @@ on:
       - "server.json"
       - ".github/workflows/publish-mcp.yml"
       - "apps/relay/src/control-entry.js"
+      - "apps/relay/src/secure-entry.js"
   workflow_dispatch:
 
 permissions:
@@ -21,16 +22,16 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Wait for universal v4 MCP endpoint
+      - name: Wait for universal v4.1 MCP endpoint
         shell: bash
         run: |
           set -euo pipefail
           for i in {1..30}; do
             body="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"registry-smoke","version":"1.0.0"}}}' || true)"
-            if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-control-plane"&&x.result?.serverInfo?.version==="4.0.0")process.exit(0)}catch{}process.exit(1)})'; then exit 0; fi
+            if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-control-plane"&&x.result?.serverInfo?.version==="4.1.0")process.exit(0)}catch{}process.exit(1)})'; then exit 0; fi
             sleep 4
           done
-          echo 'XGuard universal v4 MCP endpoint is not live yet'
+          echo 'XGuard universal v4.1 MCP endpoint is not live yet'
           exit 1
       - name: Install MCP publisher
         shell: bash
