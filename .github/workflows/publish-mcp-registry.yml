@@ -15,7 +15,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -75,3 +75,33 @@ jobs:
           done
           echo "Published version was not observable through the registry search API."
           exit 1
+
+      - name: Wait for matching XGuard discovery release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./server.json").version')"
+          for i in {1..24}; do
+            live="$(curl --silent --show-error --max-time 8 https://xguardgate.com/identity || true)"
+            if printf '%s' "$live" | grep -Fq "\"version\": \"${version}\""; then
+              echo "Live discovery surface is ${version}."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Live discovery surface did not reach ${version}."
+          exit 1
+
+      - name: Reindex XGuard in Not Human Search
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error --max-time 30 \
+            -X POST https://nothumansearch.ai/api/v1/submit \
+            -H 'content-type: application/json' \
+            --data '{"url":"https://xguardgate.com"}')"
+          echo "NHS submit response: ${response}"
+          sleep 2
+          details="$(curl --fail --silent --show-error --max-time 20 https://nothumansearch.ai/api/v1/site/xguardgate.com)"
+          echo "NHS refreshed profile: ${details}"

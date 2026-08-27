@@ -80,6 +80,6 @@ jobs:
           grep -q 'EGRESS_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
           grep -q 'EgressCapabilityState' apps/relay/wrangler.jsonc
           grep -q 'workers_dev.*false' apps/relay/wrangler.jsonc
-          node -e 'const x=require("./server.json"); if(x.version!=="5.0.1"||!String(x.title).includes("Secretless")||typeof x.description!=="string"||x.description.length>100||x.remotes?.[0]?.url!=="https://api.xguardgate.com/mcp") process.exit(1)'
+          node -e 'const x=require("./server.json"); if(!/^5\.0\.[0-9]+$/.test(String(x.version))||!String(x.title).includes("Secretless")||typeof x.description!=="string"||x.description.length>100||x.remotes?.[0]?.url!=="https://api.xguardgate.com/mcp") process.exit(1)'
       - name: Wrangler dry run
         run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/relay/wrangler.jsonc
