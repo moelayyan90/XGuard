@@ -5,7 +5,10 @@ export const XGUARD_MCP_URL = `${XGUARD_FACILITATOR_URL}/mcp`;
 export const XGUARD_VERSION = "5.0.1";
 
 function normalizeBaseUrl(value) {
-  return String(value || XGUARD_FACILITATOR_URL).replace(/\/+$/, "");
+  const input = String(value || XGUARD_FACILITATOR_URL);
+  let end = input.length;
+  while (end > 0 && input.charCodeAt(end - 1) === 47) end -= 1;
+  return input.slice(0, end);
 }
 
 function getFetch(fetchImpl) {
