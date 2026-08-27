@@ -29,9 +29,11 @@ jobs:
             arch="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/architecture?build=${GITHUB_SHA}" || true)"
             protocols="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/v1/protocols?build=${GITHUB_SHA}" || true)"
             manifest="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/.well-known/xguard.json?build=${GITHUB_SHA}" || true)"
+            plugin="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/.well-known/ai-plugin.json?build=${GITHUB_SHA}" || true)"
             if printf '%s' "$arch" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.product_version==="5.0.1"&&x.name==="XGuard High-Velocity x402 Facilitator"&&x.facilitator_url==="https://api.xguardgate.com")process.exit(0)}catch{}process.exit(1)})' && \
-               printf '%s' "$protocols" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.product_version==="5.0.1"&&x.x402?.version===2&&x.x402?.settlement_ambiguous_fail_closed===true&&x.x402?.settlement_transport_failover==="reconciliation-gated")process.exit(0)}catch{}process.exit(1)})' && \
-               printf '%s' "$manifest" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.product_version==="5.0.1"&&x.name==="XGuard High-Velocity x402 Facilitator")process.exit(0)}catch{}process.exit(1)})'; then
+               printf '%s' "$protocols" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.product_version==="5.0.1"&&x.x402?.version===2&&x.x402?.settlement_ambiguous_fail_closed===true&&x.x402?.settlement_transport_failover==="reconciliation-gated"&&x.discovery?.ai_plugin)process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$manifest" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.product_version==="5.0.1"&&x.name==="XGuard High-Velocity x402 Facilitator")process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$plugin" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.schema_version==="v1"&&x.name_for_human==="XGuard High-Velocity x402 Facilitator"&&x.api?.type==="openapi"&&x.api?.url==="https://api.xguardgate.com/openapi.json"&&x.xguard?.version==="5.0.1"&&x.xguard?.mcp_url==="https://api.xguardgate.com/mcp")process.exit(0)}catch{}process.exit(1)})'; then
               ready=1
               break
             fi
@@ -42,7 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for path in architecture v1/protocols .well-known/xguard.json; do
+          for path in architecture v1/protocols .well-known/xguard.json .well-known/ai-plugin.json; do
             headers="$(mktemp)"
             body="$(mktemp)"
             curl --fail --silent --show-error --max-time 8 -D "$headers" "https://api.xguardgate.com/$path" -o "$body"
