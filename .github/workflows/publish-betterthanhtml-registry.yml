@@ -1,0 +1,64 @@
+name: Publish XGuard to Better Than HTML MCP Registry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server.json"
+      - ".github/workflows/publish-betterthanhtml-registry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Check external registry
+        id: existing
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://api.xguardgate.com/mcp'
+          body="$(curl --fail --silent --show-error --max-time 20 https://betterthanhtml.com/mcp-registry)"
+          if printf '%s' "$body" | grep -Fq "$endpoint"; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+            echo 'XGuard is already present in Better Than HTML MCP Registry.'
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Register XGuard externally
+        if: steps.existing.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload='{"name":"XGuard Secretless Agent Gateway","url":"https://api.xguardgate.com/mcp","description":"Keep reusable API credentials outside AI-agent context with scoped capabilities, controlled egress and signed ProofRail execution evidence.","author":"@moelayyan90"}'
+          response="$(curl --fail --silent --show-error --max-time 30 \
+            -X POST https://betterthanhtml.com/mcp-registry/submit \
+            -H 'content-type: application/json' \
+            --data "$payload")"
+          echo "Registry response: $response"
+          printf '%s' "$response" | jq -e '.ok == true' >/dev/null
+
+      - name: Verify public external listing
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://api.xguardgate.com/mcp'
+          for i in {1..12}; do
+            body="$(curl --fail --silent --show-error --max-time 20 https://betterthanhtml.com/mcp-registry || true)"
+            if printf '%s' "$body" | grep -Fq "$endpoint"; then
+              echo 'Verified XGuard is publicly observable in Better Than HTML MCP Registry.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'XGuard was not observable in Better Than HTML MCP Registry after submission.'
+          exit 1
