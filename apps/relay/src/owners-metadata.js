@@ -1,6 +1,6 @@
 const OWNERS_METADATA = Object.freeze({
   version: 1,
-  server: "https://api.xguardgate.com/mcp",
+  server: "https://xguardgate.com/api/mcp",
   repository: "https://github.com/moelayyan90/XGuard",
   owners: [
     {

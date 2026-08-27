@@ -3,7 +3,7 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 
-export const XGUARD_FACILITATOR_URL = "https://api.xguardgate.com";
+export const XGUARD_FACILITATOR_URL = "https://xguardgate.com/api";
 export const XGUARD_EDGE_VERSION = "5.0.1";
 
 const app = new Hono();

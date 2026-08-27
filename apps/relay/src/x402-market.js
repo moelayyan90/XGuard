@@ -1,4 +1,4 @@
-const API = "https://api.xguardgate.com";
+const API = "https://xguardgate.com/api";
 const VERSION = "5.0.1";
 const RECONCILE = "https://reconcile.xguardgate.com";
 
@@ -255,7 +255,7 @@ async function providerManifest(env) {
       strategy: "scheme/network capability -> health -> observed latency",
       configured_upstreams: upstreams(env).map(url => new URL(url).hostname),
       live_upstreams: caps.live.map(row => ({ host: new URL(row.url).hostname, latency_ms: row.latency_ms })),
-      integration: "Resource servers configure only https://api.xguardgate.com as their facilitator URL; XGuard selects the downstream settlement path per request.",
+      integration: "Resource servers configure only https://xguardgate.com/api as their facilitator URL; XGuard selects the downstream settlement path per request.",
       settlement_safety: "429 may fail over because admission was refused. Ambiguous timeout/5xx settlement outcomes fail closed unless reconciliation proves the signed payment was not consumed; Base USDC uses on-chain authorization-state reconciliation.",
     },
     pricing: {

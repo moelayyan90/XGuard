@@ -46,7 +46,7 @@ test("Custom credentials require explicit public hosts and safe headers", () => 
 
 test("Target scope rejects private, XGuard and off-policy origins", () => {
   assert.equal(__test.safeTarget("https://127.0.0.1/admin"), null);
-  assert.equal(__test.safeTarget("https://api.xguardgate.com/v1/egress"), null);
+  assert.equal(__test.safeTarget("https://xguardgate.com/api/v1/egress"), null);
   const target = __test.safeTarget("https://api.openai.com/v1/responses");
   assert.ok(target);
   const record = { allowed_hosts: ["api.openai.com"], allowed_paths: ["/v1/"], allowed_methods: ["POST"] };

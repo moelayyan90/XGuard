@@ -3,7 +3,7 @@ import gateway from "./gateway.js";
 const VERSION = "3.0.0";
 const BASE = "eip155:8453";
 const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const API = "https://api.xguardgate.com";
+const API = "https://xguardgate.com/api";
 const RECONCILE = "https://reconcile.xguardgate.com";
 
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {

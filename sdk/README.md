@@ -5,7 +5,7 @@ Drop-in production facilitator configuration for the official x402 v2 TypeScript
 Canonical facilitator:
 
 ```text
-https://api.xguardgate.com
+https://xguardgate.com/api
 ```
 
 ## Install
@@ -89,7 +89,7 @@ If an application already constructs the official x402 client, no XGuard package
 import { HTTPFacilitatorClient } from "@x402/core/server";
 
 const facilitator = new HTTPFacilitatorClient({
-  url: "https://api.xguardgate.com",
+  url: "https://xguardgate.com/api",
   createAuthHeaders: async () => ({
     supported: {},
     verify: {},
@@ -113,13 +113,13 @@ XGuard does not blindly retry a signed settlement across upstream facilitators.
 ## Public endpoints
 
 ```text
-GET  https://api.xguardgate.com/supported
-POST https://api.xguardgate.com/verify
-POST https://api.xguardgate.com/settle
-GET  https://api.xguardgate.com/facilitator
-GET  https://api.xguardgate.com/discovery/resources
-GET  https://api.xguardgate.com/discovery/search?query=...
-GET  https://api.xguardgate.com/v1/facilitator/route?network=eip155:8453&scheme=exact
+GET  https://xguardgate.com/api/supported
+POST https://xguardgate.com/api/verify
+POST https://xguardgate.com/api/settle
+GET  https://xguardgate.com/api/facilitator
+GET  https://xguardgate.com/api/discovery/resources
+GET  https://xguardgate.com/api/discovery/search?query=...
+GET  https://xguardgate.com/api/v1/facilitator/route?network=eip155:8453&scheme=exact
 ```
 
 XGuard is non-custodial and does not rewrite the signed x402 recipient or amount.

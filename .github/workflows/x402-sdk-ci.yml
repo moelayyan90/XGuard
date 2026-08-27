@@ -70,23 +70,13 @@ jobs:
             facilitator,
             createXGuardFacilitator,
             createXGuardResourceServer,
-            xguardSupported,
-            xguardFacilitator,
-            xguardRoute,
           } from 'xguard-x402-control-plane';
 
-          if (XGUARD_FACILITATOR_URL !== 'https://api.xguardgate.com') throw new Error('bad canonical URL');
+          if (XGUARD_FACILITATOR_URL !== 'https://xguardgate.com/api') throw new Error('bad canonical URL');
           if (XGUARD_VERSION !== '5.0.1') throw new Error('bad SDK version');
           if (!facilitator || typeof facilitator !== 'object') throw new Error('drop-in facilitator missing');
           if (!createXGuardFacilitator() || !createXGuardResourceServer()) throw new Error('constructors failed');
 
-          const supported = await xguardSupported();
-          if (!supported || !Array.isArray(supported.kinds) || supported.kinds.length < 1) throw new Error('live /supported invalid');
-
-          const provider = await xguardFacilitator();
-          if (!provider || typeof provider !== 'object') throw new Error('live /facilitator invalid');
-
-          const route = await xguardRoute({ network: 'eip155:8453', scheme: 'exact' });
-          if (!route || typeof route !== 'object') throw new Error('live route selection invalid');
-          console.log(JSON.stringify({ kinds: supported.kinds.length, route }));
+          // Live probes run after deployment. PR CI validates the packaged contract.
+          console.log(JSON.stringify({ canonical: XGUARD_FACILITATOR_URL }));
           NODE

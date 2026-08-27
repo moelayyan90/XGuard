@@ -94,14 +94,14 @@ namespace {
 	expect( 'base' === $profile->network, 'wrong network' );
 	expect( '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' === $profile->asset, 'wrong Base USDC asset' );
 	expect( 6 === $profile->asset_decimals, 'wrong USDC decimals' );
-	expect( 'https://api.xguardgate.com' === $profile->facilitator_url, 'wrong XGuard facilitator URL' );
+	expect( 'https://xguardgate.com/api' === $profile->facilitator_url, 'wrong XGuard facilitator URL' );
 	expect( 'USD Coin' === $profile->eip712_name && '2' === $profile->eip712_version, 'wrong EIP-712 domain' );
 	expect( null === $profile->signer, 'free mode should not emit authorization' );
 
 	putenv( 'XGUARD_LICENSE_KEY=test-license' );
 	$licensed = $provider( null, 'xguard_mainnet' );
 	expect( null !== $licensed->profile->signer, 'licensed mode signer missing' );
-	$headers = $licensed->profile->signer->sign( 'POST', 'https://api.xguardgate.com/settle' );
+	$headers = $licensed->profile->signer->sign( 'POST', 'https://xguardgate.com/api/settle' );
 	expect( 'Bearer test-license' === ( $headers['Authorization'] ?? '' ), 'wrong Bearer authorization' );
 
 	$sentinel = new \X402Pay\Services\X402FacilitatorClient( $profile );

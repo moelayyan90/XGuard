@@ -7,7 +7,7 @@ const esc = s => String(s ?? "").replace(/[&<>\"']/g, c => ({"&":"&amp;","<":"&l
 async function homepage(env, ctx) {
   let health = {};
   try {
-    const r = await gateway.fetch(new Request("https://api.xguardgate.com/healthz"), env, ctx);
+    const r = await gateway.fetch(new Request("https://xguardgate.com/api/healthz"), env, ctx);
     health = await r.json();
   } catch {}
 

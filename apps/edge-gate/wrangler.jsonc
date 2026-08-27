@@ -5,7 +5,7 @@
   "compatibility_date": "2026-08-27",
   "observability": { "enabled": true },
   "vars": {
-    "FACILITATOR_URL": "https://api.xguardgate.com",
+    "FACILITATOR_URL": "https://xguardgate.com/api",
     "NETWORK": "eip155:8453",
     "ORIGIN_URL": "https://example.com",
     "PAY_TO": "0x0000000000000000000000000000000000000000",

@@ -1,4 +1,4 @@
-const DEFAULT_GATEWAY = "https://api.xguardgate.com";
+const DEFAULT_GATEWAY = "https://xguardgate.com/api";
 
 function normalizeOrigin(origin) {
   const u = origin instanceof URL ? origin : new URL(String(origin));

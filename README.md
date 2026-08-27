@@ -3,7 +3,7 @@
 **Canonical production API**
 
 ```text
-https://api.xguardgate.com
+https://xguardgate.com/api
 ```
 
 XGuard keeps reusable upstream credentials **out of AI agents**. Operators store a Stripe, GitHub, OpenAI, Anthropic, Slack, Notion, Cloudflare, Gemini or custom API credential once, then give the agent only a short-lived scoped XGuard capability.
@@ -54,10 +54,10 @@ The current egress boundary provides:
 Machine-readable contract:
 
 ```text
-GET https://api.xguardgate.com/v1/egress
-GET https://api.xguardgate.com/.well-known/xguard-egress.json
-GET https://api.xguardgate.com/.well-known/xguard-egress-key.json
-GET https://api.xguardgate.com/v1/egress/providers
+GET https://xguardgate.com/api/v1/egress
+GET https://xguardgate.com/api/.well-known/xguard-egress.json
+GET https://xguardgate.com/api/.well-known/xguard-egress-key.json
+GET https://xguardgate.com/api/v1/egress/providers
 ```
 
 ### 1. Operator stores a reusable credential
@@ -136,7 +136,7 @@ The current configuration consumes **1 XGuard Usage Credit per authorized creden
 Canonical MCP endpoint:
 
 ```text
-https://api.xguardgate.com/mcp
+https://xguardgate.com/api/mcp
 ```
 
 Agent-facing tools include:
@@ -224,7 +224,7 @@ GET /sitemap.xml
 
 ```text
 https://xguardgate.com
-https://api.xguardgate.com
+https://xguardgate.com/api
 ```
 
 The Cloudflare Worker configuration disables the public `workers.dev` route so XGuard's production identity is limited to the custom XGuard domains.

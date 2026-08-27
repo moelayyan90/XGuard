@@ -3,7 +3,7 @@
 Canonical remote MCP endpoint:
 
 ```text
-https://api.xguardgate.com/mcp
+https://xguardgate.com/api/mcp
 ```
 
 XGuard is a non-custodial x402 v2 facilitator and routing/safety layer. The remote MCP exposes facilitator identity, route selection, Bazaar discovery, transaction inspection, safety testing, live capabilities, health and durable receipt lookup.
@@ -28,7 +28,7 @@ The repository also ships `.mcp.json` for project-level MCP discovery.
 ## Claude Code
 
 ```bash
-claude mcp add --transport http xguard https://api.xguardgate.com/mcp
+claude mcp add --transport http xguard https://xguardgate.com/api/mcp
 claude mcp get xguard
 ```
 
@@ -58,10 +58,10 @@ The repository root contains:
 
 ## Machine discovery
 
-- Facilitator: https://api.xguardgate.com/facilitator
-- OpenAPI: https://api.xguardgate.com/openapi.json
-- LLM discovery: https://api.xguardgate.com/llms.txt
-- x402 discovery: https://api.xguardgate.com/.well-known/x402
-- Agent card: https://api.xguardgate.com/.well-known/agent-card.json
-- AI plugin: https://api.xguardgate.com/.well-known/ai-plugin.json
-- MCP metadata: https://api.xguardgate.com/.well-known/mcp/server.json
+- Facilitator: https://xguardgate.com/api/facilitator
+- OpenAPI: https://xguardgate.com/api/openapi.json
+- LLM discovery: https://xguardgate.com/api/llms.txt
+- x402 discovery: https://xguardgate.com/api/.well-known/x402
+- Agent card: https://xguardgate.com/api/.well-known/agent-card.json
+- AI plugin: https://xguardgate.com/api/.well-known/ai-plugin.json
+- MCP metadata: https://xguardgate.com/api/.well-known/mcp/server.json

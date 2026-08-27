@@ -1,6 +1,6 @@
 const VERSION = "1.1.0";
 const STANDARD = "XGuard ATS-100";
-const API = "https://api.xguardgate.com";
+const API = "https://xguardgate.com/api";
 const MAX = 262144;
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
   status,

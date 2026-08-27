@@ -6,22 +6,22 @@ This file is the canonical copy/paste packet for external x402 facilitator direc
 
 - Name: XGuard
 - Product name: XGuard High-Velocity x402 Facilitator
-- Facilitator URL: `https://api.xguardgate.com`
+- Facilitator URL: `https://xguardgate.com/api`
 - Website: `https://xguardgate.com`
 - Repository: `https://github.com/moelayyan90/XGuard`
 - Access: public discovery and `/verify`; successful `/settle` usage is subject to the XGuard allowance/usage-credit contract exposed by `GET /facilitator`
 - Custody: none
 - Standard endpoints:
-  - `GET https://api.xguardgate.com/supported`
-  - `POST https://api.xguardgate.com/verify`
-  - `POST https://api.xguardgate.com/settle`
+  - `GET https://xguardgate.com/api/supported`
+  - `POST https://xguardgate.com/api/verify`
+  - `POST https://xguardgate.com/api/settle`
 - Discovery:
-  - `GET https://api.xguardgate.com/facilitator`
-  - `GET https://api.xguardgate.com/.well-known/x402`
-  - `GET https://api.xguardgate.com/discovery/resources`
-  - `GET https://api.xguardgate.com/discovery/search?query=...`
+  - `GET https://xguardgate.com/api/facilitator`
+  - `GET https://xguardgate.com/api/.well-known/x402`
+  - `GET https://xguardgate.com/api/discovery/resources`
+  - `GET https://xguardgate.com/api/discovery/search?query=...`
 - Automatic route inspection:
-  - `GET https://api.xguardgate.com/v1/facilitator/route?network=...&scheme=...`
+  - `GET https://xguardgate.com/api/v1/facilitator/route?network=...&scheme=...`
 
 ## Correct classification
 
@@ -38,11 +38,11 @@ import { Network, AccessType } from '../types';
 import type { Facilitator, FacilitatorConfig } from '../types';
 
 export const xguard: FacilitatorConfig = {
-  url: 'https://api.xguardgate.com',
+  url: 'https://xguardgate.com/api',
 };
 
 export const xguardDiscovery: FacilitatorConfig = {
-  url: 'https://api.xguardgate.com',
+  url: 'https://xguardgate.com/api',
 };
 
 export const xguardFacilitator = {
@@ -55,7 +55,7 @@ export const xguardFacilitator = {
   },
   config: xguard,
   discoveryConfig: xguardDiscovery,
-  facilitatorUrl: 'https://api.xguardgate.com',
+  facilitatorUrl: 'https://xguardgate.com/api',
   accessType: AccessType.PUBLIC,
   fee: 0,
   addresses: {
@@ -86,10 +86,10 @@ export { xguard, xguardDiscovery, xguardFacilitator } from './xguard';
 ## Acceptance checks for a directory maintainer
 
 ```bash
-curl https://api.xguardgate.com/supported
-curl https://api.xguardgate.com/facilitator
-curl 'https://api.xguardgate.com/discovery/resources?limit=3'
-curl 'https://api.xguardgate.com/v1/facilitator/route?scheme=exact'
+curl https://xguardgate.com/api/supported
+curl https://xguardgate.com/api/facilitator
+curl 'https://xguardgate.com/api/discovery/resources?limit=3'
+curl 'https://xguardgate.com/api/v1/facilitator/route?scheme=exact'
 ```
 
 Do not list a scheme or network from this document as permanently supported. Read the live `/supported` response.

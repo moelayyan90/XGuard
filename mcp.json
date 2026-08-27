@@ -3,7 +3,7 @@
   "mcpServers": {
     "xguard": {
       "type": "streamable-http",
-      "url": "https://api.xguardgate.com/mcp"
+      "url": "https://xguardgate.com/api/mcp"
     }
   }
 }

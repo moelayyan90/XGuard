@@ -16,7 +16,7 @@ inputs:
   api-url:
     description: XGuard ATS-100 API endpoint.
     required: false
-    default: https://api.xguardgate.com/v1/test
+    default: https://xguardgate.com/api/v1/test
 runs:
   using: composite
   steps:

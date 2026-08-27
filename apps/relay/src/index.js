@@ -361,19 +361,19 @@ async function health(env) {
     const row = await fetchSupported(url, 5000);
     return { host: new URL(url).hostname, ok: row.ok, status: row.status, latency_ms: row.latency, kinds: capabilityKinds(row.data).length };
   }));
-  return { status: checks.some(x => x.ok) ? "ok" : "degraded", service: "XGuard Universal Facilitator Gateway", version: VERSION, non_custodial: true, universal_facilitator_url: "https://api.xguardgate.com", capability_aggregation: true, capability_aware_routing: true, settlement_fail_closed_on_ambiguous_outcome: true, verify_price_credits: 0, settlement_price_credits: Number(env.SETTLEMENT_CREDITS || 2), free_successful_settlements_per_merchant: Number(env.FREE_SETTLEMENTS || 25), upstreams: checks };
+  return { status: checks.some(x => x.ok) ? "ok" : "degraded", service: "XGuard Universal Facilitator Gateway", version: VERSION, non_custodial: true, universal_facilitator_url: "https://xguardgate.com/api", capability_aggregation: true, capability_aware_routing: true, settlement_fail_closed_on_ambiguous_outcome: true, verify_price_credits: 0, settlement_price_credits: Number(env.SETTLEMENT_CREDITS || 2), free_successful_settlements_per_merchant: Number(env.FREE_SETTLEMENTS || 25), upstreams: checks };
 }
 
 function landing(env) {
   const checkout = env.XGUARD_CHECKOUT_URL || CHECKOUT_FALLBACK;
-  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>XGuard — Universal x402 Facilitator Gateway</title><meta name="description" content="One x402 facilitator URL across multiple settlement networks and providers."></head><body><main><h1>XGuard Universal Facilitator Gateway</h1><p>One facilitator URL. Capability-aware routing across multiple x402 settlement providers and networks.</p><pre>https://api.xguardgate.com</pre><p><a href="/docs">Docs</a> · <a href="${checkout}">Usage Credits</a></p></main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>XGuard — Universal x402 Facilitator Gateway</title><meta name="description" content="One x402 facilitator URL across multiple settlement networks and providers."></head><body><main><h1>XGuard Universal Facilitator Gateway</h1><p>One facilitator URL. Capability-aware routing across multiple x402 settlement providers and networks.</p><pre>https://xguardgate.com/api</pre><p><a href="/docs">Docs</a> · <a href="${checkout}">Usage Credits</a></p></main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }
 
 function docs(env) {
   return json({
     name: "XGuard Universal Facilitator Gateway",
     version: VERSION,
-    facilitator_url: "https://api.xguardgate.com",
+    facilitator_url: "https://xguardgate.com/api",
     role: "single in-path x402 facilitator URL across multiple upstream facilitators and networks",
     endpoints: { supported: "GET /supported", verify: "POST /verify", settle: "POST /settle", health: "GET /healthz", balance: "GET /v1/balance" },
     routing: {
@@ -433,7 +433,7 @@ export default {
         const key = bearer(request); if (!key) return json({ error: "missing_xguard_license" }, 401);
         const balance = await billingBalance(env, key); return json(balance.data, balance.status);
       }
-      if (url.pathname === "/llms.txt" && request.method === "GET") return new Response("XGuard Universal Facilitator Gateway\nFacilitator URL: https://api.xguardgate.com\nAggregates supported payment kinds across multiple x402 facilitators.\nSettlement safety: fail-closed on ambiguous outcomes unless network-specific reconciliation proves a retry is safe.\nGET /supported\nPOST /verify\nPOST /settle\nDocs: https://api.xguardgate.com/docs\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
+      if (url.pathname === "/llms.txt" && request.method === "GET") return new Response("XGuard Universal Facilitator Gateway\nFacilitator URL: https://xguardgate.com/api\nAggregates supported payment kinds across multiple x402 facilitators.\nSettlement safety: fail-closed on ambiguous outcomes unless network-specific reconciliation proves a retry is safe.\nGET /supported\nPOST /verify\nPOST /settle\nDocs: https://xguardgate.com/api/docs\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
       if ((url.pathname === "/.well-known/x402" || url.pathname === "/.well-known/x402-facilitator.json") && request.method === "GET") return docs(env);
       return json({ error: "not_found" }, 404);
     } catch (error) {

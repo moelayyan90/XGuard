@@ -8,8 +8,8 @@ test("Action Rail publishes the protocol-neutral execution contract", async () =
   const data = await response.json();
   assert.equal(data.name, "XGuard Action Rail");
   assert.equal(data.role, "protocol-neutral execution control plane for AI side effects");
-  assert.equal(data.permit, "POST https://api.xguardgate.com/v1/actions/permits");
-  assert.equal(data.execute, "POST https://api.xguardgate.com/v1/actions/execute");
+  assert.equal(data.permit, "POST https://xguardgate.com/api/v1/actions/permits");
+  assert.equal(data.execute, "POST https://xguardgate.com/api/v1/actions/execute");
   assert.equal(data.credits_per_successful_execution, 1);
   assert.ok(data.protocols.includes("mpp"));
   assert.ok(data.protocols.includes("ap2"));

@@ -7,7 +7,7 @@ XGuard's primary product is the **Secretless Agent Gateway**. This WordPress con
 ```text
 WordPress / x402 Pay
         ↓
-https://api.xguardgate.com
+https://xguardgate.com/api
         ↓
 XGuard /verify + /settle routing
         ↓
@@ -37,8 +37,8 @@ The default mode needs no XGuard key and uses XGuard's current free allowance. F
 - asset: Base mainnet USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
 - decimals: `6`
 - EIP-712 name/version: `USD Coin` / `2`
-- facilitator: `https://api.xguardgate.com`
+- facilitator: `https://xguardgate.com/api`
 
 The connector uses x402 Pay's own `X402FacilitatorClient`; it does not implement payment verification or settlement locally. XGuard applies routing, replay protection and fail-closed ambiguous-settlement handling.
 
-Machine/API documentation: `https://api.xguardgate.com/docs`
+Machine/API documentation: `https://xguardgate.com/api/docs`

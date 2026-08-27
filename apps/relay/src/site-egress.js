@@ -1,4 +1,4 @@
-const API = "https://api.xguardgate.com";
+const API = "https://xguardgate.com/api";
 const SITE = "https://xguardgate.com";
 const CHECKOUT = "https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab";
 

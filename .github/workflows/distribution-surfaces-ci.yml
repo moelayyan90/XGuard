@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           grep -q '^# Install XGuard MCP' llms-install.md
           grep -q 'XGuard Secretless Agent Gateway' llms-install.md
-          grep -q 'https://api.xguardgate.com/mcp' llms-install.md
+          grep -q 'https://xguardgate.com/api/mcp' llms-install.md
           grep -q 'xguard_secretless_egress' llms-install.md
           grep -q 'xguard_egress_fetch' llms-install.md
           grep -q 'xguard_proofrail' llms-install.md
@@ -47,7 +47,7 @@ jobs:
           grep -q 'url.pathname === "/logo.png"' apps/relay/src/rail-entry.js
           grep -q 'x-xguard-image-dimensions.*400x400' apps/relay/src/rail-entry.js
 
-      - name: Verify canonical MCP remains live
+      - name: Verify legacy MCP remains live before deploy
         shell: bash
         run: |
           set -euo pipefail

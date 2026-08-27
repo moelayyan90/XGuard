@@ -49,6 +49,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'FACILITATOR_URL.*https://api.xguardgate.com' wrangler.jsonc
+          grep -q 'FACILITATOR_URL.*https://xguardgate.com/api' wrangler.jsonc
           grep -q 'PAY_TO.*0x0000000000000000000000000000000000000000' wrangler.jsonc
           grep -q 'non-zero EVM receiving address' src/index.js

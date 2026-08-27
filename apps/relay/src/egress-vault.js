@@ -1,5 +1,5 @@
 const VERSION = "1.0.0";
-const API = "https://api.xguardgate.com";
+const API = "https://xguardgate.com/api";
 const DEFAULT_CREDITS = 1;
 const MAX_SECRET_BYTES = 16 * 1024;
 const MAX_BODY_BYTES = 1024 * 1024;

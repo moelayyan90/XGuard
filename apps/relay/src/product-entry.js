@@ -19,8 +19,8 @@ export {
 
 const VERSION = "5.0.1";
 const NAME = "xguard-secretless-agent-gateway";
-const MCP = "https://api.xguardgate.com/mcp";
-const API = "https://api.xguardgate.com";
+const MCP = "https://xguardgate.com/api/mcp";
+const API = "https://xguardgate.com/api";
 const PROOFRAIL_VERSION = "1.0.0";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

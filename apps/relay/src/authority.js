@@ -1,4 +1,4 @@
-const VERSION="1.1.0",API="https://api.xguardgate.com";
+const VERSION="1.1.0",API="https://xguardgate.com/api";
 const J=(b,s=200,h={})=>new Response(JSON.stringify(b),{status:s,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","x-xguard-authority":VERSION,...h}});
 const keyOf=r=>((r.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||r.headers.get("x-xguard-key")||"").trim();
 const tokenOf=r=>(r.headers.get("x-xguard-mandate")||"").trim();
