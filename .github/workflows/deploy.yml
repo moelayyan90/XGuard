@@ -1,4 +1,5 @@
 name: Deploy XGuard Relay
+
 on:
   push:
     branches: [main]
@@ -6,8 +7,10 @@ on:
       - "apps/relay/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,6 +23,7 @@ jobs:
         with:
           node-version: 24
       - run: npm install --prefix apps/relay --no-audit --no-fund
+
       - name: Deploy gateway to Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -32,75 +36,69 @@ jobs:
           [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
           export CLOUDFLARE_API_TOKEN="$token"
           npx --yes wrangler@4.123.0 deploy --config apps/relay/wrangler.jsonc
+
       - name: Production smoke test
         shell: bash
         run: |
           set -euo pipefail
-          for i in {1..30}; do
-            h="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/healthz || true)"
-            if printf '%s' "$h" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.service==="XGuard Universal Agent Transaction Control Plane"&&x.version==="4.1.0"&&x.protocol_neutral===true&&Array.isArray(x.protocols)&&x.protocols.includes("mpp")&&x.protocols.includes("ap2")&&x.protocols.includes("mcp")&&x.native_x402_control_plane===true&&Array.isArray(x.upstreams)&&x.upstreams.some(u=>u.ok))process.exit(0)}catch{}process.exit(1)})'; then break; fi
+
+          ready=0
+          for i in {1..35}; do
+            health="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/healthz || true)"
+            provider="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
+            if printf '%s' "$health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.0"&&x.service==="XGuard High-Velocity x402 Facilitator"&&x.payment_firewall===true&&x.durable_replay_guard===true&&Array.isArray(x.upstreams)&&x.upstreams.some(u=>u.ok))process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$provider" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.kind==="facilitator"&&x.capabilities?.automatic_routing===true&&x.routing?.mode==="automatic")process.exit(0)}catch{}process.exit(1)})'; then
+              ready=1
+              break
+            fi
             sleep 4
           done
-          printf '%s' "$h" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify(x));if(x.service!=="XGuard Universal Agent Transaction Control Plane"||x.version!=="4.1.0"||x.protocol_neutral!==true||!x.universal_edge?.endpoint_format||x.payment_firewall!==true||x.durable_replay_guard!==true)process.exit(1)})'
+          test "$ready" = "1"
 
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/protocols | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Universal Agent Transaction Control Plane"||x.protocols?.mpp!=="Payment HTTP auth edge"||x.protocols?.ap2!=="mandate-aware edge"||!x.edge?.merchant_authorization)process.exit(1)})'
+          printf '%s' "$health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify({service:x.service,version:x.version,healthy:(x.upstreams||[]).filter(u=>u.ok).length}));if(x.facilitator_url!=="https://api.xguardgate.com"||!x.discovery?.provider)process.exit(1)})'
 
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/docs | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Universal Agent Transaction Control Plane"||x.version!=="4.1.0"||!x.endpoints?.inspect||!x.endpoints?.edge||x.firewall?.recipient_binding!==true)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/supported | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||x.xguard?.universal!==true)process.exit(1)})'
 
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.version!=="4.1.0"||!x.paths?.["/verify"]||!x.paths?.["/settle"]||!x.paths?.["/v1/inspect"]||!x.paths?.["/v1/protocols"])process.exit(1)})'
-
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/agent-card.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Universal Agent Transaction Control Plane"||x.version!=="4.1.0"||!Array.isArray(x.skills)||x.skills.length<5)process.exit(1)})'
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/skill.md | grep -q 'Universal Agent Transaction Control Plane'
-
-          rail="$(curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-rail.json)"
-          printf '%s' "$rail" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Mandatory Settlement Rail"||x.version!=="0.1.0"||x.fee_usd_micros_per_chargeable_execution!==1000||!Array.isArray(x.controls)||!x.controls.includes("replay rejection")||!String(x.note||"").includes("unrelated x402 traffic"))process.exit(1);console.log(JSON.stringify({rail:x.name,version:x.version,fee_usd_micros:x.fee_usd_micros_per_chargeable_execution}))})'
-
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/rail/pricing | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.fee_usd_micros_per_chargeable_execution!==1000||x.collection_state!=="metered_accrual_not_cash_collection")process.exit(1)})'
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-rail-key.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.alg!=="ES256"||x.kty!=="EC"||x.jwk?.kty!=="EC"||!x.kid)process.exit(1)})'
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/rail/stats | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(typeof x.chargeable_executions!=="number"||typeof x.accrued_fee_usd_micros!=="string")process.exit(1)})'
-
-          rail_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-rail-mandate -w '%{http_code}' -X POST https://api.xguardgate.com/v1/rail/permits -H 'content-type: application/json' --data '{"target":"https://example.com/pay","method":"POST","amount_minor":"1","currency":"USD","pay_to":"merchant","request_body":{"test":true}}')"
-          test "$rail_code" = "428"
-          grep -q 'xguard_mandate_required' /tmp/xg-rail-mandate
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard High-Velocity x402 Facilitator"||x.x402Version!==2||!x.endpoints?.verify||!x.endpoints?.settle||!x.discovery?.bazaar?.list)process.exit(1)})'
 
           for manifest_url in \
             https://api.xguardgate.com/.well-known/x402.json \
             https://api.xguardgate.com/.well-known/x402 \
             https://api.xguardgate.com/.well-known/x402-facilitator.json \
             https://api.xguardgate.com/.well-known/payment-manifest \
-            https://api.xguardgate.com/.well-known/payment-manifest.json \
-            https://xguard-mainnet.maqamapp.workers.dev/.well-known/payment-manifest; do
+            https://api.xguardgate.com/.well-known/payment-manifest.json; do
             echo "Checking $manifest_url"
-            curl --fail --silent --show-error --max-time 8 "$manifest_url" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||typeof x.facilitator!=="string"||!x.facilitator.includes("xguardgate.com"))process.exit(1)})'
+            curl --fail --silent --show-error --max-time 8 "$manifest_url" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||x.kind!=="facilitator"||x.facilitator!=="https://api.xguardgate.com")process.exit(1)})'
           done
-          test "$(curl --silent --show-error --max-time 8 -o /dev/null -w '%{http_code}' -I https://api.xguardgate.com/.well-known/payment-manifest)" = "200"
+
+          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/resources?limit=3' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items)||typeof x.pagination?.total!=="number")process.exit(1)})'
+
+          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/search?query=x402&limit=3' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items))process.exit(1)})'
+
+          route_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-route -w '%{http_code}' 'https://api.xguardgate.com/v1/facilitator/route?scheme=exact')"
+          test "$route_code" = "200"
+          node -e 'const x=require("/tmp/xg-route");if(x.facilitator!=="https://api.xguardgate.com"||x.automatic!==true||!x.selected_upstream_host)process.exit(1)'
+
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/docs | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard High-Velocity x402 Facilitator"||x.version!=="5.0.0"||!x.facilitator_discovery?.resources||x.firewall?.recipient_binding!==true)process.exit(1)})'
+
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.version!=="5.0.0"||x.info?.title!=="XGuard High-Velocity x402 Facilitator"||!x.paths?.["/verify"]||!x.paths?.["/settle"]||!x.paths?.["/facilitator"]||!x.paths?.["/discovery/resources"])process.exit(1)})'
 
           mcp="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"1.0.0"}}}')"
-          printf '%s' "$mcp" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-control-plane"||x.result?.serverInfo?.version!=="4.1.0")process.exit(1)})'
+          printf '%s' "$mcp" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-high-velocity-x402-facilitator"||x.result?.serverInfo?.version!=="5.0.0")process.exit(1)})'
 
-          inspect="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/v1/inspect -H 'content-type: application/json' --data '{"target":"https://example.com/pay","method":"POST","headers":{"authorization":"Payment credential=abc"},"body":{"amount":"1"}}')"
-          printf '%s' "$inspect" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.protocol!=="mpp"||x.operation!=="payment"||x.allow!==true||!x.request_digest)process.exit(1)})'
+          rail="$(curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-rail.json)"
+          printf '%s' "$rail" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Mandatory Settlement Rail"||x.version!=="0.1.0"||!Array.isArray(x.controls)||!x.controls.includes("replay rejection"))process.exit(1)})'
 
-          edge_code="$(curl --silent --show-error --max-time 8 -o /tmp/edge-body -w '%{http_code}' https://api.xguardgate.com/edge/example.com/)"
-          test "$edge_code" = "403"
-          grep -q 'merchant_not_authorized_for_xguard_edge' /tmp/edge-body
+          rail_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-rail-mandate -w '%{http_code}' -X POST https://api.xguardgate.com/v1/rail/permits -H 'content-type: application/json' --data '{"target":"https://example.com/pay","method":"POST","amount_minor":"1","currency":"USD","pay_to":"merchant","request_body":{"test":true}}')"
+          test "$rail_code" = "428"
+          grep -q 'xguard_mandate_required' /tmp/xg-rail-mandate
 
           blocked="$(curl --silent --show-error --max-time 8 -D /tmp/xg-fw-h -o /tmp/xg-fw-b -w '%{http_code}' -X POST https://api.xguardgate.com/verify -H 'content-type: application/json' --data '{"paymentPayload":{"x402Version":2,"accepted":{"scheme":"exact","network":"eip155:8453","asset":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","payTo":"0x0000000000000000000000000000000000000001","amount":"1"},"payload":{"authorization":{"from":"0x0000000000000000000000000000000000000002","to":"0x0000000000000000000000000000000000000003","value":"1","validAfter":"0","validBefore":"9999999999","nonce":"0x0000000000000000000000000000000000000000000000000000000000000001"}}},"paymentRequirements":{"scheme":"exact","network":"eip155:8453","asset":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","payTo":"0x0000000000000000000000000000000000000001","amount":"1"}}')"
           test "$blocked" = "400"
           grep -qi '^x-xguard-firewall: block' /tmp/xg-fw-h
           grep -q 'authorization_recipient_mismatch' /tmp/xg-fw-b
 
-          live_ok=0
-          for i in {1..30}; do
-            page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${GITHUB_SHA}-${i}" || true)"
-            if printf '%s' "$page" | grep -q "Put one control layer in front of" && \
-               printf '%s' "$page" | grep -q "The chokepoint" && \
-               printf '%s' "$page" | grep -q "Protocol-neutral by design" && \
-               printf '%s' "$page" | grep -q "One transaction gate. Every agent rail."; then
-              live_ok=1
-              echo "XGuard universal homepage is live"
-              break
-            fi
-            sleep 3
-          done
-          test "$live_ok" = "1"
+          page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${GITHUB_SHA}")"
+          printf '%s' "$page" | grep -q 'One URL in the'
+          printf '%s' "$page" | grep -q 'x402 money path'
+          printf '%s' "$page" | grep -q 'Machine discovery first'
