@@ -253,7 +253,6 @@ async function normalizeMcpVersion(snapshot, response) {
   const headers = new Headers(response.headers);
   headers.delete("content-length");
   headers.set("x-xguard-version", VERSION);
-    if (routed.apiAlias) headers.set("x-xguard-api-path", "/api");
   return new Response(JSON.stringify(body), { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -300,6 +299,7 @@ export default {
     headers.set("x-xguard-canonical-api", API);
     headers.set("x-xguard-canonical-mcp", MCP);
     headers.set("x-xguard-version", VERSION);
+    if (routed.apiAlias) headers.set("x-xguard-api-path", "/api");
     if (effectiveRequest.method === "GET" && url.pathname === "/" && !routed.apiAlias) {
       headers.set("link", `<${SITE}/>; rel=\"canonical\", <${SITE}/llms.txt>; rel=\"alternate\"; type=\"text/plain\", <${SITE}/server.json>; rel=\"describedby\"; type=\"application/json\", <${SITE}/.well-known/mcp/server-card.json>; rel=\"describedby\"; type=\"application/json\"`);
       headers.set("cache-control", "public, max-age=60, must-revalidate");
