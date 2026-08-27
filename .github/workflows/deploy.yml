@@ -24,7 +24,7 @@ jobs:
           node-version: 24
       - run: npm install --prefix apps/relay --no-audit --no-fund
 
-      - name: Apply Durable Object migration and deploy Worker
+      - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -35,12 +35,13 @@ jobs:
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
           export CLOUDFLARE_API_TOKEN="$token"
-          npx --yes wrangler@4.123.0 deploy --config apps/relay/wrangler.jsonc --tag "git-${GITHUB_SHA:0:12}" --message "Apply XGuard ProofRail Durable Object migration ${GITHUB_SHA}"
+          npx --yes wrangler@4.123.0 deploy --config apps/relay/wrangler.jsonc --tag "git-${GITHUB_SHA:0:12}" --message "Deploy XGuard ${GITHUB_SHA}"
 
       - name: Production smoke test
         shell: bash
         run: |
           set -euo pipefail
+          expected_discovery_version="$(node -p 'require("./server.json").version')"
           ready=0
           for i in {1..35}; do
             egress="$(curl --silent --show-error --max-time 8 'https://api.xguardgate.com/v1/egress?build='"${GITHUB_SHA}" || true)"
@@ -72,8 +73,18 @@ jobs:
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/architecture | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Secretless Agent Gateway"||x.architecture?.billing_before_credential_release!==true||!x.secretless_egress?.credential_management)process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.title!=="XGuard Secretless Agent Gateway"||!x.paths?.["/v1/egress/fetch"]||!x.paths?.["/v1/actions/execute"]||!x.paths?.["/verify"]||!x.paths?.["/settle"])process.exit(1)})'
 
+          identity="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/identity)"
+          printf '%s' "$identity" | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Secretless Agent Gateway"||x.version!==process.env.EXPECTED_VERSION||!x.providers?.includes("OpenAI")||!x.problems_solved?.some(v=>v.includes("API key exposure")))process.exit(1)})'
+          llms="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/llms.txt)"
+          printf '%s' "$llms" | grep -q 'Protect AI agents from API-key exposure'
+          printf '%s' "$llms" | grep -q 'OpenAI, Anthropic, GitHub, Stripe'
+          curl --fail --silent --show-error --max-time 8 https://xguardgate.com/server.json | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!==process.env.EXPECTED_VERSION||x.name!=="io.github.moelayyan90/xguard-control-plane"||!x.description.includes("API-key exposure"))process.exit(1)})'
+          robots="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/robots.txt)"
+          printf '%s' "$robots" | grep -q 'User-agent: GPTBot'
+          printf '%s' "$robots" | grep -q 'User-agent: ClaudeBot'
+
           init="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"1.0.0"}}}')"
-          printf '%s' "$init" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-secretless-agent-gateway"||x.result?.serverInfo?.version!=="5.0.1"||!String(x.result?.instructions||"").includes("ProofRail")||!String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(1)})'
+          printf '%s' "$init" | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-secretless-agent-gateway"||x.result?.serverInfo?.version!==process.env.EXPECTED_VERSION||!String(x.result?.instructions||"").includes("ProofRail")||!String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(1)})'
           tools="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
           printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const n=(JSON.parse(s).result?.tools||[]).map(x=>x.name);if(!["xguard_proofrail","xguard_verify_proof","xguard_secretless_egress","xguard_egress_fetch","xguard_action_rail","xguard_facilitator","xguard_route"].every(v=>n.includes(v)))process.exit(1)})'
 
