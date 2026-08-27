@@ -1,0 +1,51 @@
+name: XGuard WordPress x402 Connector CI
+
+on:
+  pull_request:
+    paths:
+      - "integrations/wordpress/xguard-x402-connector/**"
+      - ".github/workflows/wordpress-x402-connector-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "integrations/wordpress/xguard-x402-connector/**"
+      - ".github/workflows/wordpress-x402-connector-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate PHP and connector contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -v
+          php -l integrations/wordpress/xguard-x402-connector/xguard-x402-connector.php
+          php -l integrations/wordpress/xguard-x402-connector/test-contract.php
+          php integrations/wordpress/xguard-x402-connector/test-contract.php
+
+      - name: Validate canonical production facilitator
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 15 https://api.xguardgate.com/supported \
+            | jq -e '.kinds | type == "array" and length > 0' >/dev/null
+          curl --fail --silent --show-error --max-time 15 https://api.xguardgate.com/facilitator \
+            | jq -e '.name == "XGuard High-Velocity x402 Facilitator" and .version == "5.0.1"' >/dev/null
+
+      - name: Build installable WordPress plugin zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/xguard-wp/xguard-x402-connector
+          cp integrations/wordpress/xguard-x402-connector/xguard-x402-connector.php /tmp/xguard-wp/xguard-x402-connector/
+          cp integrations/wordpress/xguard-x402-connector/README.md /tmp/xguard-wp/xguard-x402-connector/
+          cd /tmp/xguard-wp
+          zip -qr "$GITHUB_WORKSPACE/xguard-x402-wordpress-connector-1.0.0.zip" xguard-x402-connector
+          unzip -l "$GITHUB_WORKSPACE/xguard-x402-wordpress-connector-1.0.0.zip" | grep -q 'xguard-x402-connector/xguard-x402-connector.php'
