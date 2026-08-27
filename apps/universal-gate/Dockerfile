@@ -6,12 +6,17 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-COPY apps/edge-gate ./apps/edge-gate
-COPY apps/universal-gate ./apps/universal-gate
+# Copy manifests first so host/CI node_modules can never leak into the image.
+COPY apps/edge-gate/package.json ./apps/edge-gate/package.json
+COPY apps/universal-gate/package.json ./apps/universal-gate/package.json
 
 WORKDIR /app/apps/universal-gate
 RUN npm install --omit=dev --no-audit --no-fund \
     && npm cache clean --force
+
+# Copy runtime source only after dependencies are installed cleanly.
+COPY apps/edge-gate/src /app/apps/edge-gate/src
+COPY apps/universal-gate/src /app/apps/universal-gate/src
 
 USER node
 EXPOSE 8080
