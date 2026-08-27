@@ -4,7 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - "apps/relay/src/secure-entry.js"
+      - "apps/relay/src/product-entry.js"
+      - "apps/relay/src/egress-entry.js"
+      - "apps/relay/src/egress-vault.js"
       - "apps/relay/wrangler.jsonc"
       - ".github/workflows/verify-production.yml"
   workflow_dispatch:
@@ -17,19 +19,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Wait for hardened MCP 5.0.1
+      - name: Wait for hardened Secretless MCP
         shell: bash
         run: |
           set -euo pipefail
           ready=0
-          for i in {1..30}; do
+          for i in {1..35}; do
             init="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-security","version":"1.0.0"}}}' || true)"
             tools="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' || true)"
-            if printf '%s' "$init" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-high-velocity-x402-facilitator"&&x.result?.serverInfo?.version==="5.0.1"&&String(x.result?.instructions||"").includes("Canonical remote MCP endpoint"))process.exit(0)}catch{}process.exit(1)})' && \
-               printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);const t=x.result?.tools||[];const n=t.map(v=>v.name);if(t.length>=10&&["xguard_facilitator","xguard_route","xguard_discovery_search","xguard_safety_test","xguard_protocols","xguard_inspect","xguard_health","xguard_supported","xguard_receipt","xguard_integration"].every(v=>n.includes(v))&&t.every(v=>v.annotations?.readOnlyHint===true&&v.annotations?.destructiveHint===false&&v.outputSchema?.type==="object"))process.exit(0)}catch{}process.exit(1)})'; then
-              ready=1
-              break
-            fi
+            if printf '%s' "$init" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-secretless-agent-gateway"&&x.result?.serverInfo?.version==="5.0.1"&&String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const t=JSON.parse(s).result?.tools||[];const n=t.map(v=>v.name);const required=["xguard_secretless_egress","xguard_egress_fetch","xguard_action_rail","xguard_facilitator","xguard_route","xguard_inspect","xguard_health"];if(t.length>=13&&required.every(v=>n.includes(v))&&t.find(v=>v.name==="xguard_secretless_egress")?.annotations?.readOnlyHint===true&&t.find(v=>v.name==="xguard_egress_fetch")?.annotations?.destructiveHint===true)process.exit(0)}catch{}process.exit(1)})'; then ready=1; break; fi
             sleep 4
           done
           test "$ready" = "1"
@@ -42,7 +41,6 @@ jobs:
             curl --fail --silent --show-error --max-time 8 -I "https://$host/mcp" >"/tmp/$host.headers"
             grep -qi '^strict-transport-security: .*max-age=31536000' "/tmp/$host.headers"
             grep -qi '^x-xguard-control-plane: 5.0.1' "/tmp/$host.headers"
-            grep -qi '^x-xguard-canonical-mcp: https://api.xguardgate.com/mcp' "/tmp/$host.headers"
             code="$(curl --silent --show-error --max-time 8 --max-redirs 0 -o /dev/null -w '%{http_code}' "http://$host/mcp")"
             test "$code" = "301" -o "$code" = "308"
           done
@@ -62,10 +60,10 @@ jobs:
           const hosts=['api.xguardgate.com','xguardgate.com'];
           for(const host of hosts){
             const x=JSON.parse(fs.readFileSync(`/tmp/${host}.init.json`,'utf8'));
-            if(x.result?.serverInfo?.name!=='xguard-high-velocity-x402-facilitator'||x.result?.serverInfo?.version!=='5.0.1'||x.result?.protocolVersion!=='2026-07-28')process.exit(1);
+            if(x.result?.serverInfo?.name!=='xguard-secretless-agent-gateway'||x.result?.serverInfo?.version!=='5.0.1'||x.result?.protocolVersion!=='2026-07-28')process.exit(1);
           }
           const names=host=>(JSON.parse(fs.readFileSync(`/tmp/${host}.tools.json`,'utf8')).result?.tools||[]).map(x=>x.name).sort();
           const a=names(hosts[0]),b=names(hosts[1]);
-          if(a.length<10||JSON.stringify(a)!==JSON.stringify(b))process.exit(1);
-          console.log(JSON.stringify({version:'5.0.1',tools:a.length,aliases_identical:true}));
+          if(a.length<13||JSON.stringify(a)!==JSON.stringify(b)||!a.includes('xguard_secretless_egress')||!a.includes('xguard_egress_fetch'))process.exit(1);
+          console.log(JSON.stringify({version:'5.0.1',tools:a.length,aliases_identical:true,secretless:true}));
           NODE

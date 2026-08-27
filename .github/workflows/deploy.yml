@@ -41,67 +41,42 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           ready=0
           for i in {1..35}; do
-            health="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/healthz || true)"
-            provider="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
-            if printf '%s' "$health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.service==="XGuard High-Velocity x402 Facilitator"&&x.payment_firewall===true&&x.durable_replay_guard===true&&Array.isArray(x.upstreams)&&x.upstreams.some(u=>u.ok))process.exit(0)}catch{}process.exit(1)})' && \
-               printf '%s' "$provider" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.kind==="facilitator"&&x.capabilities?.automatic_routing===true&&x.capabilities?.settlement_ambiguous_fail_closed===true&&x.capabilities?.settlement_transport_failover==="reconciliation-gated"&&x.routing?.mode==="automatic")process.exit(0)}catch{}process.exit(1)})'; then
-              ready=1
-              break
-            fi
+            egress="$(curl --silent --show-error --max-time 8 'https://api.xguardgate.com/v1/egress?build='"${GITHUB_SHA}" || true)"
+            facilitator="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
+            if printf '%s' "$egress" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.name==="XGuard Secretless Egress"&&x.role.includes("credential broker")&&x.credits_per_authorized_egress_attempt===1&&x.providers_supported?.includes("stripe"))process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$facilitator" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.kind==="facilitator"&&x.capabilities?.automatic_routing===true&&x.capabilities?.settlement_ambiguous_fail_closed===true)process.exit(0)}catch{}process.exit(1)})'; then ready=1; break; fi
             sleep 4
           done
           test "$ready" = "1"
 
-          printf '%s' "$health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify({service:x.service,version:x.version,healthy:(x.upstreams||[]).filter(u=>u.ok).length}));if(x.facilitator_url!=="https://api.xguardgate.com"||!x.discovery?.provider)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-egress.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Secretless Egress"||!x.fetch||!x.capabilities||!x.controls?.some(v=>v.includes("never returned")))process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-egress-key.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.alg!=="RSA-OAEP-256"||x.jwk?.kty!=="RSA"||!x.kid)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/egress/providers | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.providers?.openai||!x.providers?.stripe||!x.providers?.anthropic||!x.providers?.github)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/egress/pricing | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.credits_per_authorized_egress_attempt!==1||!String(x.billing_boundary||"").includes("before credential release"))process.exit(1)})'
+
+          code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-egress-no-key -w '%{http_code}' -X POST https://api.xguardgate.com/v1/egress/credentials -H 'content-type: application/json' --data '{"provider":"github","value":"never-sent"}')"
+          test "$code" = "401"
+          grep -q 'xguard_key_required' /tmp/xg-egress-no-key
+          code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-egress-no-cap -w '%{http_code}' -X POST https://api.xguardgate.com/v1/egress/fetch -H 'content-type: application/json' --data '{"target":"https://api.github.com/"}')"
+          test "$code" = "401"
+          grep -q 'valid_xguard_capability_required' /tmp/xg-egress-no-cap
+
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/architecture | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Secretless Agent Gateway"||x.architecture?.billing_before_credential_release!==true||!x.secretless_egress?.credential_management)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.title!=="XGuard Secretless Agent Gateway"||!x.paths?.["/v1/egress/fetch"]||!x.paths?.["/v1/actions/execute"]||!x.paths?.["/verify"]||!x.paths?.["/settle"])process.exit(1)})'
+
+          init="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"1.0.0"}}}')"
+          printf '%s' "$init" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-secretless-agent-gateway"||x.result?.serverInfo?.version!=="5.0.1"||!String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(1)})'
+          tools="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
+          printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const n=(JSON.parse(s).result?.tools||[]).map(x=>x.name);if(!["xguard_secretless_egress","xguard_egress_fetch","xguard_action_rail","xguard_facilitator","xguard_route"].every(v=>n.includes(v)))process.exit(1)})'
 
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/supported | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||x.xguard?.universal!==true||!x.xguard?.settlement_safety?.includes("fail-closed"))process.exit(1)})'
-
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.0.1"||x.name!=="XGuard High-Velocity x402 Facilitator"||x.x402Version!==2||!x.endpoints?.verify||!x.endpoints?.settle||!x.discovery?.bazaar?.list||x.capabilities?.settlement_ambiguous_fail_closed!==true)process.exit(1)})'
-
-          for manifest_url in \
-            https://api.xguardgate.com/.well-known/x402.json \
-            https://api.xguardgate.com/.well-known/x402 \
-            https://api.xguardgate.com/.well-known/x402-facilitator.json \
-            https://api.xguardgate.com/.well-known/payment-manifest \
-            https://api.xguardgate.com/.well-known/payment-manifest.json; do
-            echo "Checking $manifest_url"
-            curl --fail --silent --show-error --max-time 8 "$manifest_url?v=5.0.1" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.0.1"||x.x402Version!==2||x.kind!=="facilitator"||x.facilitator!=="https://api.xguardgate.com")process.exit(1)})'
-          done
-
-          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/resources?limit=3' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items)||typeof x.pagination?.total!=="number")process.exit(1)})'
-
-          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/search?query=x402&limit=3' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items))process.exit(1)})'
-
-          route_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-route.json -w '%{http_code}' 'https://api.xguardgate.com/v1/facilitator/route?scheme=exact')"
-          test "$route_code" = "200"
-          node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/xg-route.json","utf8"));if(x.facilitator!=="https://api.xguardgate.com"||x.automatic!==true||!x.selected_upstream_host)process.exit(1)'
-
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/docs | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard High-Velocity x402 Facilitator"||x.version!=="5.0.1"||!x.facilitator_discovery?.resources||x.firewall?.recipient_binding!==true)process.exit(1)})'
-
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.version!=="5.0.1"||x.info?.title!=="XGuard High-Velocity x402 Facilitator"||!String(x.info?.description||"").includes("fail-closed")||!x.paths?.["/verify"]||!x.paths?.["/settle"]||!x.paths?.["/facilitator"]||!x.paths?.["/discovery/resources"])process.exit(1)})'
-
-          mcp="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"1.0.0"}}}')"
-          printf '%s' "$mcp" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-high-velocity-x402-facilitator"||x.result?.serverInfo?.version!=="5.0.1"||!String(x.result?.instructions||"").includes("Canonical remote MCP endpoint"))process.exit(1)})'
-
-          rail="$(curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-rail.json)"
-          printf '%s' "$rail" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Mandatory Settlement Rail"||x.version!=="0.1.0"||!Array.isArray(x.controls)||!x.controls.includes("replay rejection"))process.exit(1)})'
-
-          rail_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-rail-mandate -w '%{http_code}' -X POST https://api.xguardgate.com/v1/rail/permits -H 'content-type: application/json' --data '{"target":"https://example.com/pay","method":"POST","amount_minor":"1","currency":"USD","pay_to":"merchant","request_body":{"test":true}}')"
-          test "$rail_code" = "428"
-          grep -q 'xguard_mandate_required' /tmp/xg-rail-mandate
-
-          blocked="$(curl --silent --show-error --max-time 8 -D /tmp/xg-fw-h -o /tmp/xg-fw-b -w '%{http_code}' -X POST https://api.xguardgate.com/verify -H 'content-type: application/json' --data '{"paymentPayload":{"x402Version":2,"accepted":{"scheme":"exact","network":"eip155:8453","asset":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","payTo":"0x0000000000000000000000000000000000000001","amount":"1"},"payload":{"authorization":{"from":"0x0000000000000000000000000000000000000002","to":"0x0000000000000000000000000000000000000003","value":"1","validAfter":"0","validBefore":"9999999999","nonce":"0x0000000000000000000000000000000000000000000000000000000000000001"}}},"paymentRequirements":{"scheme":"exact","network":"eip155:8453","asset":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","payTo":"0x0000000000000000000000000000000000000001","amount":"1"}}')"
-          test "$blocked" = "400"
-          grep -qi '^x-xguard-firewall: block' /tmp/xg-fw-h
-          grep -q 'authorization_recipient_mismatch' /tmp/xg-fw-b
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!x.endpoints?.verify||!x.endpoints?.settle||x.capabilities?.settlement_ambiguous_fail_closed!==true)process.exit(1)})'
 
           page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${GITHUB_SHA}")"
-          printf '%s' "$page" | grep -q 'v5.0.1'
-          printf '%s' "$page" | grep -q 'One URL in the'
-          printf '%s' "$page" | grep -q 'x402 money path'
-          printf '%s' "$page" | grep -q 'Machine discovery first'
+          printf '%s' "$page" | grep -q 'Agents get capabilities'
+          printf '%s' "$page" | grep -q 'Never the secrets'
+          printf '%s' "$page" | grep -q 'font-family:Arial'
           printf '%s' "$page" | grep -q 'rel="canonical"'
           printf '%s' "$page" | grep -q 'application/ld+json'

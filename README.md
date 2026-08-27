@@ -1,219 +1,236 @@
-# XGuard — High-Velocity x402 Facilitator
+# XGuard — Secretless Agent Gateway
 
-**One public facilitator URL in the x402 money path:**
+**Canonical production API**
 
 ```text
 https://api.xguardgate.com
 ```
 
-XGuard is a non-custodial x402 v2 facilitator gateway for AI agents and resource servers. A seller configures one facilitator URL; XGuard then selects a compatible healthy downstream settlement path per request using **scheme/network capability → health → observed latency**, with failover, durable replay protection and Base USDC timeout reconciliation.
+XGuard keeps reusable upstream credentials **out of AI agents**. Operators store a Stripe, GitHub, OpenAI, Anthropic, Slack, Notion, Cloudflare, Gemini or custom API credential once, then give the agent only a short-lived scoped XGuard capability.
 
-The product is deliberately positioned **inside `/verify` and `/settle`**, not as an optional scanner beside the payment path.
+```text
+Operator secret
+     ↓
+Encrypted XGuard credential vault
+     ↓
+Scoped capability
+     ↓
+AI agent
+     ↓
+XGuard Secretless Egress
+     ↓
+credential injected server-side
+     ↓
+upstream API
+```
 
-## Install the XGuard agent tools
+The agent never receives the reusable upstream credential.
 
-Canonical remote MCP endpoint:
+> XGuard becomes an actual choke point when an operator keeps the reusable credential only in XGuard and delegates capabilities instead of redistributing that credential. XGuard does not claim control over unrelated Internet traffic.
+
+## Why Secretless Egress
+
+A reusable bearer token inside an autonomous agent can be copied, logged, placed in context, reused outside the intended request or leaked to an untrusted tool. XGuard changes the primitive from **secret possession** to **scoped capability possession**.
+
+The current egress boundary provides:
+
+- encrypted reusable credential storage;
+- provider presets for OpenAI, Anthropic, GitHub, Stripe, Slack, Notion, Cloudflare and Gemini;
+- custom header-based credentials restricted to explicit public HTTPS hosts;
+- short-lived capabilities;
+- exact HTTPS origin binding;
+- path-prefix allowlists;
+- HTTP method allowlists;
+- maximum call counts;
+- Usage Credit billing before secret release and before outbound network egress;
+- no automatic credential forwarding across redirects;
+- private/local target blocking;
+- automatic `Idempotency-Key` injection for unsafe methods;
+- no blind automatic replay after network ambiguity;
+- MCP discovery and egress execution without exposing credential provisioning to model context.
+
+## Egress API
+
+Machine-readable contract:
+
+```text
+GET https://api.xguardgate.com/v1/egress
+GET https://api.xguardgate.com/.well-known/xguard-egress.json
+GET https://api.xguardgate.com/.well-known/xguard-egress-key.json
+GET https://api.xguardgate.com/v1/egress/providers
+```
+
+### 1. Operator stores a reusable credential
+
+Credential provisioning is intentionally an **operator API**, not an MCP tool.
+
+```http
+POST /v1/egress/credentials
+X-XGuard-Key: <usage-credit-key>
+Content-Type: application/json
+```
+
+```json
+{
+  "provider": "github",
+  "value": "<github-token>",
+  "label": "production-github",
+  "allowed_paths": ["/repos/"],
+  "allowed_methods": ["GET", "POST"]
+}
+```
+
+XGuard returns only credential metadata such as `xcred_...`; the reusable secret is not returned.
+
+### 2. Operator issues a short capability
+
+```http
+POST /v1/egress/capabilities
+X-XGuard-Key: <usage-credit-key>
+Content-Type: application/json
+```
+
+```json
+{
+  "credential_id": "xcred_...",
+  "target_origin": "https://api.github.com",
+  "path_prefix": "/repos/",
+  "allowed_methods": ["GET", "POST"],
+  "ttl_seconds": 300,
+  "max_calls": 10
+}
+```
+
+The returned `xgc_...` capability is what the agent receives.
+
+### 3. Agent executes without the upstream secret
+
+```http
+POST /v1/egress/fetch
+Content-Type: application/json
+```
+
+```json
+{
+  "capability": "xgc_...",
+  "target": "https://api.github.com/repos/org/repo/issues",
+  "method": "POST",
+  "body_json": {
+    "title": "Example"
+  }
+}
+```
+
+XGuard validates capability scope and billing, injects the GitHub credential server-side, sends one HTTPS request and never exposes the reusable GitHub token to the agent.
+
+Pricing contract:
+
+```text
+GET /v1/egress/pricing
+```
+
+The current configuration consumes **1 XGuard Usage Credit per authorized credential-backed egress attempt**. Billing is committed before credential decryption and before outbound network egress. If billing cannot commit, no upstream request is sent.
+
+## MCP
+
+Canonical MCP endpoint:
 
 ```text
 https://api.xguardgate.com/mcp
 ```
 
-### GitHub Copilot CLI
-
-```bash
-copilot plugin install moelayyan90/XGuard
-```
-
-Or browse XGuard as a Copilot plugin marketplace:
-
-```bash
-copilot plugin marketplace add moelayyan90/XGuard
-copilot plugin install xguard-x402@xguard-plugins
-```
-
-### Claude Code
-
-```bash
-claude mcp add --transport http xguard https://api.xguardgate.com/mcp
-claude mcp get xguard
-```
-
-### Cursor
-
-[Add XGuard to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=xguard&config=eyJ4Z3VhcmQiOnsidXJsIjoiaHR0cHM6Ly9hcGkueGd1YXJkZ2F0ZS5jb20vbWNwIn19)
-
-### Visual Studio Code / GitHub Copilot
-
-[Install XGuard MCP in VS Code](vscode:mcp/install?%7B%22name%22%3A%22xguard%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fapi.xguardgate.com%2Fmcp%22%7D)
-
-The repository also ships portable Agent Plugins 1.0 metadata plus native project configs for Claude/Copilot, Cursor and VS Code. See [CONNECT.md](CONNECT.md) for the complete connection matrix.
-
-## Money-path endpoints
+Agent-facing tools include:
 
 ```text
-GET  https://api.xguardgate.com/supported
-POST https://api.xguardgate.com/verify
-POST https://api.xguardgate.com/settle
+xguard_secretless_egress
+xguard_egress_fetch
+xguard_action_rail
 ```
 
-A resource server that configures XGuard as its facilitator sends its x402 verification and settlement traffic through XGuard. XGuard never changes the signed x402 `payTo` or payment amount.
+Reusable credential creation is deliberately **not** exposed as an MCP tool.
 
-## Drop-in x402 seller SDK
+## Action Rail underneath
 
-Install directly from the public GitHub repository:
-
-```bash
-npm install github:moelayyan90/XGuard#main
-```
-
-Then use XGuard anywhere the official x402 v2 middleware expects a facilitator client:
-
-```js
-import { facilitator } from "xguard-x402-control-plane";
-```
-
-Or create an authenticated client for XGuard Usage Credits:
-
-```js
-import { createXGuardFacilitator } from "xguard-x402-control-plane";
-
-const facilitator = createXGuardFacilitator({
-  licenseKey: process.env.XGUARD_LICENSE_KEY,
-});
-```
-
-The repository contains working integration examples for **Express, Hono, Next.js, paid MCP tools, Python/FastAPI, and Go/Gin** under `sdk/examples/` and `integrations/`. See [sdk/README.md](sdk/README.md).
-
-## Automatic discovery
-
-XGuard exposes machine-readable discovery surfaces so agents, crawlers, registries and routing libraries do not need to discover the product from the website first:
+Secretless Egress is the primary product boundary. XGuard Action Rail remains available underneath for stronger execution controls around payments, purchases, bookings, messages, deployments, deletes, API writes and tool calls.
 
 ```text
-GET https://api.xguardgate.com/facilitator
-GET https://api.xguardgate.com/.well-known/x402
-GET https://api.xguardgate.com/.well-known/x402.json
-GET https://api.xguardgate.com/discovery/resources
-GET https://api.xguardgate.com/discovery/search?query=...
-GET https://api.xguardgate.com/v1/facilitator/route?network=eip155:8453&scheme=exact
-GET https://api.xguardgate.com/supported
+POST /v1/mandates
+POST /v1/actions/permits
+POST /v1/actions/execute
+GET  /v1/actions/permits/{permit_id}
 ```
 
-The public provider document reports current live capabilities. `batch-settlement` is advertised as live **only when a healthy configured upstream actually advertises `scheme=batch-settlement`**.
+Action Rail adds scoped mandates, request-bound cryptographic permits, replay rejection, durable execution state and receipts.
 
-Stable public metadata:
+## Universal and Edge deployment
+
+For operator-controlled infrastructure XGuard can also be placed in front of an origin:
 
 ```text
-Logo:         https://xguardgate.com/logo.svg
-Security:     https://xguardgate.com/.well-known/security.txt
-MCP:          https://api.xguardgate.com/mcp
-Agent Card:   https://api.xguardgate.com/.well-known/agent-card.json
-OpenAPI:      https://api.xguardgate.com/openapi.json
-LLM hints:    https://api.xguardgate.com/llms.txt
-Skill:        https://api.xguardgate.com/skill.md
-Website:      https://xguardgate.com
+Internet / Ingress
+      ↓
+XGuard Universal Gate
+      ↓
+private origin
 ```
 
-### DNS compatibility discovery
+The repository includes Cloudflare Edge Gate, portable Node deployment, Docker, Docker Compose, Kubernetes and OpenAPI AutoGate components.
 
-The repository Cloudflare workflow attempts to keep this compatibility record published:
+## Native x402 compatibility
 
-```dns
-_x402.xguardgate.com TXT "v=x402-1; wk=https://api.xguardgate.com/.well-known/x402; k=facilitator"
-```
-
-This record is **optional compatibility metadata**. If the Cloudflare token does not have Zone:DNS permission, the workflow reports `NOT PUBLISHED` rather than claiming success. The live HTTP discovery surfaces and `/supported` remain authoritative.
-
-## Bazaar aggregation
-
-XGuard exposes both Bazaar-style discovery surfaces:
+x402 remains a compatibility rail, not the definition of XGuard.
 
 ```text
-/discovery/resources
-/discovery/search
+GET  /supported
+POST /verify
+POST /settle
+GET  /facilitator
+GET  /.well-known/x402
+GET  /v1/facilitator/route
 ```
 
-It queries the configured facilitator catalogs, merges and de-duplicates resources, and identifies the catalog source in `xguardDiscovery`. Discovery traffic is public and does not execute a payment.
+XGuard remains a non-custodial x402 v2 facilitator gateway with capability-aware routing, replay protection, Base USDC reconciliation and fail-closed ambiguous settlement behavior.
 
-## Automatic settlement routing
+## Security model
 
-XGuard sits above multiple configured x402 facilitators. For each request it:
+- reusable upstream credentials are encrypted at rest using per-record AES-GCM keys wrapped by an XGuard RSA-OAEP authority;
+- secret values are not included in agent capabilities;
+- operator XGuard Usage Credit keys are encrypted into capability state and are not handed to agents;
+- capabilities bind an origin, path prefix, methods, expiry and maximum calls;
+- user-supplied headers cannot override the injected credential header or XGuard control headers;
+- private/local targets and XGuard self-targets are blocked;
+- redirects are not automatically followed with injected credentials;
+- billing commits before secret decryption and network egress;
+- unsafe methods receive an XGuard-generated `Idempotency-Key` when the caller did not supply one;
+- XGuard does not automatically replay a credential-backed request after a network ambiguity.
 
-1. parses the requested network and scheme;
-2. reads current `/supported` capabilities;
-3. removes incompatible routes;
-4. considers route health and observed latency;
-5. sends `/verify` or `/settle` through the best live compatible route;
-6. freely fails over **verification** requests on retryable transport/5xx/429 errors because verification cannot spend the signed payment;
-7. for **settlement**, retries a different route only when the outcome is known to be safe: explicit rate limiting, or network-specific reconciliation proves the payment was not consumed;
-8. on Base USDC, checks EIP-3009 authorization state before any retry after an ambiguous settlement response;
-9. on networks without reconciliation, an ambiguous timeout/5xx fails closed instead of forwarding the same signed payment to another facilitator;
-10. stores durable settlement receipts to make successful replay idempotent.
-
-Use the route-inspection endpoint without pinning the returned downstream provider:
-
-```bash
-curl 'https://api.xguardgate.com/v1/facilitator/route?network=eip155:8453&scheme=exact'
-```
-
-The configured facilitator remains XGuard even as the selected downstream route changes.
-
-Response telemetry exposes the actual route decision:
+## Machine discovery
 
 ```text
-x-xguard-upstream
-x-xguard-route-attempts
-x-xguard-settlement-safety
-server-timing
+GET /.well-known/xguard-egress.json
+GET /.well-known/xguard-actions.json
+GET /.well-known/xguard.json
+GET /.well-known/ai-plugin.json
+GET /.well-known/agent-card.json
+GET /architecture
+GET /v1/protocols
+GET /openapi.json
+GET /llms.txt
+GET /skill.md
+GET /sitemap.xml
 ```
 
-## High-throughput schemes
-
-XGuard's routing is scheme-aware. It does not hard-code `exact` as the only possible scheme. If a configured live facilitator advertises `batch-settlement`, `/supported` exposes it and XGuard can route matching verification/settlement traffic to that provider.
-
-This is intentionally different from claiming that XGuard itself owns every batch-settlement escrow/channel contract. The live advertised capability is derived from reachable providers rather than marketing text.
-
-## Payment safety inside the route
-
-For x402 traffic XGuard keeps:
-
-- requirement ↔ accepted binding checks;
-- Base USDC EIP-3009 recipient/value/nonce/time-window checks;
-- durable replay protection;
-- capability-aware multi-facilitator routing;
-- fail-closed handling of ambiguous settlement state;
-- Base timeout reconciliation;
-- durable receipt lookup.
-
-Receipt lookup:
+## Production domains
 
 ```text
-GET https://api.xguardgate.com/v1/receipts/{receipt_id}
+https://xguardgate.com
+https://api.xguardgate.com
 ```
 
-## Billing boundary
+The Cloudflare Worker configuration disables the public `workers.dev` route so XGuard's production identity is limited to the custom XGuard domains.
 
-- `/verify`: free
-- failed settlements: free
-- first successful settlements per `payTo`: current free allowance exposed by `/facilitator`
-- successful paid settlements after the allowance: XGuard Usage Credits
+Repository:
 
-Billing is attached to XGuard usage. XGuard does **not** silently divert any portion of the merchant's signed x402 transfer; the x402 recipient and amount remain bound to the payment requirements.
-
-## Agent / robot discovery
-
-The MCP server exposes facilitator metadata, route selection and Bazaar search directly to agents in addition to the existing safety and receipt tools. `robots.txt` and `sitemap.xml` are served by the public worker, while the provider metadata, OpenAPI, MCP and Agent Card expose machine-readable integration surfaces.
-
-## Secondary capabilities
-
-XGuard also retains the protocol-neutral Agent Spend Firewall, scoped spend mandates, ATS-100 safety testing and merchant edge. These are supporting capabilities; the primary financial product is now the **x402 facilitator money path**.
-
-## Security posture
-
-- non-custodial;
-- no buyer or merchant private keys stored by XGuard;
-- no mutation of signed payment amount or recipient;
-- private/local proxy targets blocked;
-- Base USDC recipient/amount/time-window mismatches fail closed;
-- durable replay/receipt state;
-- ambiguous Base authorization state is reconciled before retry;
-- ambiguous settlement state on networks without a reconciliation proof fails closed instead of risking cross-facilitator duplicate settlement.
+```text
+https://github.com/moelayyan90/XGuard
+```

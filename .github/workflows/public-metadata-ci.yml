@@ -5,6 +5,7 @@ on:
     paths:
       - "apps/relay/src/public-metadata.js"
       - "apps/relay/src/rail-entry.js"
+      - "apps/relay/src/egress-entry.js"
       - "apps/relay/test/public-metadata.mjs"
       - ".github/workflows/public-metadata-ci.yml"
   push:
@@ -12,6 +13,7 @@ on:
     paths:
       - "apps/relay/src/public-metadata.js"
       - "apps/relay/src/rail-entry.js"
+      - "apps/relay/src/egress-entry.js"
       - "apps/relay/test/public-metadata.mjs"
       - ".github/workflows/public-metadata-ci.yml"
 
@@ -33,6 +35,7 @@ jobs:
         run: |
           node --check apps/relay/src/public-metadata.js
           node --check apps/relay/src/rail-entry.js
+          node --check apps/relay/src/egress-entry.js
           node --check apps/relay/test/public-metadata.mjs
       - name: Canonical metadata contract
         run: node apps/relay/test/public-metadata.mjs
@@ -41,6 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'const VERSION = "5.0.1"' apps/relay/src/public-metadata.js
-          grep -q 'XGuard High-Velocity x402 Facilitator' apps/relay/src/public-metadata.js
-          grep -q 'settlement_transport_failover: "reconciliation-gated"' apps/relay/src/public-metadata.js
+          grep -q 'XGuard Secretless Agent Gateway' apps/relay/src/public-metadata.js
+          grep -q 'billing_before_credential_release: true' apps/relay/src/public-metadata.js
+          grep -q 'settlement_ambiguous_fail_closed: true' apps/relay/src/public-metadata.js
           grep -q 'publicMetadata.fetch' apps/relay/src/rail-entry.js
