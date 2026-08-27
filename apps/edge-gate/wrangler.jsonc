@@ -6,9 +6,12 @@
   "observability": { "enabled": true },
   "vars": {
     "FACILITATOR_URL": "https://api.xguardgate.com",
-    "NETWORK": "base",
+    "NETWORK": "eip155:8453",
     "ORIGIN_URL": "https://example.com",
     "PAY_TO": "0x0000000000000000000000000000000000000000",
+    "AUTO_GATE_OPENAPI": "false",
+    "OPENAPI_URL": "https://example.com/openapi.json",
+    "DEFAULT_PRICE": "$0.01",
     "PROTECTED_PATTERNS": [
       {
         "pattern": "/api/premium/*",
