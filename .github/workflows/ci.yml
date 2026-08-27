@@ -39,6 +39,7 @@ jobs:
           node --check apps/relay/src/discovery-entry.js
           node --check apps/relay/src/webmcp-entry.js
           node --check apps/relay/src/a2a-entry.js
+          node --check apps/relay/src/canonical-entry.js
           node --check apps/relay/src/a2a-entry-test.js
           node --check apps/relay/src/product-entry-test.js
           node --check apps/relay/src/rail-entry.js
@@ -62,9 +63,12 @@ jobs:
           grep -q 'EgressMeter' apps/relay/wrangler.jsonc
           grep -q 'ACTION_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
           grep -q 'EGRESS_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
-          grep -q '"main": "src/a2a-entry.js"' apps/relay/wrangler.jsonc
+          grep -q '"main": "src/canonical-entry.js"' apps/relay/wrangler.jsonc
           grep -q '"workers_dev": false' apps/relay/wrangler.jsonc
           ! grep -q '"routes"' apps/relay/wrangler.jsonc
+          grep -q 'XGuard Secretless Agent Gateway' apps/relay/src/canonical-entry.js
+          grep -q 'www.xguardgate.com' apps/relay/src/canonical-entry.js
+          grep -q 'Historical ACE/Solana/BAM' apps/relay/src/canonical-entry.js
           grep -q 'io.github.moelayyan90/xguard-control-plane' apps/relay/src/discovery-entry.js
           grep -q '/llms.txt' apps/relay/src/discovery-entry.js
           grep -q '/server.json' apps/relay/src/discovery-entry.js
