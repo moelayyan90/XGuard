@@ -1,0 +1,67 @@
+name: Refresh XGuard Public Indexes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay/src/public-metadata.js"
+      - "apps/relay/src/rail-entry.js"
+      - "apps/relay/src/site-universal.js"
+      - ".github/workflows/refresh-public-indexes.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  not-human-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Wait for XGuard discovery surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for i in {1..45}; do
+            plugin="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/.well-known/ai-plugin.json?build=${GITHUB_SHA}" || true)"
+            openapi="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/openapi.json?build=${GITHUB_SHA}" || true)"
+            if printf '%s' "$plugin" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.xguard?.version==="5.0.1"&&x.api?.url==="https://api.xguardgate.com/openapi.json")process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$openapi" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.info?.version==="5.0.1"&&x.paths?.["/verify"]&&x.paths?.["/settle"])process.exit(0)}catch{}process.exit(1)})'; then
+              ready=1
+              break
+            fi
+            sleep 4
+          done
+          test "$ready" = "1"
+      - name: Submit canonical homepage to Not Human Search
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers="$(mktemp)"
+          body="$(mktemp)"
+          code="$(curl --silent --show-error --max-time 30 -D "$headers" -o "$body" -w '%{http_code}' \
+            -X POST 'https://nothumansearch.ai/api/v1/submit' \
+            -H 'content-type: application/json' \
+            --data '{"url":"https://xguardgate.com"}')"
+          cat "$body"
+          test "$code" -ge 200 -a "$code" -lt 300
+          echo "NHS submission HTTP $code"
+      - name: Read refreshed NHS site record
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for i in {1..20}; do
+            body="$(curl --silent --show-error --max-time 15 'https://nothumansearch.ai/api/v1/site/xguardgate.com' || true)"
+            if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x&&typeof x==="object"&&!x.error)process.exit(0)}catch{}process.exit(1)})'; then
+              printf '%s\n' "$body"
+              found=1
+              break
+            fi
+            sleep 3
+          done
+          test "$found" = "1"
