@@ -692,9 +692,6 @@ export default {
       return request.method === "HEAD" ? new Response(null, { status: response.status, headers: response.headers }) : response;
     }
     if (path === "/v1/egress/providers" && request.method === "GET") {
-      return json({ providers: Object.fromEntries(Object.entries(PROVIDERS).map(([name, value]) => [name, { hosts: value.hosts, injection_header: value.header }])).constructor ? undefined : undefined });
-    }
-    if (path === "/v1/egress/providers" && request.method === "GET") {
       return json({ providers: Object.fromEntries(Object.entries(PROVIDERS).map(([name, value]) => [name, { hosts: value.hosts, injection_header: value.header }])), custom: { requires: ["header_name", "allowed_hosts"] } });
     }
     if (path === "/v1/egress/credentials" && request.method === "POST") return createCredential(request, env);
