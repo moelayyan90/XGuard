@@ -6,6 +6,8 @@
 https://api.xguardgate.com
 ```
 
+> **Canonical identity — v5.0.2:** XGuard Secretless Agent Gateway. **Secretless Egress is the primary product.** Action Rail and x402 facilitator routing are compatibility rails. Historical descriptions involving XGuard ACE, Solana/BAM speed bumps, Child Safety, Web Extractor, Universal Facilitator Gateway, High-Velocity x402 Facilitator, or a generic spend-only control plane are **not the current XGuard product identity**. See [`CANONICAL_IDENTITY.md`](./CANONICAL_IDENTITY.md).
+
 XGuard keeps reusable upstream credentials **out of AI agents**. Operators store a Stripe, GitHub, OpenAI, Anthropic, Slack, Notion, Cloudflare, Gemini or custom API credential once, then give the agent only a short-lived scoped XGuard capability.
 
 ```text
