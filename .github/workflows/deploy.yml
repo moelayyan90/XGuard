@@ -46,8 +46,8 @@ jobs:
           for i in {1..35}; do
             health="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/healthz || true)"
             provider="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
-            if printf '%s' "$health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.0"&&x.service==="XGuard High-Velocity x402 Facilitator"&&x.payment_firewall===true&&x.durable_replay_guard===true&&Array.isArray(x.upstreams)&&x.upstreams.some(u=>u.ok))process.exit(0)}catch{}process.exit(1)})' && \
-               printf '%s' "$provider" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.kind==="facilitator"&&x.capabilities?.automatic_routing===true&&x.routing?.mode==="automatic")process.exit(0)}catch{}process.exit(1)})'; then
+            if printf '%s' "$health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.service==="XGuard High-Velocity x402 Facilitator"&&x.payment_firewall===true&&x.durable_replay_guard===true&&Array.isArray(x.upstreams)&&x.upstreams.some(u=>u.ok))process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$provider" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.kind==="facilitator"&&x.capabilities?.automatic_routing===true&&x.capabilities?.settlement_ambiguous_fail_closed===true&&x.capabilities?.settlement_transport_failover==="reconciliation-gated"&&x.routing?.mode==="automatic")process.exit(0)}catch{}process.exit(1)})'; then
               ready=1
               break
             fi
@@ -57,9 +57,9 @@ jobs:
 
           printf '%s' "$health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);console.log(JSON.stringify({service:x.service,version:x.version,healthy:(x.upstreams||[]).filter(u=>u.ok).length}));if(x.facilitator_url!=="https://api.xguardgate.com"||!x.discovery?.provider)process.exit(1)})'
 
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/supported | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||x.xguard?.universal!==true)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/supported | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||x.xguard?.universal!==true||!x.xguard?.settlement_safety?.includes("fail-closed"))process.exit(1)})'
 
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard High-Velocity x402 Facilitator"||x.x402Version!==2||!x.endpoints?.verify||!x.endpoints?.settle||!x.discovery?.bazaar?.list)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.0.1"||x.name!=="XGuard High-Velocity x402 Facilitator"||x.x402Version!==2||!x.endpoints?.verify||!x.endpoints?.settle||!x.discovery?.bazaar?.list||x.capabilities?.settlement_ambiguous_fail_closed!==true)process.exit(1)})'
 
           for manifest_url in \
             https://api.xguardgate.com/.well-known/x402.json \
@@ -68,7 +68,7 @@ jobs:
             https://api.xguardgate.com/.well-known/payment-manifest \
             https://api.xguardgate.com/.well-known/payment-manifest.json; do
             echo "Checking $manifest_url"
-            curl --fail --silent --show-error --max-time 8 "$manifest_url?v=5" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||x.kind!=="facilitator"||x.facilitator!=="https://api.xguardgate.com")process.exit(1)})'
+            curl --fail --silent --show-error --max-time 8 "$manifest_url?v=5.0.1" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.0.1"||x.x402Version!==2||x.kind!=="facilitator"||x.facilitator!=="https://api.xguardgate.com")process.exit(1)})'
           done
 
           curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/resources?limit=3' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items)||typeof x.pagination?.total!=="number")process.exit(1)})'
@@ -79,12 +79,12 @@ jobs:
           test "$route_code" = "200"
           node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/xg-route.json","utf8"));if(x.facilitator!=="https://api.xguardgate.com"||x.automatic!==true||!x.selected_upstream_host)process.exit(1)'
 
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/docs | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard High-Velocity x402 Facilitator"||x.version!=="5.0.0"||!x.facilitator_discovery?.resources||x.firewall?.recipient_binding!==true)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/docs | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard High-Velocity x402 Facilitator"||x.version!=="5.0.1"||!x.facilitator_discovery?.resources||x.firewall?.recipient_binding!==true)process.exit(1)})'
 
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.version!=="5.0.0"||x.info?.title!=="XGuard High-Velocity x402 Facilitator"||!x.paths?.["/verify"]||!x.paths?.["/settle"]||!x.paths?.["/facilitator"]||!x.paths?.["/discovery/resources"])process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.version!=="5.0.1"||x.info?.title!=="XGuard High-Velocity x402 Facilitator"||!String(x.info?.description||"").includes("fail-closed")||!x.paths?.["/verify"]||!x.paths?.["/settle"]||!x.paths?.["/facilitator"]||!x.paths?.["/discovery/resources"])process.exit(1)})'
 
           mcp="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"1.0.0"}}}')"
-          printf '%s' "$mcp" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-high-velocity-x402-facilitator"||x.result?.serverInfo?.version!=="5.0.0")process.exit(1)})'
+          printf '%s' "$mcp" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-high-velocity-x402-facilitator"||x.result?.serverInfo?.version!=="5.0.1"||!String(x.result?.instructions||"").includes("Canonical remote MCP endpoint"))process.exit(1)})'
 
           rail="$(curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-rail.json)"
           printf '%s' "$rail" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Mandatory Settlement Rail"||x.version!=="0.1.0"||!Array.isArray(x.controls)||!x.controls.includes("replay rejection"))process.exit(1)})'
@@ -99,6 +99,9 @@ jobs:
           grep -q 'authorization_recipient_mismatch' /tmp/xg-fw-b
 
           page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${GITHUB_SHA}")"
+          printf '%s' "$page" | grep -q 'v5.0.1'
           printf '%s' "$page" | grep -q 'One URL in the'
           printf '%s' "$page" | grep -q 'x402 money path'
           printf '%s' "$page" | grep -q 'Machine discovery first'
+          printf '%s' "$page" | grep -q 'rel="canonical"'
+          printf '%s' "$page" | grep -q 'application/ld+json'
