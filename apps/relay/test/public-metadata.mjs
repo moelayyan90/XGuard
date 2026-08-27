@@ -4,7 +4,7 @@ const expected = "5.0.1";
 const identity = "XGuard Secretless Agent Gateway";
 
 async function get(path, method = "GET") {
-  const response = await metadata.fetch(new Request(`https://xguardgate.com/api${path}`, { method }));
+  const response = await metadata.fetch(new Request(`https://api.xguardgate.com${path}`, { method }));
   if (!(response instanceof Response)) throw new Error(`${path}: no response`);
   if (response.status !== 200) throw new Error(`${path}: status ${response.status}`);
   if (response.headers.get("x-xguard-control-plane") !== expected) throw new Error(`${path}: wrong version header`);
@@ -44,6 +44,6 @@ for (const path of ["/architecture", "/v1/protocols", "/.well-known/xguard.json"
   if ((await response.text()) !== "") throw new Error(`${path}: HEAD returned a body`);
 }
 
-const miss = await metadata.fetch(new Request("https://xguardgate.com/api/not-metadata"));
+const miss = await metadata.fetch(new Request("https://api.xguardgate.com/not-metadata"));
 if (miss !== null) throw new Error("metadata layer intercepted an unrelated path");
 console.log(JSON.stringify({ ok: true, version: expected, identity, surfaces: 4 }));
