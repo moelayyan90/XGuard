@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/index.js"
+    "check": "node --check src/index.js && node --check src/discovery-entry.js && node --test test/discovery-entry.mjs"
   },
   "dependencies": {
     "@coinbase/x402": "^2.1.0",
