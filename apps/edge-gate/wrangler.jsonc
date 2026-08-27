@@ -1,0 +1,20 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "xguard-edge-gate",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-27",
+  "observability": { "enabled": true },
+  "vars": {
+    "FACILITATOR_URL": "https://api.xguardgate.com",
+    "NETWORK": "base",
+    "ORIGIN_URL": "https://example.com",
+    "PAY_TO": "0x0000000000000000000000000000000000000000",
+    "PROTECTED_PATTERNS": [
+      {
+        "pattern": "/api/premium/*",
+        "price": "$0.01",
+        "description": "Premium API access through XGuard Edge Gate"
+      }
+    ]
+  }
+}
