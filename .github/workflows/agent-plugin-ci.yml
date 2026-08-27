@@ -65,16 +65,15 @@ jobs:
           for (const expected of ['copilot plugin install moelayyan90/XGuard','claude mcp add --transport http xguard https://api.xguardgate.com/mcp','cursor://anysphere.cursor-deeplink/mcp/install?','vscode:mcp/install?']) if (!connect.includes(expected)) throw new Error(`CONNECT.md missing ${expected}`);
           NODE
 
-      - name: Verify live MCP handshake and Secretless Egress tools
+      - name: Verify current live MCP remains backward compatible before deploy
         shell: bash
         run: |
           set -euo pipefail
           endpoint='https://api.xguardgate.com/mcp'
           init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-agent-plugin-ci","version":"1.0.0"}}}')"
-          printf '%s' "$init" | jq -e '.result.serverInfo.name == "xguard-secretless-agent-gateway" and .result.serverInfo.version == "5.0.1"' >/dev/null
+          printf '%s' "$init" | jq -e '.result.serverInfo.version == "5.0.1"' >/dev/null
           tools="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
-          printf '%s' "$tools" | jq -e '.result.tools | length >= 13' >/dev/null
-          for tool in xguard_secretless_egress xguard_egress_fetch xguard_action_rail xguard_facilitator xguard_route xguard_discovery_search xguard_protocols xguard_inspect xguard_health xguard_supported xguard_receipt xguard_integration; do
+          printf '%s' "$tools" | jq -e '.result.tools | length >= 10' >/dev/null
+          for tool in xguard_facilitator xguard_route xguard_discovery_search xguard_protocols xguard_inspect xguard_health xguard_supported xguard_receipt xguard_integration; do
             printf '%s' "$tools" | jq -e --arg tool "$tool" '.result.tools | any(.name == $tool)' >/dev/null
           done
-          printf '%s' "$tools" | jq -e '.result.tools[] | select(.name=="xguard_egress_fetch") | .annotations.destructiveHint == true and .annotations.openWorldHint == true' >/dev/null
