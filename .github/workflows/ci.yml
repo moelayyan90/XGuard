@@ -61,7 +61,7 @@ jobs:
           grep -q 'permit_replay_detected' apps/relay/src/rail.js
           grep -q 'action_replay_detected' apps/relay/src/action-rail.js
           grep -q 'egress_outcome_ambiguous' apps/relay/src/egress-vault.js
-          grep -q 'billing before credential release' apps/relay/src/public-metadata.js
+          grep -q 'billing_before_credential_release: true' apps/relay/src/public-metadata.js
           grep -q 'font-family:Arial' apps/relay/src/site-egress.js
       - name: Discovery, Action Rail and Secretless Egress behavior tests
         run: |
