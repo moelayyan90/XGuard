@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard-control-plane",
-  "title": "XGuard Agent Spend Firewall + ATS-100",
-  "description": "Mandatory scoped spend authority and safety gate for AI-agent financial actions.",
-  "version": "4.1.0",
+  "title": "XGuard High-Velocity x402 Facilitator",
+  "description": "Public x402 money-path facilitator for AI agents and resource servers: one endpoint with automatic capability-, health- and latency-aware settlement routing, Bazaar discovery, failover, replay protection and reconciliation.",
+  "version": "5.0.0",
   "websiteUrl": "https://xguardgate.com",
   "remotes": [
     {
