@@ -1,5 +1,6 @@
 const VERSION = "5.0.1";
 const API = "https://api.xguardgate.com";
+const SITE = "https://xguardgate.com";
 const HSTS = "max-age=31536000; includeSubDomains";
 
 const headers = (contentType = "application/json; charset=utf-8") => ({
@@ -31,8 +32,9 @@ function commonDiscovery() {
     search: `${API}/discovery/search`,
     mcp: `${API}/mcp`,
     openapi: `${API}/openapi.json`,
+    ai_plugin: `${API}/.well-known/ai-plugin.json`,
     agent_card: `${API}/.well-known/agent-card.json`,
-    security: "https://xguardgate.com/.well-known/security.txt",
+    security: `${SITE}/.well-known/security.txt`,
   };
 }
 
@@ -112,15 +114,42 @@ function protocolManifest() {
   };
 }
 
+function aiPluginManifest() {
+  return {
+    schema_version: "v1",
+    name_for_human: "XGuard High-Velocity x402 Facilitator",
+    name_for_model: "xguard_x402_facilitator",
+    description_for_human: "Non-custodial x402 v2 facilitator with safe automatic routing, discovery and replay protection.",
+    description_for_model: "Use XGuard as a non-custodial x402 v2 facilitator at https://api.xguardgate.com. Discover supported payment kinds and resources, inspect automatic route selection, and use the published OpenAPI or MCP interfaces. XGuard does not change the signed recipient or payment amount; ambiguous settlement retries fail closed unless reconciliation proves retry safety.",
+    auth: { type: "none" },
+    api: {
+      type: "openapi",
+      url: `${API}/openapi.json`,
+      is_user_authenticated: false,
+    },
+    logo_url: `${SITE}/logo.svg`,
+    contact_email: "mo.elayyan2023@gmail.com",
+    legal_info_url: "https://github.com/moelayyan90/XGuard",
+    xguard: {
+      version: VERSION,
+      x402_version: 2,
+      facilitator_url: API,
+      mcp_url: `${API}/mcp`,
+      custody: "none",
+    },
+  };
+}
+
 export default {
   async fetch(request) {
     const { pathname } = new URL(request.url);
-    if (!['GET', 'HEAD'].includes(request.method)) return null;
+    if (!["GET", "HEAD"].includes(request.method)) return null;
 
     if (pathname === "/architecture") return response(request, architecture());
     if (pathname === "/v1/protocols" || pathname === "/.well-known/xguard.json") {
       return response(request, protocolManifest());
     }
+    if (pathname === "/.well-known/ai-plugin.json") return response(request, aiPluginManifest());
 
     return null;
   },
