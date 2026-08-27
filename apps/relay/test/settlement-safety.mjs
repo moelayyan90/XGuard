@@ -36,8 +36,9 @@ function quotaBinding() {
     idFromName(name) { return name; },
     get() {
       return {
-        async fetch(request) {
-          const path = new URL(request.url).pathname;
+        async fetch(input) {
+          const href = typeof input === "string" ? input : input?.url;
+          const path = new URL(href).pathname;
           if (path === "/admit") return new Response(JSON.stringify({ ok: true, nonce: "quota-test", success: 0 }), { status: 200, headers: { "content-type": "application/json" } });
           return new Response(JSON.stringify({ ok: true, success: path === "/commit" ? 1 : 0 }), { status: 200, headers: { "content-type": "application/json" } });
         },
