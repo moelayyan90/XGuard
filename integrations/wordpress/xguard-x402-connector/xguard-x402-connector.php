@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 const XGUARD_X402_CONNECTOR_ID = 'xguard_mainnet';
-const XGUARD_X402_FACILITATOR_URL = 'https://api.xguardgate.com';
+const XGUARD_X402_FACILITATOR_URL = 'https://xguardgate.com/api';
 const XGUARD_X402_BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
 function xguard_x402_license_key(): string {
@@ -114,7 +114,7 @@ add_action(
 					'introHeadline' => 'Route this WordPress x402 paywall through XGuard on Base mainnet.',
 					'introBody'     => 'No XGuard key is required for the current free allowance. Sites with Usage Credits can define XGUARD_LICENSE_KEY in wp-config.php or the environment.',
 					'docsLinkText'  => 'XGuard API and integration docs',
-					'docsUrl'       => 'https://api.xguardgate.com/docs',
+					'docsUrl'       => 'https://xguardgate.com/api/docs',
 				);
 			},
 			10,

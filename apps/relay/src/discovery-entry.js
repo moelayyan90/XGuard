@@ -3,7 +3,7 @@ export * from "./product-entry.js";
 
 const VERSION = "5.0.2";
 const SITE = "https://xguardgate.com";
-const API = "https://api.xguardgate.com";
+const API = "https://xguardgate.com/api";
 const MCP = `${API}/mcp`;
 const REPO = "https://github.com/moelayyan90/XGuard";
 const REGISTRY_DESCRIPTION = "Protect AI agents from API-key exposure with secretless credentials and signed execution proofs.";
@@ -253,13 +253,35 @@ async function normalizeMcpVersion(snapshot, response) {
   const headers = new Headers(response.headers);
   headers.delete("content-length");
   headers.set("x-xguard-version", VERSION);
+    if (routed.apiAlias) headers.set("x-xguard-api-path", "/api");
   return new Response(JSON.stringify(body), { status: response.status, statusText: response.statusText, headers });
+}
+
+function routeApiAlias(request) {
+  const originalUrl = new URL(request.url);
+  const isPathAlias =
+    (originalUrl.hostname === "xguardgate.com" || originalUrl.hostname === "www.xguardgate.com") &&
+    (originalUrl.pathname === "/api" || originalUrl.pathname.startsWith("/api/"));
+
+  if (!isPathAlias) {
+    return { request, url: originalUrl, apiAlias: false };
+  }
+
+  const routedUrl = new URL(originalUrl);
+  routedUrl.pathname = originalUrl.pathname === "/api" ? "/" : originalUrl.pathname.slice(4);
+  return {
+    request: new Request(routedUrl.toString(), request),
+    url: routedUrl,
+    apiAlias: true,
+  };
 }
 
 export default {
   async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    if (request.method === "GET") {
+    const routed = routeApiAlias(request);
+    const effectiveRequest = routed.request;
+    const url = routed.url;
+    if (effectiveRequest.method === "GET") {
       if (url.pathname === "/llms.txt") return text(llmsTxt());
       if (url.pathname === "/robots.txt") return text(robotsTxt());
       if (url.pathname === "/sitemap.xml") return new Response(sitemapXml(), { status: 200, headers: commonHeaders("application/xml; charset=utf-8") });
@@ -268,8 +290,8 @@ export default {
       if (url.pathname === "/.well-known/xguard.json" || url.pathname === "/identity") return json(identity);
     }
 
-    const mcpSnapshot = url.pathname === "/mcp" && request.method === "POST" ? request.clone() : null;
-    let response = await app.fetch(request, env, ctx);
+    const mcpSnapshot = url.pathname === "/mcp" && effectiveRequest.method === "POST" ? effectiveRequest.clone() : null;
+    let response = await app.fetch(effectiveRequest, env, ctx);
     response = await normalizeMcpVersion(mcpSnapshot, response);
     if (!(response instanceof Response)) return response;
 
@@ -278,7 +300,7 @@ export default {
     headers.set("x-xguard-canonical-api", API);
     headers.set("x-xguard-canonical-mcp", MCP);
     headers.set("x-xguard-version", VERSION);
-    if (request.method === "GET" && url.pathname === "/") {
+    if (effectiveRequest.method === "GET" && url.pathname === "/" && !routed.apiAlias) {
       headers.set("link", `<${SITE}/>; rel=\"canonical\", <${SITE}/llms.txt>; rel=\"alternate\"; type=\"text/plain\", <${SITE}/server.json>; rel=\"describedby\"; type=\"application/json\", <${SITE}/.well-known/mcp/server-card.json>; rel=\"describedby\"; type=\"application/json\"`);
       headers.set("cache-control", "public, max-age=60, must-revalidate");
       headers.set("x-robots-tag", "index, follow");

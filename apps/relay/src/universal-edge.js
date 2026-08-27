@@ -1,4 +1,4 @@
-const VERSION="4.0.0",API="https://api.xguardgate.com",MAX_BODY=1048576,FREE=1000,CREDITS=1;
+const VERSION="4.0.0",API="https://xguardgate.com/api",MAX_BODY=1048576,FREE=1000,CREDITS=1;
 const J=(b,s=200,h={})=>new Response(JSON.stringify(b),{status:s,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","x-xguard-edge":VERSION,...h}});
 const low=x=>String(x||"").toLowerCase();const keyOf=r=>(r.headers.get("x-xguard-key")||"").trim();
 function privateHost(host){const h=low(host).replace(/^\[|\]$/g,"");if(!h||h==="localhost"||h.endsWith(".localhost")||h.endsWith(".local"))return true;if(/^127\.|^10\.|^0\.|^169\.254\.|^192\.168\./.test(h))return true;const m=h.match(/^172\.(\d+)\./);if(m&&+m[1]>=16&&+m[1]<=31)return true;return h==="::1"||h.startsWith("fc")||h.startsWith("fd")||h.startsWith("fe80:")}

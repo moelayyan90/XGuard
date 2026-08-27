@@ -11,7 +11,7 @@ import {
 } from "../src/index.js";
 
 test("pins the canonical XGuard facilitator", () => {
-  assert.equal(XGUARD_FACILITATOR_URL, "https://api.xguardgate.com");
+  assert.equal(XGUARD_FACILITATOR_URL, "https://xguardgate.com/api");
   assert.equal(XGUARD_EDGE_VERSION, "5.0.1");
 });
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import product from "./product-entry.js";
 
 test("product entry rewrites MCP initialize to Secretless Gateway identity", async () => {
-  const request = new Request("https://api.xguardgate.com/mcp", {
+  const request = new Request("https://xguardgate.com/api/mcp", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -23,5 +23,5 @@ test("product entry rewrites MCP initialize to Secretless Gateway identity", asy
   assert.equal(data.result?.serverInfo?.name, "xguard-secretless-agent-gateway");
   assert.equal(data.result?.serverInfo?.version, "5.0.1");
   assert.match(String(data.result?.instructions || ""), /reusable upstream API credentials/i);
-  assert.equal(response.headers.get("x-xguard-canonical-mcp"), "https://api.xguardgate.com/mcp");
+  assert.equal(response.headers.get("x-xguard-canonical-mcp"), "https://xguardgate.com/api/mcp");
 });

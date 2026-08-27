@@ -6,7 +6,7 @@ import universalEdge, { universalDiscovery } from "./universal-edge.js";
 
 export { MerchantQuota, SettlementReceipt } from "./gateway.js";
 
-const API = "https://api.xguardgate.com";
+const API = "https://xguardgate.com/api";
 const VERSION = "4.0.0";
 const J = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
   status,

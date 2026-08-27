@@ -13,7 +13,7 @@ export {
 export { ActionKeyAuthority, ActionPermitState, ActionMeter };
 
 const VERSION = "5.0.1";
-const API = "https://api.xguardgate.com";
+const API = "https://xguardgate.com/api";
 const SITE = "https://xguardgate.com";
 const HSTS = "max-age=31536000; includeSubDomains";
 const BRAND_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="XGuard"><rect width="64" height="64" rx="14" fill="#0b0b0b"/><path d="M14 12h11l7 12 7-12h11L38.5 32 51 52H40l-8-13-8 13H13l12.5-20z" fill="#f4f2eb"/><path d="M32 7v10M32 47v10" stroke="#ff5a1f" stroke-width="4" stroke-linecap="round"/></svg>`;

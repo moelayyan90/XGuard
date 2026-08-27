@@ -17,7 +17,7 @@ export class XGuardPaidMCP extends McpAgent<Env> {
       network: "base",
       recipient: this.env.MCP_ADDRESS as `0x${string}`,
       facilitator: {
-        url: "https://api.xguardgate.com",
+        url: "https://xguardgate.com/api",
         createAuthHeaders: async () => ({
           supported: {},
           verify: {},

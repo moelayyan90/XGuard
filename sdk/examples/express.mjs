@@ -31,7 +31,7 @@ app.use(
 );
 
 app.get("/api/premium", (_req, res) => {
-  res.json({ ok: true, facilitator: "https://api.xguardgate.com" });
+  res.json({ ok: true, facilitator: "https://xguardgate.com/api" });
 });
 
 app.listen(process.env.PORT || 4021);

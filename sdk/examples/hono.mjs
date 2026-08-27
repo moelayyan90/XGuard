@@ -30,6 +30,6 @@ app.use(
   ),
 );
 
-app.get("/premium", (c) => c.json({ ok: true, facilitator: "https://api.xguardgate.com" }));
+app.get("/premium", (c) => c.json({ ok: true, facilitator: "https://xguardgate.com/api" }));
 
 export default app;

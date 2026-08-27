@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import process from "node:process";
 
 const samplePath = process.env.XGUARD_SAMPLE || ".xguard/transaction.json";
-const api = process.env.XGUARD_API_URL || "https://api.xguardgate.com/v1/test";
+const api = process.env.XGUARD_API_URL || "https://xguardgate.com/api/v1/test";
 const min = Number(process.env.XGUARD_MIN_SCORE || 90);
 
 if (!Number.isFinite(min) || min < 0 || min > 100) {

@@ -1,7 +1,7 @@
 import { consumeMandate } from "./authority.js";
 
 const VERSION = "0.1.0";
-const API = "https://api.xguardgate.com";
+const API = "https://xguardgate.com/api";
 const enc = new TextEncoder();
 
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {

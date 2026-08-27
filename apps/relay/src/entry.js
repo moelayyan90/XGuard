@@ -122,22 +122,22 @@ function architectureResponse() {
       ]
     },
     discovery: {
-      docs: "https://api.xguardgate.com/docs",
-      openapi: "https://api.xguardgate.com/openapi.json",
-      protocols: "https://api.xguardgate.com/v1/protocols",
-      authority: "https://api.xguardgate.com/.well-known/xguard-authority.json",
+      docs: "https://xguardgate.com/api/docs",
+      openapi: "https://xguardgate.com/api/openapi.json",
+      protocols: "https://xguardgate.com/api/v1/protocols",
+      authority: "https://xguardgate.com/api/.well-known/xguard-authority.json",
       safety_test: "https://xguardgate.com/test",
-      manifest: "https://api.xguardgate.com/.well-known/xguard.json",
-      x402: "https://api.xguardgate.com/.well-known/x402.json",
-      x402_alias: "https://api.xguardgate.com/.well-known/x402",
-      payment_manifest: "https://api.xguardgate.com/.well-known/payment-manifest",
-      agent_card: "https://api.xguardgate.com/.well-known/agent-card.json",
-      glama: "https://api.xguardgate.com/.well-known/glama.json",
-      skill: "https://api.xguardgate.com/skill.md",
-      llms: "https://api.xguardgate.com/llms.txt",
-      sitemap: "https://api.xguardgate.com/sitemap.xml",
-      mcp: "https://api.xguardgate.com/mcp",
-      a2a: "https://api.xguardgate.com/a2a"
+      manifest: "https://xguardgate.com/api/.well-known/xguard.json",
+      x402: "https://xguardgate.com/api/.well-known/x402.json",
+      x402_alias: "https://xguardgate.com/api/.well-known/x402",
+      payment_manifest: "https://xguardgate.com/api/.well-known/payment-manifest",
+      agent_card: "https://xguardgate.com/api/.well-known/agent-card.json",
+      glama: "https://xguardgate.com/api/.well-known/glama.json",
+      skill: "https://xguardgate.com/api/skill.md",
+      llms: "https://xguardgate.com/api/llms.txt",
+      sitemap: "https://xguardgate.com/api/sitemap.xml",
+      mcp: "https://xguardgate.com/api/mcp",
+      a2a: "https://xguardgate.com/api/a2a"
     }
   }), {
     status: 200,

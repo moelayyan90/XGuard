@@ -8,7 +8,7 @@ client / agent
       v
 XGuard Edge Gate (Cloudflare Worker)
       |  protected route: require x402 payment
-      |  verify + settle through https://api.xguardgate.com
+      |  verify + settle through https://xguardgate.com/api
       v
 existing origin API / website
 ```
@@ -74,7 +74,7 @@ Edit `wrangler.jsonc` or set equivalent Worker variables:
 - `AUTO_GATE_OPENAPI`: explicit opt-in for OpenAPI-derived protection.
 - `OPENAPI_URL`: same-origin OpenAPI JSON URL; defaults to `<origin>/openapi.json` when AutoGate is on.
 - `DEFAULT_PRICE`: default AutoGate price, normally `$0.01`.
-- `FACILITATOR_URL`: defaults to `https://api.xguardgate.com`.
+- `FACILITATOR_URL`: defaults to `https://xguardgate.com/api`.
 - `XGUARD_LICENSE_KEY`: optional Worker secret for XGuard Usage Credits after the free allowance.
 
 Explicit route example:

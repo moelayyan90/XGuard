@@ -16,7 +16,7 @@ export {
 export { EgressKeyAuthority, EgressCredentialState, EgressTenantIndex, EgressCapabilityState, EgressMeter };
 
 const VERSION = "5.0.1";
-const API = "https://api.xguardgate.com";
+const API = "https://xguardgate.com/api";
 const SITE = "https://xguardgate.com";
 const HSTS = "max-age=31536000; includeSubDomains";
 

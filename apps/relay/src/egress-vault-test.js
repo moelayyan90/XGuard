@@ -4,7 +4,7 @@ import egress, { __test } from "./egress-vault.js";
 import product from "./egress-entry.js";
 
 test("Secretless Egress publishes the credential-broker contract", async () => {
-  const response = await egress.fetch(new Request("https://api.xguardgate.com/v1/egress"), { EGRESS_EXECUTION_CREDITS: "1" });
+  const response = await egress.fetch(new Request("https://xguardgate.com/api/v1/egress"), { EGRESS_EXECUTION_CREDITS: "1" });
   assert.equal(response.status, 200);
   const data = await response.json();
   assert.equal(data.name, "XGuard Secretless Egress");
@@ -16,7 +16,7 @@ test("Secretless Egress publishes the credential-broker contract", async () => {
 });
 
 test("Production wrapper publishes provider metadata", async () => {
-  const response = await product.fetch(new Request("https://api.xguardgate.com/v1/egress/providers"), {});
+  const response = await product.fetch(new Request("https://xguardgate.com/api/v1/egress/providers"), {});
   assert.equal(response.status, 200);
   const data = await response.json();
   assert.deepEqual(data.providers.openai.hosts, ["api.openai.com"]);
@@ -46,7 +46,7 @@ test("Custom credentials require explicit public hosts and safe headers", () => 
 
 test("Target scope rejects private, XGuard and off-policy origins", () => {
   assert.equal(__test.safeTarget("https://127.0.0.1/admin"), null);
-  assert.equal(__test.safeTarget("https://api.xguardgate.com/v1/egress"), null);
+  assert.equal(__test.safeTarget("https://xguardgate.com/api/v1/egress"), null);
   const target = __test.safeTarget("https://api.openai.com/v1/responses");
   assert.ok(target);
   const record = { allowed_hosts: ["api.openai.com"], allowed_paths: ["/v1/"], allowed_methods: ["POST"] };
@@ -71,5 +71,5 @@ test("User headers cannot override injected credentials or XGuard controls", () 
 });
 
 test("Secretless Egress ignores unrelated paths", async () => {
-  assert.equal(await egress.fetch(new Request("https://api.xguardgate.com/not-egress"), {}), null);
+  assert.equal(await egress.fetch(new Request("https://xguardgate.com/api/not-egress"), {}), null);
 });

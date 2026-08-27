@@ -5,7 +5,7 @@ XGuard is a hosted remote MCP server. Do **not** clone, build, or run a local pr
 Canonical endpoint:
 
 ```text
-https://api.xguardgate.com/mcp
+https://xguardgate.com/api/mcp
 ```
 
 Transport: Streamable HTTP.
@@ -33,7 +33,7 @@ The live `tools/list` response is authoritative if additional compatibility tool
 Add a Remote MCP Server with:
 
 - Name: `xguard`
-- URL: `https://api.xguardgate.com/mcp`
+- URL: `https://xguardgate.com/api/mcp`
 - Transport: Streamable HTTP / HTTP
 
 No local process is required.
@@ -41,14 +41,14 @@ No local process is required.
 ## Claude Code
 
 ```bash
-claude mcp add xguard --transport http https://api.xguardgate.com/mcp
+claude mcp add xguard --transport http https://xguardgate.com/api/mcp
 ```
 
 ## Codex
 
 ```toml
 [mcp_servers.xguard]
-url = "https://api.xguardgate.com/mcp"
+url = "https://xguardgate.com/api/mcp"
 ```
 
 ## Cursor / VS Code / other remote-MCP clients
@@ -56,7 +56,7 @@ url = "https://api.xguardgate.com/mcp"
 Point the remote MCP configuration at:
 
 ```text
-https://api.xguardgate.com/mcp
+https://xguardgate.com/api/mcp
 ```
 
 The exact wrapper object varies by client. The canonical URL does not.
@@ -68,9 +68,9 @@ The exact wrapper object varies by client. The canonical URL does not.
 - Official MCP Registry manifest: https://xguardgate.com/server.json
 - Smithery static server card: https://xguardgate.com/.well-known/mcp/server-card.json
 - XGuard identity: https://xguardgate.com/identity
-- OpenAPI: https://api.xguardgate.com/openapi.json
-- Secretless Egress manifest: https://api.xguardgate.com/.well-known/xguard-egress.json
-- ProofRail manifest: https://api.xguardgate.com/v1/proof
+- OpenAPI: https://xguardgate.com/api/openapi.json
+- Secretless Egress manifest: https://xguardgate.com/api/.well-known/xguard-egress.json
+- ProofRail manifest: https://xguardgate.com/api/v1/proof
 - Source: https://github.com/moelayyan90/XGuard
 - Official MCP Registry name: `io.github.moelayyan90/xguard-control-plane`
 
@@ -84,7 +84,7 @@ Do not place a reusable upstream provider credential directly in an agent prompt
 
 A reviewer can verify XGuard without running local code:
 
-1. POST MCP `initialize` to `https://api.xguardgate.com/mcp`.
+1. POST MCP `initialize` to `https://xguardgate.com/api/mcp`.
 2. POST `tools/list` to the same endpoint.
 3. Read `https://xguardgate.com/.well-known/mcp/server-card.json`.
 4. Check `https://xguardgate.com/server.json` and this public repository.
