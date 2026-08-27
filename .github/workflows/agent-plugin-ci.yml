@@ -1,0 +1,89 @@
+name: XGuard Agent Plugin CI
+
+on:
+  pull_request:
+    paths:
+      - "plugin.json"
+      - "mcp.json"
+      - ".mcp.json"
+      - ".cursor/mcp.json"
+      - ".vscode/mcp.json"
+      - ".github/plugin/marketplace.json"
+      - "CONNECT.md"
+      - ".github/workflows/agent-plugin-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "plugin.json"
+      - "mcp.json"
+      - ".mcp.json"
+      - ".cursor/mcp.json"
+      - ".vscode/mcp.json"
+      - ".github/plugin/marketplace.json"
+      - "CONNECT.md"
+      - ".github/workflows/agent-plugin-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate portable and native manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const read = p => JSON.parse(fs.readFileSync(p, 'utf8'));
+          const endpoint = 'https://api.xguardgate.com/mcp';
+
+          const plugin = read('plugin.json');
+          if (plugin.$schema !== 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json') throw new Error('invalid plugin schema');
+          if (plugin.name !== 'xguard-x402' || plugin.version !== '5.0.1') throw new Error('invalid plugin identity/version');
+          if (plugin.repository !== 'https://github.com/moelayyan90/XGuard') throw new Error('invalid plugin repository');
+
+          const portable = read('mcp.json');
+          if (portable.$schema !== 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json') throw new Error('invalid portable MCP schema');
+          if (portable.mcpServers?.xguard?.type !== 'streamable-http' || portable.mcpServers?.xguard?.url !== endpoint) throw new Error('invalid portable MCP endpoint');
+
+          const project = read('.mcp.json');
+          if (project.mcpServers?.xguard?.type !== 'http' || project.mcpServers?.xguard?.url !== endpoint) throw new Error('invalid Claude/Copilot config');
+
+          const cursor = read('.cursor/mcp.json');
+          if (cursor.mcpServers?.xguard?.url !== endpoint) throw new Error('invalid Cursor config');
+
+          const vscode = read('.vscode/mcp.json');
+          if (vscode.servers?.xguard?.type !== 'http' || vscode.servers?.xguard?.url !== endpoint) throw new Error('invalid VS Code config');
+
+          const market = read('.github/plugin/marketplace.json');
+          const entry = market.plugins?.find(p => p.name === 'xguard-x402');
+          if (market.name !== 'xguard-plugins' || entry?.version !== '5.0.1' || entry?.source !== '.') throw new Error('invalid Copilot marketplace manifest');
+
+          const connect = fs.readFileSync('CONNECT.md', 'utf8');
+          for (const expected of [
+            'copilot plugin install moelayyan90/XGuard',
+            'claude mcp add --transport http xguard https://api.xguardgate.com/mcp',
+            'cursor://anysphere.cursor-deeplink/mcp/install?',
+            'vscode:mcp/install?'
+          ]) if (!connect.includes(expected)) throw new Error(`CONNECT.md missing ${expected}`);
+          NODE
+
+      - name: Verify live MCP handshake and tool surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://api.xguardgate.com/mcp'
+          init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-agent-plugin-ci","version":"1.0.0"}}}')"
+          printf '%s' "$init" | jq -e '.result.serverInfo.name == "xguard-high-velocity-x402-facilitator" and .result.serverInfo.version == "5.0.1"' >/dev/null
+
+          tools="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
+          printf '%s' "$tools" | jq -e '.result.tools | length == 10' >/dev/null
+          for tool in xguard_facilitator xguard_route xguard_discovery_search xguard_safety_test xguard_protocols xguard_inspect xguard_health xguard_supported xguard_receipt xguard_integration; do
+            printf '%s' "$tools" | jq -e --arg tool "$tool" '.result.tools | any(.name == $tool)' >/dev/null
+          done

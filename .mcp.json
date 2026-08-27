@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "xguard": {
+      "type": "http",
+      "url": "https://api.xguardgate.com/mcp"
+    }
+  }
+}
