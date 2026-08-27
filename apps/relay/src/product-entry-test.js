@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import product from "./product-entry.js";
 
 test("product entry rewrites MCP initialize to Secretless Gateway identity", async () => {
-  const request = new Request("https://xguardgate.com/api/mcp", {
+  const request = new Request("https://api.xguardgate.com/mcp", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
