@@ -67,37 +67,20 @@ jobs:
               exit "$upload_status"
             fi
           else
-            version_id="$(node - <<'NODE'
-            const fs=require('node:fs');
-            let id='';
-            try {
-              const lines=fs.readFileSync('/tmp/xguard-wrangler-upload.ndjson','utf8').split(/\r?\n/).filter(Boolean);
-              for(const line of lines){
-                try { const x=JSON.parse(line); if(x.type==='version-upload' && x.version_id) id=x.version_id; } catch {}
-              }
-            } catch {}
-            if(!id){
-              const text=fs.readFileSync('/tmp/xguard-wrangler-upload.log','utf8');
-              const m=text.match(/Worker Version ID:\s*([a-f0-9-]{36})/i) || text.match(/Version ID:\s*([a-f0-9-]{36})/i);
-              if(m) id=m[1];
-            }
-            if(!id) process.exit(1);
-            process.stdout.write(id);
-            NODE
-            )"
+            version_id="$(grep -Eo '"'"'version_id'"'"'[[:space:]]*:[[:space:]]*'"'"'[a-f0-9-]{36}'"'"'' /tmp/xguard-wrangler-upload.ndjson 2>/dev/null | tail -1 | grep -Eo '[a-f0-9-]{36}' || true)"
+            if [[ -z "$version_id" ]]; then
+              version_id="$(grep -Eo '(Worker Version ID:|Version ID:)[[:space:]]*[a-f0-9-]{36}' /tmp/xguard-wrangler-upload.log | tail -1 | grep -Eo '[a-f0-9-]{36}' || true)"
+            fi
             echo "Uploaded Worker version: $version_id"
             [[ "$version_id" =~ ^[a-f0-9-]{36}$ ]]
 
             export WRANGLER_OUTPUT_FILE_PATH=/tmp/xguard-wrangler-deploy.ndjson
             npx --yes wrangler@4.123.0 versions deploy "${version_id}@100%" -y --config apps/relay/wrangler.jsonc --message "Promote XGuard ${GITHUB_SHA}"
-
-            node - <<'NODE'
-            const fs=require('node:fs');
-            const path='/tmp/xguard-wrangler-deploy.ndjson';
-            const lines=fs.existsSync(path)?fs.readFileSync(path,'utf8').split(/\r?\n/).filter(Boolean):[];
-            const deployed=lines.some(line=>{try{return JSON.parse(line).type==='version-deploy'}catch{return false}});
-            if(!deployed) throw new Error('Wrangler did not record a version-deploy event');
-            NODE
+            grep -Eq '"'"'type'"'"'[[:space:]]*:[[:space:]]*'"'"'version-deploy'"'"'' /tmp/xguard-wrangler-deploy.ndjson || {
+              echo 'Wrangler did not record a version-deploy event.'
+              cat /tmp/xguard-wrangler-deploy.ndjson || true
+              exit 1
+            }
           fi
 
       - name: Production smoke test
