@@ -59,6 +59,8 @@ jobs:
           grep -q 'settlement_state_ambiguous_no_reconciliation' apps/relay/src/index.js
           grep -q 'ambiguous_settlement_fail_closed: true' apps/relay/src/index.js
           grep -q 'x-xguard-settlement-safety' apps/relay/src/index.js
+          grep -q '/logo.svg' apps/relay/src/rail-entry.js
+          grep -q '/.well-known/security.txt' apps/relay/src/rail-entry.js
           node -e 'const x=require("./server.json"); if(x.version!=="5.0.0"||!String(x.title).includes("x402 Facilitator")) process.exit(1)'
       - name: Wrangler dry run
         run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/relay/wrangler.jsonc
