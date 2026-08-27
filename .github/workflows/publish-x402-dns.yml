@@ -1,0 +1,58 @@
+name: Publish XGuard x402 DNS Discovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay/src/x402-market.js"
+      - ".github/workflows/publish-x402-dns.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-dns:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Upsert _x402 discovery TXT record
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
+
+          api='https://api.cloudflare.com/client/v4'
+          auth=(-H "Authorization: Bearer $token" -H 'Content-Type: application/json')
+          zone_json="$(curl --fail-with-body --silent --show-error "${auth[@]}" "$api/zones?name=xguardgate.com&account.id=$CLOUDFLARE_ACCOUNT_ID")"
+          zone_id="$(printf '%s' "$zone_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const z=x.result?.find(z=>z.name==="xguardgate.com");if(!z?.id)process.exit(1);process.stdout.write(z.id)})')"
+
+          name='_x402.xguardgate.com'
+          content='v=x402-1; wk=https://api.xguardgate.com/.well-known/x402; k=facilitator; net=eip155:8453; scheme=exact'
+          payload="$(node -e 'process.stdout.write(JSON.stringify({type:"TXT",name:process.argv[1],content:process.argv[2],ttl:300,comment:"XGuard x402 facilitator discovery compatibility record"}))' "$name" "$content")"
+
+          existing="$(curl --fail-with-body --silent --show-error "${auth[@]}" "$api/zones/$zone_id/dns_records?type=TXT&name=$name")"
+          record_id="$(printf '%s' "$existing" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);process.stdout.write(x.result?.[0]?.id||"")})')"
+
+          if [[ -n "$record_id" ]]; then
+            result="$(curl --fail-with-body --silent --show-error "${auth[@]}" -X PATCH "$api/zones/$zone_id/dns_records/$record_id" --data "$payload")"
+            action='updated'
+          else
+            result="$(curl --fail-with-body --silent --show-error "${auth[@]}" -X POST "$api/zones/$zone_id/dns_records" --data "$payload")"
+            action='created'
+          fi
+
+          printf '%s' "$result" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.success!==true||x.result?.type!=="TXT")process.exit(1);console.log(JSON.stringify({id:x.result.id,name:x.result.name,content:x.result.content,ttl:x.result.ttl}))})'
+          echo "_x402 TXT record $action"
+          {
+            echo '### x402 DNS discovery'
+            echo ''
+            echo "- Record: $name"
+            echo "- State: $action"
+            echo "- Value: $content"
+            echo '- Live /supported remains authoritative for actual schemes/networks.'
+          } >> "$GITHUB_STEP_SUMMARY"
