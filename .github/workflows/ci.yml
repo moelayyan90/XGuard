@@ -20,7 +20,7 @@ jobs:
         run: npm install --prefix apps/relay --no-audit --no-fund
       - name: Relay syntax check
         run: npm run --prefix apps/relay check
-      - name: Secretless Egress, discovery, WebMCP, Action Rail, universal edge and settlement syntax
+      - name: Secretless Egress, discovery, WebMCP, A2A, Action Rail, universal edge and settlement syntax
         run: |
           node --check apps/relay/src/universal-edge.js
           node --check apps/relay/src/site-universal.js
@@ -38,6 +38,7 @@ jobs:
           node --check apps/relay/src/product-entry.js
           node --check apps/relay/src/discovery-entry.js
           node --check apps/relay/src/webmcp-entry.js
+          node --check apps/relay/src/a2a-entry.js
           node --check apps/relay/src/product-entry-test.js
           node --check apps/relay/src/rail-entry.js
           node --check apps/relay/src/entry.js
@@ -60,7 +61,7 @@ jobs:
           grep -q 'EgressMeter' apps/relay/wrangler.jsonc
           grep -q 'ACTION_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
           grep -q 'EGRESS_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
-          grep -q '"main": "src/webmcp-entry.js"' apps/relay/wrangler.jsonc
+          grep -q '"main": "src/a2a-entry.js"' apps/relay/wrangler.jsonc
           grep -q '"workers_dev": false' apps/relay/wrangler.jsonc
           ! grep -q '"routes"' apps/relay/wrangler.jsonc
           grep -q 'io.github.moelayyan90/xguard-control-plane' apps/relay/src/discovery-entry.js
@@ -69,6 +70,11 @@ jobs:
           grep -q 'document.modelContext' apps/relay/src/webmcp-entry.js
           grep -q 'xguard_discover' apps/relay/src/webmcp-entry.js
           grep -q 'readOnlyHint: true' apps/relay/src/webmcp-entry.js
+          grep -q '/.well-known/agent-card.json' apps/relay/src/a2a-entry.js
+          grep -q 'protocolBinding: "JSONRPC"' apps/relay/src/a2a-entry.js
+          grep -q 'protocolVersion: A2A_VERSION' apps/relay/src/a2a-entry.js
+          grep -q 'SendMessage' apps/relay/src/a2a-entry.js
+          grep -q 'discovery-only' apps/relay/src/a2a-entry.js
           grep -q 'xguard_mandate_required' apps/relay/src/authority.js
           grep -q 'permit_replay_detected' apps/relay/src/rail.js
           grep -q 'action_replay_detected' apps/relay/src/action-rail.js
