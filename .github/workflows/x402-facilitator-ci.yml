@@ -8,6 +8,7 @@ on:
       - "apps/relay/src/rail-entry.js"
       - "apps/relay/src/secure-entry.js"
       - "apps/relay/src/site-universal.js"
+      - "apps/relay/test/settlement-safety.mjs"
       - "apps/relay/wrangler.jsonc"
       - "server.json"
       - ".github/workflows/x402-facilitator-ci.yml"
@@ -19,6 +20,7 @@ on:
       - "apps/relay/src/rail-entry.js"
       - "apps/relay/src/secure-entry.js"
       - "apps/relay/src/site-universal.js"
+      - "apps/relay/test/settlement-safety.mjs"
       - "apps/relay/wrangler.jsonc"
       - "server.json"
       - ".github/workflows/x402-facilitator-ci.yml"
@@ -46,6 +48,9 @@ jobs:
           node --check apps/relay/src/rail-entry.js
           node --check apps/relay/src/secure-entry.js
           node --check apps/relay/src/site-universal.js
+          node --check apps/relay/test/settlement-safety.mjs
+      - name: Settlement safety behavior
+        run: node apps/relay/test/settlement-safety.mjs
       - name: Contract assertions
         shell: bash
         run: |
