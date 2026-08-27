@@ -1,6 +1,7 @@
 import secure from "./secure-entry.js";
 import rail from "./rail.js";
 import market from "./x402-market.js";
+import publicMetadata from "./public-metadata.js";
 
 export { MerchantQuota, SettlementReceipt, AgentAuthority } from "./secure-entry.js";
 export { RailKeyAuthority, RailPermitState, RailMeter } from "./rail.js";
@@ -47,6 +48,9 @@ export default {
   async fetch(request, env, ctx) {
     const staticResponse = staticDiscovery(request);
     if (staticResponse instanceof Response) return staticResponse;
+
+    const metadataResponse = await publicMetadata.fetch(request, env, ctx);
+    if (metadataResponse instanceof Response) return metadataResponse;
 
     const marketResponse = await market.fetch(request, env, ctx);
     if (marketResponse instanceof Response) return marketResponse;
