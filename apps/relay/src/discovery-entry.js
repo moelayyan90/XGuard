@@ -6,6 +6,7 @@ const SITE = "https://xguardgate.com";
 const API = "https://xguardgate.com/api";
 const MCP = `${API}/mcp`;
 const REPO = "https://github.com/moelayyan90/XGuard";
+const INDEXNOW_KEY = "f3fd1a3fde659a05a8dddfa614b408ac";
 const REGISTRY_DESCRIPTION = "Protect AI agents from API-key exposure with secretless credentials and signed execution proofs.";
 const DESCRIPTION = "Protect AI agents from API-key exposure with secretless credential custody, scoped capabilities, server-side credential injection, usage metering and signed execution proofs for OpenAI, Anthropic, GitHub, Stripe and public HTTPS APIs.";
 
@@ -109,6 +110,7 @@ const identity = {
     openapi: `${API}/openapi.json`,
     egress_manifest: `${API}/.well-known/xguard-egress.json`,
     proof_manifest: `${API}/v1/proof`,
+    indexnow_key: `${SITE}/${INDEXNOW_KEY}.txt`,
   },
 };
 
@@ -281,6 +283,7 @@ export default {
     const effectiveRequest = routed.request;
     const url = routed.url;
     if (effectiveRequest.method === "GET") {
+      if (url.pathname === `/${INDEXNOW_KEY}.txt`) return text(INDEXNOW_KEY, 200, { "cache-control": "public, max-age=86400" });
       if (url.pathname === "/llms.txt") return text(llmsTxt());
       if (url.pathname === "/robots.txt") return text(robotsTxt());
       if (url.pathname === "/sitemap.xml") return new Response(sitemapXml(), { status: 200, headers: commonHeaders("application/xml; charset=utf-8") });
