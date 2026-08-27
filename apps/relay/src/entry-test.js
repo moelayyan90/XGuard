@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import entry from "./entry.js";
 
-const BASE = "https://xguardgate.com/api";
+const BASE = "https://api.xguardgate.com";
 
 async function call(path, method = "HEAD") {
   return entry.fetch(new Request(`${BASE}${path}`, { method }), {}, undefined);
