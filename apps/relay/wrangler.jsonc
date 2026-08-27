@@ -38,7 +38,8 @@
       { "name": "EGRESS_CREDENTIALS", "class_name": "EgressCredentialState" },
       { "name": "EGRESS_TENANTS", "class_name": "EgressTenantIndex" },
       { "name": "EGRESS_CAPABILITIES", "class_name": "EgressCapabilityState" },
-      { "name": "EGRESS_METER", "class_name": "EgressMeter" }
+      { "name": "EGRESS_METER", "class_name": "EgressMeter" },
+      { "name": "PROOF_AUTHORITY", "class_name": "ProofAuthority" }
     ]
   },
   "migrations": [
@@ -47,7 +48,8 @@
     { "tag": "relay-v3", "new_sqlite_classes": ["AgentAuthority"] },
     { "tag": "relay-v4", "new_sqlite_classes": ["RailKeyAuthority", "RailPermitState", "RailMeter"] },
     { "tag": "relay-v5", "new_sqlite_classes": ["ActionKeyAuthority", "ActionPermitState", "ActionMeter"] },
-    { "tag": "relay-v6", "new_sqlite_classes": ["EgressKeyAuthority", "EgressCredentialState", "EgressTenantIndex", "EgressCapabilityState", "EgressMeter"] }
+    { "tag": "relay-v6", "new_sqlite_classes": ["EgressKeyAuthority", "EgressCredentialState", "EgressTenantIndex", "EgressCapabilityState", "EgressMeter"] },
+    { "tag": "relay-v7", "new_sqlite_classes": ["ProofAuthority"] }
   ],
   "observability": {
     "enabled": true,
