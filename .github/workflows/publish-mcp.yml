@@ -41,5 +41,20 @@ jobs:
           ./mcp-publisher --help >/dev/null
       - name: Authenticate with GitHub OIDC
         run: ./mcp-publisher login github-oidc
-      - name: Publish remote server
-        run: ./mcp-publisher publish server.json
+      - name: Publish remote server idempotently
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          output="$(./mcp-publisher publish server.json 2>&1)"
+          code=$?
+          set -e
+          printf '%s\n' "$output"
+          if [[ "$code" = "0" ]]; then
+            exit 0
+          fi
+          if printf '%s' "$output" | grep -qi 'cannot publish duplicate version'; then
+            echo 'XGuard 4.1.0 is already present in the MCP Registry; treating this as success.'
+            exit 0
+          fi
+          exit "$code"
