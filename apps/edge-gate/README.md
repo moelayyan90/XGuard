@@ -15,6 +15,12 @@ existing origin API / website
 
 The origin does not need the XGuard SDK or x402 middleware. Once the site owner routes traffic through this Worker, every configured protected request is stopped at the edge until the x402 payment succeeds.
 
+## One-click deploy
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/moelayyan90/XGuard/tree/main/apps/edge-gate)
+
+Cloudflare clones the isolated `apps/edge-gate` Worker into the deployer's own Git repository and configures Workers Builds. Before using production funds, replace the sample `ORIGIN_URL`, `PAY_TO` and protected route rules; the runtime deliberately refuses the zero sample receiving address.
+
 ## Production configuration
 
 Edit `wrangler.jsonc` or set equivalent Worker variables:
@@ -51,7 +57,7 @@ Set the optional XGuard license without committing it:
 npx wrangler secret put XGUARD_LICENSE_KEY
 ```
 
-Deploy:
+Deploy manually:
 
 ```bash
 cd apps/edge-gate
