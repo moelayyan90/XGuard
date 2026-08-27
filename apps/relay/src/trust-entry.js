@@ -56,14 +56,12 @@ function httpsRedirect(request) {
   });
 }
 
-async function improveToolsList(request, response) {
-  if (!(response instanceof Response) || !response.ok) return response;
-  const url = new URL(request.url);
-  if (url.pathname !== "/mcp" || request.method !== "POST") return response;
+async function improveToolsList(snapshot, response) {
+  if (!(response instanceof Response) || !response.ok || !snapshot) return response;
 
   let message;
   try {
-    message = await request.clone().json();
+    message = await snapshot.json();
   } catch {
     return response;
   }
@@ -103,8 +101,13 @@ export default {
     const redirect = httpsRedirect(request);
     if (redirect) return redirect;
 
+    const url = new URL(request.url);
+    const snapshot = url.pathname === "/mcp" && request.method === "POST"
+      ? request.clone()
+      : null;
+
     const response = await app.fetch(request, env, ctx);
-    const improved = await improveToolsList(request, response);
+    const improved = await improveToolsList(snapshot, response);
     return harden(improved);
   },
 
