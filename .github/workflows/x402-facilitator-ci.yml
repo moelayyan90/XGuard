@@ -1,0 +1,58 @@
+name: XGuard x402 Facilitator CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/relay/src/x402-market.js"
+      - "apps/relay/src/rail-entry.js"
+      - "apps/relay/src/secure-entry.js"
+      - "apps/relay/src/site-universal.js"
+      - "apps/relay/wrangler.jsonc"
+      - "server.json"
+      - ".github/workflows/x402-facilitator-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay/src/x402-market.js"
+      - "apps/relay/src/rail-entry.js"
+      - "apps/relay/src/secure-entry.js"
+      - "apps/relay/src/site-universal.js"
+      - "apps/relay/wrangler.jsonc"
+      - "server.json"
+      - ".github/workflows/x402-facilitator-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  facilitator-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Install relay dependencies
+        run: npm install --prefix apps/relay --no-audit --no-fund
+      - name: Syntax checks
+        run: |
+          node --check apps/relay/src/x402-market.js
+          node --check apps/relay/src/rail-entry.js
+          node --check apps/relay/src/secure-entry.js
+          node --check apps/relay/src/site-universal.js
+      - name: Contract assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'High-Velocity x402 Facilitator' README.md
+          grep -q '/discovery/resources' README.md
+          grep -q '/v1/facilitator/route' README.md
+          grep -q 'batch-settlement' apps/relay/src/x402-market.js
+          grep -q 'automatic_routing' apps/relay/src/x402-market.js
+          grep -q 'xguard-high-velocity-x402-facilitator' apps/relay/src/secure-entry.js
+          node -e 'const x=require("./server.json"); if(x.version!=="5.0.0"||!String(x.title).includes("x402 Facilitator")) process.exit(1)'
+      - name: Wrangler dry run
+        run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/relay/wrangler.jsonc
