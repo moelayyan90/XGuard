@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "xguard-mainnet",
-  "main": "src/secure-entry.js",
+  "main": "src/rail-entry.js",
   "compatibility_date": "2026-08-25",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
@@ -18,19 +18,24 @@
     "SETTLEMENT_CREDITS": "2",
     "RECOVERY_WINDOW_MS": "24000",
     "FREE_EDGE_TRANSACTIONS": "1000",
-    "EDGE_TRANSACTION_CREDITS": "1"
+    "EDGE_TRANSACTION_CREDITS": "1",
+    "RAIL_FEE_USD_MICROS": "1000"
   },
   "durable_objects": {
     "bindings": [
       { "name": "QUOTAS", "class_name": "MerchantQuota" },
       { "name": "RECEIPTS", "class_name": "SettlementReceipt" },
-      { "name": "AUTHORITY", "class_name": "AgentAuthority" }
+      { "name": "AUTHORITY", "class_name": "AgentAuthority" },
+      { "name": "RAIL_KEYS", "class_name": "RailKeyAuthority" },
+      { "name": "RAIL_PERMITS", "class_name": "RailPermitState" },
+      { "name": "RAIL_METER", "class_name": "RailMeter" }
     ]
   },
   "migrations": [
     { "tag": "relay-v1", "new_sqlite_classes": ["MerchantQuota"] },
     { "tag": "relay-v2", "new_sqlite_classes": ["SettlementReceipt"] },
-    { "tag": "relay-v3", "new_sqlite_classes": ["AgentAuthority"] }
+    { "tag": "relay-v3", "new_sqlite_classes": ["AgentAuthority"] },
+    { "tag": "relay-v4", "new_sqlite_classes": ["RailKeyAuthority", "RailPermitState", "RailMeter"] }
   ],
   "observability": {
     "enabled": true,
