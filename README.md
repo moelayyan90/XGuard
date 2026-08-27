@@ -10,6 +10,44 @@ XGuard is a non-custodial x402 v2 facilitator gateway for AI agents and resource
 
 The product is deliberately positioned **inside `/verify` and `/settle`**, not as an optional scanner beside the payment path.
 
+## Install the XGuard agent tools
+
+Canonical remote MCP endpoint:
+
+```text
+https://api.xguardgate.com/mcp
+```
+
+### GitHub Copilot CLI
+
+```bash
+copilot plugin install moelayyan90/XGuard
+```
+
+Or browse XGuard as a Copilot plugin marketplace:
+
+```bash
+copilot plugin marketplace add moelayyan90/XGuard
+copilot plugin install xguard-x402@xguard-plugins
+```
+
+### Claude Code
+
+```bash
+claude mcp add --transport http xguard https://api.xguardgate.com/mcp
+claude mcp get xguard
+```
+
+### Cursor
+
+[Add XGuard to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=xguard&config=eyJ4Z3VhcmQiOnsidXJsIjoiaHR0cHM6Ly9hcGkueGd1YXJkZ2F0ZS5jb20vbWNwIn19)
+
+### Visual Studio Code / GitHub Copilot
+
+[Install XGuard MCP in VS Code](vscode:mcp/install?%7B%22name%22%3A%22xguard%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fapi.xguardgate.com%2Fmcp%22%7D)
+
+The repository also ships portable Agent Plugins 1.0 metadata plus native project configs for Claude/Copilot, Cursor and VS Code. See [CONNECT.md](CONNECT.md) for the complete connection matrix.
+
 ## Money-path endpoints
 
 ```text
