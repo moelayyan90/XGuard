@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - "llms-install.md"
+      - "apps/relay/src/discovery-entry.js"
       - "apps/relay/src/rail-entry.js"
       - ".github/workflows/distribution-surfaces-ci.yml"
   push:
     branches: [main]
     paths:
       - "llms-install.md"
+      - "apps/relay/src/discovery-entry.js"
       - "apps/relay/src/rail-entry.js"
       - ".github/workflows/distribution-surfaces-ci.yml"
   workflow_dispatch:
@@ -24,20 +26,26 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Validate Cline install guide and source surfaces
+      - name: Validate agent install guide and marketplace discovery surfaces
         shell: bash
         run: |
           set -euo pipefail
           grep -q '^# Install XGuard MCP' llms-install.md
+          grep -q 'XGuard Secretless Agent Gateway' llms-install.md
           grep -q 'https://api.xguardgate.com/mcp' llms-install.md
-          grep -q 'xguard-high-velocity-x402-facilitator' llms-install.md
-          grep -q 'xguard_facilitator' llms-install.md
-          grep -q 'xguard_integration' llms-install.md
+          grep -q 'xguard_secretless_egress' llms-install.md
+          grep -q 'xguard_egress_fetch' llms-install.md
+          grep -q 'xguard_proofrail' llms-install.md
+          grep -q 'xguard_verify_proof' llms-install.md
+          grep -q '/.well-known/mcp/server-card.json' llms-install.md
+          grep -q 'url.pathname === "/.well-known/mcp/server-card.json"' apps/relay/src/discovery-entry.js
+          grep -q 'xguard_secretless_egress' apps/relay/src/discovery-entry.js
+          grep -q 'xguard_egress_fetch' apps/relay/src/discovery-entry.js
+          grep -q 'xguard_proofrail' apps/relay/src/discovery-entry.js
+          grep -q 'xguard_verify_proof' apps/relay/src/discovery-entry.js
           grep -q 'url.pathname === "/connect"' apps/relay/src/rail-entry.js
           grep -q 'url.pathname === "/logo.png"' apps/relay/src/rail-entry.js
           grep -q 'x-xguard-image-dimensions.*400x400' apps/relay/src/rail-entry.js
-          grep -q '"/connect"' apps/relay/src/rail-entry.js
-          grep -q '"/logo.png"' apps/relay/src/rail-entry.js
 
       - name: Verify canonical MCP remains live
         shell: bash
@@ -45,9 +53,11 @@ jobs:
           set -euo pipefail
           endpoint='https://api.xguardgate.com/mcp'
           init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-distribution-ci","version":"1.0.0"}}}')"
-          printf '%s' "$init" | jq -e '.result.serverInfo.name == "xguard-high-velocity-x402-facilitator" and .result.serverInfo.version == "5.0.1"' >/dev/null
+          printf '%s' "$init" | jq -e '.result.serverInfo.name == "xguard-secretless-agent-gateway" and .result.serverInfo.version == "5.0.2"' >/dev/null
+          tools="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
+          printf '%s' "$tools" | jq -e '[.result.tools[].name] as $n | ["xguard_secretless_egress","xguard_egress_fetch","xguard_proofrail","xguard_verify_proof"] | all(. as $x | $n | index($x) != null)' >/dev/null
 
-      - name: Verify production connect and marketplace assets after main deploy
+      - name: Verify production marketplace assets after main deploy
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
@@ -55,15 +65,15 @@ jobs:
           ready=0
           for i in {1..60}; do
             connect="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/connect' || true)"
-            logo_headers="$(curl --silent --show-error --max-time 10 -I 'https://xguardgate.com/logo.png' || true)"
+            card="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/.well-known/mcp/server-card.json' || true)"
+            identity="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/identity' || true)"
+            llms="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/llms.txt' || true)"
             sitemap="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/sitemap.xml' || true)"
             if printf '%s' "$connect" | grep -q 'Connect XGuard' && \
-               printf '%s' "$connect" | grep -q 'GitHub Copilot CLI' && \
-               printf '%s' "$connect" | grep -q 'Cline' && \
-               printf '%s' "$logo_headers" | grep -qi '^content-type: image/png' && \
-               printf '%s' "$logo_headers" | grep -qi '^x-xguard-image-dimensions: 400x400' && \
-               printf '%s' "$sitemap" | grep -q '<loc>https://xguardgate.com/connect</loc>' && \
-               printf '%s' "$sitemap" | grep -q '<loc>https://xguardgate.com/logo.png</loc>'; then
+               printf '%s' "$card" | jq -e '.serverInfo.name == "XGuard Secretless Agent Gateway" and .serverInfo.version == "5.0.2" and ([.tools[].name] | index("xguard_egress_fetch") != null)' >/dev/null 2>&1 && \
+               printf '%s' "$identity" | jq -e '.name == "XGuard Secretless Agent Gateway" and .version == "5.0.2" and .discovery.smithery_server_card != null' >/dev/null 2>&1 && \
+               printf '%s' "$llms" | grep -q 'Smithery server card' && \
+               printf '%s' "$sitemap" | grep -q '<loc>https://xguardgate.com/.well-known/mcp/server-card.json</loc>'; then
               ready=1
               break
             fi

@@ -1,6 +1,6 @@
 # Install XGuard MCP
 
-XGuard is a hosted remote MCP server. Do **not** clone, build, or run a local process to connect it.
+XGuard is a hosted remote MCP server. Do **not** clone, build, or run a local process merely to connect it.
 
 Canonical endpoint:
 
@@ -10,55 +10,83 @@ https://api.xguardgate.com/mcp
 
 Transport: Streamable HTTP.
 
-No local environment variables are required for the public discovery/safety tool surface.
+Canonical product identity: **XGuard Secretless Agent Gateway**.
+
+## What XGuard is for
+
+Use XGuard when an AI agent must call an upstream HTTPS API without receiving the reusable upstream API credential. XGuard keeps reusable credentials server-side, delegates scoped capabilities, meters authorized egress and can attach signed ProofRail execution evidence.
+
+Primary MCP capabilities include:
+
+- `xguard_secretless_egress`
+- `xguard_egress_fetch`
+- `xguard_proofrail`
+- `xguard_verify_proof`
+- `xguard_action_rail`
+- `xguard_facilitator`
+- `xguard_route`
+
+The live `tools/list` response is authoritative if additional compatibility tools are present.
 
 ## Cline
 
-In Cline, add a Remote MCP Server with:
+Add a Remote MCP Server with:
 
 - Name: `xguard`
 - URL: `https://api.xguardgate.com/mcp`
 - Transport: Streamable HTTP / HTTP
 
-After connecting, verify the server exposes these 10 tools:
+No local process is required.
 
-- `xguard_facilitator`
-- `xguard_route`
-- `xguard_discovery_search`
-- `xguard_safety_test`
-- `xguard_protocols`
-- `xguard_inspect`
-- `xguard_health`
-- `xguard_supported`
-- `xguard_receipt`
-- `xguard_integration`
-
-A successful MCP initialize response identifies the server as `xguard-high-velocity-x402-facilitator` version `5.0.1`.
-
-## Other clients
-
-Claude Code:
+## Claude Code
 
 ```bash
-claude mcp add --transport http xguard https://api.xguardgate.com/mcp
+claude mcp add xguard --transport http https://api.xguardgate.com/mcp
 ```
 
-GitHub Copilot CLI:
+## Codex
 
-```bash
-copilot plugin install moelayyan90/XGuard
+```toml
+[mcp_servers.xguard]
+url = "https://api.xguardgate.com/mcp"
 ```
 
-Cursor and VS Code native project configs are included in `.cursor/mcp.json` and `.vscode/mcp.json`.
+## Cursor / VS Code / other remote-MCP clients
 
-## Verification
+Point the remote MCP configuration at:
 
-Machine-readable metadata:
+```text
+https://api.xguardgate.com/mcp
+```
 
+The exact wrapper object varies by client. The canonical URL does not.
+
+## Machine-readable discovery
+
+- Website: https://xguardgate.com
+- LLM discovery: https://xguardgate.com/llms.txt
+- Official MCP Registry manifest: https://xguardgate.com/server.json
+- Smithery static server card: https://xguardgate.com/.well-known/mcp/server-card.json
+- XGuard identity: https://xguardgate.com/identity
 - OpenAPI: https://api.xguardgate.com/openapi.json
-- x402: https://api.xguardgate.com/.well-known/x402
-- Agent card: https://api.xguardgate.com/.well-known/agent-card.json
-- MCP metadata: https://api.xguardgate.com/.well-known/mcp/server.json
-- Status: https://api.xguardgate.com/status
+- Secretless Egress manifest: https://api.xguardgate.com/.well-known/xguard-egress.json
+- ProofRail manifest: https://api.xguardgate.com/v1/proof
+- Source: https://github.com/moelayyan90/XGuard
+- Official MCP Registry name: `io.github.moelayyan90/xguard-control-plane`
 
-XGuard is non-custodial. Do not attribute downstream facilitator signer or settlement addresses to XGuard itself.
+## Authentication model
+
+MCP initialization and discovery are public. Operations that require XGuard Usage Credits, scoped capabilities, encrypted upstream credentials, or other authorization enforce those requirements at the relevant tool/API boundary.
+
+Do not place a reusable upstream provider credential directly in an agent prompt merely to connect XGuard.
+
+## Marketplace-review verification
+
+A reviewer can verify XGuard without running local code:
+
+1. POST MCP `initialize` to `https://api.xguardgate.com/mcp`.
+2. POST `tools/list` to the same endpoint.
+3. Read `https://xguardgate.com/.well-known/mcp/server-card.json`.
+4. Check `https://xguardgate.com/server.json` and this public repository.
+
+Current discovery release: **5.0.2**.
