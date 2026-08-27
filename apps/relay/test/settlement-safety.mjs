@@ -65,7 +65,7 @@ function supported() {
 }
 
 async function callSettle() {
-  return worker.fetch(new Request("https://xguardgate.com/api/settle", {
+  return worker.fetch(new Request("https://api.xguardgate.com/settle", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(requestBody()),
