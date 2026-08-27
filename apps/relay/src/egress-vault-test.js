@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import egress, { __test } from "./egress-vault.js";
+import product from "./egress-entry.js";
 
 test("Secretless Egress publishes the credential-broker contract", async () => {
   const response = await egress.fetch(new Request("https://api.xguardgate.com/v1/egress"), { EGRESS_EXECUTION_CREDITS: "1" });
@@ -14,12 +15,20 @@ test("Secretless Egress publishes the credential-broker contract", async () => {
   assert.ok(data.controls.some(value => value.includes("never returned")));
 });
 
+test("Production wrapper publishes provider metadata", async () => {
+  const response = await product.fetch(new Request("https://api.xguardgate.com/v1/egress/providers"), {});
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.deepEqual(data.providers.openai.hosts, ["api.openai.com"]);
+  assert.deepEqual(data.providers.stripe.hosts, ["api.stripe.com"]);
+  assert.equal(data.providers.anthropic.injection_header, "x-api-key");
+});
+
 test("Provider presets bind credentials to known upstream hosts", () => {
   const openai = __test.providerPolicy("openai", {});
   assert.deepEqual(openai.allowed_hosts, ["api.openai.com"]);
   assert.equal(openai.injection.header, "authorization");
   assert.equal(openai.injection.prefix, "Bearer ");
-
   const anthropic = __test.providerPolicy("anthropic", {});
   assert.deepEqual(anthropic.allowed_hosts, ["api.anthropic.com"]);
   assert.equal(anthropic.injection.header, "x-api-key");
