@@ -73,6 +73,6 @@ jobs:
           grep -q 'application/ld+json' apps/relay/src/site-universal.js
           grep -q '/logo.svg' apps/relay/src/rail-entry.js
           grep -q '/.well-known/security.txt' apps/relay/src/rail-entry.js
-          node -e 'const x=require("./server.json"); if(x.version!=="5.0.1"||!String(x.title).includes("x402 Facilitator")||!String(x.description).includes("reconciliation-gated")) process.exit(1)'
+          node -e 'const x=require("./server.json"); if(x.version!=="5.0.1"||!String(x.title).includes("x402 Facilitator")||typeof x.description!=="string"||x.description.length>100||x.remotes?.[0]?.url!=="https://api.xguardgate.com/mcp") process.exit(1)'
       - name: Wrangler dry run
         run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/relay/wrangler.jsonc
