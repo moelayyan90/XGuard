@@ -1,7 +1,7 @@
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { base } from "viem/chains";
 
-const VERSION = "2.4.0";
+const VERSION = "2.5.0";
 const BASE_CAIP = "eip155:8453";
 const BASE_LEGACY = "base";
 const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -150,12 +150,14 @@ async function callUpstream(url, operation, raw, timeoutMs) {
     });
     const text = await response.text();
     let data = null; try { data = JSON.parse(text); } catch {}
+    const latencyMs = Math.round(performance.now() - started);
     const okTransport = response.status < 500 && response.status !== 429;
-    note(url, okTransport, Math.round(performance.now() - started));
-    return { url, status: response.status, text, data, retryable: response.status >= 500 || response.status === 429, transportError: false };
+    note(url, okTransport, latencyMs);
+    return { url, status: response.status, text, data, latencyMs, retryable: response.status >= 500 || response.status === 429, transportError: false };
   } catch (error) {
-    note(url, false, Math.round(performance.now() - started));
-    return { url, status: 0, text: "", data: null, retryable: true, transportError: true, error: error?.name === "AbortError" ? "timeout" : "network_error" };
+    const latencyMs = Math.round(performance.now() - started);
+    note(url, false, latencyMs);
+    return { url, status: 0, text: "", data: null, latencyMs, retryable: true, transportError: true, error: error?.name === "AbortError" ? "timeout" : "network_error" };
   } finally { clearTimeout(timer); }
 }
 
@@ -166,8 +168,18 @@ function settleSucceeded(result) {
   return false;
 }
 
-function relayResponse(result, route, recovered = false) {
-  const headers = { "x-xguard-upstream": new URL(route).hostname, "x-xguard-recovered": recovered ? "1" : "0", "x-xguard-universal": "1" };
+function relayResponse(result, route, recovered = false, meta = {}) {
+  const host = route ? new URL(route).hostname : "unknown";
+  const attempts = Math.max(1, Number(meta.attempts || 1));
+  const latency = Number(result?.latencyMs || 0);
+  const headers = {
+    "x-xguard-upstream": host,
+    "x-xguard-recovered": recovered ? "1" : "0",
+    "x-xguard-universal": "1",
+    "x-xguard-route-attempts": String(attempts),
+    "x-xguard-settlement-safety": String(meta.safety || (recovered ? "reconciled" : "direct")),
+    ...(latency > 0 ? { "server-timing": `upstream;dur=${latency}` } : {})
+  };
   if (result.text) return new Response(result.text, { status: result.status || 502, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
   return json({ error: result.error || "upstream_unavailable" }, result.status || 502, headers);
 }
@@ -216,12 +228,14 @@ async function doVerify(request, env) {
   const identity = paymentIdentity(parsed);
   const routes = await upstreams(env, identity);
   let last = null;
+  let attempts = 0;
   for (const route of routes) {
+    attempts += 1;
     const result = await callUpstream(route, "verify", raw, 5000);
     last = result;
-    if (!result.retryable) return relayResponse(result, route);
+    if (!result.retryable) return relayResponse(result, route, false, { attempts, safety: "verify-failover" });
   }
-  return relayResponse(last || { status: 503, error: "no_upstream" }, last?.url || routes[0] || allUpstreams(env)[0]);
+  return relayResponse(last || { status: 503, error: "no_upstream" }, last?.url || routes[0] || allUpstreams(env)[0], false, { attempts: Math.max(1, attempts), safety: "verify-failover" });
 }
 
 async function doSettle(request, env) {
@@ -245,10 +259,13 @@ async function doSettle(request, env) {
   let final = null;
   let recovered = false;
   let chosen = routes[0] || allUpstreams(env)[0];
+  let attempts = 0;
+  let settlementSafety = "direct";
 
   for (let i = 0; i < routes.length; i++) {
     const route = routes[i];
     chosen = route;
+    attempts += 1;
     const result = await callUpstream(route, "settle", raw, 10000);
     final = result;
     if (!result.retryable) break;
@@ -256,18 +273,46 @@ async function doSettle(request, env) {
     if (isBase(identity.network)) {
       const recovery = await recoverBase(env, identity);
       if (recovery?.transaction) {
-        final = { status: 200, text: JSON.stringify({ success: true, payer: identity.from, transaction: recovery.transaction, network: identity.network || BASE_CAIP }), data: { success: true, payer: identity.from, transaction: recovery.transaction, network: identity.network || BASE_CAIP }, retryable: false };
+        final = { status: 200, text: JSON.stringify({ success: true, payer: identity.from, transaction: recovery.transaction, network: identity.network || BASE_CAIP }), data: { success: true, payer: identity.from, transaction: recovery.transaction, network: identity.network || BASE_CAIP }, latencyMs: result.latencyMs, retryable: false };
         recovered = true;
+        settlementSafety = "reconciled";
         break;
       }
       if (recovery?.used) {
-        final = { status: 503, text: JSON.stringify({ success: false, errorReason: "settlement_state_ambiguous_nonce_used", network: identity.network || BASE_CAIP }), data: null, retryable: false };
+        final = { status: 503, text: JSON.stringify({ success: false, errorReason: "settlement_state_ambiguous_nonce_used", network: identity.network || BASE_CAIP }), data: null, latencyMs: result.latencyMs, retryable: false };
+        settlementSafety = "fail-closed-ambiguous";
         break;
       }
-      if (recovery && recovery.used === false) continue;
+      if (recovery && recovery.used === false) {
+        settlementSafety = "reconciled-safe-retry";
+        continue;
+      }
+      final = { status: 503, text: JSON.stringify({ success: false, errorReason: "settlement_state_ambiguous_reconciliation_unavailable", network: identity.network || BASE_CAIP }), data: null, latencyMs: result.latencyMs, retryable: false };
+      settlementSafety = "fail-closed-ambiguous";
       break;
     }
-    continue;
+
+    if (result.status === 429 && !result.transportError) {
+      settlementSafety = "rate-limit-safe-retry";
+      continue;
+    }
+
+    final = {
+      status: 503,
+      text: JSON.stringify({
+        success: false,
+        errorReason: "settlement_state_ambiguous_no_reconciliation",
+        network: identity.network || null,
+        upstream: new URL(route).hostname,
+        instruction: "XGuard did not send this signed settlement to another facilitator because the first outcome is ambiguous. Retry only after network-specific reconciliation proves the payment was not consumed."
+      }),
+      data: null,
+      latencyMs: result.latencyMs,
+      retryable: false,
+      transportError: result.transportError
+    };
+    settlementSafety = "fail-closed-ambiguous";
+    break;
   }
 
   if (settleSucceeded(final)) {
@@ -277,12 +322,12 @@ async function doSettle(request, env) {
     } else if (freeAdmission) {
       await quota(env, identity.payTo, "commit", identity.nonce || freeAdmission.data.nonce || "");
     }
-    console.log(JSON.stringify({ event: "settlement_success", network: identity.network, upstream: chosen, recovered, billed_credits: key ? feeUnits : 0, free: !key }));
+    console.log(JSON.stringify({ event: "settlement_success", network: identity.network, upstream: chosen, attempts, recovered, settlement_safety: settlementSafety, billed_credits: key ? feeUnits : 0, free: !key }));
   } else if (!key && freeAdmission) {
     await quota(env, identity.payTo, "release", identity.nonce || freeAdmission.data.nonce || "");
   }
 
-  return relayResponse(final || { status: 503, error: "settlement_unavailable" }, chosen, recovered);
+  return relayResponse(final || { status: 503, error: "settlement_unavailable" }, chosen, recovered, { attempts: Math.max(1, attempts), safety: settlementSafety });
 }
 
 async function proxySupported(env) {
@@ -307,7 +352,7 @@ async function proxySupported(env) {
     }
     if (row.data?.signers && typeof row.data.signers === "object") Object.assign(signers, row.data.signers);
   }
-  return json({ kinds, extensions, signers, xguard: { universal: true, strategy: "capability-aware-health-routing", live_upstreams: live.map(([url, row]) => ({ host: new URL(url).hostname, latency_ms: row.latency })), source_count: live.length } }, 200, { "cache-control": "public, max-age=15", "x-xguard-supported-source": "aggregate" });
+  return json({ kinds, extensions, signers, xguard: { universal: true, strategy: "capability-aware-health-routing", settlement_safety: "fail-closed on ambiguous outcomes unless network-specific reconciliation proves a safe retry", live_upstreams: live.map(([url, row]) => ({ host: new URL(url).hostname, latency_ms: row.latency })), source_count: live.length } }, 200, { "cache-control": "public, max-age=15", "x-xguard-supported-source": "aggregate" });
 }
 
 async function health(env) {
@@ -316,7 +361,7 @@ async function health(env) {
     const row = await fetchSupported(url, 5000);
     return { host: new URL(url).hostname, ok: row.ok, status: row.status, latency_ms: row.latency, kinds: capabilityKinds(row.data).length };
   }));
-  return { status: checks.some(x => x.ok) ? "ok" : "degraded", service: "XGuard Universal Facilitator Gateway", version: VERSION, non_custodial: true, universal_facilitator_url: "https://api.xguardgate.com", capability_aggregation: true, capability_aware_routing: true, verify_price_credits: 0, settlement_price_credits: Number(env.SETTLEMENT_CREDITS || 2), free_successful_settlements_per_merchant: Number(env.FREE_SETTLEMENTS || 25), upstreams: checks };
+  return { status: checks.some(x => x.ok) ? "ok" : "degraded", service: "XGuard Universal Facilitator Gateway", version: VERSION, non_custodial: true, universal_facilitator_url: "https://api.xguardgate.com", capability_aggregation: true, capability_aware_routing: true, settlement_fail_closed_on_ambiguous_outcome: true, verify_price_credits: 0, settlement_price_credits: Number(env.SETTLEMENT_CREDITS || 2), free_successful_settlements_per_merchant: Number(env.FREE_SETTLEMENTS || 25), upstreams: checks };
 }
 
 function landing(env) {
@@ -331,7 +376,17 @@ function docs(env) {
     facilitator_url: "https://api.xguardgate.com",
     role: "single in-path x402 facilitator URL across multiple upstream facilitators and networks",
     endpoints: { supported: "GET /supported", verify: "POST /verify", settle: "POST /settle", health: "GET /healthz", balance: "GET /v1/balance" },
-    routing: { capability_aggregation: true, capability_aware: true, health_aware: true, rate_limit_failover: true, transport_failover: true, base_timeout_reconciliation: true },
+    routing: {
+      capability_aggregation: true,
+      capability_aware: true,
+      health_aware: true,
+      rate_limit_failover: true,
+      verify_transport_failover: true,
+      settlement_transport_failover: "only after network-specific reconciliation proves the signed payment was not consumed",
+      ambiguous_settlement_fail_closed: true,
+      base_timeout_reconciliation: true
+    },
+    observability: { route_attempts_header: "x-xguard-route-attempts", settlement_safety_header: "x-xguard-settlement-safety", upstream_header: "x-xguard-upstream", server_timing: true },
     pricing: { verify_credits: 0, free_successful_settlements_per_payTo: Number(env.FREE_SETTLEMENTS || 25), credits_per_successful_paid_settlement: Number(env.SETTLEMENT_CREDITS || 2), failed_settlements_charged: false, checkout: env.XGUARD_CHECKOUT_URL || CHECKOUT_FALLBACK },
     auth: { paid_settle_header: "Authorization: Bearer <XGuard Usage Credits license key>" },
     custody: "none"
@@ -378,7 +433,7 @@ export default {
         const key = bearer(request); if (!key) return json({ error: "missing_xguard_license" }, 401);
         const balance = await billingBalance(env, key); return json(balance.data, balance.status);
       }
-      if (url.pathname === "/llms.txt" && request.method === "GET") return new Response("XGuard Universal Facilitator Gateway\nFacilitator URL: https://api.xguardgate.com\nAggregates supported payment kinds across multiple x402 facilitators.\nGET /supported\nPOST /verify\nPOST /settle\nDocs: https://api.xguardgate.com/docs\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
+      if (url.pathname === "/llms.txt" && request.method === "GET") return new Response("XGuard Universal Facilitator Gateway\nFacilitator URL: https://api.xguardgate.com\nAggregates supported payment kinds across multiple x402 facilitators.\nSettlement safety: fail-closed on ambiguous outcomes unless network-specific reconciliation proves a retry is safe.\nGET /supported\nPOST /verify\nPOST /settle\nDocs: https://api.xguardgate.com/docs\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
       if ((url.pathname === "/.well-known/x402" || url.pathname === "/.well-known/x402-facilitator.json") && request.method === "GET") return docs(env);
       return json({ error: "not_found" }, 404);
     } catch (error) {
