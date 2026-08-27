@@ -1,37 +1,47 @@
 {
   "name": "xguard-x402-control-plane",
-  "version": "3.1.0",
+  "version": "5.0.1",
   "private": false,
   "type": "module",
-  "description": "Drop-in universal x402 facilitator client for the XGuard settlement control plane.",
+  "description": "Drop-in x402 v2 facilitator client for the XGuard high-velocity settlement control plane.",
   "main": "./sdk/index.js",
   "exports": {
-    ".": "./sdk/index.js"
+    ".": "./sdk/index.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "sdk/index.js",
     "sdk/README.md",
+    "sdk/examples",
+    "integrations",
     "LICENSE"
   ],
+  "sideEffects": false,
   "peerDependencies": {
-    "@x402/core": ">=2.16.0"
+    "@x402/core": ">=2.16.0 <3"
   },
   "engines": {
     "node": ">=20"
   },
   "keywords": [
     "x402",
+    "x402-v2",
     "facilitator",
     "payments",
+    "micropayments",
+    "agent-payments",
     "usdc",
     "base",
     "solana",
     "xguard"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/moelayyan90/XGuard.git"
   },
-  "homepage": "https://xguardgate.com"
+  "homepage": "https://xguardgate.com",
+  "bugs": {
+    "url": "https://github.com/moelayyan90/XGuard/issues"
+  }
 }
