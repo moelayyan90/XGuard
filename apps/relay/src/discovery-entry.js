@@ -27,6 +27,61 @@ const registryManifest = {
   ],
 };
 
+const serverCard = {
+  serverInfo: {
+    name: "XGuard Secretless Agent Gateway",
+    version: VERSION,
+  },
+  authentication: {
+    required: false,
+    schemes: [],
+  },
+  tools: [
+    {
+      name: "xguard_secretless_egress",
+      description: "Discover XGuard Secretless Egress for keeping reusable upstream API credentials outside AI-agent context.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: true },
+    },
+    {
+      name: "xguard_egress_fetch",
+      description: "Execute a scoped HTTPS request through XGuard while reusable upstream credentials remain server-side.",
+      inputSchema: { type: "object", additionalProperties: true },
+    },
+    {
+      name: "xguard_proofrail",
+      description: "Discover ProofRail signed execution evidence for credential-backed egress.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    },
+    {
+      name: "xguard_verify_proof",
+      description: "Verify an XGuard ProofRail ES256 execution proof.",
+      inputSchema: {
+        type: "object",
+        required: ["proof"],
+        properties: { proof: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "xguard_action_rail",
+      description: "Discover XGuard policy-gated Action Rail execution capabilities.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: true },
+    },
+    {
+      name: "xguard_facilitator",
+      description: "Discover XGuard x402 facilitator compatibility and settlement-routing capabilities.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: true },
+    },
+    {
+      name: "xguard_route",
+      description: "Inspect XGuard routing for supported x402 networks and schemes.",
+      inputSchema: { type: "object", additionalProperties: true },
+    },
+  ],
+  resources: [],
+  prompts: [],
+};
+
 const identity = {
   name: "XGuard Secretless Agent Gateway",
   short_name: "XGuard",
@@ -50,6 +105,7 @@ const identity = {
   discovery: {
     llms_txt: `${SITE}/llms.txt`,
     mcp_registry_manifest: `${SITE}/server.json`,
+    smithery_server_card: `${SITE}/.well-known/mcp/server-card.json`,
     openapi: `${API}/openapi.json`,
     egress_manifest: `${API}/.well-known/xguard-egress.json`,
     proof_manifest: `${API}/v1/proof`,
@@ -120,6 +176,7 @@ XGuard becomes the required credential-backed egress path inside an environment 
 ## Machine-readable discovery
 
 - MCP Registry manifest: ${SITE}/server.json
+- Smithery server card: ${SITE}/.well-known/mcp/server-card.json
 - OpenAPI: ${API}/openapi.json
 - Secretless Egress manifest: ${API}/.well-known/xguard-egress.json
 - Secretless Egress public encryption key: ${API}/.well-known/xguard-egress-key.json
@@ -175,6 +232,7 @@ function sitemapXml() {
     SITE + "/",
     SITE + "/llms.txt",
     SITE + "/server.json",
+    SITE + "/.well-known/mcp/server-card.json",
     SITE + "/.well-known/xguard.json",
     API + "/openapi.json",
     API + "/.well-known/xguard-egress.json",
@@ -206,6 +264,7 @@ export default {
       if (url.pathname === "/robots.txt") return text(robotsTxt());
       if (url.pathname === "/sitemap.xml") return new Response(sitemapXml(), { status: 200, headers: commonHeaders("application/xml; charset=utf-8") });
       if (url.pathname === "/server.json" || url.pathname === "/.well-known/mcp-server.json") return json(registryManifest);
+      if (url.pathname === "/.well-known/mcp/server-card.json") return json(serverCard, 200, { "cache-control": "public, max-age=3600" });
       if (url.pathname === "/.well-known/xguard.json" || url.pathname === "/identity") return json(identity);
     }
 
@@ -220,7 +279,7 @@ export default {
     headers.set("x-xguard-canonical-mcp", MCP);
     headers.set("x-xguard-version", VERSION);
     if (request.method === "GET" && url.pathname === "/") {
-      headers.set("link", `<${SITE}/>; rel=\"canonical\", <${SITE}/llms.txt>; rel=\"alternate\"; type=\"text/plain\", <${SITE}/server.json>; rel=\"describedby\"; type=\"application/json\"`);
+      headers.set("link", `<${SITE}/>; rel=\"canonical\", <${SITE}/llms.txt>; rel=\"alternate\"; type=\"text/plain\", <${SITE}/server.json>; rel=\"describedby\"; type=\"application/json\", <${SITE}/.well-known/mcp/server-card.json>; rel=\"describedby\"; type=\"application/json\"`);
       headers.set("cache-control", "public, max-age=60, must-revalidate");
       headers.set("x-robots-tag", "index, follow");
     }
