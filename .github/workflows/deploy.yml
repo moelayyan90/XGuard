@@ -52,6 +52,17 @@ jobs:
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/agent-card.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Universal Agent Transaction Control Plane"||x.version!=="4.1.0"||!Array.isArray(x.skills)||x.skills.length<5)process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/skill.md | grep -q 'Universal Agent Transaction Control Plane'
 
+          rail="$(curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-rail.json)"
+          printf '%s' "$rail" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Mandatory Settlement Rail"||x.version!=="0.1.0"||x.fee_usd_micros_per_chargeable_execution!==1000||!Array.isArray(x.controls)||!x.controls.includes("replay rejection")||!String(x.note||"").includes("unrelated x402 traffic"))process.exit(1);console.log(JSON.stringify({rail:x.name,version:x.version,fee_usd_micros:x.fee_usd_micros_per_chargeable_execution}))})'
+
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/rail/pricing | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.fee_usd_micros_per_chargeable_execution!==1000||x.collection_state!=="metered_accrual_not_cash_collection")process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-rail-key.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.alg!=="ES256"||x.kty!=="EC"||x.jwk?.kty!=="EC"||!x.kid)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/rail/stats | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(typeof x.chargeable_executions!=="number"||typeof x.accrued_fee_usd_micros!=="string")process.exit(1)})'
+
+          rail_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-rail-mandate -w '%{http_code}' -X POST https://api.xguardgate.com/v1/rail/permits -H 'content-type: application/json' --data '{"target":"https://example.com/pay","method":"POST","amount_minor":"1","currency":"USD","pay_to":"merchant","request_body":{"test":true}}')"
+          test "$rail_code" = "428"
+          grep -q 'xguard_mandate_required' /tmp/xg-rail-mandate
+
           for manifest_url in \
             https://api.xguardgate.com/.well-known/x402.json \
             https://api.xguardgate.com/.well-known/x402 \
