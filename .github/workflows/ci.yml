@@ -35,6 +35,8 @@ jobs:
           node --check apps/relay/src/egress-vault.js
           node --check apps/relay/src/egress-vault-test.js
           node --check apps/relay/src/egress-entry.js
+          node --check apps/relay/src/product-entry.js
+          node --check apps/relay/src/product-entry-test.js
           node --check apps/relay/src/rail-entry.js
           node --check apps/relay/src/entry.js
           node --check apps/relay/src/secure-entry.js
@@ -56,6 +58,7 @@ jobs:
           grep -q 'EgressMeter' apps/relay/wrangler.jsonc
           grep -q 'ACTION_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
           grep -q 'EGRESS_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
+          grep -q '"main": "src/product-entry.js"' apps/relay/wrangler.jsonc
           grep -q '"workers_dev": false' apps/relay/wrangler.jsonc
           grep -q 'xguard_mandate_required' apps/relay/src/authority.js
           grep -q 'permit_replay_detected' apps/relay/src/rail.js
@@ -68,6 +71,7 @@ jobs:
           node --test apps/relay/src/entry-test.js
           node --test apps/relay/src/action-rail-test.js
           node --test apps/relay/src/egress-vault-test.js
+          node --test apps/relay/src/product-entry-test.js
       - name: SDK syntax and package check
         run: |
           node --check sdk/index.js
