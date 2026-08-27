@@ -1,0 +1,49 @@
+name: Harden XGuard Cloudflare Zone
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay/wrangler.jsonc"
+      - ".github/workflows/cloudflare-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Configure HTTPS, HSTS and DNSSEC
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
+          [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
+
+          api='https://api.cloudflare.com/client/v4'
+          auth=(-H "Authorization: Bearer $token" -H 'Content-Type: application/json')
+
+          zone_json="$(curl --fail-with-body --silent --show-error "${auth[@]}" "$api/zones?name=xguardgate.com&account.id=$CLOUDFLARE_ACCOUNT_ID")"
+          zone_id="$(printf '%s' "$zone_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const z=x.result?.find(z=>z.name==="xguardgate.com");if(!z?.id)process.exit(1);process.stdout.write(z.id)})')"
+          echo "Resolved xguardgate.com zone"
+
+          curl --fail-with-body --silent --show-error "${auth[@]}" \
+            -X PATCH "$api/zones/$zone_id/settings/always_use_https" \
+            --data '{"value":"on"}' >/dev/null
+
+          curl --fail-with-body --silent --show-error "${auth[@]}" \
+            -X PATCH "$api/zones/$zone_id/settings/security_header" \
+            --data '{"value":{"strict_transport_security":{"enabled":true,"max_age":31536000,"include_subdomains":true,"preload":false,"nosniff":true}}}' >/dev/null
+
+          curl --fail-with-body --silent --show-error "${auth[@]}" \
+            -X PATCH "$api/zones/$zone_id/dnssec" \
+            --data '{"status":"active"}' >/tmp/xguard-dnssec.json
+
+          printf '%s\n' 'Cloudflare HTTPS and HSTS enabled.'
+          node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/xguard-dnssec.json","utf8"));if(x.result?.status!=="active")process.exit(1);console.log("Cloudflare DNSSEC status:",x.result.status)'
