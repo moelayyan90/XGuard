@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||x.kind!=="facilitator"||x.baseUrl!=="https://api.xguardgate.com"||x.capabilities?.verify!==true||x.capabilities?.settle!==true||x.capabilities?.bazaar_list!==true||x.capabilities?.bazaar_search!==true||x.routing?.mode!=="automatic")process.exit(1);console.log(JSON.stringify({name:x.name,live_upstreams:x.routing?.live_upstreams?.length||0,batch_settlement:x.capabilities?.batch_settlement}))})'
 
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/x402 | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="facilitator"||x.endpoints?.supported!=="https://api.xguardgate.com/supported")process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/.well-known/x402?v=5' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="facilitator"||x.endpoints?.supported!=="https://api.xguardgate.com/supported")process.exit(1)})'
 
           curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/resources?limit=5' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items)||typeof x.pagination?.total!=="number")process.exit(1)})'
 
@@ -49,9 +49,9 @@ jobs:
 
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/supported | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||!x.xguard?.universal)process.exit(1)})'
 
-          route_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-route -w '%{http_code}' 'https://api.xguardgate.com/v1/facilitator/route?scheme=exact')"
+          route_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-route.json -w '%{http_code}' 'https://api.xguardgate.com/v1/facilitator/route?scheme=exact')"
           test "$route_code" = "200"
-          node -e 'const x=require("/tmp/xg-route");if(x.facilitator!=="https://api.xguardgate.com"||x.automatic!==true||!x.selected_upstream_host)process.exit(1)'
+          node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/xg-route.json","utf8"));if(x.facilitator!=="https://api.xguardgate.com"||x.automatic!==true||!x.selected_upstream_host)process.exit(1)'
 
       - name: Verify MCP and website identity
         shell: bash
