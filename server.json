@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard-control-plane",
   "title": "XGuard Secretless Agent Gateway",
-  "description": "Protect AI agents from API-key exposure with secretless credential custody, scoped capabilities, server-side credential injection, usage metering and signed execution proofs for OpenAI, Anthropic, GitHub, Stripe and public HTTPS APIs.",
+  "description": "Protect AI agents from API-key exposure with secretless credentials and signed execution proofs.",
   "repository": {
     "url": "https://github.com/moelayyan90/XGuard",
     "source": "github"
