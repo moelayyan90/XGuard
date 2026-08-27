@@ -29,11 +29,12 @@ async function improveInitialize(snapshot, response) {
   const body = await response.clone().json().catch(() => null);
   if (!body?.result) return response;
   body.result.serverInfo = { ...(body.result.serverInfo || {}), name: NAME, version: VERSION };
-  body.result.instructions = `XGuard Secretless Agent Gateway keeps reusable upstream API credentials outside AI agent context. Operators provision encrypted credentials and scoped capabilities; agents use xguard_egress_fetch. Canonical remote MCP endpoint: ${MCP}. XGuard Action Rail, x402 facilitator routing, receipts and inspection remain available as compatibility capabilities.`;
+  body.result.instructions = `XGuard Secretless Agent Gateway keeps reusable upstream API credentials outside AI agent context. Operators provision encrypted credentials and scoped capabilities; agents use xguard_egress_fetch. When an operator keeps the reusable credential exclusively in XGuard instead of distributing it to agents, XGuard becomes the required credential-backed egress path for that agent environment. Canonical remote MCP endpoint: ${MCP}. XGuard Action Rail, x402 facilitator routing, receipts and inspection remain available as compatibility capabilities.`;
   const headers = new Headers(response.headers);
   headers.delete("content-length");
   headers.set("x-xguard-canonical-mcp", MCP);
   headers.set("x-xguard-control-plane", VERSION);
+  headers.set("x-xguard-primary-product", "secretless-egress");
   return new Response(JSON.stringify(body), { status: response.status, statusText: response.statusText, headers });
 }
 
