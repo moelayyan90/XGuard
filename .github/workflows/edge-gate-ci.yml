@@ -1,0 +1,54 @@
+name: XGuard Edge Gate CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/edge-gate/**"
+      - ".github/workflows/edge-gate-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/edge-gate/**"
+      - ".github/workflows/edge-gate-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/edge-gate
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Unit tests
+        run: npm test
+      - name: Wrangler dry-run bundle
+        run: npx wrangler deploy --dry-run --outdir=/tmp/xguard-edge-gate
+      - name: Verify production XGuard facilitator
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl --fail --silent --show-error --max-time 15 https://api.xguardgate.com/supported)"
+          printf '%s' "$body" | node -e '
+            let s="";
+            process.stdin.on("data", d => s += d).on("end", () => {
+              const x = JSON.parse(s);
+              if (!Array.isArray(x.kinds) || x.kinds.length < 1) process.exit(1);
+              if (!x.kinds.some(k => String(k.network || "") === "eip155:8453")) process.exit(1);
+            });
+          '
+      - name: Guard against unsafe sample deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'FACILITATOR_URL.*https://api.xguardgate.com' wrangler.jsonc
+          grep -q 'PAY_TO.*0x0000000000000000000000000000000000000000' wrangler.jsonc
+          grep -q 'non-zero EVM receiving address' src/index.js
