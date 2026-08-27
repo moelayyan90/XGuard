@@ -6,13 +6,14 @@ const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const MCP = `${API}/mcp`;
 const REPO = "https://github.com/moelayyan90/XGuard";
+const REGISTRY_DESCRIPTION = "Protect AI agents from API-key exposure with secretless credentials and signed execution proofs.";
 const DESCRIPTION = "Protect AI agents from API-key exposure with secretless credential custody, scoped capabilities, server-side credential injection, usage metering and signed execution proofs for OpenAI, Anthropic, GitHub, Stripe and public HTTPS APIs.";
 
 const registryManifest = {
   $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   name: "io.github.moelayyan90/xguard-control-plane",
   title: "XGuard Secretless Agent Gateway",
-  description: DESCRIPTION,
+  description: REGISTRY_DESCRIPTION,
   repository: {
     url: REPO,
     source: "github",
