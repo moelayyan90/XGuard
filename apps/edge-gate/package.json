@@ -1,0 +1,19 @@
+{
+  "name": "xguard-edge-gate",
+  "version": "5.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Transparent x402 payment-gated reverse proxy using XGuard as the facilitator control plane.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "hono": "4.11.1",
+    "x402-hono": "1.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.123.0"
+  }
+}
