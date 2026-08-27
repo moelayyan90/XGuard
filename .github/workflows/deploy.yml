@@ -68,16 +68,16 @@ jobs:
             https://api.xguardgate.com/.well-known/payment-manifest \
             https://api.xguardgate.com/.well-known/payment-manifest.json; do
             echo "Checking $manifest_url"
-            curl --fail --silent --show-error --max-time 8 "$manifest_url" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||x.kind!=="facilitator"||x.facilitator!=="https://api.xguardgate.com")process.exit(1)})'
+            curl --fail --silent --show-error --max-time 8 "$manifest_url?v=5" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||x.kind!=="facilitator"||x.facilitator!=="https://api.xguardgate.com")process.exit(1)})'
           done
 
           curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/resources?limit=3' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items)||typeof x.pagination?.total!=="number")process.exit(1)})'
 
           curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/search?query=x402&limit=3' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items))process.exit(1)})'
 
-          route_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-route -w '%{http_code}' 'https://api.xguardgate.com/v1/facilitator/route?scheme=exact')"
+          route_code="$(curl --silent --show-error --max-time 8 -o /tmp/xg-route.json -w '%{http_code}' 'https://api.xguardgate.com/v1/facilitator/route?scheme=exact')"
           test "$route_code" = "200"
-          node -e 'const x=require("/tmp/xg-route");if(x.facilitator!=="https://api.xguardgate.com"||x.automatic!==true||!x.selected_upstream_host)process.exit(1)'
+          node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/xg-route.json","utf8"));if(x.facilitator!=="https://api.xguardgate.com"||x.automatic!==true||!x.selected_upstream_host)process.exit(1)'
 
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/docs | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard High-Velocity x402 Facilitator"||x.version!=="5.0.0"||!x.facilitator_discovery?.resources||x.firewall?.recipient_binding!==true)process.exit(1)})'
 
