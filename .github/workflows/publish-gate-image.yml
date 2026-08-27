@@ -34,13 +34,19 @@ jobs:
           push: true
           provenance: true
           sbom: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/moelayyan90/XGuard
+            org.opencontainers.image.title=XGuard Universal Gate
+            org.opencontainers.image.version=5.0.1
           tags: |
             ghcr.io/moelayyan90/xguard-gate:5.0.1
             ghcr.io/moelayyan90/xguard-gate:latest
-      - name: Pull and smoke-test the published immutable image
+      - name: Verify anonymous pull and smoke-test immutable image
         shell: bash
         run: |
           set -euo pipefail
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker image rm ghcr.io/moelayyan90/xguard-gate:5.0.1 >/dev/null 2>&1 || true
           docker pull ghcr.io/moelayyan90/xguard-gate:5.0.1
           docker run -d --rm --name xguard-gate-release -p 18080:8080 ghcr.io/moelayyan90/xguard-gate:5.0.1
           trap 'docker stop xguard-gate-release >/dev/null 2>&1 || true' EXIT
