@@ -1,10 +1,10 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "xguard-reconcile",
-  "main": "src/index.js",
+  "main": "src/discovery-entry.js",
   "compatibility_date": "2026-08-26",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
+  "workers_dev": false,
   "minify": true,
   "vars": {
     "XGUARD_TREASURY_USDC_ADDRESS": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
