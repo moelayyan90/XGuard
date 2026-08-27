@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Wait for facilitator safety deployment
+      - name: Wait for facilitator 5.0.1 safety deployment
         shell: bash
         run: |
           set -euo pipefail
@@ -29,7 +29,7 @@ jobs:
             provider="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
             supported="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/supported?build=${GITHUB_SHA}" || true)"
             logo="$(curl --silent --show-error --max-time 8 "https://xguardgate.com/logo.svg?build=${GITHUB_SHA}" || true)"
-            if printf '%s' "$provider" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.kind==="facilitator"&&x.name==="XGuard High-Velocity x402 Facilitator"&&x.capabilities?.automatic_routing===true&&x.endpoints?.settle?.endsWith("/settle")&&x.discovery?.bazaar?.search)process.exit(0)}catch{}process.exit(1)})' && \
+            if printf '%s' "$provider" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.kind==="facilitator"&&x.name==="XGuard High-Velocity x402 Facilitator"&&x.capabilities?.automatic_routing===true&&x.capabilities?.settlement_ambiguous_fail_closed===true&&x.capabilities?.settlement_transport_failover==="reconciliation-gated"&&x.endpoints?.settle?.endsWith("/settle")&&x.discovery?.bazaar?.search)process.exit(0)}catch{}process.exit(1)})' && \
                printf '%s' "$supported" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.xguard?.settlement_safety?.includes("fail-closed"))process.exit(0)}catch{}process.exit(1)})' && \
                printf '%s' "$logo" | grep -q '<svg'; then
               ok=1
@@ -43,9 +43,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||x.kind!=="facilitator"||x.baseUrl!=="https://api.xguardgate.com"||x.capabilities?.verify!==true||x.capabilities?.settle!==true||x.capabilities?.bazaar_list!==true||x.capabilities?.bazaar_search!==true||x.routing?.mode!=="automatic")process.exit(1);console.log(JSON.stringify({name:x.name,live_upstreams:x.routing?.live_upstreams?.length||0,batch_settlement:x.capabilities?.batch_settlement}))})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.0.1"||x.x402Version!==2||x.kind!=="facilitator"||x.baseUrl!=="https://api.xguardgate.com"||x.capabilities?.verify!==true||x.capabilities?.settle!==true||x.capabilities?.bazaar_list!==true||x.capabilities?.bazaar_search!==true||x.capabilities?.settlement_ambiguous_fail_closed!==true||x.routing?.mode!=="automatic"||!String(x.routing?.settlement_safety||"").includes("fail closed"))process.exit(1);console.log(JSON.stringify({name:x.name,version:x.version,live_upstreams:x.routing?.live_upstreams?.length||0,batch_settlement:x.capabilities?.batch_settlement}))})'
 
-          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/.well-known/x402?v=5' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.kind!=="facilitator"||x.endpoints?.supported!=="https://api.xguardgate.com/supported")process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/.well-known/x402?v=5.0.1' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.0.1"||x.kind!=="facilitator"||x.endpoints?.supported!=="https://api.xguardgate.com/supported")process.exit(1)})'
 
           curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/resources?limit=5' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items)||typeof x.pagination?.total!=="number")process.exit(1)})'
 
@@ -57,7 +57,7 @@ jobs:
           test "$route_code" = "200"
           node -e 'const fs=require("node:fs");const x=JSON.parse(fs.readFileSync("/tmp/xg-route.json","utf8"));if(x.facilitator!=="https://api.xguardgate.com"||x.automatic!==true||!x.selected_upstream_host)process.exit(1)'
 
-      - name: Verify discovery, security and agent identity
+      - name: Verify discovery, security and canonical MCP parity
         shell: bash
         run: |
           set -euo pipefail
@@ -72,12 +72,42 @@ jobs:
           printf '%s' "$security" | grep -q '^Contact: mailto:'
           printf '%s' "$security" | grep -q 'Canonical: https://xguardgate.com/.well-known/security.txt'
 
-          curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-smoke","version":"1.0.0"}}}' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-high-velocity-x402-facilitator"||x.result?.serverInfo?.version!=="5.0.0")process.exit(1)})'
+          init_payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-smoke","version":"1.0.0"}}}'
+          tools_payload='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 
-          tools="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
-          printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const names=(x.result?.tools||[]).map(t=>t.name);for(const n of ["xguard_facilitator","xguard_route","xguard_discovery_search"])if(!names.includes(n))process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data "$init_payload" -o /tmp/api-init.json
+          curl --fail --silent --show-error --max-time 8 -X POST https://xguardgate.com/mcp -H 'content-type: application/json' --data "$init_payload" -o /tmp/site-init.json
+          node - <<'NODE'
+          const fs = require('node:fs');
+          for (const file of ['/tmp/api-init.json','/tmp/site-init.json']) {
+            const x = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (x.result?.serverInfo?.name !== 'xguard-high-velocity-x402-facilitator') process.exit(1);
+            if (x.result?.serverInfo?.version !== '5.0.1') process.exit(1);
+            if (!String(x.result?.instructions || '').includes('Canonical remote MCP endpoint: https://api.xguardgate.com/mcp')) process.exit(1);
+          }
+          NODE
 
-          page="$(curl --fail --silent --show-error --max-time 8 'https://xguardgate.com/?facilitator-v5=1')"
-          printf '%s' "$page" | grep -q 'One URL in the'
-          printf '%s' "$page" | grep -q 'x402 money path'
-          printf '%s' "$page" | grep -q 'Agents and crawlers should not need to know'
+          curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data "$tools_payload" -o /tmp/api-tools.json
+          curl --fail --silent --show-error --max-time 8 -X POST https://xguardgate.com/mcp -H 'content-type: application/json' --data "$tools_payload" -o /tmp/site-tools.json
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const names = file => (JSON.parse(fs.readFileSync(file, 'utf8')).result?.tools || []).map(x => x.name).sort();
+          const api = names('/tmp/api-tools.json');
+          const site = names('/tmp/site-tools.json');
+          for (const required of ['xguard_facilitator','xguard_route','xguard_discovery_search','xguard_health','xguard_supported']) if (!api.includes(required)) process.exit(1);
+          if (api.length < 10 || JSON.stringify(api) !== JSON.stringify(site)) process.exit(1);
+          console.log(JSON.stringify({canonical_mcp_tools: api.length, aliases_identical: true}));
+          NODE
+
+          for host in api.xguardgate.com xguardgate.com; do
+            headers="$(mktemp)"
+            curl --fail --silent --show-error --max-time 8 -I "https://${host}/mcp" -o /dev/null -D "$headers"
+            grep -qi '^x-xguard-control-plane: 5.0.1' "$headers"
+            grep -qi '^x-xguard-canonical-mcp: https://api.xguardgate.com/mcp' "$headers"
+          done
+
+          page="$(curl --fail --silent --show-error --max-time 8 'https://xguardgate.com/?facilitator-v5-0-1=1')"
+          printf '%s' "$page" | grep -q 'v5.0.1'
+          printf '%s' "$page" | grep -q 'rel="canonical"'
+          printf '%s' "$page" | grep -q 'application/ld+json'
+          printf '%s' "$page" | grep -q 'ambiguous timeout/5xx outcomes fail closed'

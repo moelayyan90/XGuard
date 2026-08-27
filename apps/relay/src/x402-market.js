@@ -1,5 +1,5 @@
 const API = "https://api.xguardgate.com";
-const VERSION = "5.0.0";
+const VERSION = "5.0.1";
 const RECONCILE = "https://reconcile.xguardgate.com";
 
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
@@ -208,9 +208,10 @@ async function providerManifest(env) {
 
   return {
     x402Version: 2,
+    version: VERSION,
     kind: "facilitator",
     name: "XGuard High-Velocity x402 Facilitator",
-    description: "One public x402 facilitator URL that automatically selects a healthy compatible settlement path, failovers across configured providers, prevents unsafe Base USDC binding/replay errors, and reconciles ambiguous settlements.",
+    description: "One non-custodial x402 facilitator URL that selects healthy compatible settlement paths, fails over verification and explicit rate-limit rejection, gates ambiguous settlement retries on reconciliation, protects replay-sensitive flows, and reconciles Base USDC outcomes.",
     baseUrl: API,
     facilitator: API,
     endpoints: {
@@ -239,6 +240,10 @@ async function providerManifest(env) {
       latency_aware_routing: true,
       transport_failover: true,
       rate_limit_failover: true,
+      verify_transport_failover: true,
+      settlement_rate_limit_failover: true,
+      settlement_transport_failover: "reconciliation-gated",
+      settlement_ambiguous_fail_closed: true,
       durable_replay_guard: true,
       base_timeout_reconciliation: true,
       exact: caps.kinds.some(kind => String(kind?.scheme || "") === "exact"),
@@ -251,6 +256,7 @@ async function providerManifest(env) {
       configured_upstreams: upstreams(env).map(url => new URL(url).hostname),
       live_upstreams: caps.live.map(row => ({ host: new URL(row.url).hostname, latency_ms: row.latency_ms })),
       integration: "Resource servers configure only https://api.xguardgate.com as their facilitator URL; XGuard selects the downstream settlement path per request.",
+      settlement_safety: "429 may fail over because admission was refused. Ambiguous timeout/5xx settlement outcomes fail closed unless reconciliation proves the signed payment was not consumed; Base USDC uses on-chain authorization-state reconciliation.",
     },
     pricing: {
       verify: "free",

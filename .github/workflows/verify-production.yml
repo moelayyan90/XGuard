@@ -17,33 +17,55 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Wait for hardened MCP
+      - name: Wait for hardened MCP 5.0.1
         shell: bash
         run: |
           set -euo pipefail
+          ready=0
           for i in {1..30}; do
-            body="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' || true)"
-            if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);const t=x.result?.tools;if(Array.isArray(t)&&t.length===7&&t.every(v=>v.annotations?.readOnlyHint===true&&v.annotations?.destructiveHint===false&&v.outputSchema?.type==="object"&&String(v.description||"").includes("Example:")))process.exit(0)}catch{}process.exit(1)})'; then break; fi
+            init="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-security","version":"1.0.0"}}}' || true)"
+            tools="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' || true)"
+            if printf '%s' "$init" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-high-velocity-x402-facilitator"&&x.result?.serverInfo?.version==="5.0.1"&&String(x.result?.instructions||"").includes("Canonical remote MCP endpoint"))process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);const t=x.result?.tools||[];const n=t.map(v=>v.name);if(t.length>=10&&["xguard_facilitator","xguard_route","xguard_discovery_search","xguard_safety_test","xguard_protocols","xguard_inspect","xguard_health","xguard_supported","xguard_receipt","xguard_integration"].every(v=>n.includes(v))&&t.every(v=>v.annotations?.readOnlyHint===true&&v.annotations?.destructiveHint===false&&v.outputSchema?.type==="object"))process.exit(0)}catch{}process.exit(1)})'; then
+              ready=1
+              break
+            fi
             sleep 4
           done
-          printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const t=x.result?.tools;if(!Array.isArray(t)||t.length!==7)process.exit(1);for(const v of t){if(v.annotations?.readOnlyHint!==true||v.annotations?.destructiveHint!==false||v.outputSchema?.type!=="object"||!String(v.description||"").includes("Example:"))process.exit(1);for(const p of Object.values(v.inputSchema?.properties||{})){if(typeof p.description!=="string"||!p.description.trim())process.exit(1)}}})'
+          test "$ready" = "1"
 
-      - name: Verify HTTPS and HSTS on both public MCP hosts
+      - name: Verify HTTPS HSTS and canonical headers on both MCP hosts
         shell: bash
         run: |
           set -euo pipefail
           for host in api.xguardgate.com xguardgate.com; do
             curl --fail --silent --show-error --max-time 8 -I "https://$host/mcp" >"/tmp/$host.headers"
             grep -qi '^strict-transport-security: .*max-age=31536000' "/tmp/$host.headers"
+            grep -qi '^x-xguard-control-plane: 5.0.1' "/tmp/$host.headers"
+            grep -qi '^x-xguard-canonical-mcp: https://api.xguardgate.com/mcp' "/tmp/$host.headers"
             code="$(curl --silent --show-error --max-time 8 --max-redirs 0 -o /dev/null -w '%{http_code}' "http://$host/mcp")"
             test "$code" = "301" -o "$code" = "308"
           done
 
-      - name: Verify canonical MCP identity
+      - name: Verify canonical MCP identity and tool parity
         shell: bash
         run: |
           set -euo pipefail
+          init_payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-security","version":"1.0.0"}}}'
+          tools_payload='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
           for host in api.xguardgate.com xguardgate.com; do
-            init="$(curl --fail --silent --show-error --max-time 8 -X POST "https://$host/mcp" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-security","version":"1.0.0"}}}')"
-            printf '%s' "$init" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-control-plane"||x.result?.serverInfo?.version!=="4.1.0"||x.result?.protocolVersion!=="2026-07-28")process.exit(1)})'
+            curl --fail --silent --show-error --max-time 8 -X POST "https://$host/mcp" -H 'content-type: application/json' --data "$init_payload" -o "/tmp/$host.init.json"
+            curl --fail --silent --show-error --max-time 8 -X POST "https://$host/mcp" -H 'content-type: application/json' --data "$tools_payload" -o "/tmp/$host.tools.json"
           done
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const hosts=['api.xguardgate.com','xguardgate.com'];
+          for(const host of hosts){
+            const x=JSON.parse(fs.readFileSync(`/tmp/${host}.init.json`,'utf8'));
+            if(x.result?.serverInfo?.name!=='xguard-high-velocity-x402-facilitator'||x.result?.serverInfo?.version!=='5.0.1'||x.result?.protocolVersion!=='2026-07-28')process.exit(1);
+          }
+          const names=host=>(JSON.parse(fs.readFileSync(`/tmp/${host}.tools.json`,'utf8')).result?.tools||[]).map(x=>x.name).sort();
+          const a=names(hosts[0]),b=names(hosts[1]);
+          if(a.length<10||JSON.stringify(a)!==JSON.stringify(b))process.exit(1);
+          console.log(JSON.stringify({version:'5.0.1',tools:a.length,aliases_identical:true}));
+          NODE
