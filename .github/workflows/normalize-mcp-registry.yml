@@ -31,6 +31,7 @@ jobs:
           set -euo pipefail
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
           ./mcp-publisher --help >/dev/null
+          ./mcp-publisher validate server.json
 
       - name: Read official version history
         shell: bash
@@ -45,30 +46,66 @@ jobs:
           jq -e '.servers | type == "array" and length > 0' /tmp/xguard-registry-versions.json >/dev/null
           jq -r '.servers[] | [.server.version, (._meta["io.modelcontextprotocol.registry/official"].status // "active")] | @tsv' /tmp/xguard-registry-versions.json
 
-      - name: Verify official latest version is active 5.0.1
+      - name: Validate release target
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$(node -p 'require("./server.json").version')"
+          test -n "$target"
+          echo "Manifest target version: $target"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            current="$(jq -r '[.servers[] | select((._meta["io.modelcontextprotocol.registry/official"].status // "active") == "active")][0].server.version // empty' /tmp/xguard-registry-versions.json)"
+            echo "Current active registry version before merge: ${current:-unknown}"
+          fi
+
+      - name: Wait for manifest version to become official latest
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          registry='https://registry.modelcontextprotocol.io'
+          encoded='io.github.moelayyan90%2Fxguard-control-plane'
+          target="$(node -p 'require("./server.json").version')"
+          for i in {1..18}; do
+            if curl --fail --silent --show-error --max-time 20 \
+              "$registry/v0.1/servers/$encoded/versions/latest" \
+              -o /tmp/xguard-registry-latest.json; then
+              version="$(jq -r '.server.version // empty' /tmp/xguard-registry-latest.json)"
+              status="$(jq -r '._meta["io.modelcontextprotocol.registry/official"].status // "active"' /tmp/xguard-registry-latest.json)"
+              if [[ "$version" == "$target" && "$status" == "active" ]]; then
+                cat /tmp/xguard-registry-latest.json
+                echo "Official latest is active $target."
+                exit 0
+              fi
+              echo "Registry latest is ${version:-unknown} status=${status}; waiting for $target."
+            fi
+            sleep 5
+          done
+          echo "Official registry did not promote $target to active latest."
+          exit 1
+
+      - name: Authenticate with GitHub OIDC
+        if: github.event_name != 'pull_request'
+        run: ./mcp-publisher login github-oidc
+
+      - name: Refresh version history after publication
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
           registry='https://registry.modelcontextprotocol.io'
           encoded='io.github.moelayyan90%2Fxguard-control-plane'
           curl --fail --silent --show-error --max-time 20 \
-            "$registry/v0.1/servers/$encoded/versions/latest" \
-            -o /tmp/xguard-registry-latest.json
-          cat /tmp/xguard-registry-latest.json
-          jq -e '.server.version == "5.0.1"' /tmp/xguard-registry-latest.json >/dev/null
-          jq -e '((._meta["io.modelcontextprotocol.registry/official"].status // "active") == "active")' /tmp/xguard-registry-latest.json >/dev/null
+            "$registry/v0.1/servers/$encoded/versions?include_deleted=true" \
+            -o /tmp/xguard-registry-versions.json
 
-      - name: Authenticate with GitHub OIDC
-        if: github.event_name != 'pull_request'
-        run: ./mcp-publisher login github-oidc
-
-      - name: Deprecate active versions older than 5.0.1
+      - name: Deprecate active versions older than manifest target
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
           name='io.github.moelayyan90/xguard-control-plane'
-          target='5.0.1'
+          target="$(node -p 'require("./server.json").version')"
           mapfile -t rows < <(jq -r --arg target "$target" '.servers[] | select(.server.version != $target) | [.server.version, (._meta["io.modelcontextprotocol.registry/official"].status // "active")] | @tsv' /tmp/xguard-registry-versions.json)
           for row in "${rows[@]}"; do
             version="${row%%$'\t'*}"
@@ -81,7 +118,7 @@ jobs:
             ok=0
             for attempt in 1 2 3; do
               if ./mcp-publisher status --status deprecated \
-                --message "Superseded by XGuard 5.0.1; use https://api.xguardgate.com/mcp" \
+                --message "Superseded by XGuard ${target}; use https://api.xguardgate.com/mcp" \
                 "$name" "$version"; then
                 ok=1
                 break
@@ -92,18 +129,19 @@ jobs:
             test "$ok" = "1"
           done
 
-      - name: Verify superseded versions are no longer active
+      - name: Verify only manifest target remains active
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
           registry='https://registry.modelcontextprotocol.io'
           encoded='io.github.moelayyan90%2Fxguard-control-plane'
+          target="$(node -p 'require("./server.json").version')"
           curl --fail --silent --show-error --max-time 20 \
             "$registry/v0.1/servers/$encoded/versions?include_deleted=true" \
             -o /tmp/xguard-registry-after.json
-          jq -e '.servers[] | select(.server.version == "5.0.1") | ((._meta["io.modelcontextprotocol.registry/official"].status // "active") == "active")' /tmp/xguard-registry-after.json >/dev/null
-          if jq -e '.servers[] | select(.server.version != "5.0.1") | select((._meta["io.modelcontextprotocol.registry/official"].status // "active") == "active")' /tmp/xguard-registry-after.json >/dev/null; then
+          jq -e --arg target "$target" '.servers[] | select(.server.version == $target) | ((._meta["io.modelcontextprotocol.registry/official"].status // "active") == "active")' /tmp/xguard-registry-after.json >/dev/null
+          if jq -e --arg target "$target" '.servers[] | select(.server.version != $target) | select((._meta["io.modelcontextprotocol.registry/official"].status // "active") == "active")' /tmp/xguard-registry-after.json >/dev/null; then
             echo 'A superseded XGuard MCP version is still active.'
             cat /tmp/xguard-registry-after.json
             exit 1
