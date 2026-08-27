@@ -23,6 +23,12 @@ function response(request, body) {
 
 function commonDiscovery() {
   return {
+    actions: `${API}/v1/actions`,
+    action_manifest: `${API}/.well-known/xguard-actions.json`,
+    action_key: `${API}/.well-known/xguard-actions-key.json`,
+    mandates: `${API}/.well-known/xguard-authority.json`,
+    protocols: `${API}/v1/protocols`,
+    inspect: `${API}/v1/inspect`,
     facilitator: `${API}/facilitator`,
     supported: `${API}/supported`,
     verify: `${API}/verify`,
@@ -40,75 +46,88 @@ function commonDiscovery() {
 
 function architecture() {
   return {
-    name: "XGuard High-Velocity x402 Facilitator",
+    name: "XGuard Action Rail",
     version: VERSION,
     product_version: VERSION,
-    primary_role: "public non-custodial in-path x402 v2 facilitator with automatic capability/health routing",
-    facilitator_url: API,
+    primary_role: "protocol-neutral execution control plane for irreversible AI side effects",
+    public_api: API,
     custody: "none",
+    execution_model: [
+      "scoped delegated mandate",
+      "cryptographically signed request-bound action permit",
+      "atomic single-use transition to executing",
+      "one upstream execution with Idempotency-Key binding",
+      "durable executed, failed or ambiguous state",
+      "successful-execution Usage Credit consumption",
+      "durable action receipt",
+    ],
     architecture: {
-      edge: "Cloudflare Workers",
-      state: "Cloudflare Durable Objects for replay, receipts, quotas, spend authority and settlement-rail state",
-      routing: "scheme/network capability -> health -> observed latency",
-      settlement_safety: "ambiguous settlement retries fail closed unless reconciliation proves retry safety",
-      base_usdc_reconciliation: true,
-      signed_payment_recipient_mutation: false,
-      signed_payment_amount_mutation: false,
+      edge: "Cloudflare Workers on xguardgate.com and api.xguardgate.com custom domains",
+      state: "Cloudflare Durable Objects for mandates, permits, signatures, replay state, receipts, quotas and meters",
+      private_network_targets_blocked: true,
+      automatic_action_replay: false,
+      ambiguous_transport_or_5xx: "fail closed",
     },
-    x402: {
-      version: 2,
-      endpoints: {
+    action_rail: {
+      permit: `${API}/v1/actions/permits`,
+      execute: `${API}/v1/actions/execute`,
+      pricing: `${API}/v1/actions/pricing`,
+      stats: `${API}/v1/actions/stats`,
+      supported_action_classes: ["payment", "purchase", "booking", "message", "deploy", "delete", "create", "update", "tool_call", "external_action"],
+      protocols: ["http", "mcp", "x402", "mpp", "ap2", "acp", "ucp", "tap", "custom"],
+    },
+    compatibility_products: {
+      x402: {
+        version: 2,
+        facilitator_url: API,
         supported: `${API}/supported`,
         verify: `${API}/verify`,
         settle: `${API}/settle`,
       },
-      discovery: commonDiscovery(),
+      universal_edge: `${API}/edge/<merchant-host>/<path>`,
+      legacy_settlement_rail: `${API}/v1/rail`,
     },
-    secondary_capabilities: [
-      "protocol-neutral transaction inspection",
-      "agent spend mandates",
-      "merchant edge",
-      "ATS-100 safety testing",
-    ],
+    discovery: commonDiscovery(),
   };
 }
 
 function protocolManifest() {
   return {
-    name: "XGuard High-Velocity x402 Facilitator",
+    name: "XGuard Action Rail",
     version: VERSION,
     product_version: VERSION,
-    primary_role: "x402 v2 facilitator money path",
-    facilitator_url: API,
+    primary_role: "AI action execution boundary",
     protocol_neutral: true,
     protocols: {
-      x402: "native facilitator, discovery and settlement routing",
-      mpp: "recognized by transaction inspection/edge",
-      ap2: "recognized by transaction inspection/edge",
-      ucp: "recognized by transaction inspection/edge",
-      acp: "recognized by transaction inspection/edge",
-      mcp: "remote MCP discovery and tooling",
-      tap: "recognized by transaction inspection/edge",
-      http: "generic machine-transaction inspection/edge",
+      http: "native Action Rail target transport and generic machine-action edge",
+      mcp: "remote MCP discovery plus tool-action recognition",
+      x402: "native facilitator plus Action Rail compatibility",
+      mpp: "recognized payment HTTP authorization surface plus Action Rail compatibility",
+      ap2: "mandate-aware transaction inspection plus Action Rail compatibility",
+      acp: "agent checkout recognition plus Action Rail compatibility",
+      ucp: "commerce action recognition plus Action Rail compatibility",
+      tap: "trusted-agent identity recognition plus Action Rail compatibility",
+    },
+    action_rail: {
+      permit: `POST ${API}/v1/actions/permits`,
+      execute: `POST ${API}/v1/actions/execute`,
+      status: `GET ${API}/v1/actions/permits/{permit_id}`,
+      key: `${API}/.well-known/xguard-actions-key.json`,
+      controls: ["mandate", "action allowlist", "merchant allowlist", "budget", "request binding", "single use", "replay rejection", "expiry", "fail-closed ambiguity", "receipt"],
+      billing: "Usage Credits consumed only after known successful Action Rail execution",
     },
     x402: {
       version: 2,
+      facilitator_url: API,
       automatic_routing: true,
-      discovery_aggregation: true,
       durable_replay_guard: true,
       settlement_ambiguous_fail_closed: true,
-      settlement_transport_failover: "reconciliation-gated",
-      endpoints: {
-        supported: `${API}/supported`,
-        verify: `${API}/verify`,
-        settle: `${API}/settle`,
-      },
+      endpoints: { supported: `${API}/supported`, verify: `${API}/verify`, settle: `${API}/settle` },
     },
     edge: {
       endpoint_format: `${API}/edge/<merchant-host>/<path>`,
       merchant_authorization: "_xguard.<merchant-host> TXT \"xguard-edge=enabled\"",
       private_network_targets_blocked: true,
-      bill_only_successful_transaction_calls: true,
     },
     discovery: commonDiscovery(),
   };
@@ -117,24 +136,20 @@ function protocolManifest() {
 function aiPluginManifest() {
   return {
     schema_version: "v1",
-    name_for_human: "XGuard High-Velocity x402 Facilitator",
-    name_for_model: "xguard_x402_facilitator",
-    description_for_human: "Non-custodial x402 v2 facilitator with safe automatic routing, discovery and replay protection.",
-    description_for_model: "Use XGuard as a non-custodial x402 v2 facilitator at https://api.xguardgate.com. Discover supported payment kinds and resources, inspect automatic route selection, and use the published OpenAPI or MCP interfaces. XGuard does not change the signed recipient or payment amount; ambiguous settlement retries fail closed unless reconciliation proves retry safety.",
-    auth: { type: "none" },
-    api: {
-      type: "openapi",
-      url: `${API}/openapi.json`,
-      is_user_authenticated: false,
-    },
+    name_for_human: "XGuard Action Rail",
+    name_for_model: "xguard_action_rail",
+    description_for_human: "Protocol-neutral execution control for AI side effects with scoped mandates, signed single-use permits and durable receipts.",
+    description_for_model: "Use XGuard when an AI agent is about to cause an irreversible external side effect. Prepare a scoped mandate and a signed request-bound permit, then execute through the Action Rail. XGuard rejects replay, binds the exact target/method/action/request body, and fails closed on ambiguous transport or 5xx outcomes. Native x402 facilitator endpoints remain available as a compatibility capability.",
+    auth: { type: "service_http", authorization_type: "X-XGuard-Key plus X-XGuard-Mandate for protected action preparation" },
+    api: { type: "openapi", url: `${API}/openapi.json`, is_user_authenticated: true },
     logo_url: `${SITE}/logo.svg`,
     contact_email: "mo.elayyan2023@gmail.com",
     legal_info_url: "https://github.com/moelayyan90/XGuard",
     xguard: {
       version: VERSION,
-      x402_version: 2,
-      facilitator_url: API,
+      action_manifest: `${API}/.well-known/xguard-actions.json`,
       mcp_url: `${API}/mcp`,
+      facilitator_url: API,
       custody: "none",
     },
   };
@@ -144,13 +159,9 @@ export default {
   async fetch(request) {
     const { pathname } = new URL(request.url);
     if (!["GET", "HEAD"].includes(request.method)) return null;
-
     if (pathname === "/architecture") return response(request, architecture());
-    if (pathname === "/v1/protocols" || pathname === "/.well-known/xguard.json") {
-      return response(request, protocolManifest());
-    }
+    if (pathname === "/v1/protocols" || pathname === "/.well-known/xguard.json") return response(request, protocolManifest());
     if (pathname === "/.well-known/ai-plugin.json") return response(request, aiPluginManifest());
-
     return null;
   },
 };
