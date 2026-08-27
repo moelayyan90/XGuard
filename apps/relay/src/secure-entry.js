@@ -4,7 +4,7 @@ import market from "./x402-market.js";
 export { MerchantQuota, SettlementReceipt, AgentAuthority } from "./entry.js";
 
 const API = "https://api.xguardgate.com";
-const VERSION = "5.0.0";
+const VERSION = "5.0.1";
 const HSTS = "max-age=31536000; includeSubDomains";
 
 const OUTPUT_SCHEMA = {
@@ -136,6 +136,7 @@ function harden(response) {
   headers.set("referrer-policy", "no-referrer");
   headers.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
   headers.set("x-xguard-control-plane", VERSION);
+  headers.set("x-xguard-canonical-mcp", `${API}/mcp`);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -208,6 +209,7 @@ async function mcp(request, env, ctx) {
         protocolVersion: "2026-07-28",
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "xguard-high-velocity-x402-facilitator", version: VERSION },
+        instructions: `Canonical remote MCP endpoint: ${API}/mcp. XGuard is a non-custodial x402 facilitator gateway; ambiguous settlement retries fail closed unless reconciliation proves retry safety.`,
       },
     });
   }
@@ -313,7 +315,7 @@ async function normalizeVersion(response, pathname) {
       ...(data.info || {}),
       title: "XGuard High-Velocity x402 Facilitator",
       version: VERSION,
-      description: "Public x402 facilitator with automatic capability-, health- and latency-aware settlement routing, failover, replay protection, discovery aggregation and ambiguous-settlement reconciliation.",
+      description: "Non-custodial x402 facilitator with capability-, health- and latency-aware routing, Bazaar discovery, replay protection, and fail-closed handling of ambiguous settlement outcomes unless reconciliation proves retry safety.",
     };
     data.paths = {
       ...(data.paths || {}),
@@ -327,7 +329,7 @@ async function normalizeVersion(response, pathname) {
 
   if (pathname === "/.well-known/agent-card.json" || pathname === "/.well-known/agent.json" || pathname === "/a2a") {
     data.name = "XGuard High-Velocity x402 Facilitator";
-    data.description = "Public x402 facilitator for autonomous agents and resource servers: one endpoint, automatic compatible settlement routing, discovery, failover, replay protection and reconciliation.";
+    data.description = "Non-custodial x402 facilitator for autonomous agents and resource servers: one endpoint, compatible route selection, Bazaar discovery, replay protection, and reconciliation-gated settlement failover.";
     data.version = VERSION;
     data.skills = [
       { id: "xguard-facilitator", name: "x402 facilitator", description: "Use XGuard as the single in-path /verify and /settle endpoint." },
@@ -351,11 +353,11 @@ async function normalizeVersion(response, pathname) {
 }
 
 function llmsText() {
-  return `XGuard High-Velocity x402 Facilitator\nPrimary facilitator URL: ${API}\nGET /supported\nPOST /verify\nPOST /settle\nGET /facilitator\nGET /discovery/resources\nGET /discovery/search?query=...\nGET /v1/facilitator/route?network=...&scheme=...\nWell-known discovery: ${API}/.well-known/x402\nMCP: ${API}/mcp\nWebsite: https://xguardgate.com\nXGuard automatically selects a compatible healthy downstream settlement path. Failed settlements are not billed. XGuard never mutates the x402 payTo or signed payment amount.\n`;
+  return `XGuard High-Velocity x402 Facilitator\nVersion: ${VERSION}\nPrimary facilitator URL: ${API}\nGET /supported\nPOST /verify\nPOST /settle\nGET /facilitator\nGET /discovery/resources\nGET /discovery/search?query=...\nGET /v1/facilitator/route?network=...&scheme=...\nWell-known discovery: ${API}/.well-known/x402\nCanonical MCP: ${API}/mcp\nWebsite: https://xguardgate.com\nXGuard automatically selects compatible healthy downstream routes. Verification can fail over on transport/provider failure. Settlement retries are fail-closed after ambiguous timeout/5xx outcomes unless reconciliation proves retry safety; explicit 429 rejection may fail over. Base USDC uses on-chain authorization-state reconciliation. Failed settlements are not billed. XGuard never mutates the x402 payTo or signed payment amount.\n`;
 }
 
 function skillText() {
-  return `# XGuard High-Velocity x402 Facilitator\n\nUse **${API}** as the resource server's x402 facilitator URL.\n\nXGuard aggregates /supported capabilities, selects a compatible healthy route per payment, fails over on transport/rate-limit failures, applies binding/replay controls, and reconciles ambiguous Base USDC settlements.\n\n## Standard money path\n- GET /supported\n- POST /verify\n- POST /settle\n\n## Automatic discovery\n- GET /facilitator\n- GET /discovery/resources\n- GET /discovery/search?query=...\n- GET /v1/facilitator/route?network=...&scheme=...\n- GET /.well-known/x402\n\nThe exact scheme is routed when advertised by healthy upstreams. batch-settlement is advertised/routed only when a healthy configured upstream actually reports support for scheme=batch-settlement.\n`;
+  return `# XGuard High-Velocity x402 Facilitator\n\nVersion **${VERSION}**. Use **${API}** as the resource server's x402 facilitator URL.\n\nXGuard aggregates /supported capabilities and selects compatible healthy routes. Verification can fail over on transport/provider failure. For settlement, explicit 429 rejection may fail over; ambiguous timeout/5xx outcomes fail closed unless reconciliation proves the signed payment was not consumed. Base USDC uses on-chain authorization-state reconciliation before a retry is allowed. XGuard also applies binding and replay controls.\n\n## Standard money path\n- GET /supported\n- POST /verify\n- POST /settle\n\n## Automatic discovery\n- GET /facilitator\n- GET /discovery/resources\n- GET /discovery/search?query=...\n- GET /v1/facilitator/route?network=...&scheme=...\n- GET /.well-known/x402\n\nThe exact scheme is routed when advertised by healthy upstreams. batch-settlement is advertised/routed only when a healthy configured upstream actually reports support for scheme=batch-settlement.\n`;
 }
 
 export default {
