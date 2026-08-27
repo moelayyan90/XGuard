@@ -1,0 +1,87 @@
+name: Publish XGuard to Global A2A Registry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay/src/a2a-entry.js"
+      - ".github/workflows/publish-global-a2a-registry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate live canonical A2A Agent Card
+        shell: bash
+        run: |
+          set -euo pipefail
+          card_url='https://xguardgate.com/.well-known/agent-card.json'
+          for i in {1..30}; do
+            card="$(curl --fail --silent --show-error --max-time 15 "$card_url" || true)"
+            if printf '%s' "$card" | jq -e '
+              .name == "XGuard Discovery Agent" and
+              .version == "5.0.2" and
+              .supportedInterfaces[0].url == "https://xguardgate.com/a2a" and
+              .supportedInterfaces[0].protocolVersion == "1.0"
+            ' >/dev/null 2>&1; then
+              echo 'Canonical XGuard A2A Agent Card is live.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Canonical XGuard A2A Agent Card was not live.'
+          exit 1
+
+      - name: Check Global A2A Registry
+        id: existing
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl --fail --silent --show-error --max-time 20 'https://api.a2a-registry.org/public/agents?q=XGuard' || true)"
+          if printf '%s' "$body" | grep -Fq 'xguardgate.com'; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+            echo 'XGuard is already observable in Global A2A Registry.'
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Submit canonical Agent Card through public ingest
+        if: steps.existing.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload='{"manifestUrl":"https://xguardgate.com/.well-known/agent-card.json"}'
+          code="$(curl --silent --show-error --max-time 30 \
+            -o /tmp/global-a2a-ingest-response \
+            -w '%{http_code}' \
+            -X POST https://api.a2a-registry.org/public/ingest \
+            -H 'content-type: application/json' \
+            --data "$payload")"
+          echo "Global A2A Registry ingest HTTP ${code}"
+          cat /tmp/global-a2a-ingest-response || true
+          echo
+          [[ "$code" =~ ^2[0-9][0-9]$ || "$code" == '409' ]]
+
+      - name: Verify public Global A2A Registry listing
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..30}; do
+            body="$(curl --fail --silent --show-error --max-time 20 'https://api.a2a-registry.org/public/agents?q=XGuard' || true)"
+            if printf '%s' "$body" | grep -Fq 'xguardgate.com'; then
+              echo 'Verified XGuard is publicly observable in Global A2A Registry.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'XGuard was not publicly observable in Global A2A Registry after ingest.'
+          exit 1
