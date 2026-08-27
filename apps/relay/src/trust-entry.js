@@ -1,5 +1,6 @@
 import app from "./rail-entry.js";
 import actionRail, { ActionKeyAuthority, ActionPermitState, ActionMeter } from "./action-rail.js";
+import actionSite from "./site-action.js";
 
 export {
   MerchantQuota,
@@ -154,6 +155,11 @@ export default {
     const url = new URL(request.url);
     if (["/logo.svg", "/brand.svg", "/favicon.svg", "/favicon.ico"].includes(url.pathname) && ["GET", "HEAD"].includes(request.method)) {
       return harden(brandResponse(request));
+    }
+
+    if (url.hostname === "xguardgate.com" && url.pathname === "/" && ["GET", "HEAD"].includes(request.method)) {
+      const siteResponse = await actionSite.fetch(request, env, ctx);
+      if (siteResponse instanceof Response) return harden(siteResponse);
     }
 
     const snapshot = url.pathname === "/mcp" && request.method === "POST"
