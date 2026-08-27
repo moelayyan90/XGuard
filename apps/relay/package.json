@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/index.js && node --check src/gateway.js && node --check src/site-entry.js && node --check src/control-plane.js && node --check src/control-entry.js && node --check src/discovery-entry.js && node --check src/webmcp-entry.js"
+    "check": "node --check src/index.js && node --check src/gateway.js && node --check src/site-entry.js && node --check src/control-plane.js && node --check src/control-entry.js && node --check src/discovery-entry.js && node --check src/webmcp-entry.js && node --check src/a2a-entry.js"
   },
   "dependencies": {
     "viem": "^2.37.6"
