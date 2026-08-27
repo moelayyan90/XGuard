@@ -20,6 +20,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
         shell: bash
         run: |
           set -euo pipefail
@@ -28,31 +29,92 @@ jobs:
 
           api='https://api.cloudflare.com/client/v4'
           auth=(-H "Authorization: Bearer $token" -H 'Content-Type: application/json')
-          zone_json="$(curl --fail-with-body --silent --show-error "${auth[@]}" "$api/zones?name=xguardgate.com&account.id=$CLOUDFLARE_ACCOUNT_ID")"
-          zone_id="$(printf '%s' "$zone_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const z=x.result?.find(z=>z.name==="xguardgate.com");if(!z?.id)process.exit(1);process.stdout.write(z.id)})')"
+          zone_id="${CLOUDFLARE_ZONE_ID:-}"
+
+          if [[ -z "$zone_id" ]]; then
+            set +e
+            zone_json="$(curl --silent --show-error "${auth[@]}" "$api/zones?name=xguardgate.com&account.id=$CLOUDFLARE_ACCOUNT_ID" -w $'\n%{http_code}')"
+            zone_call=$?
+            set -e
+            zone_code="$(printf '%s' "$zone_json" | tail -n1)"
+            zone_body="$(printf '%s' "$zone_json" | sed '$d')"
+            if [[ "$zone_call" != "0" || ! "$zone_code" =~ ^2[0-9][0-9]$ ]]; then
+              echo "::warning::Cannot resolve the Cloudflare zone with the current token (HTTP $zone_code). _x402 DNS is NOT published. HTTP well-known discovery remains live."
+              {
+                echo '### x402 DNS discovery'
+                echo ''
+                echo '- State: **NOT PUBLISHED**'
+                echo "- Cloudflare zone lookup HTTP: $zone_code"
+                echo '- Reason: current repository token lacks the required Zone read/DNS edit scope, or CLOUDFLARE_ZONE_ID is not configured.'
+                echo '- Live fallback: https://api.xguardgate.com/.well-known/x402'
+                echo '- To publish DNS: add a token scoped to Zone:DNS Edit for xguardgate.com and optionally store CLOUDFLARE_ZONE_ID as a repository secret, then rerun.'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            zone_id="$(printf '%s' "$zone_body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);const z=x.result?.find(z=>z.name==="xguardgate.com");if(!z?.id)process.exit(1);process.stdout.write(z.id)})')"
+          fi
 
           name='_x402.xguardgate.com'
           content='v=x402-1; wk=https://api.xguardgate.com/.well-known/x402; k=facilitator; net=eip155:8453; scheme=exact'
           payload="$(node -e 'process.stdout.write(JSON.stringify({type:"TXT",name:process.argv[1],content:process.argv[2],ttl:300,comment:"XGuard x402 facilitator discovery compatibility record"}))' "$name" "$content")"
 
-          existing="$(curl --fail-with-body --silent --show-error "${auth[@]}" "$api/zones/$zone_id/dns_records?type=TXT&name=$name")"
-          record_id="$(printf '%s' "$existing" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);process.stdout.write(x.result?.[0]?.id||"")})')"
+          set +e
+          existing_raw="$(curl --silent --show-error "${auth[@]}" "$api/zones/$zone_id/dns_records?type=TXT&name=$name" -w $'\n%{http_code}')"
+          existing_call=$?
+          set -e
+          existing_code="$(printf '%s' "$existing_raw" | tail -n1)"
+          existing_body="$(printf '%s' "$existing_raw" | sed '$d')"
+          if [[ "$existing_call" != "0" || ! "$existing_code" =~ ^2[0-9][0-9]$ ]]; then
+            echo "::warning::Cloudflare DNS read is unavailable (HTTP $existing_code). _x402 DNS is NOT published."
+            {
+              echo '### x402 DNS discovery'
+              echo ''
+              echo '- State: **NOT PUBLISHED**'
+              echo "- DNS read HTTP: $existing_code"
+              echo '- Required permission: Zone:DNS Read/Edit for xguardgate.com.'
+              echo '- Live fallback: https://api.xguardgate.com/.well-known/x402'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          record_id="$(printf '%s' "$existing_body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);process.stdout.write(x.result?.[0]?.id||"")})')"
 
           if [[ -n "$record_id" ]]; then
-            result="$(curl --fail-with-body --silent --show-error "${auth[@]}" -X PATCH "$api/zones/$zone_id/dns_records/$record_id" --data "$payload")"
+            method='PATCH'
+            target="$api/zones/$zone_id/dns_records/$record_id"
             action='updated'
           else
-            result="$(curl --fail-with-body --silent --show-error "${auth[@]}" -X POST "$api/zones/$zone_id/dns_records" --data "$payload")"
+            method='POST'
+            target="$api/zones/$zone_id/dns_records"
             action='created'
           fi
 
-          printf '%s' "$result" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.success!==true||x.result?.type!=="TXT")process.exit(1);console.log(JSON.stringify({id:x.result.id,name:x.result.name,content:x.result.content,ttl:x.result.ttl}))})'
+          set +e
+          write_raw="$(curl --silent --show-error "${auth[@]}" -X "$method" "$target" --data "$payload" -w $'\n%{http_code}')"
+          write_call=$?
+          set -e
+          write_code="$(printf '%s' "$write_raw" | tail -n1)"
+          write_body="$(printf '%s' "$write_raw" | sed '$d')"
+          if [[ "$write_call" != "0" || ! "$write_code" =~ ^2[0-9][0-9]$ ]]; then
+            echo "::warning::Cloudflare DNS write failed (HTTP $write_code). _x402 DNS is NOT published."
+            {
+              echo '### x402 DNS discovery'
+              echo ''
+              echo '- State: **NOT PUBLISHED**'
+              echo "- DNS write HTTP: $write_code"
+              echo '- Required permission: Zone:DNS Edit for xguardgate.com.'
+              echo '- Live fallback: https://api.xguardgate.com/.well-known/x402'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          printf '%s' "$write_body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.success!==true||x.result?.type!=="TXT")process.exit(1);console.log(JSON.stringify({id:x.result.id,name:x.result.name,content:x.result.content,ttl:x.result.ttl}))})'
           echo "_x402 TXT record $action"
           {
             echo '### x402 DNS discovery'
             echo ''
             echo "- Record: $name"
-            echo "- State: $action"
+            echo "- State: **$action**"
             echo "- Value: $content"
             echo '- Live /supported remains authoritative for actual schemes/networks.'
           } >> "$GITHUB_STEP_SUMMARY"
