@@ -33,7 +33,10 @@ jobs:
           # discovery-entry.js. Tests that bypass that wrapper use the legacy
           # host as a synthetic API origin. Public/canonical assertions remain
           # on the new /api base.
-          test_files = [p for p in Path('apps/relay').rglob('*') if p.is_file() and ('test' in p.name.lower())]
+          test_files = [
+              p for p in Path('apps/relay').rglob('*')
+              if p.is_file() and ('test' in p.name.lower() or 'test' in p.parts)
+          ]
           for path in test_files:
               try:
                   text = path.read_text(encoding='utf-8')
