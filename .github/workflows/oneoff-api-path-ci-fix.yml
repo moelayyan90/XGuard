@@ -30,9 +30,9 @@ jobs:
           NEW = "https://xguardgate.com/api"
 
           # Lower-level handlers are called after /api has been stripped by
-          # discovery-entry.js. Unit tests that bypass that wrapper therefore
-          # use the legacy host only as a synthetic origin. Published URLs and
-          # canonical assertions stay on the new public base.
+          # discovery-entry.js. Tests that bypass that wrapper use the legacy
+          # host as a synthetic API origin. Public/canonical assertions remain
+          # on the new /api base.
           test_files = [p for p in Path('apps/relay').rglob('*') if p.is_file() and ('test' in p.name.lower())]
           for path in test_files:
               try:
@@ -46,19 +46,6 @@ jobs:
               text = text.replace(f"const BASE = '{NEW}';", f"const BASE = '{OLD}';")
               path.write_text(text, encoding='utf-8')
 
-          # entry-test validates public crawler URLs, so those assertions are
-          # canonical output assertions rather than synthetic request origins.
-          entry_test = Path('apps/relay/src/entry-test.js')
-          text = entry_test.read_text(encoding='utf-8')
-          text = text.replace(r'https:\/\/api\.xguardgate\.com\/sitemap\.xml', r'https:\/\/xguardgate\.com\/api\/sitemap\.xml')
-          text = text.replace(r'https:\/\/api\.xguardgate\.com\/.well-known\/glama\.json', r'https:\/\/xguardgate\.com\/api\/.well-known\/glama\.json')
-          text = text.replace(r'https:\/\/api\.xguardgate\.com\/.well-known\/agent-card\.json', r'https:\/\/xguardgate\.com\/api\/.well-known\/agent-card\.json')
-          text = text.replace(r'https:\/\/api\.xguardgate\.com\/openapi\.json', r'https:\/\/xguardgate\.com\/api\/openapi\.json')
-          entry_test.write_text(text, encoding='utf-8')
-
-          # Static CI contracts move to the canonical public URL. Existing
-          # live compatibility probes intentionally continue to hit the old
-          # hostname until the branch is deployed.
           agent = Path('.github/workflows/agent-plugin-ci.yml')
           text = agent.read_text(encoding='utf-8')
           text = text.replace("const endpoint = 'https://api.xguardgate.com/mcp';", "const endpoint = 'https://xguardgate.com/api/mcp';", 1)
