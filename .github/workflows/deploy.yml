@@ -24,7 +24,7 @@ jobs:
           node-version: 24
       - run: npm install --prefix apps/relay --no-audit --no-fund
 
-      - name: Deploy Worker and apply Durable Object migrations when required
+      - name: Apply Durable Object migration and deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -35,70 +35,7 @@ jobs:
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
           export CLOUDFLARE_API_TOKEN="$token"
-
-          rm -f /tmp/xguard-wrangler-upload.ndjson /tmp/xguard-wrangler-upload.log /tmp/xguard-wrangler-deploy.ndjson /tmp/xguard-wrangler-full-deploy.log
-          export WRANGLER_OUTPUT_FILE_PATH=/tmp/xguard-wrangler-upload.ndjson
-          tag="git-${GITHUB_SHA:0:12}"
-
-          # Prefer the versioned path because it does not reconcile routes on routine releases.
-          # Cloudflare rejects versions upload with code 10211 when a new Durable Object
-          # migration is present. That lifecycle change must be applied atomically by
-          # `wrangler deploy`; after the migration is provisioned, later releases return
-          # to versions upload/deploy automatically.
-          set +e
-          npx --yes wrangler@4.123.0 versions upload --config apps/relay/wrangler.jsonc --tag "$tag" --message "XGuard ${GITHUB_SHA}" 2>&1 | tee /tmp/xguard-wrangler-upload.log
-          upload_status=${PIPESTATUS[0]}
-          set -e
-
-          if [[ "$upload_status" -ne 0 ]]; then
-            if grep -Eq 'code: 10211|\[code: 10211\]|includes a Durable Object migration' /tmp/xguard-wrangler-upload.log; then
-              echo 'Cloudflare requires an atomic non-versioned deployment for this Durable Object migration.'
-              unset WRANGLER_OUTPUT_FILE_PATH
-              npx --yes wrangler@4.123.0 deploy --config apps/relay/wrangler.jsonc --message "Apply XGuard Durable Object migration ${GITHUB_SHA}" 2>&1 | tee /tmp/xguard-wrangler-full-deploy.log
-              grep -Eq 'Uploaded xguard-mainnet|Deployed xguard-mainnet|Current Version ID|Worker Version ID' /tmp/xguard-wrangler-full-deploy.log || {
-                echo 'Wrangler deploy completed without a recognizable deployment marker.'
-                cat /tmp/xguard-wrangler-full-deploy.log
-                exit 1
-              }
-              echo 'Durable Object migration deployment completed.'
-            else
-              echo "Wrangler versions upload failed with status ${upload_status}."
-              cat /tmp/xguard-wrangler-upload.log
-              exit "$upload_status"
-            fi
-          else
-            version_id="$(node - <<'NODE'
-            const fs=require('node:fs');
-            let id='';
-            try {
-              const lines=fs.readFileSync('/tmp/xguard-wrangler-upload.ndjson','utf8').split(/\r?\n/).filter(Boolean);
-              for(const line of lines){
-                try { const x=JSON.parse(line); if(x.type==='version-upload' && x.version_id) id=x.version_id; } catch {}
-              }
-            } catch {}
-            if(!id){
-              const text=fs.readFileSync('/tmp/xguard-wrangler-upload.log','utf8');
-              const m=text.match(/Worker Version ID:\s*([a-f0-9-]{36})/i) || text.match(/Version ID:\s*([a-f0-9-]{36})/i);
-              if(m) id=m[1];
-            }
-            if(!id) process.exit(1);
-            process.stdout.write(id);
-            NODE
-            )"
-            echo "Uploaded Worker version: $version_id"
-            [[ "$version_id" =~ ^[a-f0-9-]{36}$ ]]
-
-            export WRANGLER_OUTPUT_FILE_PATH=/tmp/xguard-wrangler-deploy.ndjson
-            npx --yes wrangler@4.123.0 versions deploy "${version_id}@100%" -y --config apps/relay/wrangler.jsonc --message "Promote XGuard ${GITHUB_SHA}"
-
-            node - <<'NODE'
-            const fs=require('node:fs');
-            const path='/tmp/xguard-wrangler-deploy.ndjson';
-            const lines=fs.existsSync(path)?fs.readFileSync(path,'utf8').split(/\r?\n/).filter(Boolean):[];
-            const deployed=lines.some(line=>{try{return JSON.parse(line).type==='version-deploy'}catch{return false}});
-            if(!deployed) throw new Error('Wrangler did not record a version-deploy event');
-            NODE
-          fi
+          npx --yes wrangler@4.123.0 deploy --config apps/relay/wrangler.jsonc --tag "git-${GITHUB_SHA:0:12}" --message "Apply XGuard ProofRail Durable Object migration ${GITHUB_SHA}"
 
       - name: Production smoke test
         shell: bash
