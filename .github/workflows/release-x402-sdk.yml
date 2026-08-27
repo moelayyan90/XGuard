@@ -1,0 +1,92 @@
+name: Release XGuard x402 SDK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "sdk/**"
+      - "integrations/**"
+      - ".github/workflows/release-x402-sdk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Verify release identity
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          license="$(node -p "require('./package.json').license")"
+          test "$name" = "xguard-x402-control-plane"
+          test "$version" = "5.0.1"
+          test "$license" = "Apache-2.0"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=xguard-x402-sdk-v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and smoke-test package
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          pack_json="$(npm pack --json)"
+          pack_file="$(printf '%s' "$pack_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);process.stdout.write(x[0].filename)})')"
+          test -f "$pack_file"
+          mv "$pack_file" xguard-x402-control-plane-5.0.1.tgz
+          sha256sum xguard-x402-control-plane-5.0.1.tgz > SHA256SUMS.txt
+
+          mkdir -p /tmp/xguard-release-smoke
+          cd /tmp/xguard-release-smoke
+          npm init -y >/dev/null 2>&1
+          npm install --no-audit --no-fund "$GITHUB_WORKSPACE/xguard-x402-control-plane-5.0.1.tgz" @x402/core@^2.23.0
+          node --input-type=module <<'NODE'
+          import { XGUARD_VERSION, XGUARD_FACILITATOR_URL, facilitator, xguardSupported } from 'xguard-x402-control-plane';
+          if (XGUARD_VERSION !== '5.0.1') throw new Error('wrong release version');
+          if (XGUARD_FACILITATOR_URL !== 'https://api.xguardgate.com') throw new Error('wrong facilitator URL');
+          if (!facilitator) throw new Error('facilitator export missing');
+          const supported = await xguardSupported();
+          if (!supported || !Array.isArray(supported.kinds) || supported.kinds.length < 1) throw new Error('live supported check failed');
+          NODE
+
+      - name: Create or update immutable-version release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" xguard-x402-control-plane-5.0.1.tgz SHA256SUMS.txt --clobber
+          else
+            gh release create "$TAG" \
+              xguard-x402-control-plane-5.0.1.tgz SHA256SUMS.txt \
+              --target "$GITHUB_SHA" \
+              --title "XGuard x402 SDK v5.0.1" \
+              --notes "Tested drop-in x402 v2 facilitator SDK for XGuard. Includes JavaScript/TypeScript integration helpers plus Express, Hono, Next.js, paid MCP, Python/FastAPI and Go/Gin examples. Canonical facilitator: https://api.xguardgate.com. The release tarball is smoke-tested against the live /supported surface before publication."
+          fi
+
+      - name: Verify published release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json tagName,name,isDraft,isPrerelease,assets \
+            --jq 'select(.tagName == env.TAG and .isDraft == false and .isPrerelease == false) | .assets | map(.name) | sort | .[]' \
+            | tee /tmp/assets
+          grep -qx 'SHA256SUMS.txt' /tmp/assets
+          grep -qx 'xguard-x402-control-plane-5.0.1.tgz' /tmp/assets
