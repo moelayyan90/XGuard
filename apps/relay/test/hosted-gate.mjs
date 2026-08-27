@@ -68,6 +68,37 @@ test("returns a canonical x402 v2 challenge before any facilitator call", async 
   assert.equal(challenge.accepts[0].payTo.toLowerCase(), PAY_TO.toLowerCase());
 });
 
+test("derives resource identity from trusted forward-auth headers", async () => {
+  const headers = new Headers({
+    "x-forwarded-proto": "https",
+    "x-forwarded-host": "merchant.example",
+    "x-forwarded-uri": "/premium?plan=pro",
+    "x-xguard-pay-to": PAY_TO,
+    "x-xguard-amount": "10000",
+  });
+  const worker = { fetch: async () => { throw new Error("facilitator must not be called"); } };
+  const response = await hostedGateResponse(new Request("https://api.xguardgate.com/v1/gate/authorize", { method: "GET", headers }), {}, {}, worker);
+  assert.equal(response.status, 402);
+  const challenge = decode(response.headers.get("payment-required"));
+  assert.equal(challenge.resource.url, "https://merchant.example/premium?plan=pro");
+});
+
+test("nginx auth_request compatibility preserves x402 challenge in a 401 subrequest", async () => {
+  const headers = new Headers({
+    "x-xguard-resource-url": RESOURCE,
+    "x-xguard-pay-to": PAY_TO,
+    "x-xguard-amount": "10000",
+    "x-xguard-gateway-mode": "nginx-auth-request",
+  });
+  const worker = { fetch: async () => { throw new Error("facilitator must not be called"); } };
+  const response = await hostedGateResponse(new Request("https://api.xguardgate.com/v1/gate/authorize", { method: "GET", headers }), {}, {}, worker);
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get("www-authenticate"), "X402");
+  const challenge = decode(response.headers.get("payment-required"));
+  assert.equal(challenge.x402Version, 2);
+  assert.equal(challenge.accepts[0].amount, "10000");
+});
+
 test("rejects a signed payload whose accepted amount does not match policy", async () => {
   let calls = 0;
   const worker = { fetch: async () => { calls += 1; throw new Error("must not call facilitator"); } };
