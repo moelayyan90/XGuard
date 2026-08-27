@@ -1,0 +1,114 @@
+name: Publish XGuard to A2A Registry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/relay/src/a2a-entry.js"
+      - "apps/relay/wrangler.jsonc"
+      - ".github/workflows/publish-a2a-registry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Wait for live A2A Agent Card
+        shell: bash
+        run: |
+          set -euo pipefail
+          canonical='https://xguardgate.com/.well-known/agent-card.json'
+          legacy='https://xguardgate.com/.well-known/agent.json'
+          for i in {1..60}; do
+            card="$(curl --fail --silent --show-error --max-time 10 "$canonical" || true)"
+            alias="$(curl --fail --silent --show-error --max-time 10 "$legacy" || true)"
+            if printf '%s' "$card" | jq -e '
+              .name == "XGuard Discovery Agent" and
+              .version == "5.0.2" and
+              .supportedInterfaces[0].url == "https://xguardgate.com/a2a" and
+              .supportedInterfaces[0].protocolBinding == "JSONRPC" and
+              .supportedInterfaces[0].protocolVersion == "1.0" and
+              (.skills | length >= 3)
+            ' >/dev/null 2>&1 && [[ "$alias" == "$card" ]]; then
+              echo 'XGuard A2A Agent Card is live and the legacy discovery alias matches it.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'XGuard A2A Agent Card did not become live in time.'
+          exit 1
+
+      - name: Check existing A2A Registry listing
+        id: existing
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl --fail --silent --show-error --max-time 20 'https://a2aregistry.org/api/agents?search=XGuard' || true)"
+          if printf '%s' "$body" | grep -Fq 'xguardgate.com'; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+            echo 'XGuard is already observable in A2A Registry.'
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Register canonical Agent Card
+        if: steps.existing.outputs.exists != 'true'
+        id: register
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload='{"wellKnownURI":"https://xguardgate.com/.well-known/agent-card.json"}'
+          code="$(curl --silent --show-error --max-time 30 \
+            -o /tmp/a2a-register-response \
+            -w '%{http_code}' \
+            -X POST https://a2aregistry.org/api/agents/register \
+            -H 'content-type: application/json' \
+            --data "$payload")"
+          echo "A2A Registry canonical registration HTTP ${code}"
+          cat /tmp/a2a-register-response || true
+          echo
+          if [[ "$code" =~ ^2[0-9][0-9]$ || "$code" == '409' ]]; then
+            echo 'accepted=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo 'accepted=false' >> "$GITHUB_OUTPUT"
+
+      - name: Retry with compatibility discovery alias
+        if: steps.existing.outputs.exists != 'true' && steps.register.outputs.accepted != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload='{"wellKnownURI":"https://xguardgate.com/.well-known/agent.json"}'
+          code="$(curl --silent --show-error --max-time 30 \
+            -o /tmp/a2a-register-legacy-response \
+            -w '%{http_code}' \
+            -X POST https://a2aregistry.org/api/agents/register \
+            -H 'content-type: application/json' \
+            --data "$payload")"
+          echo "A2A Registry compatibility registration HTTP ${code}"
+          cat /tmp/a2a-register-legacy-response || true
+          echo
+          [[ "$code" =~ ^2[0-9][0-9]$ || "$code" == '409' ]]
+
+      - name: Verify external A2A listing
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..30}; do
+            body="$(curl --fail --silent --show-error --max-time 20 'https://a2aregistry.org/api/agents?search=XGuard' || true)"
+            if printf '%s' "$body" | grep -Fq 'xguardgate.com'; then
+              echo 'Verified XGuard is externally observable in A2A Registry.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'XGuard was not observable in A2A Registry after registration.'
+          exit 1
