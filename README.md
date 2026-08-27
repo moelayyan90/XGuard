@@ -58,6 +58,32 @@ POST https://api.xguardgate.com/settle
 
 A resource server that configures XGuard as its facilitator sends its x402 verification and settlement traffic through XGuard. XGuard never changes the signed x402 `payTo` or payment amount.
 
+## Drop-in x402 seller SDK
+
+Install directly from the public GitHub repository:
+
+```bash
+npm install github:moelayyan90/XGuard#main
+```
+
+Then use XGuard anywhere the official x402 v2 middleware expects a facilitator client:
+
+```js
+import { facilitator } from "xguard-x402-control-plane";
+```
+
+Or create an authenticated client for XGuard Usage Credits:
+
+```js
+import { createXGuardFacilitator } from "xguard-x402-control-plane";
+
+const facilitator = createXGuardFacilitator({
+  licenseKey: process.env.XGUARD_LICENSE_KEY,
+});
+```
+
+The repository contains working integration examples for **Express, Hono, Next.js, paid MCP tools, Python/FastAPI, and Go/Gin** under `sdk/examples/` and `integrations/`. See [sdk/README.md](sdk/README.md).
+
 ## Automatic discovery
 
 XGuard exposes machine-readable discovery surfaces so agents, crawlers, registries and routing libraries do not need to discover the product from the website first:
