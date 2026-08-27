@@ -1,0 +1,72 @@
+name: XGuard Distribution Surfaces CI
+
+on:
+  pull_request:
+    paths:
+      - "llms-install.md"
+      - "apps/relay/src/rail-entry.js"
+      - ".github/workflows/distribution-surfaces-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "llms-install.md"
+      - "apps/relay/src/rail-entry.js"
+      - ".github/workflows/distribution-surfaces-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate Cline install guide and source surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '^# Install XGuard MCP' llms-install.md
+          grep -q 'https://api.xguardgate.com/mcp' llms-install.md
+          grep -q 'xguard-high-velocity-x402-facilitator' llms-install.md
+          grep -q 'xguard_facilitator' llms-install.md
+          grep -q 'xguard_integration' llms-install.md
+          grep -q 'url.pathname === "/connect"' apps/relay/src/rail-entry.js
+          grep -q 'url.pathname === "/logo.png"' apps/relay/src/rail-entry.js
+          grep -q 'x-xguard-image-dimensions.*400x400' apps/relay/src/rail-entry.js
+          grep -q '"/connect"' apps/relay/src/rail-entry.js
+          grep -q '"/logo.png"' apps/relay/src/rail-entry.js
+
+      - name: Verify canonical MCP remains live
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://api.xguardgate.com/mcp'
+          init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-distribution-ci","version":"1.0.0"}}}')"
+          printf '%s' "$init" | jq -e '.result.serverInfo.name == "xguard-high-velocity-x402-facilitator" and .result.serverInfo.version == "5.0.1"' >/dev/null
+
+      - name: Verify production connect and marketplace assets after main deploy
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for i in {1..60}; do
+            connect="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/connect' || true)"
+            logo_headers="$(curl --silent --show-error --max-time 10 -I 'https://xguardgate.com/logo.png' || true)"
+            sitemap="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/sitemap.xml' || true)"
+            if printf '%s' "$connect" | grep -q 'Connect XGuard' && \
+               printf '%s' "$connect" | grep -q 'GitHub Copilot CLI' && \
+               printf '%s' "$connect" | grep -q 'Cline' && \
+               printf '%s' "$logo_headers" | grep -qi '^content-type: image/png' && \
+               printf '%s' "$logo_headers" | grep -qi '^x-xguard-image-dimensions: 400x400' && \
+               printf '%s' "$sitemap" | grep -q '<loc>https://xguardgate.com/connect</loc>' && \
+               printf '%s' "$sitemap" | grep -q '<loc>https://xguardgate.com/logo.png</loc>'; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ready" = "1"
