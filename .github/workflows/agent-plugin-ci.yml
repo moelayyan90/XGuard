@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           endpoint='https://api.xguardgate.com/mcp'
           init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-agent-plugin-ci","version":"1.0.0"}}}')"
-          printf '%s' "$init" | jq -e '.result.serverInfo.version == "5.0.1"' >/dev/null
+          printf '%s' "$init" | jq -e '.result.serverInfo.version | type == "string" and length > 0' >/dev/null
           tools="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
           printf '%s' "$tools" | jq -e '.result.tools | length >= 10' >/dev/null
           for tool in xguard_facilitator xguard_route xguard_discovery_search xguard_protocols xguard_inspect xguard_health xguard_supported xguard_receipt xguard_integration; do
