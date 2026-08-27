@@ -1,6 +1,6 @@
 {
   "name": "xguard-x402-control-plane",
-  "version": "5.0.2",
+  "version": "5.0.1",
   "private": false,
   "type": "module",
   "description": "x402 compatibility SDK for XGuard Secretless Agent Gateway; the primary XGuard product is Secretless Egress.",
