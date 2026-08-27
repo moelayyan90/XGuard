@@ -13,14 +13,8 @@ services:
       ORIGIN_URL: https://example.com
       PAY_TO: "0x0000000000000000000000000000000000000000"
       AUTO_GATE_OPENAPI: "false"
-      DEFAULT_PRICE: "$0.01"
+      DEFAULT_PRICE: "$$0.01"
       PROTECTED_PATTERNS: >-
-        [{"method":"GET","pattern":"/api/premium/*","price":"$0.01","description":"Premium API access"}]
-    # For paid XGuard Usage Credits, provide the license from a secret manager
-    # rather than committing it:
-    # secrets:
-    #   - xguard_license
-
-# secrets:
-#   xguard_license:
-#     environment: XGUARD_LICENSE_KEY
+        [{"method":"GET","pattern":"/api/premium/*","price":"$$0.01","description":"Premium API access"}]
+    # For paid XGuard Usage Credits, pass XGUARD_LICENSE_KEY from your
+    # platform's secret manager rather than committing it here.
