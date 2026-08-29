@@ -1,10 +1,10 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "xguard-credits",
+  "name": "xguard-lemonhook",
   "main": "src/index.js",
-  "compatibility_date": "2026-08-25",
+  "compatibility_date": "2026-08-27",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
+  "workers_dev": false,
   "minify": true,
   "observability": {
     "enabled": true,
@@ -12,6 +12,22 @@
     "logs": { "enabled": true, "invocation_logs": true, "head_sampling_rate": 0.1 }
   },
   "routes": [
-    { "pattern": "credits.xguardgate.com", "custom_domain": true }
-  ]
+    { "pattern": "hooks.xguardgate.com", "custom_domain": true }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CREDITS", "class_name": "CreditLedger" },
+      { "name": "ORDERS", "class_name": "OrderIndex" }
+    ]
+  },
+  "vars": {
+    "PUBLIC_SITE_ORIGIN": "https://xguardgate.com",
+    "LEMONSQUEEZY_CHECKOUT_URL": "https://xguard.lemonsqueezy.com/buy/60b9715e-03ca-4bb1-8ac7-bbeb52941a27",
+    "LEMONSQUEEZY_ALLOWED_PRODUCTS": "1315065",
+    "LEMONSQUEEZY_VARIANT_CREDITS": "{\"2056392\":5000}",
+    "LEMONSQUEEZY_PUBLIC_VARIANT_ID": "2056392",
+    "LEMONSQUEEZY_PUBLIC_PRICE_MINOR": "355",
+    "LEMONSQUEEZY_PUBLIC_CURRENCY": "JOD",
+    "ALLOW_TEST_WEBHOOKS": "false"
+  }
 }

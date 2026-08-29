@@ -87,11 +87,11 @@ async function recoverLateBase(env, identity, responseData, responseText) {
   return null;
 }
 
-async function consumeRecoveredCredit(env, key) {
+async function consumeRecoveredCredit(env, key, receiptId) {
   if (!key) return;
   try {
     await fetch(`${String(env.XGUARD_BILLING_URL || "https://hooks.xguardgate.com").replace(/\/$/, "")}/v1/consume`, {
-      method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ units: Number(env.SETTLEMENT_CREDITS || 2) })
+      method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "idempotency-key": `xguard-recovered:${receiptId}` }, body: JSON.stringify({ units: Number(env.SETTLEMENT_CREDITS || 2) })
     });
   } catch {}
 }
@@ -142,7 +142,7 @@ async function handleSettle(request, env) {
     const late = await recoverLateBase(env, identity, data, text);
     if (late?.transaction) {
       const key = bearer(request);
-      if (key) await consumeRecoveredCredit(env, key); else await confirmRecoveredFree(env, identity.payTo, identity.nonce);
+      if (key) await consumeRecoveredCredit(env, key, id); else await confirmRecoveredFree(env, identity.payTo, identity.nonce);
       const record = {
         receipt_id: id, status: "confirmed", transaction: late.transaction, network: identity.network,
         payer: identity.from, pay_to: identity.payTo, asset: identity.asset, amount: identity.amount,

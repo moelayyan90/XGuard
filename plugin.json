@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "xguard-x402",
-  "version": "5.0.1",
-  "description": "Non-custodial x402 v2 facilitator plugin for agent discovery, routing, transaction inspection, safety checks, capability discovery and settlement-receipt lookup.",
+  "name": "xguard",
+  "version": "5.0.2",
+  "description": "XGuard Secretless Agent Gateway keeps reusable API credentials out of agents through encrypted custody, scoped capabilities, controlled egress and ProofRail evidence. x402 remains a compatibility rail.",
   "author": {
     "name": "XGuard",
     "url": "https://github.com/moelayyan90/XGuard"
@@ -11,12 +11,12 @@
   "repository": "https://github.com/moelayyan90/XGuard",
   "license": "Apache-2.0",
   "keywords": [
-    "x402",
+    "secretless-egress",
+    "credential-security",
+    "ai-agent-security",
     "mcp",
-    "payments",
     "agents",
-    "facilitator",
-    "routing",
-    "security"
+    "proofrail",
+    "x402"
   ]
 }

@@ -41,6 +41,7 @@ jobs:
           node --check apps/relay/src/a2a-entry.js
           node --check apps/relay/src/canonical-entry.js
           node --check apps/relay/src/a2a-entry-test.js
+          node --check apps/relay/src/canonical-entry-test.js
           node --check apps/relay/src/product-entry-test.js
           node --check apps/relay/src/rail-entry.js
           node --check apps/relay/src/entry.js
@@ -90,6 +91,7 @@ jobs:
         run: |
           node --test apps/relay/src/entry-test.js
           node --test apps/relay/src/a2a-entry-test.js
+          node --test apps/relay/src/canonical-entry-test.js
           node --test apps/relay/src/action-rail-test.js
           node --test apps/relay/src/egress-vault-test.js
           node --test apps/relay/src/product-entry-test.js

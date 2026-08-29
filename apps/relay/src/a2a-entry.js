@@ -9,7 +9,7 @@ const A2A_VERSION = "1.0";
 const A2A_ENDPOINT = `${SITE}/a2a`;
 
 const AGENT_CARD = {
-  name: "XGuard Discovery Agent",
+  name: "XGuard Secretless Agent Gateway",
   description: "Read-only discovery agent for XGuard Secretless Agent Gateway. It tells other agents where XGuard's canonical MCP, API, OpenAPI, llms.txt, registry metadata and security manifests are, and explains how to connect without provisioning credentials or executing side effects.",
   supportedInterfaces: [
     {
@@ -32,6 +32,15 @@ const AGENT_CARD = {
   defaultInputModes: ["text/plain", "application/json"],
   defaultOutputModes: ["text/plain", "application/json"],
   skills: [
+    {
+      id: "xguard-secretless-egress",
+      name: "Secretless Agent Egress",
+      description: "Discover how an agent can call credential-protected APIs through scoped XGuard capabilities while the reusable credential remains server-side.",
+      tags: ["secretless-egress", "credential-security", "ai-agent-security"],
+      examples: ["How can my agent call an API without receiving the API key?"],
+      inputModes: ["text/plain", "application/json"],
+      outputModes: ["text/plain", "application/json"],
+    },
     {
       id: "discover-xguard",
       name: "Discover XGuard",

@@ -12,7 +12,7 @@
     "X402_BASE_SECONDARY": "https://facilitator.openx402.ai",
     "X402_MULTI": "https://x402.dexter.cash",
     "XGUARD_BILLING_URL": "https://hooks.xguardgate.com",
-    "XGUARD_CHECKOUT_URL": "https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab",
+    "XGUARD_CHECKOUT_URL": "https://xguardgate.com/pricing",
     "BASE_RPC_URL": "https://mainnet.base.org",
     "FREE_SETTLEMENTS": "25",
     "SETTLEMENT_CREDITS": "2",

@@ -3,6 +3,8 @@ const API = "https://api.xguardgate.com";
 const DEFAULT_CREDITS = 1;
 const MAX_SECRET_BYTES = 16 * 1024;
 const MAX_BODY_BYTES = 1024 * 1024;
+const BILLING_TIMEOUT_MS = 10_000;
+const EGRESS_TIMEOUT_MS = 30_000;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -51,6 +53,24 @@ async function sha256(value) {
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function parseHash(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(normalized)) return null;
+  const bytes = new Uint8Array(32);
+  for (let index = 0; index < bytes.length; index += 1) bytes[index] = Number.parseInt(normalized.slice(index * 2, index * 2 + 2), 16);
+  return bytes;
+}
+
+function equalHash(left, right) {
+  const a = parseHash(left);
+  const b = parseHash(right);
+  if (!a || !b) return false;
+  if (typeof crypto.subtle.timingSafeEqual === "function") return crypto.subtle.timingSafeEqual(a, b);
+  let difference = 0;
+  for (let index = 0; index < a.length; index += 1) difference |= a[index] ^ b[index];
+  return difference === 0;
+}
+
 function randomHex() {
   return crypto.randomUUID().replaceAll("-", "");
 }
@@ -58,19 +78,31 @@ function randomHex() {
 function privateHost(hostname) {
   const host = low(hostname).replace(/^\[|\]$/g, "");
   if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true;
-  if (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:")) return true;
+  if (host.includes(":")) {
+    if (host === "::" || host === "::1" || host.startsWith("::ffff:")) return true;
+    const first = Number.parseInt(host.split(":")[0] || "0", 16);
+    if ((first >= 0xfc00 && first <= 0xfdff) || (first >= 0xfe80 && first <= 0xfebf) || (first >= 0xff00 && first <= 0xffff)) return true;
+    return false;
+  }
   const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (!match) return false;
   const [a, b, c, d] = match.slice(1).map(Number);
   if ([a, b, c, d].some(n => n < 0 || n > 255)) return true;
-  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 0 || b === 168)) ||
+    (a === 198 && (b === 18 || b === 19));
 }
 
 function safeTarget(value) {
+  const raw = String(value || "").trim();
+  if (/\\|%(?:2e|2f|5c|25)/i.test(raw)) return null;
+  const authorityEnd = raw.indexOf("/", raw.indexOf("://") + 3);
+  const rawPath = authorityEnd < 0 ? "/" : raw.slice(authorityEnd).split(/[?#]/, 1)[0];
+  if (rawPath.includes("//") || /\/(?:\.{1,2})(?:\/|$)/.test(rawPath)) return null;
   let url;
-  try { url = new URL(String(value || "")); } catch { return null; }
+  try { url = new URL(raw); } catch { return null; }
   if (url.protocol !== "https:" || url.username || url.password || privateHost(url.hostname)) return null;
-  if (url.hostname === "xguardgate.com" || url.hostname === "api.xguardgate.com") return null;
+  if (url.hostname === "xguardgate.com" || url.hostname.endsWith(".xguardgate.com")) return null;
   return url;
 }
 
@@ -87,6 +119,7 @@ async function billingBalance(env, key) {
   try {
     const response = await fetch(`${billingUrl(env)}/v1/balance`, {
       headers: { authorization: `Bearer ${key}`, accept: "application/json" },
+      signal: AbortSignal.timeout(BILLING_TIMEOUT_MS),
     });
     const data = await response.json().catch(() => ({}));
     return { ok: response.ok, status: response.status, credits: Number(data?.credits ?? data?.balance ?? 0) };
@@ -95,12 +128,13 @@ async function billingBalance(env, key) {
   }
 }
 
-async function consumeCredits(env, key, units) {
+async function consumeCredits(env, key, units, idempotencyKey) {
   try {
     const response = await fetch(`${billingUrl(env)}/v1/consume`, {
       method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "idempotency-key": idempotencyKey },
       body: JSON.stringify({ units }),
+      signal: AbortSignal.timeout(BILLING_TIMEOUT_MS),
     });
     return { ok: response.ok, status: response.status };
   } catch {
@@ -123,14 +157,31 @@ function cleanHeaderName(value) {
 function normalizeHosts(values) {
   const hosts = [...new Set((Array.isArray(values) ? values : []).map(value => low(value).trim()).filter(Boolean))];
   if (!hosts.length || hosts.length > 16) return null;
-  if (hosts.some(host => host.includes("/") || host.includes(":") || privateHost(host) || host === "xguardgate.com" || host === "api.xguardgate.com")) return null;
+  if (hosts.some(host => host.includes("/") || host.includes(":") || privateHost(host) || host === "xguardgate.com" || host.endsWith(".xguardgate.com"))) return null;
   return hosts;
+}
+
+function normalizePolicyPath(value) {
+  const path = String(value || "").trim();
+  if (!path.startsWith("/") || path.length > 256 || path.includes("//") || /[?#\\]|%(?:2e|2f|5c|25)/i.test(path)) return null;
+  const normalized = path.length > 1 ? path.replace(/\/+$/, "") : path;
+  try {
+    const parsed = new URL(normalized, "https://policy.invalid");
+    return parsed.pathname === normalized ? normalized : null;
+  } catch { return null; }
 }
 
 function normalizePaths(values) {
   const source = Array.isArray(values) && values.length ? values : ["/"];
-  const paths = [...new Set(source.map(value => String(value || "").trim()).filter(value => value.startsWith("/") && value.length <= 256))];
+  const normalized = source.map(normalizePolicyPath);
+  if (normalized.some(path => !path)) return null;
+  const paths = [...new Set(normalized)];
   return paths.length && paths.length <= 32 ? paths : null;
+}
+
+function pathMatches(prefix, pathname) {
+  const scope = String(prefix || "/").length > 1 ? String(prefix).replace(/\/+$/, "") : "/";
+  return scope === "/" || pathname === scope || pathname.startsWith(`${scope}/`);
 }
 
 function normalizeMethods(values) {
@@ -167,7 +218,7 @@ function targetAllowed(record, target, method) {
   if (!record || !target) return false;
   if (!record.allowed_hosts?.includes(low(target.hostname))) return false;
   if (!record.allowed_methods?.includes(String(method || "GET").toUpperCase())) return false;
-  if (!record.allowed_paths?.some(prefix => target.pathname.startsWith(prefix))) return false;
+  if (!record.allowed_paths?.some(prefix => pathMatches(prefix, target.pathname))) return false;
   return true;
 }
 
@@ -365,8 +416,8 @@ async function issueCapability(request, env) {
   if (origin.protocol !== "https:" || origin.pathname !== "/" || origin.search || origin.hash || !credential.allowed_hosts.includes(low(origin.hostname))) {
     return json({ error: "target_origin_not_allowed" }, 403);
   }
-  const pathPrefix = String(body?.path_prefix || credential.allowed_paths?.[0] || "/");
-  if (!pathPrefix.startsWith("/") || !credential.allowed_paths.some(prefix => pathPrefix.startsWith(prefix))) return json({ error: "path_scope_not_allowed" }, 403);
+  const pathPrefix = normalizePolicyPath(body?.path_prefix || credential.allowed_paths?.[0] || "/");
+  if (!pathPrefix || !credential.allowed_paths.some(prefix => pathMatches(prefix, pathPrefix))) return json({ error: "path_scope_not_allowed" }, 403);
   const capMethods = normalizeMethods(body?.allowed_methods || credential.allowed_methods);
   if (!capMethods || capMethods.some(method => !credential.allowed_methods.includes(method))) return json({ error: "method_scope_not_allowed" }, 403);
 
@@ -460,7 +511,7 @@ async function egressFetch(request, env) {
   const balance = await billingBalance(env, billingKey);
   if (!balance.ok) return json({ error: balance.status === 404 ? "unknown_xguard_license" : "billing_unavailable" }, balance.status === 404 ? 401 : 503);
   if (balance.credits < units) return json({ error: "insufficient_xguard_credits", credits: balance.credits, required: units, checkout_url: env.XGUARD_CHECKOUT_URL || null }, 402);
-  const billed = await consumeCredits(env, billingKey, units);
+  const billed = await consumeCredits(env, billingKey, units, `xguard-egress:${cap.execution_id}`);
   if (!billed.ok) return json({ error: billed.status === 402 ? "insufficient_xguard_credits" : "billing_commit_failed", checkout_url: env.XGUARD_CHECKOUT_URL || null }, billed.status === 402 ? 402 : 503);
 
   let secret;
@@ -478,6 +529,7 @@ async function egressFetch(request, env) {
       headers,
       body: ["GET", "HEAD"].includes(method) ? undefined : serialized.data,
       redirect: "manual",
+      signal: AbortSignal.timeout(EGRESS_TIMEOUT_MS),
     });
     await meterStub(env).fetch("https://meter/record", {
       method: "POST",
@@ -622,10 +674,10 @@ export class EgressCapabilityState {
     if (!record) return json({ error: "capability_not_found" }, 404);
     if (path === "/begin" && request.method === "POST") {
       const body = await request.json();
-      if (await sha256(body?.token || "") !== record.token_hash) return json({ error: "invalid_capability" }, 403);
+      if (!equalHash(await sha256(body?.token || ""), record.token_hash)) return json({ error: "invalid_capability" }, 403);
       const target = safeTarget(body?.target);
       const method = String(body?.method || "GET").toUpperCase();
-      if (!target || target.origin !== record.target_origin || !target.pathname.startsWith(record.path_prefix) || !record.allowed_methods.includes(method)) return json({ error: "capability_scope_denied" }, 403);
+      if (!target || target.origin !== record.target_origin || !pathMatches(record.path_prefix, target.pathname) || !record.allowed_methods.includes(method)) return json({ error: "capability_scope_denied" }, 403);
       let result;
       await this.state.storage.transaction(async txn => {
         const current = await txn.get("record");
@@ -677,7 +729,7 @@ export class EgressMeter {
   }
 }
 
-export const __test = { providerPolicy, targetAllowed, parseCapabilityToken, safeTarget, sanitizeHeaders };
+export const __test = { providerPolicy, targetAllowed, parseCapabilityToken, safeTarget, sanitizeHeaders, normalizePolicyPath, pathMatches, privateHost, equalHash };
 
 export default {
   async fetch(request, env) {

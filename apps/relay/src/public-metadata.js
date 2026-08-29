@@ -1,4 +1,5 @@
-const VERSION = "5.0.1";
+const VERSION = "5.0.2";
+const X402_COMPONENT_VERSION = "5.0.1";
 const API = "https://api.xguardgate.com";
 const SITE = "https://xguardgate.com";
 const HSTS = "max-age=31536000; includeSubDomains";
@@ -107,7 +108,7 @@ function aiPluginManifest() {
     auth: { type: "service_http", authorization_type: "Operator management uses X-XGuard-Key; agent egress uses a scoped xgc_ capability" },
     api: { type: "openapi", url: `${API}/openapi.json`, is_user_authenticated: true },
     logo_url: `${SITE}/logo.svg`, contact_email: "mo.elayyan2023@gmail.com", legal_info_url: "https://github.com/moelayyan90/XGuard",
-    xguard: { version: VERSION, egress_manifest: `${API}/.well-known/xguard-egress.json`, action_manifest: `${API}/.well-known/xguard-actions.json`, mcp_url: `${API}/mcp`, facilitator_url: API, custody: "none" },
+    xguard: { version: VERSION, product_version: VERSION, primary_product: "Secretless Egress", component_versions: { x402: X402_COMPONENT_VERSION }, egress_manifest: `${API}/.well-known/xguard-egress.json`, action_manifest: `${API}/.well-known/xguard-actions.json`, mcp_url: `${API}/mcp`, facilitator_url: API, custody: "none" },
   };
 }
 

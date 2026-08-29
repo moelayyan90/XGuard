@@ -43,7 +43,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'const VERSION = "5.0.1"' apps/relay/src/public-metadata.js
+          grep -q 'const VERSION = "5.0.2"' apps/relay/src/public-metadata.js
+          grep -q 'const X402_COMPONENT_VERSION = "5.0.1"' apps/relay/src/public-metadata.js
           grep -q 'XGuard Secretless Agent Gateway' apps/relay/src/public-metadata.js
           grep -q 'billing_before_credential_release: true' apps/relay/src/public-metadata.js
           grep -q 'settlement_ambiguous_fail_closed: true' apps/relay/src/public-metadata.js

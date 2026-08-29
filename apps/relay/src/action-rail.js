@@ -85,11 +85,11 @@ async function billingBalance(env, key) {
   }
 }
 
-async function consumeCredits(env, key, units) {
+async function consumeCredits(env, key, units, idempotencyKey) {
   try {
     const response = await fetch(`${billingUrl(env)}/v1/consume`, {
       method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "idempotency-key": idempotencyKey },
       body: JSON.stringify({ units }),
     });
     return { ok: response.ok, status: response.status };
@@ -403,7 +403,7 @@ async function execute(request, env) {
   let billed = false;
   let billingStatus = "not_chargeable";
   if (successful) {
-    const charge = await consumeCredits(env, key, units);
+    const charge = await consumeCredits(env, key, units, `xguard-action:${began.execution_id}`);
     billed = charge.ok;
     billingStatus = charge.ok ? "consumed" : `consume_failed_${charge.status}`;
   }

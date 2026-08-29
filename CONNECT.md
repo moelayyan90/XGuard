@@ -1,4 +1,6 @@
-# Connect XGuard 5.0.1
+# Connect XGuard 5.0.2
+
+XGuard Secretless Agent Gateway keeps reusable upstream API credentials outside AI-agent context. Operators provision encrypted credentials and short-lived scoped capabilities; agents use those capabilities through controlled Secretless Egress. ProofRail can attach signed execution evidence. Action Rail and the x402 facilitator remain compatibility surfaces.
 
 Canonical remote MCP endpoint:
 
@@ -6,62 +8,37 @@ Canonical remote MCP endpoint:
 https://api.xguardgate.com/mcp
 ```
 
-XGuard is a non-custodial x402 v2 facilitator and routing/safety layer. The remote MCP exposes facilitator identity, route selection, Bazaar discovery, transaction inspection, safety testing, live capabilities, health and durable receipt lookup.
-
-## GitHub Copilot CLI
-
-Install XGuard directly from the public repository:
-
-```bash
-copilot plugin install moelayyan90/XGuard
-```
-
-Or register the repository as a plugin marketplace and install the named plugin:
-
-```bash
-copilot plugin marketplace add moelayyan90/XGuard
-copilot plugin install xguard-x402@xguard-plugins
-```
-
-The repository also ships `.mcp.json` for project-level MCP discovery.
-
 ## Claude Code
 
 ```bash
-claude mcp add --transport http xguard https://api.xguardgate.com/mcp
+claude mcp add xguard --transport http https://api.xguardgate.com/mcp
 claude mcp get xguard
 ```
 
-The committed `.mcp.json` also makes the same remote server available as project configuration.
+## Codex
 
-## Cursor
+```toml
+[mcp_servers.xguard]
+url = "https://api.xguardgate.com/mcp"
+```
 
-[Add XGuard to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=xguard&config=eyJ4Z3VhcmQiOnsidXJsIjoiaHR0cHM6Ly9hcGkueGd1YXJkZ2F0ZS5jb20vbWNwIn19)
+## Cursor and VS Code
 
-Project-native configuration is included at `.cursor/mcp.json`.
+Configure a remote Streamable HTTP MCP server named `xguard` with URL `https://api.xguardgate.com/mcp`. Project-native examples are committed in `.cursor/mcp.json` and `.vscode/mcp.json`.
 
-## Visual Studio Code / GitHub Copilot
+## Operator and agent separation
 
-[Install XGuard MCP in VS Code](vscode:mcp/install?%7B%22name%22%3A%22xguard%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fapi.xguardgate.com%2Fmcp%22%7D)
-
-Workspace-native configuration is included at `.vscode/mcp.json`.
-
-## Portable Agent Plugins
-
-The repository root contains:
-
-- `plugin.json` — Agent Plugins 1.0 manifest
-- `mcp.json` — portable Streamable HTTP MCP configuration
-- `.mcp.json` — Claude Code / GitHub Copilot project configuration
-- `.cursor/mcp.json` — Cursor project configuration
-- `.vscode/mcp.json` — VS Code project configuration
+- Operators create encrypted credential records with `POST /v1/egress/credentials` and scoped capabilities with `POST /v1/egress/capabilities`.
+- Credential provisioning is intentionally not an MCP tool.
+- Agents call `POST /v1/egress/fetch` or MCP tool `xguard_egress_fetch` with a scoped capability, never the reusable upstream credential.
 
 ## Machine discovery
 
-- Facilitator: https://api.xguardgate.com/facilitator
+- Secretless Egress: https://api.xguardgate.com/v1/egress
 - OpenAPI: https://api.xguardgate.com/openapi.json
-- LLM discovery: https://api.xguardgate.com/llms.txt
-- x402 discovery: https://api.xguardgate.com/.well-known/x402
+- MCP: https://api.xguardgate.com/mcp
+- LLM discovery: https://xguardgate.com/llms.txt
 - Agent card: https://api.xguardgate.com/.well-known/agent-card.json
 - AI plugin: https://api.xguardgate.com/.well-known/ai-plugin.json
-- MCP metadata: https://api.xguardgate.com/.well-known/mcp/server.json
+- ProofRail: https://api.xguardgate.com/v1/proof
+- x402 compatibility: https://api.xguardgate.com/facilitator

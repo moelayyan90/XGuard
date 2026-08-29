@@ -46,13 +46,28 @@ test("Custom credentials require explicit public hosts and safe headers", () => 
 
 test("Target scope rejects private, XGuard and off-policy origins", () => {
   assert.equal(__test.safeTarget("https://127.0.0.1/admin"), null);
+  assert.equal(__test.safeTarget("https://[::ffff:127.0.0.1]/admin"), null);
   assert.equal(__test.safeTarget("https://api.xguardgate.com/v1/egress"), null);
+  assert.equal(__test.safeTarget("https://hooks.xguardgate.com/v1/balance"), null);
+  assert.equal(__test.safeTarget("https://api.openai.com/v1/%2e%2e/admin"), null);
+  assert.equal(__test.safeTarget("https://api.openai.com/v1/../admin"), null);
+  assert.equal(__test.safeTarget("https://api.openai.com/v1//responses"), null);
   const target = __test.safeTarget("https://api.openai.com/v1/responses");
   assert.ok(target);
   const record = { allowed_hosts: ["api.openai.com"], allowed_paths: ["/v1/"], allowed_methods: ["POST"] };
   assert.equal(__test.targetAllowed(record, target, "POST"), true);
   assert.equal(__test.targetAllowed(record, new URL("https://api.openai.com/admin"), "POST"), false);
   assert.equal(__test.targetAllowed(record, new URL("https://evil.example/v1/responses"), "POST"), false);
+  assert.equal(__test.targetAllowed(record, new URL("https://api.openai.com/v10/responses"), "POST"), false);
+  assert.equal(__test.pathMatches("/repos/foo", "/repos/foobar"), false);
+  assert.equal(__test.pathMatches("/repos/foo", "/repos/foo/issues"), true);
+});
+
+test("Policy paths reject ambiguous encodings and normalize trailing slashes", () => {
+  assert.equal(__test.normalizePolicyPath("/v1/"), "/v1");
+  assert.equal(__test.normalizePolicyPath("/v1//responses"), null);
+  assert.equal(__test.normalizePolicyPath("/v1/%2e%2e/admin"), null);
+  assert.equal(__test.normalizePolicyPath("/v1/../admin"), null);
 });
 
 test("Capabilities are opaque scoped tokens", () => {

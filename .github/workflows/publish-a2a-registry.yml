@@ -31,7 +31,7 @@ jobs:
             card="$(curl --fail --silent --show-error --max-time 10 "$canonical" || true)"
             alias="$(curl --fail --silent --show-error --max-time 10 "$legacy" || true)"
             if printf '%s' "$card" | jq -e '
-              .name == "XGuard Discovery Agent" and
+              .name == "XGuard Secretless Agent Gateway" and
               .version == "5.0.2" and
               .supportedInterfaces[0].url == "https://xguardgate.com/a2a" and
               .supportedInterfaces[0].protocolBinding == "JSONRPC" and

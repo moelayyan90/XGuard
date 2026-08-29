@@ -1,11 +1,13 @@
 # XGuard x402 ecosystem listing packet
 
-This file is the canonical copy/paste packet for external x402 facilitator directories and routing libraries.
+This file is the canonical copy/paste packet for the x402 compatibility component in external facilitator directories and routing libraries. The parent product is **XGuard Secretless Agent Gateway v5.0.2**, whose primary product is **Secretless Egress**. The x402 component remains independently versioned at **5.0.1** and must not replace the parent product identity on general XGuard surfaces.
 
 ## Provider
 
 - Name: XGuard
 - Product name: XGuard High-Velocity x402 Facilitator
+- Surface role: x402 compatibility component of XGuard Secretless Agent Gateway
+- Component version: 5.0.1
 - Facilitator URL: `https://api.xguardgate.com`
 - Website: `https://xguardgate.com`
 - Repository: `https://github.com/moelayyan90/XGuard`

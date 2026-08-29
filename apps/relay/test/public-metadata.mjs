@@ -1,6 +1,6 @@
 import metadata from "../src/public-metadata.js";
 
-const expected = "5.0.1";
+const expected = "5.0.2";
 const identity = "XGuard Secretless Agent Gateway";
 
 async function get(path, method = "GET") {
