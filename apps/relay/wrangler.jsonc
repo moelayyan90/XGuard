@@ -5,6 +5,11 @@
   "compatibility_date": "2026-08-25",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
+  "routes": [
+    { "pattern": "xguardgate.com", "custom_domain": true },
+    { "pattern": "www.xguardgate.com", "custom_domain": true },
+    { "pattern": "api.xguardgate.com", "custom_domain": true }
+  ],
   "minify": true,
   "vars": {
     "X402_GLOBAL_PRIMARY": "https://facilitator.payai.network",
