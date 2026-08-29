@@ -9,7 +9,7 @@
     "check": "node --check src/server.js"
   },
   "dependencies": {
-    "@hono/node-server": "1.19.5",
+    "@hono/node-server": "1.19.15",
     "xguard-edge-gate": "file:../edge-gate"
   }
 }
