@@ -32,7 +32,14 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Verify canonical public signals
+      - name: Verify canonical contracts before deployment
+        if: github.event_name == 'pull_request'
+        run: |
+          node --test apps/relay/src/canonical-entry-test.js
+          node apps/relay/test/public-metadata.mjs
+
+      - name: Verify canonical public signals after deployment
+        if: github.event_name != 'pull_request'
         run: node scripts/verify-production-identity.mjs
 
       - name: Submit canonical homepage only when explicitly requested
