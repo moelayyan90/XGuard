@@ -32,6 +32,9 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+      - name: Install relay dependencies for pull request verification
+        if: github.event_name == 'pull_request'
+        run: npm install --prefix apps/relay --ignore-scripts --no-audit --no-fund
       - name: Verify canonical contracts before deployment
         if: github.event_name == 'pull_request'
         run: |
