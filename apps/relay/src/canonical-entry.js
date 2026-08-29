@@ -11,6 +11,7 @@ const PRIMARY_ROLE = "credential broker and controlled egress boundary for AI ag
 const DESCRIPTION = "Protect AI agents from API-key exposure with encrypted reusable credential custody, short-lived scoped capabilities, server-side credential injection, Usage Credit metering and ProofRail signed execution evidence.";
 
 const PUBLIC_JSON = new Set([
+  "/identity",
   "/docs",
   "/architecture",
   "/openapi.json",
@@ -193,6 +194,22 @@ function normalizePublicBody(pathname, body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return body;
 
   body.canonical_identity = canonicalIdentity();
+
+  if (pathname === "/identity") {
+    body.name = NAME;
+    body.version = VERSION;
+    body.primary_product = PRIMARY_PRODUCT;
+    body.primary_role = PRIMARY_ROLE;
+    body.proofrail = {
+      role: "optional ES256-signed execution evidence for authorized XGuard outcomes",
+      discovery: `${API}/v1/proof`,
+      verification: `${API}/v1/proofs/verify`,
+    };
+    body.compatibility_rails = {
+      action_rail: `${API}/v1/actions`,
+      x402: `${API}/facilitator`,
+    };
+  }
 
   if (pathname === "/docs") {
     body.name = NAME;
