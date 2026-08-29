@@ -1,358 +1,359 @@
-const EXPECTED_PATH_SECRET_HASH = "69c82b71630e802bbfa2b18beafe756e4ff1e51624954c171b1c5a8be4218bfd";
-const CREDITS_PER_PURCHASE = 5000;
-const VERSION = "0.3.0";
+const VERSION = "5.0.2";
+const MAX_WEBHOOK_BYTES = 1024 * 1024;
 const enc = new TextEncoder();
-const json = (x, s = 200) => new Response(JSON.stringify(x), { status: s, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
-const hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
-async function sha256(s) { return hex(await crypto.subtle.digest("SHA-256", enc.encode(s))); }
-async function hmac(secret, body) { const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); return hex(await crypto.subtle.sign("HMAC", key, enc.encode(body))); }
-function equal(a, b) { if (!a || !b || a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
-function clientKey(request) { const auth = (request.headers.get("authorization") || "").trim(); if (/^Bearer\s+/i.test(auth)) return auth.replace(/^Bearer\s+/i, "").trim(); return (request.headers.get("x-xguard-key") || "").trim(); }
-function int(v, fallback = 0) { const n = Number(v); return Number.isFinite(n) ? Math.trunc(n) : fallback; }
-function bool(v) { return Boolean(v); }
+const dec = new TextDecoder();
 
-function normalizeRecord(record) {
-  if (!record) return null;
-  const balance = Math.max(0, int(record.balance));
-  const granted = Math.max(0, int(record.granted, balance + int(record.consumed) + int(record.refunded_credits)));
-  const refundedCredits = Math.max(0, int(record.refunded_credits));
-  const consumed = Math.max(0, int(record.consumed, Math.max(0, granted - balance - refundedCredits)));
-  return { ...record, granted, balance, consumed, refunded_credits: refundedCredits, refunded_amount: Math.max(0, int(record.refunded_amount)), revoked: bool(record.revoked) };
+function cors(origin, env) {
+  const allowed = String(env?.PUBLIC_SITE_ORIGIN || "https://xguardgate.com");
+  return origin === allowed ? {
+    "access-control-allow-origin": allowed,
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "authorization, content-type, idempotency-key, x-xguard-key",
+    "access-control-max-age": "600",
+    "vary": "Origin",
+  } : {};
+}
+
+function json(value, status = 200, extra = {}) {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      ...extra,
+    },
+  });
+}
+
+function int(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") return fallback;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.trunc(number) : fallback;
+}
+function bool(value) { return value === true || value === 1 || value === "true"; }
+function now() { return new Date().toISOString(); }
+function hex(bytes) { return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, "0")).join(""); }
+function randomToken(bytes = 24) { return hex(crypto.getRandomValues(new Uint8Array(bytes))); }
+async function sha256(value) { return hex(await crypto.subtle.digest("SHA-256", enc.encode(String(value)))); }
+
+function parseHex(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(normalized)) return null;
+  const bytes = new Uint8Array(32);
+  for (let index = 0; index < bytes.length; index += 1) bytes[index] = Number.parseInt(normalized.slice(index * 2, index * 2 + 2), 16);
+  return bytes;
+}
+
+function timingSafeEqual(left, right) {
+  if (!left || !right || left.byteLength !== right.byteLength) return false;
+  if (typeof crypto.subtle.timingSafeEqual === "function") return crypto.subtle.timingSafeEqual(left, right);
+  let difference = 0;
+  for (let index = 0; index < left.byteLength; index += 1) difference |= left[index] ^ right[index];
+  return difference === 0;
+}
+
+async function validSignature(secret, rawBody, suppliedHex) {
+  if (!secret) return false;
+  const supplied = parseHex(suppliedHex);
+  if (!supplied) return false;
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const expected = new Uint8Array(await crypto.subtle.sign("HMAC", key, rawBody));
+  return timingSafeEqual(expected, supplied);
+}
+
+function clientKey(request) {
+  const authorization = (request.headers.get("authorization") || "").trim();
+  if (/^Bearer\s+/i.test(authorization)) return authorization.replace(/^Bearer\s+/i, "").trim();
+  return (request.headers.get("x-xguard-key") || "").trim();
+}
+
+function variantCatalog(env) {
+  try {
+    const parsed = JSON.parse(String(env?.LEMONSQUEEZY_VARIANT_CREDITS || "{}"));
+    return Object.fromEntries(Object.entries(parsed).flatMap(([variant, credits]) => {
+      const normalized = int(credits);
+      return /^\d+$/.test(variant) && normalized > 0 ? [[variant, normalized]] : [];
+    }));
+  } catch { return {}; }
+}
+
+function allowedProducts(env) {
+  return new Set(String(env?.LEMONSQUEEZY_ALLOWED_PRODUCTS || "").split(",").map(value => value.trim()).filter(Boolean));
+}
+
+function publicPackage(env) {
+  const variants = variantCatalog(env);
+  const variantId = String(env?.LEMONSQUEEZY_PUBLIC_VARIANT_ID || Object.keys(variants)[0] || "");
+  return {
+    variant_id: variantId,
+    credits: variants[variantId] || 0,
+    amount_minor: Math.max(0, int(env?.LEMONSQUEEZY_PUBLIC_PRICE_MINOR)),
+    currency: String(env?.LEMONSQUEEZY_PUBLIC_CURRENCY || "JOD").toUpperCase(),
+    one_time: true,
+  };
+}
+
+function normalizeRecord(value) {
+  const record = value || {};
+  return {
+    provisioned: bool(record.provisioned), granted: Math.max(0, int(record.granted)), balance: Math.max(0, int(record.balance)),
+    consumed: Math.max(0, int(record.consumed)), refunded_credits: Math.max(0, int(record.refunded_credits)),
+    debt_credits: Math.max(0, int(record.debt_credits)), restricted: bool(record.restricted) || bool(record.revoked), sequence: Math.max(0, int(record.sequence)),
+    legacy_order_id: String(record.legacy_order_id || record.order_id || ""), legacy_refunded_amount: Math.max(0, int(record.legacy_refunded_amount ?? record.refunded_amount)),
+    created_at: record.created_at || null, updated_at: record.updated_at || null,
+  };
+}
+
+async function appendJournal(txn, record, entry) {
+  record.sequence += 1;
+  const item = { sequence: record.sequence, occurred_at: now(), ...entry };
+  await txn.put(`journal:${String(record.sequence).padStart(12, "0")}`, item);
+  return item;
 }
 
 export class CreditLedger {
   constructor(ctx) { this.ctx = ctx; }
 
   async fetch(request) {
-    const path = new URL(request.url).pathname;
-
-    if (path === "/provision" && request.method === "POST") {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    if (path === "/purchase" && request.method === "POST") {
       const body = await request.json();
       const credits = int(body?.credits);
-      if (credits <= 0) return json({ error: "invalid_credits" }, 400);
-      const existing = normalizeRecord(await this.ctx.storage.get("record"));
-      if (existing?.provisioned) return json({ ok: true, idempotent: true, balance: existing.balance, granted: existing.granted });
-      const record = {
-        provisioned: true,
-        granted: credits,
-        balance: credits,
-        consumed: 0,
-        refunded_credits: 0,
-        refunded_amount: 0,
-        revoked: false,
-        order_id: String(body?.order_id || ""),
-        license_id: String(body?.license_id || ""),
-        product_id: String(body?.product_id || ""),
-        user_email: String(body?.user_email || ""),
-        test_mode: bool(body?.test_mode),
-        created_at: new Date().toISOString()
-      };
-      await this.ctx.storage.put("record", record);
-      return json({ ok: true, idempotent: false, balance: credits, granted: credits });
-    }
-
-    if (path === "/balance" && request.method === "GET") {
-      const record = normalizeRecord(await this.ctx.storage.get("record"));
-      if (!record?.provisioned) return json({ error: "unknown_key" }, 404);
-      return json({
-        credits: record.balance,
-        granted: record.granted,
-        consumed: record.consumed,
-        refunded_credits: record.refunded_credits,
-        revoked: record.revoked,
-        provisioned: true,
-        test_mode: bool(record.test_mode)
-      });
-    }
-
-    if (path === "/consume" && request.method === "POST") {
-      const body = await request.json();
-      const units = int(body?.units, 1);
-      if (units <= 0 || units > 1000) return json({ error: "invalid_units" }, 400);
+      const orderId = String(body?.order_id || "");
+      const eventId = String(body?.event_id || "");
+      if (credits <= 0 || !orderId || !eventId) return json({ error: "invalid_purchase" }, 400);
       let result;
       await this.ctx.storage.transaction(async txn => {
-        const record = normalizeRecord(await txn.get("record"));
-        if (!record?.provisioned) { result = { status: 404, body: { error: "unknown_key" } }; return; }
-        if (record.revoked) { result = { status: 403, body: { error: "credits_revoked", credits: 0 } }; return; }
-        if (record.balance < units) { result = { status: 402, body: { error: "insufficient_credits", credits: record.balance } }; return; }
-        record.balance -= units;
-        record.consumed += units;
-        record.updated_at = new Date().toISOString();
+        const duplicate = await txn.get(`event:${eventId}`);
+        const storedRecord = await txn.get("record");
+        const record = normalizeRecord(storedRecord);
+        if (duplicate) { result = { status: 200, body: { ok: true, idempotent: true, credits: record.balance, granted: record.granted } }; return; }
+        const orderKey = `order:${orderId}`;
+        if (await txn.get(orderKey)) {
+          await txn.put(`event:${eventId}`, { kind: "purchase_duplicate", order_id: orderId, created_at: now() });
+          result = { status: 200, body: { ok: true, idempotent: true, credits: record.balance, granted: record.granted } }; return;
+        }
+        const timestamp = now();
+        record.provisioned = true; record.granted += credits; record.balance += credits; record.created_at ||= timestamp; record.updated_at = timestamp;
+        const order = { order_id: orderId, credits, total: Math.max(0, int(body?.total)), currency: String(body?.currency || "").toUpperCase(), product_id: String(body?.product_id || ""), variant_id: String(body?.variant_id || ""), refunded_amount: 0, refunded_credits: 0, test_mode: bool(body?.test_mode), created_at: timestamp };
+        await txn.put(orderKey, order);
+        await txn.put(`event:${eventId}`, { kind: "purchase", order_id: orderId, created_at: timestamp });
+        const journal = await appendJournal(txn, record, { type: "purchase", delta_credits: credits, balance_after: record.balance, order_id: orderId, provider_event_id: eventId, variant_id: order.variant_id });
         await txn.put("record", record);
-        result = { status: 200, body: { ok: true, consumed: units, credits: record.balance } };
-      });
-      return json(result.body, result.status);
-    }
-
-    if (path === "/assure" && request.method === "POST") {
-      const body = await request.json();
-      const idempotencyHash = String(body?.idempotency_hash || "");
-      const fingerprint = String(body?.fingerprint || "");
-      if (!/^[a-f0-9]{64}$/.test(idempotencyHash) || !/^[a-f0-9]{64}$/.test(fingerprint)) return json({ error: "invalid_assurance_input" }, 400);
-      let result;
-      await this.ctx.storage.transaction(async txn => {
-        const record = normalizeRecord(await txn.get("record"));
-        if (!record?.provisioned) { result = { status: 404, body: { error: "unknown_key" } }; return; }
-        if (record.revoked) { result = { status: 403, body: { error: "credits_revoked", credits: 0 } }; return; }
-        const replayKey = `idem:${idempotencyHash}`;
-        const prior = await txn.get(replayKey);
-        if (prior) { result = { status: 409, body: { error: "replay_detected", assurance_id: prior.assurance_id, first_seen_at: prior.created_at, credits: record.balance } }; return; }
-        if (record.balance < 1) { result = { status: 402, body: { error: "insufficient_credits", credits: record.balance } }; return; }
-        const assuranceId = `xga_${fingerprint.slice(0, 24)}`;
-        const now = new Date().toISOString();
-        record.balance -= 1;
-        record.consumed += 1;
-        record.updated_at = now;
-        await txn.put("record", record);
-        await txn.put(replayKey, { assurance_id: assuranceId, fingerprint, created_at: now });
-        result = { status: 200, body: { ok: true, assurance_id: assuranceId, consumed: 1, credits: record.balance } };
+        result = { status: 200, body: { ok: true, idempotent: false, credits: record.balance, granted: record.granted, receipt_id: `xgr_${journal.sequence}` } };
       });
       return json(result.body, result.status);
     }
 
     if (path === "/refund" && request.method === "POST") {
       const body = await request.json();
-      const total = Math.max(0, int(body?.total));
+      const orderId = String(body?.order_id || "");
+      const eventId = String(body?.event_id || "");
       const refundedAmount = Math.max(0, int(body?.refunded_amount));
+      if (!orderId || !eventId) return json({ error: "invalid_refund" }, 400);
       let result;
       await this.ctx.storage.transaction(async txn => {
         const record = normalizeRecord(await txn.get("record"));
-        if (!record?.provisioned) { result = { status: 404, body: { error: "unknown_key" } }; return; }
-        if (refundedAmount <= record.refunded_amount) {
-          result = { status: 200, body: { ok: true, idempotent: true, credits: record.balance, revoked: record.revoked, refunded_credits: record.refunded_credits } };
-          return;
+        if (await txn.get(`event:${eventId}`)) { result = { status: 200, body: { ok: true, idempotent: true, credits: record.balance, debt_credits: record.debt_credits, restricted: record.restricted } }; return; }
+        const orderKey = `order:${orderId}`;
+        let order = await txn.get(orderKey);
+        if (!order && record.legacy_order_id === orderId) {
+          order = { order_id: orderId, credits: record.granted, total: Math.max(0, int(body?.total)), refunded_amount: record.legacy_refunded_amount, refunded_credits: record.refunded_credits, migrated_from_legacy_record: true, created_at: record.created_at || now() };
         }
-        const ratio = total > 0 ? Math.min(1, refundedAmount / total) : 1;
-        const allowedCredits = Math.max(0, Math.floor(record.granted * (1 - ratio) + 1e-9));
-        const refundedCredits = Math.max(0, record.granted - allowedCredits);
-        record.refunded_amount = refundedAmount;
-        record.refunded_credits = refundedCredits;
-        record.balance = Math.max(0, allowedCredits - record.consumed);
-        record.revoked = total <= 0 || refundedAmount >= total;
-        if (record.revoked) record.balance = 0;
-        record.updated_at = new Date().toISOString();
-        await txn.put("record", record);
-        result = { status: 200, body: { ok: true, idempotent: false, credits: record.balance, revoked: record.revoked, refunded_credits: record.refunded_credits } };
+        if (!order) { result = { status: 409, body: { error: "purchase_not_recorded" } }; return; }
+        const total = Math.max(0, int(body?.total, order.total));
+        if (refundedAmount < order.refunded_amount) { result = { status: 409, body: { error: "refund_amount_regressed" } }; return; }
+        const cumulative = total > 0 ? Math.min(order.credits, Math.floor(order.credits * Math.min(1, refundedAmount / total) + 1e-9)) : order.credits;
+        const delta = Math.max(0, cumulative - order.refunded_credits);
+        order.total = total; order.refunded_amount = refundedAmount; order.refunded_credits = cumulative; order.updated_at = now();
+        if (delta > 0) {
+          const removed = Math.min(record.balance, delta);
+          record.balance -= removed; record.refunded_credits += delta; record.debt_credits += delta - removed; record.restricted = record.debt_credits > 0; record.updated_at = now();
+          await appendJournal(txn, record, { type: "refund", delta_credits: -delta, balance_after: record.balance, debt_after: record.debt_credits, order_id: orderId, provider_event_id: eventId, refunded_amount: refundedAmount });
+        }
+        await txn.put(orderKey, order); await txn.put(`event:${eventId}`, { kind: "refund", order_id: orderId, created_at: now() }); await txn.put("record", record);
+        result = { status: 200, body: { ok: true, idempotent: delta === 0, refunded_credits: cumulative, credits: record.balance, debt_credits: record.debt_credits, restricted: record.restricted } };
       });
       return json(result.body, result.status);
     }
 
+    if (path === "/consume" && request.method === "POST") {
+      const body = await request.json();
+      const units = int(body?.units, 1);
+      const idempotencyId = String(body?.idempotency_id || request.headers.get("idempotency-key") || "").trim();
+      if (units <= 0 || units > 1000) return json({ error: "invalid_units" }, 400);
+      if (idempotencyId.length > 200) return json({ error: "invalid_idempotency_key" }, 400);
+      let result;
+      await this.ctx.storage.transaction(async txn => {
+        const record = normalizeRecord(await txn.get("record"));
+        if (!record.provisioned) { result = { status: 404, body: { error: "unknown_key" } }; return; }
+        if (record.restricted) { result = { status: 403, body: { error: "account_restricted_refund_debt", debt_credits: record.debt_credits, credits: record.balance } }; return; }
+        const replayKey = idempotencyId ? `consume:${await sha256(idempotencyId)}` : null;
+        if (replayKey) { const prior = await txn.get(replayKey); if (prior) { result = { status: 200, body: { ...prior, idempotent: true } }; return; } }
+        if (record.balance < units) { result = { status: 402, body: { error: "insufficient_credits", credits: record.balance } }; return; }
+        record.balance -= units; record.consumed += units; record.updated_at = now();
+        const journal = await appendJournal(txn, record, { type: "consume", delta_credits: -units, balance_after: record.balance, idempotency_hash: replayKey?.slice(8) || null });
+        const response = { ok: true, consumed: units, credits: record.balance, receipt_id: `xgr_${journal.sequence}`, idempotent: false };
+        if (replayKey) await txn.put(replayKey, response);
+        await txn.put("record", record); result = { status: 200, body: response };
+      });
+      return json(result.body, result.status);
+    }
+
+    if (path === "/balance" && request.method === "GET") {
+      const record = normalizeRecord(await this.ctx.storage.get("record"));
+      if (!record.provisioned) return json({ error: "unknown_key" }, 404);
+      return json({ credits: record.balance, granted: record.granted, consumed: record.consumed, refunded_credits: record.refunded_credits, debt_credits: record.debt_credits, restricted: record.restricted });
+    }
+    if (path === "/ledger" && request.method === "GET") {
+      const record = normalizeRecord(await this.ctx.storage.get("record"));
+      if (!record.provisioned) return json({ error: "unknown_key" }, 404);
+      const limit = Math.max(1, Math.min(100, int(url.searchParams.get("limit"), 50)));
+      const entries = await this.ctx.storage.list({ prefix: "journal:", reverse: true, limit });
+      return json({ balance: record.balance, debt_credits: record.debt_credits, restricted: record.restricted, entries: [...entries.values()] });
+    }
+    const receiptMatch = path.match(/^\/receipt\/(xgr_(\d+))$/);
+    if (receiptMatch && request.method === "GET") {
+      const entry = await this.ctx.storage.get(`journal:${receiptMatch[2].padStart(12, "0")}`);
+      return entry ? json({ receipt_id: receiptMatch[1], ...entry }) : json({ error: "receipt_not_found" }, 404);
+    }
     return json({ error: "not_found" }, 404);
   }
 }
 
 export class OrderIndex {
   constructor(ctx) { this.ctx = ctx; }
-
   async fetch(request) {
     const path = new URL(request.url).pathname;
-    if (path === "/bind" && request.method === "POST") {
-      const body = await request.json();
-      const keyHash = String(body?.key_hash || "");
+    if (path === "/create" && request.method === "POST") {
+      if (await this.ctx.storage.get("record")) return json({ error: "checkout_exists" }, 409);
+      const body = await request.json(); const keyHash = String(body?.key_hash || "");
       if (!/^[a-f0-9]{64}$/.test(keyHash)) return json({ error: "invalid_key_hash" }, 400);
-      const record = (await this.ctx.storage.get("record")) || { key_hashes: [], created_at: new Date().toISOString() };
-      if (!record.key_hashes.includes(keyHash)) record.key_hashes.push(keyHash);
-      record.license_id = String(body?.license_id || record.license_id || "");
-      record.product_id = String(body?.product_id || record.product_id || "");
-      record.user_email = String(body?.user_email || record.user_email || "");
-      record.updated_at = new Date().toISOString();
-      await this.ctx.storage.put("record", record);
-      return json({ ok: true, key_count: record.key_hashes.length });
+      await this.ctx.storage.put("record", { checkout_id: String(body?.checkout_id || ""), key_hash: keyHash, variant_id: String(body?.variant_id || ""), status: "pending", created_at: now() });
+      return json({ ok: true }, 201);
     }
-    if (path === "/lookup" && request.method === "GET") {
-      const record = await this.ctx.storage.get("record");
-      if (!record) return json({ error: "order_not_mapped" }, 404);
-      return json(record);
+    if (path === "/claim" && request.method === "POST") {
+      const body = await request.json(); let output;
+      await this.ctx.storage.transaction(async txn => {
+        const record = await txn.get("record");
+        if (!record) { output = { status: 404, body: { error: "checkout_not_found" } }; return; }
+        const orderId = String(body?.order_id || "");
+        if (record.order_id && record.order_id !== orderId) { output = { status: 409, body: { error: "checkout_already_claimed" } }; return; }
+        record.order_id = orderId; record.status = "paid"; record.paid_at ||= now(); await txn.put("record", record); output = { status: 200, body: record };
+      });
+      return json(output.body, output.status);
     }
+    if (path === "/bind" && request.method === "POST") {
+      const body = await request.json(); const keyHash = String(body?.key_hash || "");
+      if (!/^[a-f0-9]{64}$/.test(keyHash)) return json({ error: "invalid_key_hash" }, 400);
+      let output;
+      await this.ctx.storage.transaction(async txn => {
+        const existing = await txn.get("record");
+        const existingHashes = [existing?.key_hash, ...(existing?.key_hashes || [])].filter(Boolean);
+        if (existingHashes.length && !existingHashes.includes(keyHash)) { output = { status: 409, body: { error: "order_already_bound" } }; return; }
+        const record = { ...(existing || {}), key_hash: keyHash, key_hashes: [...new Set([...existingHashes, keyHash])], checkout_id: String(body?.checkout_id || existing?.checkout_id || ""), order_id: String(body?.order_id || existing?.order_id || ""), updated_at: now() };
+        await txn.put("record", record);
+        output = { status: 200, body: { ok: true } };
+      });
+      return json(output.body, output.status);
+    }
+    if (path === "/lookup" && request.method === "GET") { const record = await this.ctx.storage.get("record"); return record ? json(record) : json({ error: "mapping_not_found" }, 404); }
     return json({ error: "not_found" }, 404);
   }
 }
 
-async function ledgerForKey(env, key) { return env.CREDITS.getByName(await sha256(key)); }
 function ledgerForHash(env, keyHash) { return env.CREDITS.getByName(keyHash); }
-function orderIndex(env, orderId) { return env.ORDERS.getByName(String(orderId)); }
+async function ledgerForKey(env, key) { return ledgerForHash(env, await sha256(key)); }
+function checkoutIndex(env, checkoutId) { return env.ORDERS.getByName(`checkout:${checkoutId}`); }
+function orderIndex(env, orderId) { return env.ORDERS.getByName(`order:${orderId}`); }
+function checkoutUrl(env, checkoutId) { const base = new URL(String(env.LEMONSQUEEZY_CHECKOUT_URL)); base.searchParams.set("checkout[custom][xguard_checkout_id]", checkoutId); return base.toString(); }
 
-function privateHost(hostname) {
-  const h = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
-  if (!h || h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) return true;
-  if (h === "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80:")) return true;
-  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!m) return false;
-  const [a, b, c, d] = m.slice(1).map(Number);
-  if ([a, b, c, d].some(n => n < 0 || n > 255)) return true;
-  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+async function createCheckout(request, env) {
+  let body = {}; try { body = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
+  const suppliedKey = String(body?.operator_key || "").trim();
+  if (suppliedKey && (suppliedKey.length < 20 || suppliedKey.length > 200)) return json({ error: "invalid_operator_key" }, 400);
+  const operatorKey = suppliedKey || `xgk_${randomToken(32)}`;
+  const keyHash = await sha256(operatorKey); const checkoutId = `xgc_${randomToken(24)}`; const packageInfo = publicPackage(env);
+  if (!packageInfo.variant_id || packageInfo.credits <= 0 || !env.LEMONSQUEEZY_CHECKOUT_URL) return json({ error: "checkout_not_configured" }, 503);
+  const created = await checkoutIndex(env, checkoutId).fetch("https://checkout/create", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ checkout_id: checkoutId, key_hash: keyHash, variant_id: packageInfo.variant_id }) });
+  if (!created.ok) return json({ error: "checkout_session_unavailable" }, 503);
+  return json({ checkout_id: checkoutId, checkout_url: checkoutUrl(env, checkoutId), operator_key: suppliedKey ? undefined : operatorKey, operator_key_notice: suppliedKey ? "Existing operator key will receive the credits after a verified payment webhook." : "Save this operator key now. XGuard stores only its SHA-256 hash and cannot recover it.", package: packageInfo }, 201);
 }
 
-async function assureRequest(request, env) {
-  const key = clientKey(request);
-  if (!key) return json({ error: "missing_key" }, 401);
-  let body;
-  try { body = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
-
-  const action = String(body?.action || "").trim();
-  const target = String(body?.target || "").trim();
-  const idempotencyKey = String(body?.idempotency_key || "").trim();
-  const method = String(body?.method || "POST").toUpperCase();
-  const errors = [];
-  if (!action || action.length > 120) errors.push("invalid_action");
-  if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 200) errors.push("invalid_idempotency_key");
-  if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) errors.push("invalid_method");
-
-  let parsed;
-  try { parsed = new URL(target); } catch { errors.push("invalid_target_url"); }
-  if (parsed) {
-    if (parsed.protocol !== "https:") errors.push("target_must_use_https");
-    if (parsed.username || parsed.password) errors.push("target_credentials_not_allowed");
-    if (privateHost(parsed.hostname)) errors.push("private_network_target_not_allowed");
+async function handleWebhook(request, env) {
+  if (!env.LEMONSQUEEZY_WEBHOOK_SECRET) return json({ error: "webhook_not_configured" }, 503);
+  const declaredLength = int(request.headers.get("content-length"));
+  if (declaredLength > MAX_WEBHOOK_BYTES) return json({ error: "webhook_body_too_large" }, 413);
+  const raw = new Uint8Array(await request.arrayBuffer());
+  if (raw.byteLength > MAX_WEBHOOK_BYTES) return json({ error: "webhook_body_too_large" }, 413);
+  if (!(await validSignature(env.LEMONSQUEEZY_WEBHOOK_SECRET, raw, request.headers.get("x-signature")))) return json({ error: "invalid_signature" }, 401);
+  let payload; try { payload = JSON.parse(dec.decode(raw)); } catch { return json({ error: "invalid_json" }, 400); }
+  const event = String(payload?.meta?.event_name || request.headers.get("x-event-name") || ""); const data = payload?.data || {}; const attributes = data.attributes || {}; const orderId = String(data.id || attributes.order_id || "");
+  if (event === "order_created") {
+    if (!orderId) return json({ error: "missing_order_id" }, 422);
+    if (bool(payload?.meta?.test_mode ?? attributes.test_mode) && !bool(env.ALLOW_TEST_WEBHOOKS)) return json({ accepted: true, ignored: true, reason: "test_order" });
+    const item = attributes.first_order_item || {}; const productId = String(item.product_id || attributes.product_id || ""); const variantId = String(item.variant_id || attributes.variant_id || ""); const catalog = variantCatalog(env); const products = allowedProducts(env);
+    if (!catalog[variantId] || (products.size && !products.has(productId))) return json({ error: "unrecognized_product_or_variant" }, 422);
+    const status = String(attributes.status || "").toLowerCase(); if (status && status !== "paid") return json({ error: "order_not_paid", status }, 409);
+    const checkoutId = String(payload?.meta?.custom_data?.xguard_checkout_id || "");
+    if (!/^xgc_[a-f0-9]{48}$/.test(checkoutId)) return json({ error: "missing_checkout_binding" }, 422);
+    const claimed = await checkoutIndex(env, checkoutId).fetch("https://checkout/claim", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ order_id: orderId }) }); const session = await claimed.json();
+    if (!claimed.ok) return json(session, claimed.status); if (session.variant_id !== variantId) return json({ error: "checkout_variant_mismatch" }, 409);
+    const eventId = `lemon:order_created:${orderId}`;
+    const purchased = await ledgerForHash(env, session.key_hash).fetch("https://ledger/purchase", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event_id: eventId, order_id: orderId, credits: catalog[variantId], total: int(attributes.total), currency: attributes.currency, product_id: productId, variant_id: variantId, test_mode: bool(payload?.meta?.test_mode ?? attributes.test_mode) }) });
+    const outcome = await purchased.json(); if (!purchased.ok) return json(outcome, purchased.status);
+    const bound = await orderIndex(env, orderId).fetch("https://order/bind", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key_hash: session.key_hash, checkout_id: checkoutId, order_id: orderId }) });
+    if (!bound.ok) return json({ error: "order_mapping_failed", retryable: bound.status >= 500 }, bound.status >= 500 ? 503 : 409);
+    console.log(JSON.stringify({ event: "credits_granted", order_id: orderId, checkout_id: checkoutId, variant_id: variantId, credits: catalog[variantId], idempotent: outcome.idempotent }));
+    return json({ accepted: true, event, provisioned: true, credits: outcome.credits, idempotent: outcome.idempotent });
   }
-
-  let amount = null;
-  let currency = null;
-  if (body?.amount !== undefined && body?.amount !== null) {
-    amount = Number(typeof body.amount === "object" ? body.amount.value : body.amount);
-    currency = String(typeof body.amount === "object" ? body.amount.currency || body.currency || "" : body.currency || "").toUpperCase();
-    if (!Number.isFinite(amount) || amount < 0) errors.push("invalid_amount");
-    if (!/^[A-Z]{3}$/.test(currency)) errors.push("invalid_currency");
+  if (event === "order_refunded") {
+    if (!orderId) return json({ error: "missing_order_id" }, 422);
+    const mappedResponse = await orderIndex(env, orderId).fetch("https://order/lookup"); if (!mappedResponse.ok) return json({ error: "order_mapping_not_ready", retryable: true }, 503);
+    const mapped = await mappedResponse.json(); const total = Math.max(0, int(attributes.total)); const refundedAmount = Math.max(0, int(attributes.refunded_amount)); const eventId = `lemon:order_refunded:${orderId}:${refundedAmount}`;
+    const keyHashes = [...new Set([mapped.key_hash, ...(mapped.key_hashes || [])].filter(value => /^[a-f0-9]{64}$/.test(String(value))))];
+    if (!keyHashes.length) return json({ error: "order_mapping_invalid" }, 503);
+    const outcomes = [];
+    for (const keyHash of keyHashes) {
+      const refunded = await ledgerForHash(env, keyHash).fetch("https://ledger/refund", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event_id: eventId, order_id: orderId, total, refunded_amount: refundedAmount }) });
+      const outcome = await refunded.json();
+      if (!refunded.ok) return json(outcome, refunded.status);
+      outcomes.push(outcome);
+    }
+    console.log(JSON.stringify({ event: "credits_refunded", order_id: orderId, refunded_amount: refundedAmount, accounts: outcomes.length, restricted_accounts: outcomes.filter(outcome => outcome.restricted).length }));
+    return json({ accepted: true, event, ...(outcomes.length === 1 ? outcomes[0] : {}), outcomes });
   }
-
-  if (body?.expires_at) {
-    const expires = Date.parse(String(body.expires_at));
-    if (!Number.isFinite(expires)) errors.push("invalid_expires_at");
-    else if (expires <= Date.now()) return json({ decision: "deny", error: "stale_request", reasons: ["expires_at_not_in_future"] }, 409);
-  }
-
-  if (errors.length) return json({ decision: "deny", error: "invalid_request", reasons: errors }, 400);
-
-  const canonical = JSON.stringify({
-    action,
-    target: parsed.toString(),
-    method,
-    amount,
-    currency,
-    idempotency_key: idempotencyKey,
-    expires_at: body?.expires_at ? new Date(String(body.expires_at)).toISOString() : null
-  });
-  const fingerprint = await sha256(canonical);
-  const idempotencyHash = await sha256(idempotencyKey);
-  const debit = await (await ledgerForKey(env, key)).fetch("https://ledger/assure", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ idempotency_hash: idempotencyHash, fingerprint })
-  });
-  const debited = await debit.json();
-  if (!debit.ok) return json(debited, debit.status);
-
-  return json({
-    decision: "allow",
-    assurance_id: debited.assurance_id,
-    checks: {
-      https_target: true,
-      public_network_target: true,
-      explicit_idempotency_key: true,
-      not_expired: true,
-      amount_shape_valid: amount === null ? null : true
-    },
-    fingerprint,
-    credits_remaining: debited.credits,
-    consumed: 1
-  });
+  if (event === "license_key_created") return json({ accepted: true, ignored: true, reason: "credits_are_bound_to_verified_order_checkout_metadata" });
+  return json({ accepted: true, ignored: true, event });
 }
 
 export default {
   async fetch(request, env) {
+    const requestId = request.headers.get("cf-ray") || `local-${randomToken(8)}`; const url = new URL(request.url); const responseHeaders = { "x-xguard-version": VERSION, "x-request-id": requestId, ...cors(request.headers.get("origin"), env) };
     try {
-      const url = new URL(request.url);
-      if (url.pathname === "/healthz") return json({ status: "ok", service: "XGuard transaction assurance + Lemon Squeezy webhook", version: VERSION, credits_per_purchase: CREDITS_PER_PURCHASE, billable_endpoint: "/v1/assure" });
-
-      if (url.pathname === "/v1/balance") {
-        if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
-        const key = clientKey(request); if (!key) return json({ error: "missing_key" }, 401);
-        return (await ledgerForKey(env, key)).fetch("https://ledger/balance", { method: "GET" });
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: responseHeaders });
+      if (url.pathname === "/healthz") { const packageInfo = publicPackage(env); return json({ status: env.LEMONSQUEEZY_WEBHOOK_SECRET ? "ready" : "not_ready", service: "XGuard Secretless Agent Gateway billing", version: VERSION, webhook_signature: env.LEMONSQUEEZY_WEBHOOK_SECRET ? "configured" : "missing", package: packageInfo }, env.LEMONSQUEEZY_WEBHOOK_SECRET ? 200 : 503, responseHeaders); }
+      if (url.pathname === "/v1/pricing" && request.method === "GET") return json({ product: "XGuard Usage Credits", package: publicPackage(env), billing_boundary: "One credit is consumed for each authorized Secretless Egress attempt before credential release.", provider: "Lemon Squeezy" }, 200, responseHeaders);
+      if (url.pathname === "/v1/checkout" && request.method === "POST") { const response = await createCheckout(request, env); const headers = new Headers(response.headers); Object.entries(responseHeaders).forEach(([key, value]) => headers.set(key, value)); return new Response(response.body, { status: response.status, headers }); }
+      const checkoutMatch = url.pathname.match(/^\/v1\/checkout\/status\/(xgc_[a-f0-9]{48})$/);
+      if (checkoutMatch && request.method === "GET") { const result = await checkoutIndex(env, checkoutMatch[1]).fetch("https://checkout/lookup"); const body = await result.json(); return result.ok ? json({ checkout_id: body.checkout_id, status: body.status, paid_at: body.paid_at || null }, 200, responseHeaders) : json({ error: "checkout_not_found" }, 404, responseHeaders); }
+      if (url.pathname === "/webhooks/lemonsqueezy" && request.method === "POST") { const response = await handleWebhook(request, env); const headers = new Headers(response.headers); Object.entries(responseHeaders).forEach(([key, value]) => headers.set(key, value)); return new Response(response.body, { status: response.status, headers }); }
+      if (["/v1/balance", "/v1/ledger"].includes(url.pathname) || url.pathname.startsWith("/v1/receipt/")) {
+        if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405, responseHeaders); const key = clientKey(request); if (!key) return json({ error: "missing_key" }, 401, responseHeaders);
+        const internalPath = url.pathname.replace(/^\/v1/, "") + url.search; const response = await (await ledgerForKey(env, key)).fetch(`https://ledger${internalPath}`); const headers = new Headers(response.headers); Object.entries(responseHeaders).forEach(([name, value]) => headers.set(name, value)); return new Response(response.body, { status: response.status, headers });
       }
-
-      if (url.pathname === "/v1/assure") {
-        if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-        return assureRequest(request, env);
-      }
-
       if (url.pathname === "/v1/consume") {
-        if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-        const key = clientKey(request); if (!key) return json({ error: "missing_key" }, 401);
-        const raw = await request.text();
-        return (await ledgerForKey(env, key)).fetch("https://ledger/consume", { method: "POST", headers: { "content-type": "application/json" }, body: raw || "{}" });
+        if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, responseHeaders); const key = clientKey(request); if (!key) return json({ error: "missing_key" }, 401, responseHeaders);
+        const body = await request.text(); const response = await (await ledgerForKey(env, key)).fetch("https://ledger/consume", { method: "POST", headers: { "content-type": "application/json", "idempotency-key": request.headers.get("idempotency-key") || "" }, body: body || "{}" }); const headers = new Headers(response.headers); Object.entries(responseHeaders).forEach(([name, value]) => headers.set(name, value)); return new Response(response.body, { status: response.status, headers });
       }
-
-      const m = url.pathname.match(/^\/webhooks\/lemonsqueezy\/([A-Za-z0-9_-]{32,128})$/);
-      if (!m) return json({ error: "not_found" }, 404);
-      if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-      const secret = m[1];
-      if (await sha256(secret) !== EXPECTED_PATH_SECRET_HASH) return json({ error: "not_found" }, 404);
-      const raw = await request.text();
-      const supplied = (request.headers.get("x-signature") || "").trim().toLowerCase();
-      const expected = await hmac(secret, raw);
-      if (!equal(expected, supplied)) return json({ error: "invalid_signature" }, 401);
-      let payload; try { payload = JSON.parse(raw); } catch { return json({ error: "invalid_json" }, 400); }
-      const event = request.headers.get("x-event-name") || payload?.meta?.event_name || "";
-      const data = payload?.data || {};
-      const a = data.attributes || {};
-
-      if (event === "order_created") {
-        console.log(JSON.stringify({ event: "lemon_order_created", order_id: String(data.id || ""), identifier: String(a.identifier || ""), product_id: String(a.first_order_item?.product_id || ""), variant_id: String(a.first_order_item?.variant_id || ""), total: int(a.total), total_usd: Number(a.total_usd || 0), test_mode: bool(a.test_mode) }));
-        return json({ accepted: true, event: "order_created" });
-      }
-
-      if (event === "license_key_created") {
-        const key = String(a.key || "").trim();
-        const orderId = String(a.order_id || "");
-        if (!key) return json({ error: "missing_license_key" }, 400);
-        if (!orderId) return json({ error: "missing_order_id" }, 400);
-        const keyHash = await sha256(key);
-        const stub = ledgerForHash(env, keyHash);
-        const provision = await stub.fetch("https://ledger/provision", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ credits: CREDITS_PER_PURCHASE, order_id: orderId, license_id: data.id, product_id: a.product_id, user_email: a.user_email, test_mode: bool(a.test_mode ?? payload?.meta?.test_mode) })
-        });
-        const result = await provision.json();
-        if (!provision.ok) return json(result, provision.status);
-        await orderIndex(env, orderId).fetch("https://order/bind", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ key_hash: keyHash, license_id: data.id, product_id: a.product_id, user_email: a.user_email })
-        });
-        console.log(JSON.stringify({ event: "lemon_license_key_created", license_id: String(data.id || ""), order_id: orderId, product_id: String(a.product_id || ""), key_hash: keyHash.slice(0, 16), credits: Number(result.balance || 0), idempotent: bool(result.idempotent) }));
-        return json({ accepted: true, event: "license_key_created", provisioned: true, credits: Number(result.balance || 0) });
-      }
-
-      if (event === "order_refunded") {
-        const orderId = String(data.id || "");
-        const total = Math.max(0, int(a.total));
-        const refundedAmount = Math.max(0, int(a.refunded_amount));
-        if (!orderId) return json({ error: "missing_order_id" }, 400);
-        const lookup = await orderIndex(env, orderId).fetch("https://order/lookup", { method: "GET" });
-        if (lookup.status === 404) {
-          console.warn(JSON.stringify({ event: "lemon_order_refunded_unmapped", order_id: orderId, total, refunded_amount: refundedAmount }));
-          return json({ accepted: true, event: "order_refunded", mapped: false, retryable: true }, 202);
-        }
-        const mapped = await lookup.json();
-        const outcomes = [];
-        for (const keyHash of mapped.key_hashes || []) {
-          const r = await ledgerForHash(env, keyHash).fetch("https://ledger/refund", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ total, refunded_amount: refundedAmount })
-          });
-          const out = await r.json();
-          outcomes.push({ key_hash: keyHash.slice(0, 16), status: r.status, ...out });
-        }
-        console.log(JSON.stringify({ event: "lemon_order_refunded", order_id: orderId, total, refunded_amount: refundedAmount, keys: outcomes.length }));
-        return json({ accepted: true, event: "order_refunded", mapped: true, outcomes });
-      }
-
-      return json({ accepted: true, ignored: true, event });
-    } catch (e) {
-      console.error(JSON.stringify({ event: "lemonhook_error", message: String(e?.message || e) }));
-      return json({ error: "internal_error" }, 500);
+      return json({ error: "not_found" }, 404, responseHeaders);
+    } catch (error) {
+      console.error(JSON.stringify({ event: "billing_error", request_id: requestId, message: String(error?.message || error) }));
+      return json({ error: "internal_error", request_id: requestId }, 500, responseHeaders);
     }
-  }
+  },
 };
+
+export const __test = { sha256, validSignature, variantCatalog, publicPackage };

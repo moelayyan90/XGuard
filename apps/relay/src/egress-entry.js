@@ -15,7 +15,7 @@ export {
 } from "./trust-entry.js";
 export { EgressKeyAuthority, EgressCredentialState, EgressTenantIndex, EgressCapabilityState, EgressMeter };
 
-const VERSION = "5.0.1";
+const VERSION = "5.0.2";
 const API = "https://api.xguardgate.com";
 const SITE = "https://xguardgate.com";
 const HSTS = "max-age=31536000; includeSubDomains";

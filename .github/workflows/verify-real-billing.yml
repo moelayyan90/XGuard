@@ -1,0 +1,30 @@
+name: Verify Real Billing
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify provider and webhook readiness without charging
+        run: node scripts/verify-billing-readiness.mjs
+      - name: Verify a user-supplied paid operator key and append-only ledger
+        env:
+          XGUARD_OPERATOR_KEY: ${{ secrets.XGUARD_OPERATOR_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$XGUARD_OPERATOR_KEY"
+          balance="$(curl --fail --silent --show-error --max-time 12 https://hooks.xguardgate.com/v1/balance -H "authorization: Bearer $XGUARD_OPERATOR_KEY")"
+          ledger="$(curl --fail --silent --show-error --max-time 12 https://hooks.xguardgate.com/v1/ledger -H "authorization: Bearer $XGUARD_OPERATOR_KEY")"
+          printf '%s' "$balance" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Number.isInteger(x.granted)||x.granted<5000||x.granted!==x.balance+x.consumed+x.refunded_credits-x.debt_credits)process.exit(1)})'
+          printf '%s' "$ledger" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.entries)||!x.entries.some(e=>e.type==="purchase"))process.exit(1)})'

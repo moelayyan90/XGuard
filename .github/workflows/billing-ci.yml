@@ -1,0 +1,30 @@
+name: XGuard Billing CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/billing/**"
+      - "scripts/verify-billing-readiness.mjs"
+      - ".github/workflows/billing-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/billing/**"
+      - "scripts/verify-billing-readiness.mjs"
+      - ".github/workflows/billing-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm test
+        working-directory: apps/billing
+      - run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/billing/wrangler.jsonc

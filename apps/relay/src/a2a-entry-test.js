@@ -9,7 +9,7 @@ test("A2A Agent Card exposes the canonical v1 discovery surface", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") || "", /application\/a2a\+json/);
   const card = await response.json();
-  assert.equal(card.name, "XGuard Discovery Agent");
+  assert.equal(card.name, "XGuard Secretless Agent Gateway");
   assert.equal(card.version, "5.0.2");
   assert.equal(card.supportedInterfaces?.[0]?.url, `${base}/a2a`);
   assert.equal(card.supportedInterfaces?.[0]?.protocolBinding, "JSONRPC");
@@ -17,7 +17,8 @@ test("A2A Agent Card exposes the canonical v1 discovery surface", async () => {
   assert.equal(card.capabilities?.streaming, false);
   assert.ok(Array.isArray(card.defaultInputModes) && card.defaultInputModes.length > 0);
   assert.ok(Array.isArray(card.defaultOutputModes) && card.defaultOutputModes.length > 0);
-  assert.ok(Array.isArray(card.skills) && card.skills.length >= 3);
+  assert.ok(Array.isArray(card.skills) && card.skills.length >= 4);
+  assert.ok(card.skills.some(skill => skill.id === "xguard-secretless-egress"));
   for (const skill of card.skills) assert.ok(Array.isArray(skill.tags) && skill.tags.length > 0);
 });
 

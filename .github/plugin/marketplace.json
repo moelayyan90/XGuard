@@ -4,14 +4,14 @@
     "name": "XGuard"
   },
   "metadata": {
-    "description": "XGuard plugins for x402 facilitator discovery, routing and transaction safety.",
-    "version": "5.0.1"
+    "description": "XGuard Secretless Agent Gateway plugin for controlled credential-backed egress and signed execution evidence.",
+    "version": "5.0.2"
   },
   "plugins": [
     {
-      "name": "xguard-x402",
-      "description": "Connect agents to the XGuard High-Velocity x402 Facilitator remote MCP server.",
-      "version": "5.0.1",
+      "name": "xguard",
+      "description": "Connect agents to the XGuard Secretless Agent Gateway remote MCP server.",
+      "version": "5.0.2",
       "source": "."
     }
   ]

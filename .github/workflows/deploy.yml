@@ -99,3 +99,6 @@ jobs:
           printf '%s' "$page" | grep -q 'font-family:Arial'
           printf '%s' "$page" | grep -q 'rel="canonical"'
           printf '%s' "$page" | grep -q 'application/ld+json'
+
+      - name: Verify canonical identity and discovery contract
+        run: node scripts/verify-production-identity.mjs

@@ -17,7 +17,7 @@ export {
   EgressMeter,
 } from "./egress-entry.js";
 
-const VERSION = "5.0.1";
+const VERSION = "5.0.2";
 const NAME = "xguard-secretless-agent-gateway";
 const MCP = "https://api.xguardgate.com/mcp";
 const API = "https://api.xguardgate.com";

@@ -81,9 +81,9 @@ jobs:
           const fs = require('node:fs');
           for (const file of ['/tmp/api-init.json','/tmp/site-init.json']) {
             const x = JSON.parse(fs.readFileSync(file, 'utf8'));
-            if (x.result?.serverInfo?.name !== 'xguard-high-velocity-x402-facilitator') process.exit(1);
-            if (x.result?.serverInfo?.version !== '5.0.1') process.exit(1);
-            if (!String(x.result?.instructions || '').includes('Canonical remote MCP endpoint: https://api.xguardgate.com/mcp')) process.exit(1);
+            if (x.result?.serverInfo?.name !== 'xguard-secretless-agent-gateway') process.exit(1);
+            if (x.result?.serverInfo?.version !== '5.0.2') process.exit(1);
+            if (!String(x.result?.instructions || '').includes('reusable upstream API credentials')) process.exit(1);
           }
           NODE
 
@@ -102,12 +102,13 @@ jobs:
           for host in api.xguardgate.com xguardgate.com; do
             headers="$(mktemp)"
             curl --fail --silent --show-error --max-time 8 -I "https://${host}/mcp" -o /dev/null -D "$headers"
-            grep -qi '^x-xguard-control-plane: 5.0.1' "$headers"
+            grep -qi '^x-xguard-control-plane: 5.0.2' "$headers"
+            grep -qi '^x-xguard-version: 5.0.2' "$headers"
             grep -qi '^x-xguard-canonical-mcp: https://api.xguardgate.com/mcp' "$headers"
           done
 
-          page="$(curl --fail --silent --show-error --max-time 8 'https://xguardgate.com/?facilitator-v5-0-1=1')"
-          printf '%s' "$page" | grep -q 'v5.0.1'
+          page="$(curl --fail --silent --show-error --max-time 8 'https://xguardgate.com/?facilitator-component=5.0.1')"
+          printf '%s' "$page" | grep -q 'Secretless'
           printf '%s' "$page" | grep -q 'rel="canonical"'
           printf '%s' "$page" | grep -q 'application/ld+json'
-          printf '%s' "$page" | grep -q 'ambiguous timeout/5xx outcomes fail closed'
+          printf '%s' "$page" | grep -qi 'x402'

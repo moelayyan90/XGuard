@@ -23,6 +23,11 @@ const isBase = network => network === BASE_CAIP || network === BASE_LEGACY;
 const isSolana = network => String(network || "").startsWith("solana:") || network === "solana" || network === "solana-devnet";
 const now = () => Date.now();
 
+async function digestHex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function bearer(request) {
   const auth = (request.headers.get("authorization") || "").trim();
   if (/^Bearer\s+/i.test(auth)) return auth.replace(/^Bearer\s+/i, "").trim();
@@ -192,10 +197,10 @@ async function billingBalance(env, key) {
   return { ok: response.ok, status: response.status, credits: Number(data.credits || 0), data };
 }
 
-async function billingConsume(env, key, units) {
+async function billingConsume(env, key, units, idempotencyKey) {
   const response = await fetch(`${cleanBase(env.XGUARD_BILLING_URL || "https://hooks.xguardgate.com")}/v1/consume`, {
     method: "POST",
-    headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "user-agent": `XGuard-Universal/${VERSION}` },
+    headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "idempotency-key": idempotencyKey, "user-agent": `XGuard-Universal/${VERSION}` },
     body: JSON.stringify({ units })
   });
   let data = {}; try { data = await response.json(); } catch {}
@@ -241,6 +246,7 @@ async function doVerify(request, env) {
 async function doSettle(request, env) {
   const { parsed, raw } = await bodyJson(request);
   const identity = paymentIdentity(parsed);
+  const billingIdempotency = await digestHex(raw);
   if (!identity.payTo) return json({ error: "missing_pay_to" }, 400);
   const key = bearer(request);
   const feeUnits = Math.max(1, Number(env.SETTLEMENT_CREDITS || 2));
@@ -317,7 +323,7 @@ async function doSettle(request, env) {
 
   if (settleSucceeded(final)) {
     if (key) {
-      const consumed = await billingConsume(env, key, feeUnits);
+      const consumed = await billingConsume(env, key, feeUnits, `xguard-settlement:${billingIdempotency}`);
       if (!consumed.ok) console.error(JSON.stringify({ event: "billing_post_settlement_failure", status: consumed.status, payTo: identity.payTo, upstream: chosen }));
     } else if (freeAdmission) {
       await quota(env, identity.payTo, "commit", identity.nonce || freeAdmission.data.nonce || "");
