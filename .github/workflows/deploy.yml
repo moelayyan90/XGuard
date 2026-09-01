@@ -59,6 +59,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # A new Worker version can reach different Cloudflare edges a few seconds
+          # apart. Retry only transport/HTTP failures; contract mismatches still fail.
+          curl() { command curl --retry 5 --retry-all-errors --retry-delay 2 "$@"; }
           expected_discovery_version="$(node -p 'require("./server.json").version')"
           ready=0
           for i in {1..35}; do
