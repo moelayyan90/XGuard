@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "xguard",
-  "version": "5.0.2",
-  "description": "XGuard Secretless Agent Gateway keeps reusable API credentials out of agents through encrypted custody, scoped capabilities, controlled egress and ProofRail evidence. x402 remains a compatibility rail.",
+  "version": "5.1.0",
+  "description": "XGuard exposes signed prices and no-account x402 USDC paid tools, plus controlled secretless egress with signed receipts and ProofRail evidence.",
   "author": {
     "name": "XGuard",
     "url": "https://github.com/moelayyan90/XGuard"
@@ -17,6 +17,7 @@
     "mcp",
     "agents",
     "proofrail",
-    "x402"
+    "x402",
+    "paid-tools"
   ]
 }

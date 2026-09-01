@@ -37,7 +37,7 @@ jobs:
           curl --fail --silent --show-error --max-time 15 https://api.xguardgate.com/supported \
             | jq -e '.kinds | type == "array" and length > 0' >/dev/null
           curl --fail --silent --show-error --max-time 15 https://api.xguardgate.com/facilitator \
-            | jq -e '.version == "5.0.1" and .x402Version == 2 and .endpoints.verify and .endpoints.settle and .capabilities.settlement_ambiguous_fail_closed == true' >/dev/null
+            | jq -e '. as $x | (["5.0.1", "5.1.0"] | index($x.version)) != null and $x.x402Version == 2 and $x.endpoints.verify and $x.endpoints.settle and $x.capabilities.settlement_ambiguous_fail_closed == true' >/dev/null
 
       - name: Build installable WordPress plugin zip
         shell: bash

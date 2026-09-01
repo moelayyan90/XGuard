@@ -1,7 +1,7 @@
 import gateway from "./gateway.js";
 
 const API = "https://api.xguardgate.com";
-const VERSION = "5.0.1";
+const VERSION = "5.1.0";
 const CHECKOUT = "https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab";
 
 function esc(value) {
@@ -24,7 +24,7 @@ async function home(request, env) {
   const structuredData = JSON.stringify({
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "XGuard High-Velocity x402 Facilitator",
+    name: "XGuard x402 Routing Surface",
     applicationCategory: "DeveloperApplication",
     operatingSystem: "Web",
     softwareVersion: VERSION,
@@ -38,14 +38,14 @@ async function home(request, env) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>XGuard — High-Velocity x402 Facilitator</title>
+<title>XGuard — x402 Routing Surface</title>
 <meta name="description" content="Non-custodial x402 v2 facilitator gateway with automatic compatible routing, Bazaar discovery, replay protection and reconciliation-gated settlement failover.">
 <meta name="robots" content="index,follow,max-image-preview:large">
 <link rel="canonical" href="https://xguardgate.com/">
 <link rel="alternate" type="application/json" href="${API}/facilitator" title="XGuard facilitator metadata">
 <link rel="alternate" type="text/plain" href="${API}/llms.txt" title="XGuard LLM discovery">
 <meta property="og:type" content="website">
-<meta property="og:title" content="XGuard — High-Velocity x402 Facilitator">
+<meta property="og:title" content="XGuard — x402 Routing Surface">
 <meta property="og:description" content="One non-custodial x402 facilitator URL with machine discovery and reconciliation-gated settlement failover.">
 <meta property="og:url" content="https://xguardgate.com/">
 <meta name="twitter:card" content="summary">
@@ -64,7 +64,7 @@ async function home(request, env) {
 <section class="section" id="routing"><div class="livegrid"><div><span class="kicker">Automatic routing</span><h2>Configure XGuard. Do not configure the downstream.</h2><p>The downstream choice is recalculated from current scheme/network compatibility, provider health and observed latency. Verification may fail over on transport/provider failure. Settlement uses a narrower policy: explicit 429 rejection may move to another route; ambiguous timeout/5xx outcomes fail closed unless reconciliation proves the signed payment was not consumed.</p><p class="truth">Batch settlement is not advertised by marketing text. It becomes a live XGuard capability only when a healthy configured provider actually reports <code>scheme=batch-settlement</code> in <code>/supported</code>.</p></div><div><span class="kicker">Current configured routes</span><ul class="routes">${liveRows || '<li><span class="dot off"></span><b>No health snapshot</b><small>check /healthz</small></li>'}</ul></div></div></section>
 <section class="section"><span class="kicker">Billing at the successful operation</span><h2>Charge XGuard usage without silently changing the merchant payment.</h2><div class="pricing"><div class="price"><small>Verification</small><strong>Free</strong><p>Discovery and x402 verification are not consumed from the settlement balance.</p></div><div class="price"><small>Free successful settlement allowance</small><strong>${free}</strong><p>Per payTo under the current gateway configuration.</p></div><div class="price"><small>After allowance</small><strong>${credits} credit${credits===1?'':'s'}</strong><p>Per successful settlement. Failed settlements are free. The signed payTo and amount are never rewritten.</p></div></div><p class="truth">Usage-credit billing is separate from the x402 merchant transfer. XGuard does not silently divert a percentage of the signed payment.</p></section>
 <div class="final"><div><h3>Put one facilitator URL in the payment path.</h3><p>Then let XGuard choose compatible routes while refusing unsafe ambiguous settlement retries.</p></div><a href="${API}/facilitator">Open facilitator metadata →</a></div>
-<footer class="foot"><span>XGuard v${VERSION} · High-Velocity x402 Facilitator</span><span>Non-custodial · automatic routing · fail-closed settlement safety · machine-discoverable</span></footer>
+<footer class="foot"><span>XGuard v${VERSION} · x402 Routing Surface</span><span>Non-custodial · automatic routing · fail-closed settlement safety · machine-discoverable</span></footer>
 </div>
 </body>
 </html>`;

@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: xguard-gate
-          image: ghcr.io/moelayyan90/xguard-gate:5.0.1
+          image: ghcr.io/moelayyan90/xguard-gate:5.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

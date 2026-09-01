@@ -4,7 +4,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 
 export const XGUARD_FACILITATOR_URL = "https://api.xguardgate.com";
-export const XGUARD_EDGE_VERSION = "5.0.1";
+export const XGUARD_EDGE_VERSION = "5.1.0";
 
 const app = new Hono();
 const PUBLIC_PATHS = new Set([

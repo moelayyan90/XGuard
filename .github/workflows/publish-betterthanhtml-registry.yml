@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          payload='{"name":"XGuard Secretless Agent Gateway","url":"https://api.xguardgate.com/mcp","description":"Keep reusable API credentials outside AI-agent context with scoped capabilities, controlled egress and signed ProofRail execution evidence.","author":"@moelayyan90"}'
+          payload='{"name":"XGuard Universal Paid AI Agent + Secretless Gateway","url":"https://api.xguardgate.com/mcp","description":"Discover tools, get signed prices, pay per request with x402 USDC, and receive controlled execution with signed receipts and ProofRail evidence.","author":"@moelayyan90"}'
           response="$(curl --fail --silent --show-error --max-time 30 \
             -X POST https://betterthanhtml.com/mcp-registry/submit \
             -H 'content-type: application/json' \

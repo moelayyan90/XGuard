@@ -1,7 +1,7 @@
 import metadata from "../src/public-metadata.js";
 
-const expected = "5.0.2";
-const identity = "XGuard Secretless Agent Gateway";
+const expected = "5.1.0";
+const identity = "XGuard Universal Paid AI Agent + Secretless Gateway";
 
 async function get(path, method = "GET") {
   const response = await metadata.fetch(new Request(`https://api.xguardgate.com${path}`, { method }));
@@ -26,6 +26,7 @@ if (protocols.x402?.settlement_ambiguous_fail_closed !== true) throw new Error("
 if (protocols.secretless_egress?.providers?.includes("stripe") !== true) throw new Error("protocol manifest: Stripe egress preset missing");
 if (protocols.discovery?.egress_manifest !== "https://api.xguardgate.com/.well-known/xguard-egress.json") throw new Error("protocol manifest: egress discovery missing");
 if (protocols.discovery?.ai_plugin !== "https://api.xguardgate.com/.well-known/ai-plugin.json") throw new Error("protocol manifest: ai-plugin discovery missing");
+if (protocols.discovery?.capabilities !== "https://api.xguardgate.com/v1/capabilities" || protocols.discovery?.payment_manifest !== "https://api.xguardgate.com/.well-known/payment-manifest") throw new Error("protocol manifest: paid discovery missing");
 
 const architecture = await (await get("/architecture")).json();
 if (architecture.architecture?.billing_before_credential_release !== true) throw new Error("architecture: pre-egress billing missing");
@@ -36,7 +37,7 @@ const plugin = await (await get("/.well-known/ai-plugin.json")).json();
 if (plugin.schema_version !== "v1") throw new Error("ai-plugin: schema version missing");
 if (plugin.name_for_human !== identity) throw new Error("ai-plugin: stale identity");
 if (plugin.api?.type !== "openapi" || plugin.api?.url !== "https://api.xguardgate.com/openapi.json") throw new Error("ai-plugin: OpenAPI link wrong");
-if (plugin.xguard?.version !== expected || !plugin.xguard?.egress_manifest) throw new Error("ai-plugin: egress version wrong");
+if (plugin.xguard?.version !== expected || !plugin.xguard?.egress_manifest || !plugin.xguard?.capabilities || !plugin.xguard?.payment_manifest) throw new Error("ai-plugin: paid/egress version wrong");
 if (plugin.xguard?.mcp_url !== "https://api.xguardgate.com/mcp") throw new Error("ai-plugin: MCP link wrong");
 
 for (const path of ["/architecture", "/v1/protocols", "/.well-known/xguard.json", "/.well-known/ai-plugin.json"]) {

@@ -2,7 +2,7 @@
 
 A small WordPress 7.0+ connector plugin that makes **XGuard — Base mainnet** appear in Automattic's `x402-Pay` facilitator picker.
 
-XGuard's primary product is the **Secretless Agent Gateway**. This WordPress connector uses XGuard's native x402 v2 compatibility surface so a site can select XGuard without changing the seller's configured receiving wallet or price.
+XGuard's primary product is the **Universal Paid AI Agent + Secretless Gateway**. This WordPress connector uses XGuard's native x402 v2 compatibility surface so a site can select XGuard without changing the seller's configured receiving wallet or price.
 
 ```text
 WordPress / x402 Pay

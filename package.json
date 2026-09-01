@@ -1,9 +1,9 @@
 {
   "name": "xguard-x402-control-plane",
-  "version": "5.0.1",
+  "version": "5.1.0",
   "private": false,
   "type": "module",
-  "description": "x402 compatibility SDK for XGuard Secretless Agent Gateway; the primary XGuard product is Secretless Egress.",
+  "description": "x402 compatibility SDK for XGuard Universal Paid AI Agent + Secretless Gateway.",
   "main": "./sdk/index.js",
   "exports": {
     ".": "./sdk/index.js",
@@ -18,7 +18,7 @@
   ],
   "sideEffects": false,
   "peerDependencies": {
-    "@x402/core": ">=2.16.0 <3"
+    "@x402/core": ">=2.24.0 <3"
   },
   "engines": {
     "node": ">=20"

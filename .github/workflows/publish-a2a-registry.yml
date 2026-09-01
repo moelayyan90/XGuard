@@ -31,12 +31,13 @@ jobs:
             card="$(curl --fail --silent --show-error --max-time 10 "$canonical" || true)"
             alias="$(curl --fail --silent --show-error --max-time 10 "$legacy" || true)"
             if printf '%s' "$card" | jq -e '
-              .name == "XGuard Secretless Agent Gateway" and
-              .version == "5.0.2" and
-              .supportedInterfaces[0].url == "https://xguardgate.com/a2a" and
+              .name == "XGuard Universal Paid AI Agent + Secretless Gateway" and
+              .version == "5.1.0" and
+              .supportedInterfaces[0].url == "https://api.xguardgate.com/a2a" and
               .supportedInterfaces[0].protocolBinding == "JSONRPC" and
               .supportedInterfaces[0].protocolVersion == "1.0" and
-              (.skills | length >= 3)
+              (.skills | length >= 5) and
+              ([.skills[].id] | index("xguard-paid-web-fetch") != null)
             ' >/dev/null 2>&1 && [[ "$alias" == "$card" ]]; then
               echo 'XGuard A2A Agent Card is live and the legacy discovery alias matches it.'
               exit 0

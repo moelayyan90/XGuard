@@ -15,7 +15,7 @@ export {
 } from "./trust-entry.js";
 export { EgressKeyAuthority, EgressCredentialState, EgressTenantIndex, EgressCapabilityState, EgressMeter };
 
-const VERSION = "5.0.2";
+const VERSION = "5.1.0";
 const API = "https://api.xguardgate.com";
 const SITE = "https://xguardgate.com";
 const HSTS = "max-age=31536000; includeSubDomains";
@@ -111,11 +111,11 @@ async function improveToolsList(snapshot, response) {
 }
 
 function llmsText() {
-  return `XGuard Secretless Agent Gateway\nVersion: ${VERSION}\nWebsite: ${SITE}\nAPI: ${API}\nPrimary role: keep reusable upstream credentials out of AI agents and inject them only at controlled egress.\n\nSecretless Egress:\nGET ${API}/v1/egress\nPOST ${API}/v1/egress/credentials   (operator only; requires X-XGuard-Key)\nGET ${API}/v1/egress/credentials    (operator only)\nPOST ${API}/v1/egress/capabilities  (operator only)\nPOST ${API}/v1/egress/fetch         (agent uses a scoped capability; no upstream secret)\nGET ${API}/v1/egress/pricing\nGET ${API}/.well-known/xguard-egress.json\n\nMCP agent tools:\nxguard_secretless_egress\nxguard_egress_fetch\n\nCredential provisioning is intentionally not exposed as an MCP tool. Operators provision reusable secrets outside model context.\n\nUnderlying controls remain available through XGuard Action Rail, mandates, Universal Gate, native x402 facilitator endpoints and protocol discovery.\n`;
+  return `XGuard Universal Paid AI Agent + Secretless Gateway\nVersion: ${VERSION}\nWebsite: ${SITE}\nAPI: ${API}\nPrimary role: keep reusable upstream credentials out of AI agents and inject them only at controlled egress.\n\nSecretless Egress:\nGET ${API}/v1/egress\nPOST ${API}/v1/egress/credentials   (operator only; requires X-XGuard-Key)\nGET ${API}/v1/egress/credentials    (operator only)\nPOST ${API}/v1/egress/capabilities  (operator only)\nPOST ${API}/v1/egress/fetch         (agent uses a scoped capability; no upstream secret)\nGET ${API}/v1/egress/pricing\nGET ${API}/.well-known/xguard-egress.json\n\nMCP agent tools:\nxguard_secretless_egress\nxguard_egress_fetch\n\nCredential provisioning is intentionally not exposed as an MCP tool. Operators provision reusable secrets outside model context.\n\nUnderlying controls remain available through XGuard Action Rail, mandates, Universal Gate, native x402 facilitator endpoints and protocol discovery.\n`;
 }
 
 function skillText() {
-  return `# XGuard Secretless Agent Gateway\n\nUse XGuard when an AI agent needs to call a service that normally requires a reusable API credential. Keep the reusable secret in XGuard and give the agent only a short-lived scoped capability.\n\n## Operator\n1. POST ${API}/v1/egress/credentials with X-XGuard-Key.\n2. POST ${API}/v1/egress/capabilities with X-XGuard-Key.\n3. Give only the returned xgc_... capability to the agent.\n\n## Agent\nCall POST ${API}/v1/egress/fetch or MCP tool xguard_egress_fetch with capability + target. XGuard checks scope and Usage Credits, injects the upstream credential server-side, forwards exactly one HTTPS request and never auto-follows redirects.\n\n## Billing boundary\nThe current configuration consumes one Usage Credit before credential decryption and before outbound network egress. If billing cannot commit, no upstream request is sent.\n\n## Security boundary\nCapabilities bind an exact HTTPS origin, path prefix, allowed methods, expiration and call budget. Reusable credentials are encrypted at rest and are not returned to the agent.\n`;
+  return `# XGuard Universal Paid AI Agent + Secretless Gateway\n\nUse XGuard when an AI agent needs to call a service that normally requires a reusable API credential. Keep the reusable secret in XGuard and give the agent only a short-lived scoped capability.\n\n## Operator\n1. POST ${API}/v1/egress/credentials with X-XGuard-Key.\n2. POST ${API}/v1/egress/capabilities with X-XGuard-Key.\n3. Give only the returned xgc_... capability to the agent.\n\n## Agent\nCall POST ${API}/v1/egress/fetch or MCP tool xguard_egress_fetch with capability + target. XGuard checks scope and Usage Credits, injects the upstream credential server-side, forwards exactly one HTTPS request and never auto-follows redirects.\n\n## Billing boundary\nThe current configuration consumes one Usage Credit before credential decryption and before outbound network egress. If billing cannot commit, no upstream request is sent.\n\n## Security boundary\nCapabilities bind an exact HTTPS origin, path prefix, allowed methods, expiration and call budget. Reusable credentials are encrypted at rest and are not returned to the agent.\n`;
 }
 
 function sitemapResponse(request) {
@@ -132,7 +132,7 @@ async function improvePublicJson(url, response) {
   const body = await response.clone().json().catch(() => null);
   if (!body || typeof body !== "object" || Array.isArray(body)) return response;
 
-  body.primary_product = "XGuard Secretless Agent Gateway";
+  body.primary_product = "XGuard Universal Paid AI Agent + Secretless Gateway";
   body.primary_role = "credential broker and egress choke point for AI agents";
   body.secretless_egress = {
     manifest: `${API}/v1/egress`, providers: `${API}/v1/egress/providers`, credential_management: `${API}/v1/egress/credentials`, capability_issuance: `${API}/v1/egress/capabilities`, agent_fetch: `${API}/v1/egress/fetch`, pricing: `${API}/v1/egress/pricing`,
@@ -140,7 +140,7 @@ async function improvePublicJson(url, response) {
   };
 
   if (url.pathname === "/openapi.json") {
-    body.info = { ...(body.info || {}), title: "XGuard Secretless Agent Gateway", version: VERSION, description: "Credential broker and controlled egress gateway for AI agents, with encrypted reusable credentials, scoped short-lived capabilities, pre-egress billing, Action Rail controls and native x402 compatibility." };
+    body.info = { ...(body.info || {}), title: "XGuard Universal Paid AI Agent + Secretless Gateway", version: VERSION, description: "Credential broker and controlled egress gateway for AI agents, with encrypted reusable credentials, scoped short-lived capabilities, pre-egress billing, Action Rail controls and native x402 compatibility." };
     body.paths = { ...(body.paths || {}),
       "/v1/egress": { get: { summary: "Discover XGuard Secretless Egress", responses: { "200": { description: "Egress manifest" } } } },
       "/v1/egress/credentials": { post: { summary: "Store an encrypted upstream credential (operator only)", responses: { "201": { description: "Credential metadata; secret is never returned" }, "401": { description: "XGuard key required" } } }, get: { summary: "List operator credential metadata", responses: { "200": { description: "Credential metadata" } } } },
@@ -150,7 +150,7 @@ async function improvePublicJson(url, response) {
     };
   }
   if (["/.well-known/agent-card.json", "/.well-known/agent.json", "/a2a"].includes(url.pathname)) {
-    body.name = "XGuard Secretless Agent Gateway";
+    body.name = "XGuard Universal Paid AI Agent + Secretless Gateway";
     body.description = "Credential broker and controlled egress for AI agents. Reusable upstream secrets stay inside XGuard; agents receive scoped capabilities.";
     body.version = VERSION;
     const skills = Array.isArray(body.skills) ? body.skills : [];
@@ -158,7 +158,7 @@ async function improvePublicJson(url, response) {
     body.skills = skills;
   }
   if (url.pathname === "/.well-known/ai-plugin.json") {
-    body.name_for_human = "XGuard Secretless Agent Gateway";
+    body.name_for_human = "XGuard Universal Paid AI Agent + Secretless Gateway";
     body.description_for_human = "Keep reusable API credentials out of AI agents and inject them only at controlled egress.";
     body.description_for_model = "Use XGuard Secretless Egress when an agent needs a credential-protected HTTPS API. Operators provision credentials and capabilities; agents only use scoped capabilities with xguard_egress_fetch.";
     body.xguard = { ...(body.xguard || {}), version: VERSION, egress_url: `${API}/v1/egress`, egress_fetch: `${API}/v1/egress/fetch`, mcp_url: `${API}/mcp` };

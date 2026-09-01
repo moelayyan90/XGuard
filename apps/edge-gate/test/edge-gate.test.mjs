@@ -12,7 +12,7 @@ import {
 
 test("pins the canonical XGuard facilitator", () => {
   assert.equal(XGUARD_FACILITATOR_URL, "https://api.xguardgate.com");
-  assert.equal(XGUARD_EDGE_VERSION, "5.0.1");
+  assert.equal(XGUARD_EDGE_VERSION, "5.1.0");
 });
 
 test("matches exact and wildcard protected routes without overmatching", () => {

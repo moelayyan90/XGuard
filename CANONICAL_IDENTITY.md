@@ -1,22 +1,29 @@
 # XGuard canonical product identity
 
-**Current canonical identity:** XGuard Secretless Agent Gateway  
-**Current version:** 5.0.2  
-**Primary product:** Secretless Egress  
-**Canonical website:** https://xguardgate.com  
-**Canonical API:** https://api.xguardgate.com  
-**Canonical remote MCP:** https://api.xguardgate.com/mcp  
+**Current canonical identity:** XGuard Universal Paid AI Agent + Secretless Gateway
+
+**Current version:** 5.1.0
+
+**Primary product:** Universal Paid AI Agent + Secretless Gateway
+
+**Canonical website:** https://xguardgate.com
+
+**Canonical API:** https://api.xguardgate.com
+
+**Canonical remote MCP:** https://api.xguardgate.com/mcp
 **Official MCP Registry name:** `io.github.moelayyan90/xguard-control-plane`
 
 ## What XGuard is now
 
-XGuard is credential and egress infrastructure for AI agents. An operator keeps reusable upstream API credentials in XGuard and gives an agent a short-lived, scoped XGuard capability instead of the reusable secret. XGuard validates the capability and policy, meters the authorized egress attempt, injects the upstream credential server-side, and performs the permitted HTTPS request without returning the reusable credential to the agent.
+XGuard is paid-tool and credential infrastructure for AI agents. Any agent can discover actual capabilities, obtain a signed input-bound price, pay per request using x402 v2 USDC, and receive controlled execution with a signed receipt and ProofRail evidence. No XGuard account or subscription is required for this path. Payment-Identifier and durable replay state make an exact retry return the original outcome without another settlement.
 
-ProofRail is the signed execution-evidence layer for authorized Secretless Egress outcomes.
+For credential-backed APIs, an operator can also keep reusable upstream credentials in XGuard and give an agent a short-lived scoped capability instead of the reusable secret. XGuard injects that credential only at controlled egress and never returns it to the agent.
 
-## Supported compatibility rails
+ProofRail is the signed execution-evidence layer for successful settled paid tools and authorized Secretless Egress outcomes.
 
-Action Rail and the x402 facilitator/routing endpoints remain supported compatibility surfaces. They are components below or beside the primary Secretless Egress product and must not be used as the overall product identity.
+## Supported execution rails
+
+The x402 paid-tool path and Secretless Egress are the canonical product. Action Rail, facilitator relay/routing endpoints, and the operator Usage Credit path remain supported secondary surfaces.
 
 ## Historical descriptions that are not current
 

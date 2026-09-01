@@ -1,4 +1,4 @@
-const VERSION = "5.0.2";
+const VERSION = "5.1.0";
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -334,7 +334,7 @@ export default {
     const requestId = request.headers.get("cf-ray") || `local-${randomToken(8)}`; const url = new URL(request.url); const responseHeaders = { "x-xguard-version": VERSION, "x-request-id": requestId, ...cors(request.headers.get("origin"), env) };
     try {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: responseHeaders });
-      if (url.pathname === "/healthz") { const packageInfo = publicPackage(env); return json({ status: env.LEMONSQUEEZY_WEBHOOK_SECRET ? "ready" : "not_ready", service: "XGuard Secretless Agent Gateway billing", version: VERSION, webhook_signature: env.LEMONSQUEEZY_WEBHOOK_SECRET ? "configured" : "missing", package: packageInfo }, env.LEMONSQUEEZY_WEBHOOK_SECRET ? 200 : 503, responseHeaders); }
+      if (url.pathname === "/healthz") { const packageInfo = publicPackage(env); return json({ status: env.LEMONSQUEEZY_WEBHOOK_SECRET ? "ready" : "not_ready", service: "XGuard Universal Paid AI Agent + Secretless Gateway billing", version: VERSION, webhook_signature: env.LEMONSQUEEZY_WEBHOOK_SECRET ? "configured" : "missing", package: packageInfo }, env.LEMONSQUEEZY_WEBHOOK_SECRET ? 200 : 503, responseHeaders); }
       if (url.pathname === "/v1/pricing" && request.method === "GET") return json({ product: "XGuard Usage Credits", package: publicPackage(env), billing_boundary: "One credit is consumed for each authorized Secretless Egress attempt before credential release.", provider: "Lemon Squeezy" }, 200, responseHeaders);
       if (url.pathname === "/v1/checkout" && request.method === "POST") { const response = await createCheckout(request, env); const headers = new Headers(response.headers); Object.entries(responseHeaders).forEach(([key, value]) => headers.set(key, value)); return new Response(response.body, { status: response.status, headers }); }
       const checkoutMatch = url.pathname.match(/^\/v1\/checkout\/status\/(xgc_[a-f0-9]{48})$/);

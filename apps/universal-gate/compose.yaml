@@ -1,6 +1,6 @@
 services:
   xguard-gate:
-    image: ghcr.io/moelayyan90/xguard-gate:5.0.1
+    image: ghcr.io/moelayyan90/xguard-gate:5.1.0
     build:
       context: ../..
       dockerfile: apps/universal-gate/Dockerfile

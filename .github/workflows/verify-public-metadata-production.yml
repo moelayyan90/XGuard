@@ -7,6 +7,7 @@ on:
       - "apps/relay/src/canonical-entry.js"
       - "apps/relay/src/public-metadata.js"
       - "apps/relay/src/a2a-entry.js"
+      - "apps/relay/src/paid-agent-entry.js"
       - ".github/workflows/verify-public-metadata-production.yml"
   workflow_dispatch:
 
@@ -22,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Wait for canonical 5.0.2 metadata deployment
+      - name: Wait for canonical 5.1.0 metadata deployment
         shell: bash
         run: |
           set -euo pipefail
@@ -41,6 +42,6 @@ jobs:
             headers="$(mktemp)"
             curl --fail --silent --show-error --max-time 8 -D "$headers" "https://api.xguardgate.com/$path" -o /dev/null
             grep -qi '^strict-transport-security: .*max-age=31536000' "$headers"
-            grep -qi '^x-xguard-version: 5.0.2' "$headers"
+            grep -qi '^x-xguard-version: 5.1.0' "$headers"
             curl --fail --silent --show-error --max-time 8 -I "https://api.xguardgate.com/$path" -o /dev/null
           done

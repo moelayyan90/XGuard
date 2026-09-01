@@ -12,7 +12,7 @@ export {
 } from "./rail-entry.js";
 export { ActionKeyAuthority, ActionPermitState, ActionMeter };
 
-const VERSION = "5.0.1";
+const VERSION = "5.1.0";
 const API = "https://api.xguardgate.com";
 const SITE = "https://xguardgate.com";
 const HSTS = "max-age=31536000; includeSubDomains";

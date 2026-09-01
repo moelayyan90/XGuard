@@ -8,7 +8,7 @@ const REPO = "https://github.com/moelayyan90/XGuard";
 
 function webMcpBootstrap() {
   const discovery = JSON.stringify({
-    name: "XGuard Secretless Agent Gateway",
+    name: "XGuard Universal Paid AI Agent + Secretless Gateway",
     site: SITE,
     api: API,
     mcp: MCP,
@@ -20,6 +20,9 @@ function webMcpBootstrap() {
     openapi: `${API}/openapi.json`,
     egress_manifest: `${API}/.well-known/xguard-egress.json`,
     proof_manifest: `${API}/v1/proof`,
+    capabilities: `${API}/v1/capabilities`,
+    pricing: `${API}/v1/pricing`,
+    payment_manifest: `${API}/.well-known/payment-manifest`,
   }).replace(/</g, "\\u003c");
 
   const connect = JSON.stringify({
@@ -31,8 +34,8 @@ function webMcpBootstrap() {
   }).replace(/</g, "\\u003c");
 
   const purpose = JSON.stringify({
-    primary_product: "Secretless Egress",
-    summary: "Keep reusable upstream API credentials outside AI-agent context. Operators retain reusable secrets in XGuard and delegate short-lived scoped capabilities to agents.",
+    primary_product: "Universal Paid AI Agent + Secretless Gateway",
+    summary: "Discover real tools, obtain signed prices, pay per request with x402 USDC, and receive signed receipts. Secretless connectors keep reusable upstream credentials outside AI-agent context.",
     proof_layer: "ProofRail",
     supported_examples: ["OpenAI", "Anthropic", "GitHub", "Stripe", "generic public HTTPS APIs"],
     security_boundary: "The browser tools on this page are discovery-only and do not provision credentials, spend credits, mutate accounts, or execute upstream side effects.",

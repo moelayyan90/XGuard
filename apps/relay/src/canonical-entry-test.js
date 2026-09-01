@@ -12,19 +12,19 @@ test("A2A plus-json response receives canonical product taxonomy", async () => {
   const response = await app.fetch(new Request("https://api.xguardgate.com/.well-known/agent-card.json"), {}, {});
   assert.match(response.headers.get("content-type") || "", /application\/a2a\+json/);
   const body = await response.json();
-  assert.equal(body.name, "XGuard Secretless Agent Gateway");
-  assert.equal(body.version, "5.0.2");
-  assert.equal(body.canonical_identity.primary_product, "Secretless Egress");
+  assert.equal(body.name, "XGuard Universal Paid AI Agent + Secretless Gateway");
+  assert.equal(body.version, "5.1.0");
+  assert.equal(body.canonical_identity.primary_product, "Universal Paid AI Agent + Secretless Gateway");
   assert.ok(body.skills.some(skill => skill.id === "xguard-secretless-egress"));
 });
 
 test("identity is the complete machine-readable source of product taxonomy", async () => {
   const response = await app.fetch(new Request("https://xguardgate.com/identity"), {}, {});
   const body = await response.json();
-  assert.equal(body.name, "XGuard Secretless Agent Gateway");
-  assert.equal(body.version, "5.0.2");
-  assert.equal(body.primary_product, "Secretless Egress");
-  assert.match(body.primary_role, /credential broker and controlled egress boundary/);
+  assert.equal(body.name, "XGuard Universal Paid AI Agent + Secretless Gateway");
+  assert.equal(body.version, "5.1.0");
+  assert.equal(body.primary_product, "Universal Paid AI Agent + Secretless Gateway");
+  assert.match(body.primary_role, /paid tool and credential broker/);
   assert.equal(body.proofrail.discovery, "https://api.xguardgate.com/v1/proof");
   assert.equal(body.compatibility_rails.x402, "https://api.xguardgate.com/facilitator");
 });
@@ -32,9 +32,12 @@ test("identity is the complete machine-readable source of product taxonomy", asy
 test("pricing is truthful about billing boundary and uses a nonce-scoped checkout script", async () => {
   const response = await app.fetch(new Request("https://xguardgate.com/pricing"), {}, {});
   const html = await response.text();
+  assert.match(html, /\$0\.001 USDC/);
+  assert.match(html, /xguard\.web\.fetch/);
+  assert.match(html, /no XGuard account, subscription, or mandatory SDK/);
+  assert.match(html, /successful settlement/);
   assert.match(html, /JOD 3\.550/);
-  assert.match(html, /5,000 Usage Credits/);
-  assert.match(html, /before the reusable credential is released/);
+  assert.match(html, /5,000 operator Usage Credits/);
   assert.match(html, /https:\/\/hooks\.xguardgate\.com\/v1\/checkout/);
   const csp = response.headers.get("content-security-policy") || "";
   assert.match(csp, /script-src 'nonce-[a-f0-9]{32}'/);

@@ -1,12 +1,12 @@
-# XGuard — Secretless Agent Gateway
+# XGuard — Universal Paid AI Agent + Secretless Gateway
 
 ## Listing identity
 
-- **Name:** XGuard — Secretless Agent Gateway
-- **Version:** 5.0.2
+- **Name:** XGuard — Universal Paid AI Agent + Secretless Gateway
+- **Version:** 5.1.0
 - **Category:** Security
 - **Secondary categories:** Developer Tools, AI & ML, Cloud & DevOps
-- **Pricing:** Usage-based service; public MCP discovery is available without account credentials. Credential provisioning and paid Secretless Egress are separate management/billing operations.
+- **Pricing:** Public discovery and signed quotes are free. Paid tools use x402 USDC per request with no account or subscription; operator-provisioned Secretless Egress remains a separate management surface.
 - **Website:** https://xguardgate.com
 - **Source:** https://github.com/moelayyan90/XGuard
 - **Remote MCP:** https://api.xguardgate.com/mcp
@@ -15,7 +15,7 @@
 
 ## Short description
 
-Keep reusable API credentials outside AI-agent context. XGuard stores operator-controlled upstream credentials, delegates short-lived scoped capabilities to agents, injects credentials only at controlled server-side egress, meters authorized attempts, and can attach ProofRail ES256-signed execution evidence.
+Discover a real tool and its signed price, pay once with x402 USDC, and receive a signed receipt plus ProofRail evidence. XGuard also keeps reusable operator-controlled upstream credentials outside AI-agent context and injects them only at controlled server-side egress.
 
 ## What it solves
 

@@ -1,5 +1,5 @@
 const API = "https://api.xguardgate.com";
-const VERSION = "5.0.1";
+const VERSION = "5.1.0";
 const RECONCILE = "https://reconcile.xguardgate.com";
 
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
@@ -210,7 +210,7 @@ async function providerManifest(env) {
     x402Version: 2,
     version: VERSION,
     kind: "facilitator",
-    name: "XGuard High-Velocity x402 Facilitator",
+    name: "XGuard x402 Routing Surface",
     description: "One non-custodial x402 facilitator URL that selects healthy compatible settlement paths, fails over verification and explicit rate-limit rejection, gates ambiguous settlement retries on reconciliation, protects replay-sensitive flows, and reconciles Base USDC outcomes.",
     baseUrl: API,
     facilitator: API,

@@ -36,6 +36,8 @@ jobs:
           node --check apps/relay/src/egress-vault-test.js
           node --check apps/relay/src/egress-entry.js
           node --check apps/relay/src/product-entry.js
+          node --check apps/relay/src/paid-agent-entry.js
+          node --check apps/relay/src/paid-agent-entry-test.js
           node --check apps/relay/src/discovery-entry.js
           node --check apps/relay/src/webmcp-entry.js
           node --check apps/relay/src/a2a-entry.js
@@ -62,12 +64,14 @@ jobs:
           grep -q 'EgressCredentialState' apps/relay/wrangler.jsonc
           grep -q 'EgressCapabilityState' apps/relay/wrangler.jsonc
           grep -q 'EgressMeter' apps/relay/wrangler.jsonc
+          grep -q 'PaidGatewayState' apps/relay/wrangler.jsonc
+          grep -q 'XGUARD_PAID_FACILITATOR' apps/relay/wrangler.jsonc
           grep -q 'ACTION_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
           grep -q 'EGRESS_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
           grep -q '"main": "src/canonical-entry.js"' apps/relay/wrangler.jsonc
           grep -q '"workers_dev": false' apps/relay/wrangler.jsonc
           ! grep -q '"routes"' apps/relay/wrangler.jsonc
-          grep -q 'XGuard Secretless Agent Gateway' apps/relay/src/canonical-entry.js
+          grep -q 'XGuard Universal Paid AI Agent + Secretless Gateway' apps/relay/src/canonical-entry.js
           grep -q 'www.xguardgate.com' apps/relay/src/canonical-entry.js
           grep -q 'Historical ACE/Solana/BAM' apps/relay/src/canonical-entry.js
           grep -q 'io.github.moelayyan90/xguard-control-plane' apps/relay/src/discovery-entry.js
@@ -81,6 +85,10 @@ jobs:
           grep -q 'protocolVersion: A2A_VERSION' apps/relay/src/a2a-entry.js
           grep -q 'SendMessage' apps/relay/src/a2a-entry.js
           grep -q 'discovery-only' apps/relay/src/a2a-entry.js
+          grep -q 'xguard.web.fetch' apps/relay/src/paid-agent-entry.js
+          grep -q 'payment-identifier' apps/relay/src/paid-agent-entry.js
+          grep -q 'settlement_ambiguous' apps/relay/src/paid-agent-entry.js
+          grep -q 'revenue_source' apps/relay/src/paid-agent-entry.js
           grep -q 'xguard_mandate_required' apps/relay/src/authority.js
           grep -q 'permit_replay_detected' apps/relay/src/rail.js
           grep -q 'action_replay_detected' apps/relay/src/action-rail.js
@@ -95,6 +103,7 @@ jobs:
           node --test apps/relay/src/action-rail-test.js
           node --test apps/relay/src/egress-vault-test.js
           node --test apps/relay/src/product-entry-test.js
+          node --test apps/relay/src/paid-agent-entry-test.js
       - name: SDK syntax and package check
         run: |
           node --check sdk/index.js

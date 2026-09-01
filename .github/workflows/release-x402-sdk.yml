@@ -32,7 +32,7 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           license="$(node -p "require('./package.json').license")"
           test "$name" = "xguard-x402-control-plane"
-          test "$version" = "5.0.1"
+          test "$version" = "5.1.0"
           test "$license" = "Apache-2.0"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=xguard-x402-sdk-v$version" >> "$GITHUB_OUTPUT"
@@ -45,7 +45,7 @@ jobs:
           pack_json="$(npm pack --json)"
           pack_file="$(printf '%s' "$pack_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);process.stdout.write(x[0].filename)})')"
           test -f "$pack_file"
-          final_pack="xguard-x402-control-plane-5.0.1.tgz"
+          final_pack="xguard-x402-control-plane-5.1.0.tgz"
           if [ "$pack_file" != "$final_pack" ]; then
             mv "$pack_file" "$final_pack"
           fi
@@ -55,10 +55,10 @@ jobs:
           mkdir -p /tmp/xguard-release-smoke
           cd /tmp/xguard-release-smoke
           npm init -y >/dev/null 2>&1
-          npm install --no-audit --no-fund "$GITHUB_WORKSPACE/$final_pack" @x402/core@^2.23.0
+          npm install --no-audit --no-fund "$GITHUB_WORKSPACE/$final_pack" @x402/core@2.24.0
           node --input-type=module <<'NODE'
           import { XGUARD_VERSION, XGUARD_FACILITATOR_URL, facilitator, xguardSupported } from 'xguard-x402-control-plane';
-          if (XGUARD_VERSION !== '5.0.1') throw new Error('wrong release version');
+          if (XGUARD_VERSION !== '5.1.0') throw new Error('wrong release version');
           if (XGUARD_FACILITATOR_URL !== 'https://api.xguardgate.com') throw new Error('wrong facilitator URL');
           if (!facilitator) throw new Error('facilitator export missing');
           const supported = await xguardSupported();
@@ -73,12 +73,12 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" xguard-x402-control-plane-5.0.1.tgz SHA256SUMS.txt --clobber
+            gh release upload "$TAG" xguard-x402-control-plane-5.1.0.tgz SHA256SUMS.txt --clobber
           else
             gh release create "$TAG" \
-              xguard-x402-control-plane-5.0.1.tgz SHA256SUMS.txt \
+              xguard-x402-control-plane-5.1.0.tgz SHA256SUMS.txt \
               --target "$GITHUB_SHA" \
-              --title "XGuard x402 SDK v5.0.1" \
+              --title "XGuard x402 SDK v5.1.0" \
               --notes "Tested drop-in x402 v2 facilitator SDK for XGuard. Includes JavaScript/TypeScript integration helpers plus Express, Hono, Next.js, paid MCP, Python/FastAPI and Go/Gin examples. Canonical facilitator: https://api.xguardgate.com. The release tarball is smoke-tested against the live /supported surface before publication."
           fi
 
@@ -93,4 +93,4 @@ jobs:
             --jq 'select(.tagName == env.TAG and .isDraft == false and .isPrerelease == false) | .assets | map(.name) | sort | .[]' \
             | tee /tmp/assets
           grep -qx 'SHA256SUMS.txt' /tmp/assets
-          grep -qx 'xguard-x402-control-plane-5.0.1.tgz' /tmp/assets
+          grep -qx 'xguard-x402-control-plane-5.1.0.tgz' /tmp/assets
