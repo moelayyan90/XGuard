@@ -380,21 +380,26 @@ async function publicDns(hostname) {
   if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname) || hostname.includes(":")) return { ok: true, addresses: [hostname] };
   const answers = [];
   for (const type of ["A", "AAAA"]) {
+    const resolvers = [
+      { endpoint: "https://one.one.one.one/dns-query", accept: "application/dns-json", hosts: new Set(["one.one.one.one", "cloudflare-dns.com"]) },
+      { endpoint: "https://cloudflare-dns.com/dns-query", accept: "application/dns-json", hosts: new Set(["cloudflare-dns.com", "one.one.one.one"]) },
+      { endpoint: "https://dns.google/resolve", accept: "application/json", hosts: new Set(["dns.google"]) },
+    ];
     let body = null;
-    for (const resolver of ["https://cloudflare-dns.com/dns-query", "https://dns.google/resolve"]) {
-      const endpoint = new URL(resolver);
-      endpoint.searchParams.set("name", hostname);
-      endpoint.searchParams.set("type", type);
-      try {
-        const response = await fetch(endpoint, { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(2500), redirect: "error" });
-        if (!response.ok) continue;
-        body = await response.json().catch(() => null);
-        if (body && Number(body.Status ?? 0) === 0) break;
-        body = null;
-      } catch {
-        // Try the second independent DNS-over-HTTPS resolver. Both families
-        // must resolve successfully, so SSRF protection remains fail-closed.
-      }
+    try {
+      body = await Promise.any(resolvers.map(async resolver => {
+        const endpoint = new URL(resolver.endpoint);
+        endpoint.searchParams.set("name", hostname);
+        endpoint.searchParams.set("type", type);
+        const response = await fetch(endpoint, { headers: { accept: resolver.accept }, signal: AbortSignal.timeout(2500), redirect: "follow" });
+        if (!response.ok || !resolver.hosts.has(new URL(response.url || endpoint).hostname)) throw new Error("dns_resolver_unavailable");
+        const candidate = await response.json().catch(() => null);
+        if (!candidate || Number(candidate.Status ?? 0) !== 0) throw new Error("dns_resolution_failed");
+        return candidate;
+      }));
+    } catch {
+      // Both address families must be resolved by at least one trusted DoH
+      // endpoint, so availability fallback never weakens SSRF fail-closed.
     }
     if (!body) return { ok: false, code: "dns_unresolved" };
     for (const answer of Array.isArray(body?.Answer) ? body.Answer : []) {

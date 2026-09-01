@@ -103,7 +103,13 @@ jobs:
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/payment-manifest | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),r=x.resources?.[0];if(x.x402_version!==2||r?.tool!=="xguard.web.fetch"||r?.payment_identifier_required!==true||r?.settlement_before_execution!==true)process.exit(1)})'
           test "$(curl --silent --show-error --max-time 8 -o /dev/null -w '%{http_code}' https://api.xguardgate.com/api/v1/capabilities)" = "308"
 
-          quote_json="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/v1/pricing/quote -H 'content-type: application/json' --data '{"url":"https://example.com/","testnet":true}')"
+          quote_code="$(curl --silent --show-error --max-time 12 -o /tmp/xg-quote.json -w '%{http_code}' -X POST https://api.xguardgate.com/v1/pricing/quote -H 'content-type: application/json' --data '{"url":"https://example.com/","testnet":true}')"
+          if [[ "$quote_code" != "200" ]]; then
+            echo "Signed quote production probe returned HTTP ${quote_code}" >&2
+            node -e 'const fs=require("node:fs"),x=JSON.parse(fs.readFileSync("/tmp/xg-quote.json","utf8"));console.error(JSON.stringify({error:x.error?.code||"invalid_response",request_id:x.request_id||null}))'
+            exit 1
+          fi
+          quote_json="$(cat /tmp/xg-quote.json)"
           quote="$(printf '%s' "$quote_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.network!=="eip155:84532"||x.amount!=="1000"||!x.payment_identifier)process.exit(1);process.stdout.write(x.quote)})')"
           challenge_code="$(curl --silent --show-error --max-time 12 -D /tmp/xg-payment-headers -o /tmp/xg-payment-required -w '%{http_code}' -X POST https://api.xguardgate.com/v1/tools/web.fetch/testnet -H 'content-type: application/json' -H "X-XGuard-Quote: $quote" --data '{"url":"https://example.com/"}')"
           test "$challenge_code" = "402"
