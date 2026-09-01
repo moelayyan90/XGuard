@@ -32,6 +32,11 @@ const X402_DISCOVERY = new Set([
   "/.well-known/x402-facilitator.json",
 ]);
 
+const OAUTH_DISCOVERY_PROBES = new Set([
+  "/.well-known/oauth-protected-resource/mcp",
+  "/.well-known/oauth-authorization-server/mcp",
+]);
+
 function canonicalIdentity() {
   return {
     name: NAME,
@@ -47,6 +52,7 @@ function canonicalIdentity() {
 function baseHeaders(headers = new Headers()) {
   const next = new Headers(headers);
   next.set("x-xguard-version", VERSION);
+  next.set("x-xguard-control-plane", VERSION);
   next.set("x-xguard-canonical-name", NAME);
   next.set("x-xguard-primary-product", "universal-paid-agent-secretless-gateway");
   next.set("x-xguard-canonical-site", SITE);
@@ -324,6 +330,17 @@ export default {
     if (redirect) return redirect;
 
     const url = new URL(request.url);
+
+    if ((request.method === "GET" || request.method === "HEAD") && OAUTH_DISCOVERY_PROBES.has(url.pathname)) {
+      const body = request.method === "HEAD" ? null : JSON.stringify({
+        error: "oauth_not_required",
+        resource: MCP,
+        authentication_required: false,
+        payment: "x402-v2-per-paid-tool",
+        discovery: `${API}/.well-known/mcp/server-card.json`,
+      });
+      return new Response(body, { status: 404, headers: baseHeaders(new Headers({ "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=300" })) });
+    }
 
     if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
       const canonicalPath = url.pathname === "/api" ? "/" : url.pathname.slice(4);

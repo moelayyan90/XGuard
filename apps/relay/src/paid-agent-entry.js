@@ -1234,51 +1234,116 @@ function mcpEnvelope(id, value, responseHeaders = {}) {
     jsonrpc: "2.0",
     id: id ?? null,
     result: {
+      resultType: "complete",
       content: [{ type: "text", text: JSON.stringify(value) }],
       structuredContent: value,
+      isError: false,
     },
   }, 200, responseHeaders);
 }
 
+function mcpRpcError(id, code, message, status = 400, data) {
+  return json({ jsonrpc: "2.0", id: id ?? null, error: { code, message, ...(data === undefined ? {} : { data }) } }, status);
+}
+
+function validateMcpRequest(request, message) {
+  if (!message || typeof message !== "object" || Array.isArray(message) || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
+    return mcpRpcError(message?.id, -32600, "Invalid Request", 400);
+  }
+  if ("id" in message && message.id !== null && typeof message.id !== "string" && typeof message.id !== "number") {
+    return mcpRpcError(null, -32600, "Invalid Request", 400);
+  }
+  const methodHeader = request.headers.get("mcp-method");
+  if (methodHeader && methodHeader !== message.method) {
+    return mcpRpcError(message.id, -32600, "Mcp-Method header does not match JSON-RPC method", 400);
+  }
+  const nameHeader = request.headers.get("mcp-name");
+  const bodyName = message.params?.name;
+  if (nameHeader && (!bodyName || nameHeader !== bodyName)) {
+    return mcpRpcError(message.id, -32600, "Mcp-Name header does not match JSON-RPC params.name", 400);
+  }
+  return null;
+}
+
+function mcpTransportResponse(response, message) {
+  if (!(response instanceof Response)) return response;
+  const next = new Headers(response.headers);
+  next.set("mcp-protocol-version", "2026-07-28");
+  next.set("mcp-method", message.method);
+  if (message.params?.name) next.set("mcp-name", String(message.params.name));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers: next });
+}
+
+function discoverMcp(id) {
+  return json({
+    jsonrpc: "2.0",
+    id: id ?? null,
+    result: {
+      resultType: "complete",
+      supportedVersions: ["2026-07-28", "2025-11-25"],
+      capabilities: { tools: {} },
+      _meta: { "io.modelcontextprotocol/serverInfo": { name: "xguard-universal-paid-secretless-gateway", version: VERSION } },
+      instructions: "Discover prices and call paid or secretless tools. XGuard does not require OAuth; paid tools use x402 v2 per request.",
+      ttlMs: 60000,
+      cacheScope: "public",
+    },
+  }, 200, { "mcp-protocol-version": "2026-07-28", "mcp-method": "server/discover" });
+}
+
 async function handlePaidMcp(request, env, id) {
   const parsed = await jsonBody(request.clone(), 32768);
-  if (parsed.error) return error(parsed.error, parsed.error === "payload_too_large" ? 413 : 400, id);
+  if (parsed.error === "invalid_json") return mcpRpcError(null, -32700, "Parse error", 400);
+  if (parsed.error) return mcpRpcError(null, -32600, parsed.error, parsed.error === "payload_too_large" ? 413 : 400);
   const message = parsed.value;
+  const invalid = validateMcpRequest(request, message);
+  if (invalid) return invalid;
+  if (message.method === "server/discover") return discoverMcp(message.id);
   if (message?.method === "tools/call" && message?.params?.name === "xguard.capabilities") {
-    return mcpEnvelope(message.id, capabilities(env), { "x-xguard-request-id": id });
+    return mcpTransportResponse(mcpEnvelope(message.id, capabilities(env), { "x-xguard-request-id": id }), message);
   }
   if (message?.method === "tools/call" && message?.params?.name === "xguard.pricing.quote") {
     const quoted = await issueQuote(env, message?.params?.arguments || {}, id);
     if (!quoted.response.ok) return quoted.response;
-    return mcpEnvelope(message.id, await quoted.response.clone().json(), { "x-xguard-request-id": id });
+    return mcpTransportResponse(mcpEnvelope(message.id, await quoted.response.clone().json(), { "x-xguard-request-id": id }), message);
   }
   if (message?.method === "tools/call" && message?.params?.name === TOOL) {
     const paid = await handlePaidWebFetch(request, env, id, message?.params?.arguments || {});
-    if (!paid.ok) return paid;
+    if (!paid.ok) return mcpTransportResponse(paid, message);
     const value = await paid.clone().json();
     const exposed = {};
     for (const name of ["payment-response", "x-xguard-request-id", "x-xguard-payment-identifier", "x-xguard-replay", "x-xguard-proof", "x-xguard-receipt"]) {
       const value = paid.headers.get(name);
       if (value) exposed[name] = value;
     }
-    return mcpEnvelope(message.id, value, exposed);
+    return mcpTransportResponse(mcpEnvelope(message.id, value, exposed), message);
   }
   return { message };
 }
 
 async function augmentMcpTools(message, response) {
-  if (message?.method !== "tools/list" || !(response instanceof Response) || !response.ok) return response;
+  if (!(response instanceof Response) || !message) return response;
+  if (!response.ok) return mcpTransportResponse(response, message);
   const body = await response.clone().json().catch(() => null);
-  if (!Array.isArray(body?.result?.tools)) return response;
-  for (const tool of [...PAID_MCP_TOOLS].reverse()) {
-    const existing = body.result.tools.findIndex(item => item?.name === tool.name);
-    if (existing >= 0) body.result.tools.splice(existing, 1);
-    body.result.tools.unshift(tool);
+  if (!body?.result || typeof body.result !== "object") return mcpTransportResponse(response, message);
+  if (message.method === "tools/list" && Array.isArray(body.result.tools)) {
+    for (const tool of [...PAID_MCP_TOOLS].reverse()) {
+      const existing = body.result.tools.findIndex(item => item?.name === tool.name);
+      if (existing >= 0) body.result.tools.splice(existing, 1);
+      body.result.tools.unshift(tool);
+    }
+    body.result.resultType = "complete";
+    body.result.ttlMs = 60000;
+    body.result.cacheScope = "public";
+  } else if (message.method === "tools/call") {
+    body.result.resultType ||= "complete";
+    if (typeof body.result.isError !== "boolean") body.result.isError = false;
+  } else {
+    return mcpTransportResponse(response, message);
   }
   const next = new Headers(response.headers);
   next.delete("content-length");
   next.set("x-xguard-version", VERSION);
-  return new Response(JSON.stringify(body), { status: response.status, headers: next });
+  return mcpTransportResponse(new Response(JSON.stringify(body), { status: response.status, headers: next }), message);
 }
 
 function mcpDiscovery(env) {
@@ -1288,7 +1353,9 @@ function mcpDiscovery(env) {
     transport: "streamable-http",
     endpoint: `${API}/mcp`,
     protocol: "MCP",
-    methods: ["initialize", "notifications/initialized", "tools/list", "tools/call"],
+    methods: ["server/discover", "initialize", "notifications/initialized", "tools/list", "tools/call"],
+    protocolVersions: ["2026-07-28", "2025-11-25"],
+    authentication: { required: false, oauth: false, payment: "x402-v2-per-paid-tool" },
     tools: PAID_MCP_TOOLS.map(tool => ({ ...tool, available: tool.name !== TOOL || gatewayConfig(env, false).configured })),
   };
 }

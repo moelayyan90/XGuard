@@ -50,7 +50,12 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
-          ./mcp-publisher validate server.json
+          for attempt in 1 2 3; do
+            ./mcp-publisher validate server.json && exit 0
+            echo "Official MCP validation attempt $attempt failed; retrying."
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Read official version history
         if: github.event_name != 'pull_request'

@@ -32,7 +32,15 @@ jobs:
           chmod +x ./mcp-publisher
 
       - name: Validate registry manifest
-        run: ./mcp-publisher validate server.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            ./mcp-publisher validate server.json && exit 0
+            echo "Official MCP validation attempt $attempt failed; retrying."
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Check whether this exact version is already public
         id: registry
@@ -52,7 +60,15 @@ jobs:
 
       - name: Authenticate with GitHub OIDC
         if: steps.registry.outputs.exists != 'true'
-        run: ./mcp-publisher login github-oidc
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            ./mcp-publisher login github-oidc && exit 0
+            echo "MCP Registry OIDC attempt $attempt failed; retrying."
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Publish XGuard
         if: steps.registry.outputs.exists != 'true'

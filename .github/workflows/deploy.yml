@@ -21,6 +21,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
@@ -38,7 +39,16 @@ jobs:
           set -euo pipefail
           deployments="$(npx --yes wrangler@4.123.0 deployments list --json --config apps/relay/wrangler.jsonc)"
           version_id="$(printf '%s' "$deployments" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),d=x.at(-1),v=d?.versions?.find(item=>Number(item.percentage)>0);if(!v?.version_id)process.exit(1);process.stdout.write(v.version_id)})')"
+          version="$(npx --yes wrangler@4.123.0 versions view "$version_id" --json --config apps/relay/wrangler.jsonc)"
+          git_ref="$(printf '%s' "$version" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),tag=x.annotations?.["workers/tag"]||"";if(!/^git-[0-9a-f]{12,40}$/.test(tag))process.exit(1);process.stdout.write(tag.slice(4))})')"
+          git_ref="$(git rev-parse "${git_ref}^{commit}")"
           echo "version_id=$version_id" >> "$GITHUB_OUTPUT"
+          echo "git_ref=$git_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Guard Durable Object deployment and recovery
+        id: do_guard
+        shell: bash
+        run: node scripts/durable-object-deploy-guard.mjs '${{ steps.previous.outputs.git_ref }}' "$DEPLOY_SHA"
 
       - name: Deploy Worker
         id: deploy
@@ -59,6 +69,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # A new Worker version can reach different Cloudflare edges a few seconds
+          # apart. Retry only transport/HTTP failures; contract mismatches still fail.
+          curl() { command curl --retry 5 --retry-all-errors --retry-delay 2 "$@"; }
           expected_discovery_version="$(node -p 'require("./server.json").version')"
           ready=0
           for i in {1..35}; do
@@ -138,8 +151,8 @@ jobs:
         id: identity_contract
         run: node scripts/verify-production-identity.mjs
 
-      - name: Roll back automatically if production verification failed
-        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != ''
+      - name: Roll back compatible code-only deployment after failed verification
+        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -150,3 +163,12 @@ jobs:
           set -euo pipefail
           npx --yes wrangler@4.123.0 rollback "$PREVIOUS_VERSION" --yes --config apps/relay/wrangler.jsonc --message "Automatic rollback after failed XGuard ${DEPLOY_SHA} verification"
           curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 3 --max-time 12 https://api.xguardgate.com/healthz >/dev/null
+
+      - name: Require forward recovery after irreversible Durable Object migration
+        if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '::error title=Forward recovery required::Production verification failed after an atomic Durable Object lifecycle migration. Cloudflare forbids rollback to the prior version; no unsafe rollback was attempted. Publish a migration-compatible corrective version.'
+          curl --silent --show-error --retry 3 --retry-all-errors --retry-delay 2 --max-time 12 https://api.xguardgate.com/v1/ready || true
+          exit 1

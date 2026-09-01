@@ -6,12 +6,10 @@ on:
       - ".github/workflows/refresh-public-indexes.yml"
       - "apps/relay/src/canonical-entry.js"
       - "apps/relay/src/public-metadata.js"
-  push:
+  workflow_run:
+    workflows: ["Deploy XGuard Relay"]
     branches: [main]
-    paths:
-      - "apps/relay/src/canonical-entry.js"
-      - "apps/relay/src/public-metadata.js"
-      - ".github/workflows/refresh-public-indexes.yml"
+    types: [completed]
   workflow_dispatch:
     inputs:
       submit_not_human_search:
@@ -25,10 +23,14 @@ permissions:
 
 jobs:
   verify-signals:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: 24

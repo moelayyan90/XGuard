@@ -65,6 +65,50 @@ test("paid discovery advertises only the real enabled connector", async () => {
   assert.ok((await mcp.json()).tools.some(tool => tool.name === "xguard.pricing.quote"));
 });
 
+test("modern MCP discovery, routing headers, caching metadata, and JSON-RPC validation are enforced", async () => {
+  const env = environment();
+  const discover = await app.fetch(new Request("https://api.xguardgate.com/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json", "mcp-protocol-version": "2026-07-28", "mcp-method": "server/discover" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: "discover-1", method: "server/discover", params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } } }),
+  }), env, {});
+  assert.equal(discover.status, 200);
+  assert.equal(discover.headers.get("mcp-method"), "server/discover");
+  const discovered = await discover.json();
+  assert.deepEqual(discovered.result.supportedVersions, ["2026-07-28", "2025-11-25"]);
+  assert.equal(discovered.result.cacheScope, "public");
+  assert.equal(discovered.result._meta["io.modelcontextprotocol/serverInfo"].version, "5.1.0");
+
+  const listed = await app.fetch(new Request("https://api.xguardgate.com/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json", "mcp-protocol-version": "2026-07-28", "mcp-method": "tools/list" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
+  }), env, {});
+  assert.equal(listed.status, 200);
+  const list = await listed.json();
+  assert.equal(list.result.resultType, "complete");
+  assert.equal(list.result.ttlMs, 60000);
+  assert.equal(list.result.cacheScope, "public");
+  assert.ok(list.result.tools.some(tool => tool.name === "xguard.web.fetch"));
+  assert.ok(list.result.tools.some(tool => tool.name === "xguard_egress_fetch"));
+
+  const mismatched = await app.fetch(new Request("https://api.xguardgate.com/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json", "mcp-method": "tools/call", "mcp-name": "wrong" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/list", params: {} }),
+  }), env, {});
+  assert.equal(mismatched.status, 400);
+  assert.equal((await mismatched.json()).error.code, -32600);
+
+  const invalid = await app.fetch(new Request("https://api.xguardgate.com/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: 4, method: "tools/list" }),
+  }), env, {});
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).error.code, -32600);
+});
+
 test("readiness accepts the official facilitator supported shape", async t => {
   const env = environment();
   const originalFetch = globalThis.fetch;

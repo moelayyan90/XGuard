@@ -97,6 +97,7 @@ jobs:
           grep -q 'font-family:Arial' apps/relay/src/site-egress.js
       - name: Discovery, A2A, Action Rail and Secretless Egress behavior tests
         run: |
+          node --test scripts/durable-object-deploy-guard-test.mjs
           node --test apps/relay/src/entry-test.js
           node --test apps/relay/src/a2a-entry-test.js
           node --test apps/relay/src/canonical-entry-test.js
