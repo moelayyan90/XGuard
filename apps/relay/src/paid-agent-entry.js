@@ -380,17 +380,23 @@ async function publicDns(hostname) {
   if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname) || hostname.includes(":")) return { ok: true, addresses: [hostname] };
   const answers = [];
   for (const type of ["A", "AAAA"]) {
-    const endpoint = new URL("https://cloudflare-dns.com/dns-query");
-    endpoint.searchParams.set("name", hostname);
-    endpoint.searchParams.set("type", type);
-    let response;
-    try {
-      response = await fetch(endpoint, { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(3000), redirect: "error" });
-    } catch {
-      return { ok: false, code: "dns_unresolved" };
+    let body = null;
+    for (const resolver of ["https://cloudflare-dns.com/dns-query", "https://dns.google/resolve"]) {
+      const endpoint = new URL(resolver);
+      endpoint.searchParams.set("name", hostname);
+      endpoint.searchParams.set("type", type);
+      try {
+        const response = await fetch(endpoint, { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(2500), redirect: "error" });
+        if (!response.ok) continue;
+        body = await response.json().catch(() => null);
+        if (body && Number(body.Status ?? 0) === 0) break;
+        body = null;
+      } catch {
+        // Try the second independent DNS-over-HTTPS resolver. Both families
+        // must resolve successfully, so SSRF protection remains fail-closed.
+      }
     }
-    if (!response.ok) return { ok: false, code: "dns_unresolved" };
-    const body = await response.json().catch(() => null);
+    if (!body) return { ok: false, code: "dns_unresolved" };
     for (const answer of Array.isArray(body?.Answer) ? body.Answer : []) {
       if (answer.type === 1 || answer.type === 28) answers.push(String(answer.data || ""));
     }

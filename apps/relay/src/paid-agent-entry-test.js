@@ -185,6 +185,33 @@ test("signed quote produces an official x402 v2 challenge", async t => {
   assert.equal((await mcpResponse.json()).accepts[0].network, "eip155:84532");
 });
 
+test("DNS validation uses an independent resolver when the primary is unavailable", async t => {
+  const env = environment();
+  const originalFetch = globalThis.fetch;
+  const queried = [];
+  globalThis.fetch = async input => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    queried.push(`${url.hostname}:${url.searchParams.get("type")}`);
+    if (url.hostname === "cloudflare-dns.com") throw new Error("primary resolver unavailable");
+    if (url.hostname === "dns.google") {
+      return new Response(JSON.stringify({
+        Status: 0,
+        Answer: url.searchParams.get("type") === "A" ? [{ type: 1, data: "93.184.216.34" }] : [],
+      }), { headers: { "content-type": "application/dns-json" } });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const response = await app.fetch(new Request("https://api.xguardgate.com/v1/pricing/quote", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: target, testnet: true }),
+  }), env, {});
+  assert.equal(response.status, 200);
+  assert.deepEqual(queried, ["cloudflare-dns.com:A", "dns.google:A", "cloudflare-dns.com:AAAA", "dns.google:AAAA"]);
+});
+
 test("settlement precedes execution and an exact retry does not settle twice", async t => {
   const env = environment();
   const originalFetch = globalThis.fetch;

@@ -71,13 +71,24 @@ jobs:
           set -euo pipefail
           # A new Worker version can reach different Cloudflare edges a few seconds
           # apart. Retry only transport/HTTP failures; contract mismatches still fail.
-          curl() { command curl --retry 5 --retry-all-errors --retry-delay 2 "$@"; }
+          curl() {
+            local endpoint=""
+            for argument in "$@"; do
+              [[ "$argument" == https://* ]] && endpoint="${argument%%\?*}"
+            done
+            [[ -z "$endpoint" ]] || echo "::notice title=Production probe::${endpoint}" >&2
+            command curl --retry 5 --retry-delay 2 "$@"
+          }
           expected_discovery_version="$(node -p 'require("./server.json").version')"
           ready=0
           for i in {1..35}; do
+            ready_headers="$(mktemp)"
+            readiness="$(curl --silent --show-error --max-time 8 -D "$ready_headers" 'https://api.xguardgate.com/v1/ready?build='"${DEPLOY_SHA}" || true)"
             egress="$(curl --silent --show-error --max-time 8 'https://api.xguardgate.com/v1/egress?build='"${DEPLOY_SHA}" || true)"
             facilitator="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
-            if printf '%s' "$egress" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.name==="XGuard Secretless Egress"&&x.role.includes("credential broker")&&x.credits_per_authorized_egress_attempt===1&&x.providers_supported?.includes("stripe"))process.exit(0)}catch{}process.exit(1)})' && \
+            if grep -qi "^x-xguard-worker-version-tag: git-${DEPLOY_SHA:0:12}" "$ready_headers" && \
+               printf '%s' "$readiness" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{if(JSON.parse(s).ready===true)process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$egress" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.name==="XGuard Secretless Egress"&&x.role.includes("credential broker")&&x.credits_per_authorized_egress_attempt===1&&x.providers_supported?.includes("stripe"))process.exit(0)}catch{}process.exit(1)})' && \
                printf '%s' "$facilitator" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.1.0"&&x.kind==="facilitator"&&x.capabilities?.automatic_routing===true&&x.capabilities?.settlement_ambiguous_fail_closed===true)process.exit(0)}catch{}process.exit(1)})'; then ready=1; break; fi
             sleep 4
           done
@@ -125,7 +136,7 @@ jobs:
           llms="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/llms.txt)"
           printf '%s' "$llms" | grep -q 'Universal paid tool path'
           printf '%s' "$llms" | grep -q 'OpenAI, Anthropic, GitHub, Stripe'
-          curl --fail --silent --show-error --max-time 8 https://xguardgate.com/server.json | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!==process.env.EXPECTED_VERSION||x.name!=="io.github.moelayyan90/xguard-control-plane"||!x.description.includes("signed prices"))process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://xguardgate.com/server.json | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!==process.env.EXPECTED_VERSION||x.name!=="io.github.moelayyan90/xguard-control-plane"||!x.description.toLowerCase().includes("signed prices")||x.description.length>100)process.exit(1)})'
           robots="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/robots.txt)"
           printf '%s' "$robots" | grep -q 'User-agent: GPTBot'
           printf '%s' "$robots" | grep -q 'User-agent: ClaudeBot'

@@ -295,10 +295,12 @@ function normalizePublicBody(pathname, body) {
   return body;
 }
 
-async function normalizeResponse(request, response) {
+async function normalizeResponse(request, response, env) {
   if (!(response instanceof Response)) return response;
   const url = new URL(request.url);
   const headers = baseHeaders(response.headers);
+  if (env?.CF_VERSION_METADATA?.id) headers.set("x-xguard-worker-version-id", env.CF_VERSION_METADATA.id);
+  if (env?.CF_VERSION_METADATA?.tag) headers.set("x-xguard-worker-version-tag", env.CF_VERSION_METADATA.tag);
   if (new URL(request.url).hostname === "api.xguardgate.com" && !headers.has("x-xguard-request-id")) {
     const supplied = request.headers.get("x-request-id");
     headers.set("x-xguard-request-id", supplied && /^[A-Za-z0-9_-]{8,128}$/.test(supplied) ? supplied : `xgr_${crypto.randomUUID().replaceAll("-", "")}`);
@@ -380,7 +382,7 @@ export default {
     }
 
     const response = await app.fetch(request, env, ctx);
-    return normalizeResponse(request, response);
+    return normalizeResponse(request, response, env);
   },
 
   async scheduled(controller, env, ctx) {
