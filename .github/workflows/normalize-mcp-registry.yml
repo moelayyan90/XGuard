@@ -33,6 +33,8 @@ jobs:
           ./mcp-publisher --help >/dev/null
 
       - name: Validate manifest structure locally
+        # Pull requests stay deterministic when the public registry is unavailable;
+        # the merged workflow still requires the official remote validation below.
         shell: bash
         run: |
           set -euo pipefail
