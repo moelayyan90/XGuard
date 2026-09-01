@@ -31,7 +31,15 @@ jobs:
           chmod +x ./mcp-publisher
 
       - name: Validate manifest
-        run: ./mcp-publisher validate server.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            ./mcp-publisher validate server.json && exit 0
+            echo "MCP validation attempt $attempt failed; retrying."
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Check MCPCentral for this exact version
         id: existing
