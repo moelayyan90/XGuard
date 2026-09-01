@@ -31,9 +31,27 @@ jobs:
           set -euo pipefail
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
           ./mcp-publisher --help >/dev/null
+
+      - name: Validate manifest structure locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const manifest = require('./server.json');
+          if (manifest.$schema !== 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json') throw new Error('unexpected MCP schema');
+          if (manifest.name !== 'io.github.moelayyan90/xguard-control-plane') throw new Error('unexpected MCP registry name');
+          if (manifest.version !== '5.1.0') throw new Error('unexpected MCP version');
+          if (manifest.remotes?.length !== 1 || manifest.remotes[0]?.type !== 'streamable-http' || manifest.remotes[0]?.url !== 'https://api.xguardgate.com/mcp') throw new Error('unexpected MCP remote');
+          NODE
+
+      - name: Validate against the official registry after merge
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
           ./mcp-publisher validate server.json
 
       - name: Read official version history
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -53,10 +71,6 @@ jobs:
           target="$(node -p 'require("./server.json").version')"
           test -n "$target"
           echo "Manifest target version: $target"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            current="$(jq -r '[.servers[] | select((._meta["io.modelcontextprotocol.registry/official"].status // "active") == "active")][0].server.version // empty' /tmp/xguard-registry-versions.json)"
-            echo "Current active registry version before merge: ${current:-unknown}"
-          fi
 
       - name: Wait for manifest version to become official latest
         if: github.event_name != 'pull_request'
