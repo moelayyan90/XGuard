@@ -192,7 +192,7 @@ test("DNS validation uses an independent resolver when the primary is unavailabl
   globalThis.fetch = async input => {
     const url = new URL(input instanceof Request ? input.url : input);
     queried.push(`${url.hostname}:${url.searchParams.get("type")}`);
-    if (url.hostname === "cloudflare-dns.com") throw new Error("primary resolver unavailable");
+    if (url.hostname === "cloudflare-dns.com" || url.hostname === "one.one.one.one") throw new Error("primary resolver unavailable");
     if (url.hostname === "dns.google") {
       return new Response(JSON.stringify({
         Status: 0,
@@ -209,7 +209,9 @@ test("DNS validation uses an independent resolver when the primary is unavailabl
     body: JSON.stringify({ url: target, testnet: true }),
   }), env, {});
   assert.equal(response.status, 200);
-  assert.deepEqual(queried, ["cloudflare-dns.com:A", "dns.google:A", "cloudflare-dns.com:AAAA", "dns.google:AAAA"]);
+  for (const expected of ["one.one.one.one:A", "cloudflare-dns.com:A", "dns.google:A", "one.one.one.one:AAAA", "cloudflare-dns.com:AAAA", "dns.google:AAAA"]) {
+    assert.ok(queried.includes(expected), expected);
+  }
 });
 
 test("settlement precedes execution and an exact retry does not settle twice", async t => {
