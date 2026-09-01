@@ -53,6 +53,7 @@ jobs:
           node --check apps/relay/src/entry-test.js
           node --check packages/edge/index.js
           node --check scripts/ats100-ci.mjs
+          node -e "const x=require('./server.json');if(x.description.length>100)throw new Error('Official MCP Registry description exceeds 100 characters')"
           node -e "JSON.parse(require('node:fs').readFileSync('packages/edge/package.json','utf8'))"
           node -e "JSON.parse(require('node:fs').readFileSync('.xguard/transaction.json','utf8'))"
           grep -q '^name: XGuard ATS-100' action.yml

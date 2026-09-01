@@ -72,3 +72,16 @@ test("OAuth discovery probes fail explicitly because public MCP uses x402 rather
     assert.equal(body.resource, "https://api.xguardgate.com/mcp");
   }
 });
+
+test("runtime responses expose the exact Cloudflare Worker version used by deployment verification", async () => {
+  const response = await app.fetch(new Request("https://api.xguardgate.com/mcp"), {
+    CF_VERSION_METADATA: {
+      id: "00000000-0000-0000-0000-000000000001",
+      tag: "git-6469a282e5bd",
+      timestamp: "2026-09-01T00:00:00.000Z",
+    },
+  }, {});
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-xguard-worker-version-id"), "00000000-0000-0000-0000-000000000001");
+  assert.equal(response.headers.get("x-xguard-worker-version-tag"), "git-6469a282e5bd");
+});

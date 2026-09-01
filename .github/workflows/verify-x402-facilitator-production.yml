@@ -1,12 +1,10 @@
 name: Verify XGuard x402 Facilitator Production
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Deploy XGuard Relay"]
     branches: [main]
-    paths:
-      - "apps/relay/**"
-      - "server.json"
-      - ".github/workflows/verify-x402-facilitator-production.yml"
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -14,8 +12,11 @@ permissions:
 
 jobs:
   production-contract:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/setup-node@v6
         with:
@@ -27,8 +28,8 @@ jobs:
           ok=0
           for i in {1..40}; do
             provider="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
-            supported="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/supported?build=${GITHUB_SHA}" || true)"
-            logo="$(curl --silent --show-error --max-time 8 "https://xguardgate.com/logo.svg?build=${GITHUB_SHA}" || true)"
+            supported="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/supported?build=${DEPLOY_SHA}" || true)"
+            logo="$(curl --silent --show-error --max-time 8 "https://xguardgate.com/logo.svg?build=${DEPLOY_SHA}" || true)"
             if printf '%s' "$provider" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.1.0"&&x.kind==="facilitator"&&x.name==="XGuard x402 Routing Surface"&&x.capabilities?.automatic_routing===true&&x.capabilities?.settlement_ambiguous_fail_closed===true&&x.capabilities?.settlement_transport_failover==="reconciliation-gated"&&x.endpoints?.settle?.endsWith("/settle")&&x.discovery?.bazaar?.search)process.exit(0)}catch{}process.exit(1)})' && \
                printf '%s' "$supported" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.xguard?.settlement_safety?.includes("fail-closed"))process.exit(0)}catch{}process.exit(1)})' && \
                printf '%s' "$logo" | grep -q '<svg'; then
