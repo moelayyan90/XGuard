@@ -60,3 +60,15 @@ test("transaction-result pages are noindex and never claim redirects grant credi
   assert.equal(response.headers.get("x-robots-tag"), "noindex, nofollow");
   assert.match(await response.text(), /redirect alone does not grant credits/i);
 });
+
+test("OAuth discovery probes fail explicitly because public MCP uses x402 rather than fake OAuth", async () => {
+  for (const path of ["/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-authorization-server/mcp"]) {
+    const response = await app.fetch(new Request(`https://api.xguardgate.com${path}`), {}, {});
+    assert.equal(response.status, 404);
+    assert.match(response.headers.get("content-type") || "", /^application\/json/);
+    const body = await response.json();
+    assert.equal(body.error, "oauth_not_required");
+    assert.equal(body.authentication_required, false);
+    assert.equal(body.resource, "https://api.xguardgate.com/mcp");
+  }
+});
