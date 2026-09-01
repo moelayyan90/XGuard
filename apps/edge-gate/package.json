@@ -1,6 +1,6 @@
 {
   "name": "xguard-edge-gate",
-  "version": "5.0.1",
+  "version": "5.1.0",
   "private": true,
   "type": "module",
   "description": "Transparent x402 payment-gated reverse proxy using XGuard as the facilitator control plane.",
@@ -14,9 +14,9 @@
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
-    "@x402/core": "2.23.0",
-    "@x402/evm": "2.23.0",
-    "@x402/hono": "2.23.0",
+    "@x402/core": "2.24.0",
+    "@x402/evm": "2.24.0",
+    "@x402/hono": "2.24.0",
     "hono": "4.12.34"
   },
   "devDependencies": {

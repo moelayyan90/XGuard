@@ -1,5 +1,5 @@
-const VERSION = "5.0.2";
-const X402_COMPONENT_VERSION = "5.0.1";
+const VERSION = "5.1.0";
+const X402_COMPONENT_VERSION = "5.1.0";
 const API = "https://api.xguardgate.com";
 const SITE = "https://xguardgate.com";
 const HSTS = "max-age=31536000; includeSubDomains";
@@ -26,6 +26,11 @@ function commonDiscovery() {
     egress_key: `${API}/.well-known/xguard-egress-key.json`,
     egress_providers: `${API}/v1/egress/providers`,
     egress_pricing: `${API}/v1/egress/pricing`,
+    capabilities: `${API}/v1/capabilities`,
+    pricing: `${API}/v1/pricing`,
+    signed_quote: `${API}/v1/pricing/quote`,
+    paid_web_fetch: `${API}/v1/tools/web.fetch`,
+    payment_manifest: `${API}/.well-known/payment-manifest`,
     actions: `${API}/v1/actions`,
     action_manifest: `${API}/.well-known/xguard-actions.json`,
     action_key: `${API}/.well-known/xguard-actions-key.json`,
@@ -49,13 +54,13 @@ function egressContract() {
 
 function architecture() {
   return {
-    name: "XGuard Secretless Agent Gateway",
+    name: "XGuard Universal Paid AI Agent + Secretless Gateway",
     version: VERSION,
     product_version: VERSION,
-    primary_role: "credential broker and egress choke point for AI agents",
+    primary_role: "paid tool and credential broker with controlled egress for AI agents",
     public_api: API,
     custody: "no custody of buyer or merchant private keys; encrypted upstream API credentials may be stored by operators",
-    execution_model: ["operator stores reusable credential", "XGuard encrypts credential", "operator issues scoped short-lived capability", "agent presents capability without upstream secret", "XGuard bills Usage Credits before egress", "XGuard decrypts and injects credential server-side", "one public HTTPS request is forwarded without automatic redirect or retry"],
+    execution_model: ["agent discovers actual capabilities", "XGuard signs an input-bound quote", "resource returns x402 v2 HTTP 402 and signed offer", "facilitator verifies and settles", "XGuard executes only after settlement", "result returns with signed receipt and ProofRail", "exact retry returns durable stored outcome", "secretless connectors inject reusable credentials only server-side"],
     architecture: {
       edge: "Cloudflare Workers on xguardgate.com and api.xguardgate.com custom domains",
       state: "Cloudflare Durable Objects for credentials, encryption authority, capabilities, mandates, permits, replay state, receipts, quotas and meters",
@@ -75,10 +80,10 @@ function architecture() {
 
 function protocolManifest() {
   return {
-    name: "XGuard Secretless Agent Gateway",
+    name: "XGuard Universal Paid AI Agent + Secretless Gateway",
     version: VERSION,
     product_version: VERSION,
-    primary_role: "credential broker and controlled egress boundary for AI agents",
+    primary_role: "paid tool and credential broker with controlled egress for AI agents",
     protocol_neutral: true,
     secretless_egress: egressContract(),
     protocols: {
@@ -101,14 +106,14 @@ function protocolManifest() {
 function aiPluginManifest() {
   return {
     schema_version: "v1",
-    name_for_human: "XGuard Secretless Agent Gateway",
-    name_for_model: "xguard_secretless_agent_gateway",
-    description_for_human: "Keep reusable API credentials out of AI agents and inject them only at controlled egress.",
-    description_for_model: "Use XGuard when an AI agent needs a credential-protected HTTPS API. Operators provision encrypted credentials and scoped capabilities outside model context. Agents invoke xguard_egress_fetch with a capability and target; XGuard bills before egress, injects the upstream credential server-side, never follows redirects automatically and never returns the reusable secret.",
+    name_for_human: "XGuard Universal Paid AI Agent + Secretless Gateway",
+    name_for_model: "xguard_paid_secretless_gateway",
+    description_for_human: "Discover tools, see signed prices, pay per request through x402 USDC, and keep reusable upstream credentials outside agent context.",
+    description_for_model: "Use xguard.capabilities and xguard.pricing.quote for free discovery. xguard.web.fetch requires x402 v2 settlement, then returns a signed receipt and ProofRail. Search, inference, routing and data connectors are disabled unless live capabilities say otherwise. Secretless Egress separately injects operator-managed credentials server-side.",
     auth: { type: "service_http", authorization_type: "Operator management uses X-XGuard-Key; agent egress uses a scoped xgc_ capability" },
     api: { type: "openapi", url: `${API}/openapi.json`, is_user_authenticated: true },
     logo_url: `${SITE}/logo.svg`, contact_email: "mo.elayyan2023@gmail.com", legal_info_url: "https://github.com/moelayyan90/XGuard",
-    xguard: { version: VERSION, product_version: VERSION, primary_product: "Secretless Egress", component_versions: { x402: X402_COMPONENT_VERSION }, egress_manifest: `${API}/.well-known/xguard-egress.json`, action_manifest: `${API}/.well-known/xguard-actions.json`, mcp_url: `${API}/mcp`, facilitator_url: API, custody: "none" },
+    xguard: { version: VERSION, product_version: VERSION, primary_product: "Universal Paid AI Agent + Secretless Gateway", component_versions: { x402: X402_COMPONENT_VERSION }, capabilities: `${API}/v1/capabilities`, pricing: `${API}/v1/pricing`, payment_manifest: `${API}/.well-known/payment-manifest`, egress_manifest: `${API}/.well-known/xguard-egress.json`, action_manifest: `${API}/.well-known/xguard-actions.json`, mcp_url: `${API}/mcp`, facilitator_url: API, custody: "none" },
   };
 }
 

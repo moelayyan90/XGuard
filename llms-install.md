@@ -10,14 +10,17 @@ https://api.xguardgate.com/mcp
 
 Transport: Streamable HTTP.
 
-Canonical product identity: **XGuard Secretless Agent Gateway**.
+Canonical product identity: **XGuard Universal Paid AI Agent + Secretless Gateway**.
 
 ## What XGuard is for
 
-Use XGuard when an AI agent must call an upstream HTTPS API without receiving the reusable upstream API credential. XGuard keeps reusable credentials server-side, delegates scoped capabilities, meters authorized egress and can attach signed ProofRail execution evidence.
+Use XGuard when an AI agent needs a no-account paid tool or must call an upstream HTTPS API without receiving the reusable credential. XGuard signs prices, settles x402 v2 USDC before execution, makes retries idempotent and returns signed receipts plus ProofRail evidence.
 
 Primary MCP capabilities include:
 
+- `xguard.capabilities`
+- `xguard.pricing.quote`
+- `xguard.web.fetch`
 - `xguard_secretless_egress`
 - `xguard_egress_fetch`
 - `xguard_proofrail`
@@ -89,4 +92,4 @@ A reviewer can verify XGuard without running local code:
 3. Read `https://xguardgate.com/.well-known/mcp/server-card.json`.
 4. Check `https://xguardgate.com/server.json` and this public repository.
 
-Current discovery release: **5.0.2**.
+Current discovery release: **5.1.0**.

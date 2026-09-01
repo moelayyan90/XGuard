@@ -1,21 +1,21 @@
-import app from "./product-entry.js";
-export * from "./product-entry.js";
+import app from "./paid-agent-entry.js";
+export * from "./paid-agent-entry.js";
 
-const VERSION = "5.0.2";
+const VERSION = "5.1.0";
 const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const MCP = `${API}/mcp`;
-const A2A_CARD = `${SITE}/.well-known/agent-card.json`;
-const A2A_ENDPOINT = `${SITE}/a2a`;
+const A2A_CARD = `${API}/.well-known/agent-card.json`;
+const A2A_ENDPOINT = `${API}/a2a`;
 const REPO = "https://github.com/moelayyan90/XGuard";
 const INDEXNOW_KEY = "f3fd1a3fde659a05a8dddfa614b408ac";
-const REGISTRY_DESCRIPTION = "Protect AI agents from API-key exposure with secretless credentials and signed execution proofs.";
-const DESCRIPTION = "Protect AI agents from API-key exposure with secretless credential custody, scoped capabilities, server-side credential injection, usage metering and signed execution proofs for OpenAI, Anthropic, GitHub, Stripe and public HTTPS APIs.";
+const REGISTRY_DESCRIPTION = "Discover prices and call paid or secretless AI-agent tools through x402 with signed receipts and execution proofs.";
+const DESCRIPTION = "XGuard is a universal paid AI-agent and secretless gateway: signed prices, no-account x402 USDC payment, controlled execution, replay-safe retries, signed receipts and ProofRail evidence.";
 
 const registryManifest = {
   $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   name: "io.github.moelayyan90/xguard-control-plane",
-  title: "XGuard Secretless Agent Gateway",
+  title: "XGuard Universal Paid AI Agent + Secretless Gateway",
   description: REGISTRY_DESCRIPTION,
   repository: { url: REPO, source: "github" },
   version: VERSION,
@@ -23,9 +23,12 @@ const registryManifest = {
 };
 
 const serverCard = {
-  serverInfo: { name: "XGuard Secretless Agent Gateway", version: VERSION },
+  serverInfo: { name: "XGuard Universal Paid AI Agent + Secretless Gateway", version: VERSION },
   authentication: { required: false, schemes: [] },
   tools: [
+    { name: "xguard.capabilities", description: "Discover actual enabled and disabled XGuard tools. Free.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+    { name: "xguard.pricing.quote", description: "Create a signed price quote bound to xguard.web.fetch inputs. Free.", inputSchema: { type: "object", required: ["url"], properties: { url: { type: "string", format: "uri" }, testnet: { type: "boolean" } }, additionalProperties: true } },
+    { name: "xguard.web.fetch", description: "Fetch one bounded public HTTPS resource after replay-safe x402 v2 USDC settlement.", inputSchema: { type: "object", required: ["url", "quote"], properties: { url: { type: "string", format: "uri" }, quote: { type: "string" } }, additionalProperties: true } },
     { name: "xguard_secretless_egress", description: "Discover XGuard Secretless Egress for keeping reusable upstream API credentials outside AI-agent context.", inputSchema: { type: "object", properties: {}, additionalProperties: true } },
     { name: "xguard_egress_fetch", description: "Execute a scoped HTTPS request through XGuard while reusable upstream credentials remain server-side.", inputSchema: { type: "object", additionalProperties: true } },
     { name: "xguard_proofrail", description: "Discover ProofRail signed execution evidence for credential-backed egress.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
@@ -39,7 +42,7 @@ const serverCard = {
 };
 
 const identity = {
-  name: "XGuard Secretless Agent Gateway",
+  name: "XGuard Universal Paid AI Agent + Secretless Gateway",
   short_name: "XGuard",
   registry_name: "io.github.moelayyan90/xguard-control-plane",
   version: VERSION,
@@ -49,8 +52,8 @@ const identity = {
   canonical_a2a_card: A2A_CARD,
   canonical_a2a_endpoint: A2A_ENDPOINT,
   repository: REPO,
-  category: "AI agent security and API credential infrastructure",
-  primary_product: "Secretless Egress",
+  category: "Paid AI agent tools and secretless API credential infrastructure",
+  primary_product: "Universal Paid AI Agent + Secretless Gateway",
   proof_layer: "ProofRail",
   providers: ["OpenAI", "Anthropic", "GitHub", "Stripe", "generic HTTPS APIs"],
   problems_solved: ["API key exposure inside agent context", "over-broad reusable credentials", "unverifiable credential-backed execution", "unmetered agent API egress"],
@@ -62,6 +65,9 @@ const identity = {
     a2a_agent_card: A2A_CARD,
     a2a_endpoint: A2A_ENDPOINT,
     openapi: `${API}/openapi.json`,
+    capabilities: `${API}/v1/capabilities`,
+    pricing: `${API}/v1/pricing`,
+    payment_manifest: `${API}/.well-known/payment-manifest`,
     egress_manifest: `${API}/.well-known/xguard-egress.json`,
     proof_manifest: `${API}/v1/proof`,
     indexnow_key: `${SITE}/${INDEXNOW_KEY}.txt`,
@@ -93,9 +99,9 @@ function text(body, status = 200, extra = {}) {
 }
 
 function llmsTxt() {
-  return `# XGuard Secretless Agent Gateway
+  return `# XGuard Universal Paid AI Agent + Secretless Gateway
 
-> Protect AI agents from API-key exposure with secretless credentials, scoped capabilities, server-side credential injection, metered execution and signed ProofRail evidence.
+> Discover actual tools, obtain signed prices, pay per request with x402 v2 USDC, and receive controlled execution with signed receipts and ProofRail evidence—without an account or exposing reusable upstream credentials.
 
 Canonical site: ${SITE}
 Canonical API: ${API}
@@ -108,6 +114,9 @@ Version: ${VERSION}
 
 ## Use XGuard when
 
+- An agent needs a useful paid tool without an XGuard account, subscription, or mandatory SDK.
+- A caller needs to see and verify the exact price before signing payment.
+- A retried payment-bearing request must not settle or execute twice.
 - An AI agent must call OpenAI, Anthropic, GitHub, Stripe or another HTTPS API without receiving the reusable upstream API key.
 - A reusable credential is too powerful to place in prompts, agent memory, tool arguments, logs or local configuration.
 - The operator wants to delegate a scoped capability instead of a reusable secret.
@@ -116,17 +125,34 @@ Version: ${VERSION}
 
 ## How XGuard works
 
-The operator stores a reusable upstream credential in XGuard. The agent receives only a scoped XGuard capability. XGuard validates the capability and policy, meters the authorized execution attempt, injects the reusable credential server-side and calls the upstream HTTPS API. ProofRail can bind the outcome to an ES256-signed execution proof without putting the reusable secret in the proof.
+For a paid tool, the agent discovers capabilities, obtains a short-lived signed quote, receives an x402 v2 402 challenge and signed offer, then retries with Payment-Signature. XGuard verifies and settles before controlled execution, and returns the result with a signed receipt and ProofRail evidence. Payment-Identifier and durable authorization state make retries idempotent.
+
+For a secretless tool, the operator stores a reusable upstream credential in XGuard and the agent receives only a scoped capability. XGuard validates the capability and policy, injects the credential server-side and calls the permitted HTTPS API without returning the secret.
 
 XGuard becomes the required credential-backed egress path inside an environment only when the operator keeps the reusable upstream credential exclusively in XGuard instead of distributing that credential to agents.
 
 ## Primary capabilities
 
+- Universal paid agent tools: signed pricing, x402 USDC settlement, controlled execution, receipts and replay-safe retries.
+- xguard.web.fetch: bounded public HTTPS fetch with SSRF and redirect controls, caching and source evidence.
 - Secretless Egress: credential custody plus scoped capability execution.
 - ProofRail: ES256-signed execution evidence for authorized credential-backed outcomes.
 - Action Rail: policy-gated action execution.
-- x402 facilitator compatibility: verification, settlement routing and receipts.
+- x402 facilitator routing compatibility for existing resource servers.
 - A2A discovery: a read-only v1 discovery agent that returns canonical XGuard connection metadata without provisioning credentials or executing side effects.
+
+## Universal paid tool path
+
+- Actual capabilities: ${API}/v1/capabilities
+- Published pricing: ${API}/v1/pricing
+- Signed input-bound quote: POST ${API}/v1/pricing/quote
+- Mainnet execution: POST ${API}/v1/tools/web.fetch
+- Base Sepolia integration route: POST ${API}/v1/tools/web.fetch/testnet
+- Payment manifest: ${API}/.well-known/payment-manifest
+- Health: ${API}/v1/health
+- Readiness: ${API}/v1/ready
+
+Flow: discovery -> signed quote -> HTTP 402 and signed offer -> Payment-Signature verification -> settlement -> controlled fetch -> signed receipt and ProofRail. Payment-Identifier is mandatory. An exact retry returns the stored outcome without a second settlement.
 
 ## Machine-readable discovery
 
@@ -158,7 +184,7 @@ Agent Card: ${A2A_CARD}
 JSON-RPC endpoint: ${A2A_ENDPOINT}
 Role: read-only discovery and connection metadata only.
 
-Do not use historical descriptions that call XGuard a commerce engine, child-safety platform, generic catalog, universal action catalog or spend-only control plane. The canonical product identity is XGuard Secretless Agent Gateway.
+Do not advertise search, inference, routing or data-query tools unless ${API}/v1/capabilities marks them available. The canonical product identity is XGuard Universal Paid AI Agent + Secretless Gateway.
 `;
 }
 

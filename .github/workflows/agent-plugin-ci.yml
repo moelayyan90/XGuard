@@ -11,6 +11,7 @@ on:
       - ".github/plugin/marketplace.json"
       - "CONNECT.md"
       - "apps/relay/src/product-entry.js"
+      - "apps/relay/src/paid-agent-entry.js"
       - "apps/relay/src/egress-entry.js"
       - ".github/workflows/agent-plugin-ci.yml"
   push:
@@ -24,6 +25,7 @@ on:
       - ".github/plugin/marketplace.json"
       - "CONNECT.md"
       - "apps/relay/src/product-entry.js"
+      - "apps/relay/src/paid-agent-entry.js"
       - "apps/relay/src/egress-entry.js"
       - ".github/workflows/agent-plugin-ci.yml"
   workflow_dispatch:
@@ -48,7 +50,7 @@ jobs:
           const endpoint = 'https://api.xguardgate.com/mcp';
           const plugin = read('plugin.json');
           if (plugin.$schema !== 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json') throw new Error('invalid plugin schema');
-          if (plugin.name !== 'xguard' || plugin.version !== '5.0.2') throw new Error('invalid canonical plugin identity');
+          if (plugin.name !== 'xguard' || plugin.version !== '5.1.0') throw new Error('invalid canonical plugin identity');
           if (plugin.repository !== 'https://github.com/moelayyan90/XGuard') throw new Error('invalid plugin repository');
           const portable = read('mcp.json');
           if (portable.$schema !== 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json') throw new Error('invalid portable MCP schema');
@@ -62,7 +64,7 @@ jobs:
           const market = read('.github/plugin/marketplace.json');
           if (market.name !== 'xguard-plugins') throw new Error('invalid Copilot marketplace manifest');
           const connect = fs.readFileSync('CONNECT.md', 'utf8');
-          for (const expected of ['XGuard Secretless Agent Gateway','claude mcp add xguard --transport http https://api.xguardgate.com/mcp','xguard_egress_fetch','x402 compatibility']) if (!connect.includes(expected)) throw new Error(`CONNECT.md missing ${expected}`);
+          for (const expected of ['XGuard Universal Paid AI Agent + Secretless Gateway','claude mcp add xguard --transport http https://api.xguardgate.com/mcp','xguard.web.fetch','xguard_egress_fetch','signed prices']) if (!connect.includes(expected)) throw new Error(`CONNECT.md missing ${expected}`);
           NODE
 
       - name: Verify current live MCP remains backward compatible before deploy
@@ -71,7 +73,7 @@ jobs:
           set -euo pipefail
           endpoint='https://api.xguardgate.com/mcp'
           init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-agent-plugin-ci","version":"1.0.0"}}}')"
-          printf '%s' "$init" | jq -e '.result.serverInfo.name == "xguard-secretless-agent-gateway" and .result.serverInfo.version == "5.0.2"' >/dev/null
+          printf '%s' "$init" | jq -e '.result.serverInfo as $s | (["xguard-secretless-agent-gateway","xguard-universal-paid-secretless-gateway"] | index($s.name)) != null and (["5.0.2","5.1.0"] | index($s.version)) != null' >/dev/null
           tools="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
           printf '%s' "$tools" | jq -e '.result.tools | length >= 10' >/dev/null
           for tool in xguard_secretless_egress xguard_egress_fetch xguard_proofrail xguard_verify_proof xguard_action_rail xguard_facilitator xguard_route; do

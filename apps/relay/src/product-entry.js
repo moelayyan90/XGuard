@@ -17,11 +17,12 @@ export {
   EgressMeter,
 } from "./egress-entry.js";
 
-const VERSION = "5.0.2";
-const NAME = "xguard-secretless-agent-gateway";
+const VERSION = "5.1.0";
+const NAME = "xguard-universal-paid-secretless-gateway";
 const MCP = "https://api.xguardgate.com/mcp";
 const API = "https://api.xguardgate.com";
 const PROOFRAIL_VERSION = "1.0.0";
+const PROOFRAIL_KID = "did:web:api.xguardgate.com#xguard-proofrail";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -93,8 +94,9 @@ export class ProofAuthority {
         name: "XGuard ProofRail",
         version: PROOFRAIL_VERSION,
         alg: "ES256",
-        kid: record.kid,
-        jwk: record.public_jwk,
+        kid: PROOFRAIL_KID,
+        key_version: record.kid,
+        jwk: { ...record.public_jwk, kid: PROOFRAIL_KID, use: "sig", alg: "ES256" },
         created_at: record.created_at,
         verify_endpoint: `${API}/v1/proofs/verify`,
       }, 200, { "cache-control": "public, max-age=300", "access-control-allow-origin": "*" });
@@ -117,9 +119,49 @@ export class ProofAuthority {
       const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, privateKey, encoded);
       return proofJson({
         proof: `${b64url(encoded)}.${b64url(signature)}`,
-        kid: record.kid,
+        kid: PROOFRAIL_KID,
         alg: "ES256",
       });
+    }
+
+    if (url.pathname === "/sign-bytes" && request.method === "POST") {
+      let body;
+      try { body = await request.json(); } catch { return proofJson({ error: "invalid_json" }, 400); }
+      let bytes;
+      try { bytes = unb64url(body?.data); } catch { return proofJson({ error: "invalid_signing_input" }, 400); }
+      if (!bytes.byteLength || bytes.byteLength > 8192) return proofJson({ error: "invalid_signing_input" }, 400);
+      const privateKey = await crypto.subtle.importKey(
+        "jwk",
+        record.private_jwk,
+        { name: "ECDSA", namedCurve: "P-256" },
+        false,
+        ["sign"],
+      );
+      const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, privateKey, bytes);
+      return proofJson({ signature: b64url(signature), kid: PROOFRAIL_KID, alg: "ES256" });
+    }
+
+    if (url.pathname === "/verify-bytes" && request.method === "POST") {
+      let body;
+      try { body = await request.json(); } catch { return proofJson({ valid: false, error: "invalid_json" }, 400); }
+      let bytes;
+      let signature;
+      try {
+        bytes = unb64url(body?.data);
+        signature = unb64url(body?.signature);
+      } catch {
+        return proofJson({ valid: false, error: "invalid_signature_encoding" }, 400);
+      }
+      if (!bytes.byteLength || bytes.byteLength > 8192 || !signature.byteLength) return proofJson({ valid: false, error: "invalid_signature_input" }, 400);
+      const publicKey = await crypto.subtle.importKey(
+        "jwk",
+        record.public_jwk,
+        { name: "ECDSA", namedCurve: "P-256" },
+        false,
+        ["verify"],
+      );
+      const valid = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, publicKey, signature, bytes);
+      return proofJson({ valid, kid: PROOFRAIL_KID, alg: "ES256" });
     }
 
     if (url.pathname === "/verify" && request.method === "POST") {
@@ -142,7 +184,7 @@ export class ProofAuthority {
         const valid = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, publicKey, signature, payloadBytes);
         let payload = null;
         try { payload = JSON.parse(decoder.decode(payloadBytes)); } catch { return proofJson({ valid: false, error: "invalid_proof_payload" }, 400); }
-        return proofJson({ valid, kid: record.kid, alg: "ES256", payload: valid ? payload : null });
+        return proofJson({ valid, kid: PROOFRAIL_KID, alg: "ES256", payload: valid ? payload : null });
       } catch {
         return proofJson({ valid: false, error: "proof_verification_failed" }, 400);
       }
@@ -176,15 +218,15 @@ function proofrailManifest() {
   return {
     name: "XGuard ProofRail",
     version: PROOFRAIL_VERSION,
-    role: "signed execution proof layer for XGuard Secretless Egress",
+    role: "signed execution proof layer for XGuard paid tools and Secretless Egress",
     proof_header: "x-xguard-proof",
     key_id_header: "x-xguard-proof-kid",
     algorithm: "ES256",
     public_key: `${API}/.well-known/xguard-proof-key.json`,
     verify: `${API}/v1/proofs/verify`,
-    generated_when: "an authorized Secretless Egress attempt has committed billing and reaches an upstream response, or returns a post-billing ambiguous network outcome",
-    signed_fields: ["proof_id", "capability_id", "target_origin", "target_path", "method", "outcome", "upstream_status", "billed_credits", "issued_at"],
-    security_boundary: "The proof does not contain the reusable upstream credential, the XGuard Usage Credit key, request headers, query parameters or request body.",
+    generated_when: "a settled x402 paid tool completes successfully, or an authorized Secretless Egress attempt reaches a billable upstream outcome",
+    signed_fields: ["request_id", "payment_identifier", "transaction", "amount_atomic", "tool", "input_digest", "source_origin", "source_path", "body_sha256", "executed_at", "proof_id", "capability_id", "target_origin", "target_path", "method", "outcome", "upstream_status", "billed_credits", "issued_at"],
+    security_boundary: "Proofs contain no payment signature, reusable upstream credential, XGuard Usage Credit key, request headers, query parameters or request body.",
   };
 }
 
@@ -302,7 +344,7 @@ async function improveMcp(snapshot, response) {
 
   if (message.method === "initialize") {
     body.result.serverInfo = { ...(body.result.serverInfo || {}), name: NAME, version: VERSION };
-    body.result.instructions = `XGuard Secretless Agent Gateway keeps reusable upstream API credentials outside AI agent context. Operators provision encrypted credentials and scoped capabilities; agents use xguard_egress_fetch. When an operator keeps the reusable credential exclusively in XGuard instead of distributing it to agents, XGuard becomes the required credential-backed egress path for that agent environment. ProofRail adds an ES256-signed proof to authorized credential-backed egress outcomes so callers can verify the enforced path without seeing the secret. Canonical remote MCP endpoint: ${MCP}. XGuard Action Rail, x402 facilitator routing, receipts and inspection remain available as compatibility capabilities.`;
+    body.result.instructions = `XGuard Universal Paid AI Agent + Secretless Gateway exposes signed pricing and x402-paid tools while keeping reusable upstream API credentials outside AI agent context. Operators provision encrypted credentials and scoped capabilities; agents use xguard_egress_fetch. When an operator keeps the reusable credential exclusively in XGuard instead of distributing it to agents, XGuard becomes the required credential-backed egress path for that agent environment. ProofRail adds an ES256-signed proof to authorized credential-backed egress outcomes so callers can verify the enforced path without seeing the secret. Canonical remote MCP endpoint: ${MCP}. XGuard Action Rail, x402 facilitator routing, receipts and inspection remain available as compatibility capabilities.`;
   }
 
   if (message.method === "tools/list" && Array.isArray(body.result.tools)) {
@@ -314,7 +356,7 @@ async function improveMcp(snapshot, response) {
   headers.delete("content-length");
   headers.set("x-xguard-canonical-mcp", MCP);
   headers.set("x-xguard-control-plane", VERSION);
-  headers.set("x-xguard-primary-product", "secretless-egress");
+  headers.set("x-xguard-primary-product", "universal-paid-agent-secretless-gateway");
   headers.set("x-xguard-proofrail", PROOFRAIL_VERSION);
   return new Response(JSON.stringify(body), { status: response.status, statusText: response.statusText, headers });
 }
@@ -338,6 +380,21 @@ export default {
     if (url.pathname === "/.well-known/xguard-proof-key.json" && request.method === "GET") {
       if (!env.PROOF_AUTHORITY) return proofJson({ error: "proof_authority_unavailable" }, 503);
       return proofAuthority(env).fetch("https://proofrail/public");
+    }
+    if (url.pathname === "/.well-known/did.json" && request.method === "GET") {
+      if (!env.PROOF_AUTHORITY) return proofJson({ error: "proof_authority_unavailable" }, 503);
+      const key = await proofAuthority(env).fetch("https://proofrail/public").then(response => response.json());
+      return proofJson({
+        "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/jwk/v1"],
+        id: "did:web:api.xguardgate.com",
+        verificationMethod: [{
+          id: PROOFRAIL_KID,
+          type: "JsonWebKey2020",
+          controller: "did:web:api.xguardgate.com",
+          publicKeyJwk: key.jwk,
+        }],
+        assertionMethod: [PROOFRAIL_KID],
+      }, 200, { "access-control-allow-origin": "*", "cache-control": "public, max-age=300" });
     }
     if (url.pathname === "/v1/proofs/verify" && request.method === "POST") {
       if (!env.PROOF_AUTHORITY) return proofJson({ valid: false, error: "proof_authority_unavailable" }, 503);

@@ -66,20 +66,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'Secretless Agent Gateway' README.md
-          grep -q 'Native x402 compatibility' README.md
+          grep -q 'Universal Paid AI Agent + Secretless Gateway' README.md
+          grep -q 'Native x402 and paid execution' README.md
           grep -q '/discovery/resources' apps/relay/src/x402-market.js
           grep -q 'batch-settlement' apps/relay/src/x402-market.js
           grep -q 'automatic_routing' apps/relay/src/x402-market.js
           grep -q 'settlement_ambiguous_fail_closed: true' apps/relay/src/x402-market.js
           grep -q 'settlement_transport_failover: "reconciliation-gated"' apps/relay/src/x402-market.js
-          grep -q 'const VERSION = "5.0.1"' apps/relay/src/x402-market.js
+          grep -q 'const VERSION = "5.1.0"' apps/relay/src/x402-market.js
           grep -q 'settlement_state_ambiguous_no_reconciliation' apps/relay/src/index.js
           grep -q 'ambiguous_settlement_fail_closed: true' apps/relay/src/index.js
           grep -q 'x-xguard-settlement-safety' apps/relay/src/index.js
           grep -q 'EGRESS_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
           grep -q 'EgressCapabilityState' apps/relay/wrangler.jsonc
           grep -q 'workers_dev.*false' apps/relay/wrangler.jsonc
-          node -e 'const x=require("./server.json"); if(!/^5\.0\.[0-9]+$/.test(String(x.version))||!String(x.title).includes("Secretless")||typeof x.description!=="string"||x.description.length>100||x.remotes?.[0]?.url!=="https://api.xguardgate.com/mcp") process.exit(1)'
+          node -e 'const x=require("./server.json"); if(x.version!=="5.1.0"||!String(x.title).includes("Universal Paid AI Agent + Secretless Gateway")||typeof x.description!=="string"||x.description.length>180||x.remotes?.[0]?.url!=="https://api.xguardgate.com/mcp") process.exit(1)'
       - name: Wrangler dry run
         run: npx --yes wrangler@4.123.0 deploy --dry-run --config apps/relay/wrangler.jsonc

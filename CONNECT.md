@@ -1,6 +1,6 @@
-# Connect XGuard 5.0.2
+# Connect XGuard 5.1.0
 
-XGuard Secretless Agent Gateway keeps reusable upstream API credentials outside AI-agent context. Operators provision encrypted credentials and short-lived scoped capabilities; agents use those capabilities through controlled Secretless Egress. ProofRail can attach signed execution evidence. Action Rail and the x402 facilitator remain compatibility surfaces.
+XGuard Universal Paid AI Agent + Secretless Gateway exposes no-account x402 USDC tools with signed prices, replay-safe settlement, signed receipts and ProofRail. It also keeps reusable upstream API credentials outside AI-agent context through controlled Secretless Egress.
 
 Canonical remote MCP endpoint:
 
@@ -28,12 +28,16 @@ Configure a remote Streamable HTTP MCP server named `xguard` with URL `https://a
 
 ## Operator and agent separation
 
+- Any agent can call `xguard.capabilities` and `xguard.pricing.quote` for free, then invoke `xguard.web.fetch` after x402 settlement.
 - Operators create encrypted credential records with `POST /v1/egress/credentials` and scoped capabilities with `POST /v1/egress/capabilities`.
 - Credential provisioning is intentionally not an MCP tool.
 - Agents call `POST /v1/egress/fetch` or MCP tool `xguard_egress_fetch` with a scoped capability, never the reusable upstream credential.
 
 ## Machine discovery
 
+- Actual capabilities: https://api.xguardgate.com/v1/capabilities
+- Published pricing: https://api.xguardgate.com/v1/pricing
+- x402 payment manifest: https://api.xguardgate.com/.well-known/payment-manifest
 - Secretless Egress: https://api.xguardgate.com/v1/egress
 - OpenAPI: https://api.xguardgate.com/openapi.json
 - MCP: https://api.xguardgate.com/mcp

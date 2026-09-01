@@ -24,7 +24,7 @@ docker run --rm -p 8080:8080 \
   -e PAY_TO=0xYOUR_RECEIVING_ADDRESS \
   -e NETWORK=eip155:8453 \
   -e 'PROTECTED_PATTERNS=[{"method":"GET","pattern":"/premium/*","price":"$0.01"}]' \
-  ghcr.io/moelayyan90/xguard-gate:5.0.1
+  ghcr.io/moelayyan90/xguard-gate:5.1.0
 ```
 
 For OpenAPI AutoGate:
@@ -37,7 +37,7 @@ docker run --rm -p 8080:8080 \
   -e AUTO_GATE_OPENAPI=true \
   -e OPENAPI_URL=https://api.example.com/openapi.json \
   -e 'DEFAULT_PRICE=$0.01' \
-  ghcr.io/moelayyan90/xguard-gate:5.0.1
+  ghcr.io/moelayyan90/xguard-gate:5.1.0
 ```
 
 The sample zero address is intentionally rejected by the runtime. A real merchant receiving address is required before a protected request can be paid.

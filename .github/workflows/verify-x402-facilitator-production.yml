@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Wait for facilitator 5.0.1 safety deployment
+      - name: Wait for facilitator 5.1.0 safety deployment
         shell: bash
         run: |
           set -euo pipefail
@@ -29,7 +29,7 @@ jobs:
             provider="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
             supported="$(curl --silent --show-error --max-time 8 "https://api.xguardgate.com/supported?build=${GITHUB_SHA}" || true)"
             logo="$(curl --silent --show-error --max-time 8 "https://xguardgate.com/logo.svg?build=${GITHUB_SHA}" || true)"
-            if printf '%s' "$provider" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.kind==="facilitator"&&x.name==="XGuard High-Velocity x402 Facilitator"&&x.capabilities?.automatic_routing===true&&x.capabilities?.settlement_ambiguous_fail_closed===true&&x.capabilities?.settlement_transport_failover==="reconciliation-gated"&&x.endpoints?.settle?.endsWith("/settle")&&x.discovery?.bazaar?.search)process.exit(0)}catch{}process.exit(1)})' && \
+            if printf '%s' "$provider" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.1.0"&&x.kind==="facilitator"&&x.name==="XGuard x402 Routing Surface"&&x.capabilities?.automatic_routing===true&&x.capabilities?.settlement_ambiguous_fail_closed===true&&x.capabilities?.settlement_transport_failover==="reconciliation-gated"&&x.endpoints?.settle?.endsWith("/settle")&&x.discovery?.bazaar?.search)process.exit(0)}catch{}process.exit(1)})' && \
                printf '%s' "$supported" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.xguard?.settlement_safety?.includes("fail-closed"))process.exit(0)}catch{}process.exit(1)})' && \
                printf '%s' "$logo" | grep -q '<svg'; then
               ok=1
@@ -43,9 +43,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.0.1"||x.x402Version!==2||x.kind!=="facilitator"||x.baseUrl!=="https://api.xguardgate.com"||x.capabilities?.verify!==true||x.capabilities?.settle!==true||x.capabilities?.bazaar_list!==true||x.capabilities?.bazaar_search!==true||x.capabilities?.settlement_ambiguous_fail_closed!==true||x.routing?.mode!=="automatic"||!String(x.routing?.settlement_safety||"").includes("fail closed"))process.exit(1);console.log(JSON.stringify({name:x.name,version:x.version,live_upstreams:x.routing?.live_upstreams?.length||0,batch_settlement:x.capabilities?.batch_settlement}))})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.1.0"||x.x402Version!==2||x.kind!=="facilitator"||x.baseUrl!=="https://api.xguardgate.com"||x.capabilities?.verify!==true||x.capabilities?.settle!==true||x.capabilities?.bazaar_list!==true||x.capabilities?.bazaar_search!==true||x.capabilities?.settlement_ambiguous_fail_closed!==true||x.routing?.mode!=="automatic"||!String(x.routing?.settlement_safety||"").includes("fail closed"))process.exit(1);console.log(JSON.stringify({name:x.name,version:x.version,live_upstreams:x.routing?.live_upstreams?.length||0,batch_settlement:x.capabilities?.batch_settlement}))})'
 
-          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/.well-known/x402?v=5.0.1' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.0.1"||x.kind!=="facilitator"||x.endpoints?.supported!=="https://api.xguardgate.com/supported")process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/.well-known/x402?v=5.1.0' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.1.0"||x.kind!=="facilitator"||x.endpoints?.supported!=="https://api.xguardgate.com/supported")process.exit(1)})'
 
           curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/discovery/resources?limit=5' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!Array.isArray(x.items)||typeof x.pagination?.total!=="number")process.exit(1)})'
 
@@ -81,8 +81,8 @@ jobs:
           const fs = require('node:fs');
           for (const file of ['/tmp/api-init.json','/tmp/site-init.json']) {
             const x = JSON.parse(fs.readFileSync(file, 'utf8'));
-            if (x.result?.serverInfo?.name !== 'xguard-secretless-agent-gateway') process.exit(1);
-            if (x.result?.serverInfo?.version !== '5.0.2') process.exit(1);
+            if (x.result?.serverInfo?.name !== 'xguard-universal-paid-secretless-gateway') process.exit(1);
+            if (x.result?.serverInfo?.version !== '5.1.0') process.exit(1);
             if (!String(x.result?.instructions || '').includes('reusable upstream API credentials')) process.exit(1);
           }
           NODE
@@ -102,12 +102,12 @@ jobs:
           for host in api.xguardgate.com xguardgate.com; do
             headers="$(mktemp)"
             curl --fail --silent --show-error --max-time 8 -I "https://${host}/mcp" -o /dev/null -D "$headers"
-            grep -qi '^x-xguard-control-plane: 5.0.2' "$headers"
-            grep -qi '^x-xguard-version: 5.0.2' "$headers"
+            grep -qi '^x-xguard-control-plane: 5.1.0' "$headers"
+            grep -qi '^x-xguard-version: 5.1.0' "$headers"
             grep -qi '^x-xguard-canonical-mcp: https://api.xguardgate.com/mcp' "$headers"
           done
 
-          page="$(curl --fail --silent --show-error --max-time 8 'https://xguardgate.com/?facilitator-component=5.0.1')"
+          page="$(curl --fail --silent --show-error --max-time 8 'https://xguardgate.com/?facilitator-component=5.1.0')"
           printf '%s' "$page" | grep -q 'Secretless'
           printf '%s' "$page" | grep -q 'rel="canonical"'
           printf '%s' "$page" | grep -q 'application/ld+json'

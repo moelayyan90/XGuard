@@ -1,11 +1,10 @@
 name: Deploy XGuard Relay
 
 on:
-  push:
+  workflow_run:
+    workflows: ["XGuard Relay CI"]
     branches: [main]
-    paths:
-      - "apps/relay/**"
-      - ".github/workflows/deploy.yml"
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -13,18 +12,36 @@ permissions:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: 24
       - run: npm install --prefix apps/relay --no-audit --no-fund
 
+      - name: Snapshot current production version
+        id: previous
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployments="$(npx --yes wrangler@4.123.0 deployments list --json --config apps/relay/wrangler.jsonc)"
+          version_id="$(printf '%s' "$deployments" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),d=x.at(-1),v=d?.versions?.find(item=>Number(item.percentage)>0);if(!v?.version_id)process.exit(1);process.stdout.write(v.version_id)})')"
+          echo "version_id=$version_id" >> "$GITHUB_OUTPUT"
+
       - name: Deploy Worker
+        id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -35,22 +52,39 @@ jobs:
           token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"//; s/"$//')"
           [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
           export CLOUDFLARE_API_TOKEN="$token"
-          npx --yes wrangler@4.123.0 deploy --config apps/relay/wrangler.jsonc --tag "git-${GITHUB_SHA:0:12}" --message "Deploy XGuard ${GITHUB_SHA}"
+          npx --yes wrangler@4.123.0 deploy --config apps/relay/wrangler.jsonc --tag "git-${DEPLOY_SHA:0:12}" --message "Deploy XGuard ${DEPLOY_SHA}"
 
       - name: Production smoke test
+        id: production_smoke
         shell: bash
         run: |
           set -euo pipefail
           expected_discovery_version="$(node -p 'require("./server.json").version')"
           ready=0
           for i in {1..35}; do
-            egress="$(curl --silent --show-error --max-time 8 'https://api.xguardgate.com/v1/egress?build='"${GITHUB_SHA}" || true)"
+            egress="$(curl --silent --show-error --max-time 8 'https://api.xguardgate.com/v1/egress?build='"${DEPLOY_SHA}" || true)"
             facilitator="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
             if printf '%s' "$egress" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.name==="XGuard Secretless Egress"&&x.role.includes("credential broker")&&x.credits_per_authorized_egress_attempt===1&&x.providers_supported?.includes("stripe"))process.exit(0)}catch{}process.exit(1)})' && \
-               printf '%s' "$facilitator" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.0.1"&&x.kind==="facilitator"&&x.capabilities?.automatic_routing===true&&x.capabilities?.settlement_ambiguous_fail_closed===true)process.exit(0)}catch{}process.exit(1)})'; then ready=1; break; fi
+               printf '%s' "$facilitator" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.version==="5.1.0"&&x.kind==="facilitator"&&x.capabilities?.automatic_routing===true&&x.capabilities?.settlement_ambiguous_fail_closed===true)process.exit(0)}catch{}process.exit(1)})'; then ready=1; break; fi
             sleep 4
           done
           test "$ready" = "1"
+
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/capabilities | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),t=Object.fromEntries(x.tools.map(v=>[v.id,v]));if(x.version!=="5.1.0"||t["xguard.web.fetch"]?.available!==true||t["xguard.web.search"]?.available!==false||t["xguard.ai.generate"]?.available!==false)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/pricing | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),p=x.tools?.["xguard.web.fetch"];if(p?.amount_atomic!=="1000"||p?.network!=="eip155:8453"||p?.maximum_upstream_cost_usd_micros!==0||p?.customer_price_usd_micros!==1000)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/health | grep -q '"live":true'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/ready | grep -q '"ready":true'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/mcp | grep -q 'xguard.web.fetch'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/a2a | grep -q 'xguard-paid-web-fetch'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/payment-manifest | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),r=x.resources?.[0];if(x.x402_version!==2||r?.tool!=="xguard.web.fetch"||r?.payment_identifier_required!==true||r?.settlement_before_execution!==true)process.exit(1)})'
+          test "$(curl --silent --show-error --max-time 8 -o /dev/null -w '%{http_code}' https://api.xguardgate.com/api/v1/capabilities)" = "308"
+
+          quote_json="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/v1/pricing/quote -H 'content-type: application/json' --data '{"url":"https://example.com/","testnet":true}')"
+          quote="$(printf '%s' "$quote_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.network!=="eip155:84532"||x.amount!=="1000"||!x.payment_identifier)process.exit(1);process.stdout.write(x.quote)})')"
+          challenge_code="$(curl --silent --show-error --max-time 12 -D /tmp/xg-payment-headers -o /tmp/xg-payment-required -w '%{http_code}' -X POST https://api.xguardgate.com/v1/tools/web.fetch/testnet -H 'content-type: application/json' -H "X-XGuard-Quote: $quote" --data '{"url":"https://example.com/"}')"
+          test "$challenge_code" = "402"
+          grep -qi '^payment-required:' /tmp/xg-payment-headers
+          cat /tmp/xg-payment-required | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||x.accepts?.[0]?.network!=="eip155:84532"||!x.extensions?.["offer-receipt"]?.info?.offers?.[0]?.signature)process.exit(1)})'
 
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-egress.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Secretless Egress"||!x.fetch||!x.capabilities||!x.controls?.some(v=>v.includes("never returned")))process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-egress-key.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.alg!=="RSA-OAEP-256"||x.jwk?.kty!=="RSA"||!x.kid)process.exit(1)})'
@@ -70,30 +104,30 @@ jobs:
           test "$code" = "401"
           grep -q 'valid_xguard_capability_required' /tmp/xg-egress-no-cap
 
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/architecture | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Secretless Agent Gateway"||x.architecture?.billing_before_credential_release!==true||!x.secretless_egress?.credential_management)process.exit(1)})'
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.title!=="XGuard Secretless Agent Gateway"||!x.paths?.["/v1/egress/fetch"]||!x.paths?.["/v1/actions/execute"]||!x.paths?.["/verify"]||!x.paths?.["/settle"])process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/architecture | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Universal Paid AI Agent + Secretless Gateway"||x.architecture?.billing_before_credential_release!==true||!x.secretless_egress?.credential_management)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/openapi.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.info?.title!=="XGuard Universal Paid AI Agent + Secretless Gateway"||!x.paths?.["/v1/tools/web.fetch"]||!x.paths?.["/v1/pricing/quote"]||!x.paths?.["/v1/egress/fetch"]||!x.paths?.["/verify"]||!x.paths?.["/settle"])process.exit(1)})'
 
           identity="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/identity)"
-          printf '%s' "$identity" | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Secretless Agent Gateway"||x.version!==process.env.EXPECTED_VERSION||!x.providers?.includes("OpenAI")||!x.problems_solved?.some(v=>v.includes("API key exposure")))process.exit(1)})'
+          printf '%s' "$identity" | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Universal Paid AI Agent + Secretless Gateway"||x.version!==process.env.EXPECTED_VERSION||x.primary_product!=="Universal Paid AI Agent + Secretless Gateway"||!x.providers?.includes("OpenAI"))process.exit(1)})'
           llms="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/llms.txt)"
-          printf '%s' "$llms" | grep -q 'Protect AI agents from API-key exposure'
+          printf '%s' "$llms" | grep -q 'Universal paid tool path'
           printf '%s' "$llms" | grep -q 'OpenAI, Anthropic, GitHub, Stripe'
-          curl --fail --silent --show-error --max-time 8 https://xguardgate.com/server.json | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!==process.env.EXPECTED_VERSION||x.name!=="io.github.moelayyan90/xguard-control-plane"||!x.description.includes("API-key exposure"))process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://xguardgate.com/server.json | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!==process.env.EXPECTED_VERSION||x.name!=="io.github.moelayyan90/xguard-control-plane"||!x.description.includes("signed prices"))process.exit(1)})'
           robots="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/robots.txt)"
           printf '%s' "$robots" | grep -q 'User-agent: GPTBot'
           printf '%s' "$robots" | grep -q 'User-agent: ClaudeBot'
 
           init="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"1.0.0"}}}')"
-          printf '%s' "$init" | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-secretless-agent-gateway"||x.result?.serverInfo?.version!==process.env.EXPECTED_VERSION||!String(x.result?.instructions||"").includes("ProofRail")||!String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(1)})'
+          printf '%s' "$init" | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-universal-paid-secretless-gateway"||x.result?.serverInfo?.version!==process.env.EXPECTED_VERSION||!String(x.result?.instructions||"").includes("x402-paid tools")||!String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(1)})'
           tools="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
-          printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const n=(JSON.parse(s).result?.tools||[]).map(x=>x.name);if(!["xguard_proofrail","xguard_verify_proof","xguard_secretless_egress","xguard_egress_fetch","xguard_action_rail","xguard_facilitator","xguard_route"].every(v=>n.includes(v)))process.exit(1)})'
+          printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const n=(JSON.parse(s).result?.tools||[]).map(x=>x.name);if(!["xguard.capabilities","xguard.pricing.quote","xguard.web.fetch","xguard_proofrail","xguard_verify_proof","xguard_secretless_egress","xguard_egress_fetch","xguard_action_rail","xguard_facilitator","xguard_route"].every(v=>n.includes(v)))process.exit(1)})'
 
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/supported | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.kinds)||x.xguard?.universal!==true||!x.xguard?.settlement_safety?.includes("fail-closed"))process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!x.endpoints?.verify||!x.endpoints?.settle||x.capabilities?.settlement_ambiguous_fail_closed!==true)process.exit(1)})'
 
-          page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${GITHUB_SHA}")"
-          printf '%s' "$page" | grep -q 'Agents get capabilities'
-          printf '%s' "$page" | grep -q 'Never the secrets'
+          page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${DEPLOY_SHA}")"
+          printf '%s' "$page" | grep -q 'See the price'
+          printf '%s' "$page" | grep -q 'Pay once. Run safely'
           printf '%s' "$page" | grep -q 'ProofRail'
           printf '%s' "$page" | grep -q 'signed execution evidence'
           printf '%s' "$page" | grep -q 'font-family:Arial'
@@ -101,4 +135,18 @@ jobs:
           printf '%s' "$page" | grep -q 'application/ld+json'
 
       - name: Verify canonical identity and discovery contract
+        id: identity_contract
         run: node scripts/verify-production-identity.mjs
+
+      - name: Roll back automatically if production verification failed
+        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+          PREVIOUS_VERSION: ${{ steps.previous.outputs.version_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.123.0 rollback "$PREVIOUS_VERSION" --yes --config apps/relay/wrangler.jsonc --message "Automatic rollback after failed XGuard ${DEPLOY_SHA} verification"
+          curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 3 --max-time 12 https://api.xguardgate.com/healthz >/dev/null

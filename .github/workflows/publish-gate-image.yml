@@ -1,12 +1,10 @@
 name: Publish XGuard Gate Image
 
 on:
-  push:
+  workflow_run:
+    workflows: ["XGuard Universal Gate CI"]
     branches: [main]
-    paths:
-      - "apps/edge-gate/**"
-      - "apps/universal-gate/**"
-      - ".github/workflows/publish-gate-image.yml"
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -15,10 +13,13 @@ permissions:
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -37,18 +38,18 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/moelayyan90/XGuard
             org.opencontainers.image.title=XGuard Universal Gate
-            org.opencontainers.image.version=5.0.1
+            org.opencontainers.image.version=5.1.0
           tags: |
-            ghcr.io/moelayyan90/xguard-gate:5.0.1
+            ghcr.io/moelayyan90/xguard-gate:5.1.0
             ghcr.io/moelayyan90/xguard-gate:latest
       - name: Verify anonymous pull and smoke-test immutable image
         shell: bash
         run: |
           set -euo pipefail
           docker logout ghcr.io >/dev/null 2>&1 || true
-          docker image rm ghcr.io/moelayyan90/xguard-gate:5.0.1 >/dev/null 2>&1 || true
-          docker pull ghcr.io/moelayyan90/xguard-gate:5.0.1
-          docker run -d --rm --name xguard-gate-release -p 18080:8080 ghcr.io/moelayyan90/xguard-gate:5.0.1
+          docker image rm ghcr.io/moelayyan90/xguard-gate:5.1.0 >/dev/null 2>&1 || true
+          docker pull ghcr.io/moelayyan90/xguard-gate:5.1.0
+          docker run -d --rm --name xguard-gate-release -p 18080:8080 ghcr.io/moelayyan90/xguard-gate:5.1.0
           trap 'docker stop xguard-gate-release >/dev/null 2>&1 || true' EXIT
           for i in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:18080/__xguard/health > /tmp/health.json; then
@@ -59,6 +60,6 @@ jobs:
           node -e '
             const fs = require("fs");
             const x = JSON.parse(fs.readFileSync("/tmp/health.json", "utf8"));
-            if (x.version !== "5.0.1") process.exit(1);
+            if (x.version !== "5.1.0") process.exit(1);
             if (x.facilitator !== "https://api.xguardgate.com") process.exit(1);
           '

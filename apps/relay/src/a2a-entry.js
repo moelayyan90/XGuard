@@ -4,13 +4,13 @@ export * from "./webmcp-entry.js";
 const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const MCP = `${API}/mcp`;
-const VERSION = "5.0.2";
+const VERSION = "5.1.0";
 const A2A_VERSION = "1.0";
-const A2A_ENDPOINT = `${SITE}/a2a`;
+const A2A_ENDPOINT = `${API}/a2a`;
 
 const AGENT_CARD = {
-  name: "XGuard Secretless Agent Gateway",
-  description: "Read-only discovery agent for XGuard Secretless Agent Gateway. It tells other agents where XGuard's canonical MCP, API, OpenAPI, llms.txt, registry metadata and security manifests are, and explains how to connect without provisioning credentials or executing side effects.",
+  name: "XGuard Universal Paid AI Agent + Secretless Gateway",
+  description: "Discover real XGuard capabilities and prices, obtain a signed x402 quote, and call public or secretless tools without an XGuard account. Paid execution settles before the tool runs and returns a signed receipt plus ProofRail evidence.",
   supportedInterfaces: [
     {
       url: A2A_ENDPOINT,
@@ -32,6 +32,15 @@ const AGENT_CARD = {
   defaultInputModes: ["text/plain", "application/json"],
   defaultOutputModes: ["text/plain", "application/json"],
   skills: [
+    {
+      id: "xguard-paid-web-fetch",
+      name: "Paid public web fetch",
+      description: "Discover the price and invoke xguard.web.fetch through x402 v2 USDC with replay-safe settlement and signed execution evidence.",
+      tags: ["x402", "usdc", "web-fetch", "proofrail"],
+      examples: ["What will it cost to fetch a public HTTPS URL?", "How do I pay once and safely retry the fetch?"],
+      inputModes: ["text/plain", "application/json"],
+      outputModes: ["text/plain", "application/json"],
+    },
     {
       id: "xguard-secretless-egress",
       name: "Secretless Agent Egress",
@@ -73,7 +82,7 @@ const AGENT_CARD = {
 };
 
 const PUBLIC_DISCOVERY = {
-  name: "XGuard Secretless Agent Gateway",
+  name: "XGuard Universal Paid AI Agent + Secretless Gateway",
   version: VERSION,
   website: SITE,
   api: API,
@@ -84,6 +93,10 @@ const PUBLIC_DISCOVERY = {
   mcp_server_card: `${SITE}/.well-known/mcp/server-card.json`,
   mcp_registry_manifest: `${SITE}/server.json`,
   openapi: `${API}/openapi.json`,
+  capabilities: `${API}/v1/capabilities`,
+  pricing: `${API}/v1/pricing`,
+  signed_quote: `${API}/v1/pricing/quote`,
+  payment_manifest: `${API}/.well-known/payment-manifest`,
   egress_manifest: `${API}/.well-known/xguard-egress.json`,
   proofrail_manifest: `${API}/v1/proof`,
   connect: {
@@ -93,7 +106,7 @@ const PUBLIC_DISCOVERY = {
   },
   purpose: "Keep reusable upstream API credentials outside AI-agent context by letting operators retain reusable secrets server-side and delegate short-lived scoped capabilities instead.",
   proof_layer: "ProofRail can attach ES256-signed evidence to authorized credential-backed outcomes without placing the reusable upstream secret in the proof.",
-  a2a_security_boundary: "This A2A surface is discovery-only. It does not provision credentials, consume XGuard Usage Credits, mutate accounts, or execute upstream side effects.",
+  a2a_security_boundary: "This A2A SendMessage surface is discovery-only. Paid tool execution uses the advertised HTTP or MCP endpoint and requires x402 settlement first.",
 };
 
 function headers(contentType = "application/a2a+json; charset=utf-8") {
@@ -134,6 +147,7 @@ function discoveryMessage() {
 
 async function handleA2A(request) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: headers() });
+  if (request.method === "GET" || request.method === "HEAD") return new Response(request.method === "HEAD" ? null : JSON.stringify({ agent_card: AGENT_CARD, discovery: PUBLIC_DISCOVERY }), { status: 200, headers: headers() });
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST, OPTIONS" });
 
   const requestedVersion = request.headers.get("a2a-version");

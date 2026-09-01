@@ -14,7 +14,7 @@ const server = serve({
   hostname,
 });
 
-console.log(`XGuard Universal Gate 5.0.1 listening on http://${hostname}:${port}`);
+console.log(`XGuard Universal Gate 5.1.0 listening on http://${hostname}:${port}`);
 
 for (const signal of ["SIGTERM", "SIGINT"]) {
   process.on(signal, () => {

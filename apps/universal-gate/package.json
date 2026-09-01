@@ -1,6 +1,6 @@
 {
   "name": "xguard-universal-gate",
-  "version": "5.0.1",
+  "version": "5.1.0",
   "private": true,
   "type": "module",
   "description": "Portable Node/Docker x402 reverse proxy using the XGuard Edge Gate runtime.",

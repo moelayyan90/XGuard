@@ -1,14 +1,14 @@
 import app from "./a2a-entry.js";
 export * from "./a2a-entry.js";
 
-const VERSION = "5.0.2";
+const VERSION = "5.1.0";
 const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const MCP = `${API}/mcp`;
-const NAME = "XGuard Secretless Agent Gateway";
-const PRIMARY_PRODUCT = "Secretless Egress";
-const PRIMARY_ROLE = "credential broker and controlled egress boundary for AI agents";
-const DESCRIPTION = "Protect AI agents from API-key exposure with encrypted reusable credential custody, short-lived scoped capabilities, server-side credential injection, Usage Credit metering and ProofRail signed execution evidence.";
+const NAME = "XGuard Universal Paid AI Agent + Secretless Gateway";
+const PRIMARY_PRODUCT = "Universal Paid AI Agent + Secretless Gateway";
+const PRIMARY_ROLE = "paid tool and credential broker with controlled egress for AI agents";
+const DESCRIPTION = "Discover real tools and signed prices, pay per request through x402 USDC without an account, and execute through a controlled gateway that keeps reusable upstream credentials outside agent context and returns signed receipts plus ProofRail evidence.";
 
 const PUBLIC_JSON = new Set([
   "/identity",
@@ -48,7 +48,7 @@ function baseHeaders(headers = new Headers()) {
   const next = new Headers(headers);
   next.set("x-xguard-version", VERSION);
   next.set("x-xguard-canonical-name", NAME);
-  next.set("x-xguard-primary-product", "secretless-egress");
+  next.set("x-xguard-primary-product", "universal-paid-agent-secretless-gateway");
   next.set("x-xguard-canonical-site", SITE);
   next.set("x-xguard-canonical-api", API);
   next.set("x-xguard-canonical-mcp", MCP);
@@ -92,10 +92,17 @@ function canonicalizeUrl(request) {
 }
 
 function apiRoot(request) {
+  const suppliedId = request.headers.get("x-request-id");
+  const id = suppliedId && /^[A-Za-z0-9_-]{8,128}$/.test(suppliedId) ? suppliedId : `xgr_${crypto.randomUUID().replaceAll("-", "")}`;
   const body = {
     ...canonicalIdentity(),
     description: DESCRIPTION,
     discovery: {
+      capabilities: `${API}/v1/capabilities`,
+      pricing: `${API}/v1/pricing`,
+      signed_quote: `${API}/v1/pricing/quote`,
+      paid_web_fetch: `${API}/v1/tools/web.fetch`,
+      payment_manifest: `${API}/.well-known/payment-manifest`,
       secretless_egress: `${API}/v1/egress`,
       egress_manifest: `${API}/.well-known/xguard-egress.json`,
       proofrail: `${API}/v1/proof`,
@@ -113,12 +120,13 @@ function apiRoot(request) {
     headers: baseHeaders(new Headers({
       "content-type": "application/json; charset=utf-8",
       "cache-control": "public, max-age=120",
+      "x-xguard-request-id": id,
     })),
   });
 }
 
 function connectPage(request) {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect XGuard — Secretless Agent Gateway</title><meta name="description" content="Connect AI agents to XGuard Secretless Egress and ProofRail through the canonical remote MCP endpoint."><meta name="robots" content="index,follow"><link rel="canonical" href="${SITE}/connect"><style>body{margin:0;background:#0b0b0b;color:#f7f7f3;font-family:Arial,Helvetica,sans-serif}.w{width:min(920px,calc(100% - 32px));margin:auto;padding:64px 0}h1{font-size:clamp(44px,7vw,76px);letter-spacing:-.055em;line-height:.95;margin:16px 0 24px}.muted{color:#a8a8a1;line-height:1.7}.badge{display:inline-block;border:1px solid #4a4a45;padding:7px 11px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:34px}.c{border:1px solid #30302d;background:#131311;padding:22px}.c h2{margin-top:0;font-size:18px}.orange{color:#ff5a1f}.btn{display:inline-block;margin-top:10px;padding:11px 14px;background:#ff5a1f;color:#fff;text-decoration:none;font-weight:700}pre{white-space:pre-wrap;background:#070707;border:1px solid #30302d;padding:13px;color:#e8e8e2;overflow:auto}.notice{margin-top:32px;border-left:3px solid #ff5a1f;padding:8px 0 8px 16px;color:#bdbdb6;line-height:1.65}.foot{margin-top:34px;color:#77776f;font-size:12px}@media(max-width:680px){.grid{grid-template-columns:1fr}}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · canonical identity</span><h1>Connect to <span class="orange">Secretless Agent Gateway.</span></h1><p class="muted">Canonical MCP endpoint: <strong>${MCP}</strong>. The primary product is Secretless Egress: operators keep reusable upstream credentials in XGuard and agents receive scoped capabilities instead. ProofRail adds signed execution evidence.</p><div class="grid"><section class="c"><h2>Claude Code</h2><pre>claude mcp add xguard --transport http ${MCP}</pre></section><section class="c"><h2>Codex</h2><pre>[mcp_servers.xguard]\nurl = "${MCP}"</pre></section><section class="c"><h2>Cursor / VS Code</h2><p class="muted">Configure a remote Streamable HTTP MCP server with this URL:</p><pre>${MCP}</pre></section><section class="c"><h2>Machine discovery</h2><p><a class="btn" href="${SITE}/server.json">MCP manifest</a></p><p><a class="btn" href="${API}/openapi.json">OpenAPI</a></p></section></div><div class="notice"><strong>Primary identity:</strong> ${NAME}. Action Rail and x402 facilitator routing are compatibility rails. Historical ACE/Solana/BAM, Child Safety, Universal Facilitator and High-Velocity Facilitator descriptions are not the current XGuard product identity.</div><p class="foot">Secretless Egress · ProofRail · controlled agent API execution</p></main></body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect XGuard — Paid + Secretless Agent Gateway</title><meta name="description" content="Connect AI agents to XGuard Secretless Egress and ProofRail through the canonical remote MCP endpoint."><meta name="robots" content="index,follow"><link rel="canonical" href="${SITE}/connect"><style>body{margin:0;background:#0b0b0b;color:#f7f7f3;font-family:Arial,Helvetica,sans-serif}.w{width:min(920px,calc(100% - 32px));margin:auto;padding:64px 0}h1{font-size:clamp(44px,7vw,76px);letter-spacing:-.055em;line-height:.95;margin:16px 0 24px}.muted{color:#a8a8a1;line-height:1.7}.badge{display:inline-block;border:1px solid #4a4a45;padding:7px 11px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:34px}.c{border:1px solid #30302d;background:#131311;padding:22px}.c h2{margin-top:0;font-size:18px}.orange{color:#ff5a1f}.btn{display:inline-block;margin-top:10px;padding:11px 14px;background:#ff5a1f;color:#fff;text-decoration:none;font-weight:700}pre{white-space:pre-wrap;background:#070707;border:1px solid #30302d;padding:13px;color:#e8e8e2;overflow:auto}.notice{margin-top:32px;border-left:3px solid #ff5a1f;padding:8px 0 8px 16px;color:#bdbdb6;line-height:1.65}.foot{margin-top:34px;color:#77776f;font-size:12px}@media(max-width:680px){.grid{grid-template-columns:1fr}}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · canonical identity</span><h1>Connect to <span class="orange">paid + secretless tools.</span></h1><p class="muted">Canonical MCP endpoint: <strong>${MCP}</strong>. Discover real capabilities and signed prices, then pay per request through x402 USDC. Secretless Egress also keeps reusable upstream credentials in XGuard while agents receive scoped capabilities. Every successful paid execution adds a signed receipt and ProofRail evidence.</p><div class="grid"><section class="c"><h2>Claude Code</h2><pre>claude mcp add xguard --transport http ${MCP}</pre></section><section class="c"><h2>Codex</h2><pre>[mcp_servers.xguard]\nurl = "${MCP}"</pre></section><section class="c"><h2>Cursor / VS Code</h2><p class="muted">Configure a remote Streamable HTTP MCP server with this URL:</p><pre>${MCP}</pre></section><section class="c"><h2>Machine discovery</h2><p><a class="btn" href="${SITE}/server.json">MCP manifest</a></p><p><a class="btn" href="${API}/openapi.json">OpenAPI</a></p></section></div><div class="notice"><strong>Primary identity:</strong> ${NAME}. Action Rail and x402 facilitator routing are compatibility rails. Historical ACE/Solana/BAM, Child Safety, Universal Facilitator and High-Velocity Facilitator descriptions are not the current XGuard product identity.</div><p class="foot">Paid agent tools · Secretless Egress · ProofRail</p></main></body></html>`;
   return new Response(request.method === "HEAD" ? null : html, {
     status: 200,
     headers: htmlHeaders("/connect"),
@@ -129,16 +137,16 @@ const PAGE_STYLE = `body{margin:0;background:#0b0b0b;color:#f7f7f3;font-family:A
 
 function publicPage(request, pathname, title, heading, content, script = "") {
   const nonce = script ? randomNonce() : "";
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><meta name="description" content="XGuard Secretless Agent Gateway"><link rel="canonical" href="${SITE}${pathname}"><style>${PAGE_STYLE}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · Secretless Agent Gateway</span><h1>${heading}</h1>${content}<p class="foot"><a href="/">Home</a> · <a href="/connect">Connect</a> · <a href="/pricing">Pricing</a> · <a href="/security">Security</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/refund-policy">Refunds</a></p></main>${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><meta name="description" content="XGuard Universal Paid AI Agent + Secretless Gateway"><link rel="canonical" href="${SITE}${pathname}"><style>${PAGE_STYLE}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · Paid + Secretless Gateway</span><h1>${heading}</h1>${content}<p class="foot"><a href="/">Home</a> · <a href="/connect">Connect</a> · <a href="/pricing">Pricing</a> · <a href="/security">Security</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/refund-policy">Refunds</a></p></main>${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
   return new Response(request.method === "HEAD" ? null : html, { status: 200, headers: htmlHeaders(pathname, nonce) });
 }
 
 function randomNonce() { return crypto.randomUUID().replaceAll("-", ""); }
 
 function pricingPage(request) {
-  const content = `<p class="muted">One-time Usage Credits for controlled Secretless Egress. No subscription is represented by this package.</p><section class="card"><div class="price">JOD 3.550</div><h2>5,000 Usage Credits</h2><p class="muted">The current production policy consumes one credit for each authorized egress attempt, before the reusable credential is released and before the upstream request is sent. Taxes or provider totals, if any, are shown by Lemon Squeezy before payment.</p><button class="btn" id="checkout">Create secure checkout</button><div id="result" aria-live="polite"></div></section><p class="muted">Do not place the operator key in an AI prompt. XGuard stores only its SHA-256 hash. A checkout redirect is not proof of payment; credits become available only after a valid Lemon Squeezy webhook is processed.</p>`;
+  const content = `<p class="muted">The public paid-tool path uses x402 v2 USDC per request: no XGuard account, subscription, or mandatory SDK.</p><section class="card"><div class="price">$0.001 USDC</div><h2>xguard.web.fetch</h2><p class="muted">Maximum external upstream cost: $0. XGuard margin: $0.001. The exact atomic amount, receiving address, network, asset, input digest, and execution limits are bound into a five-minute signed quote before payment. Base Mainnet is the production network; Base Sepolia is available for safe integration tests.</p><p><a class="btn" href="${API}/v1/pricing">Inspect machine pricing</a></p></section><p class="muted">On successful settlement, XGuard executes once and returns an x402 receipt plus ProofRail evidence. An exact retry returns the stored outcome without settling again. If execution fails after settlement, XGuard issues a signed reusable execution credit tied to the original payment.</p><section class="card"><div class="price">JOD 3.550</div><h2>5,000 operator Usage Credits</h2><p class="muted">Optional one-time credits for operator-managed Secretless Egress. This is separate from the no-account x402 paid-tool path and is not a subscription.</p><button class="btn" id="checkout">Create secure checkout</button><div id="result" aria-live="polite"></div></section><p class="muted">Do not place an operator key in an AI prompt. A checkout redirect is not proof of payment; credits become available only after a valid Lemon Squeezy webhook is processed.</p>`;
   const script = `const button=document.getElementById('checkout'),result=document.getElementById('result');button.addEventListener('click',async()=>{button.disabled=true;result.innerHTML='<p class="muted">Creating checkout…</p>';try{const response=await fetch('https://hooks.xguardgate.com/v1/checkout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});const data=await response.json();if(!response.ok)throw new Error(data.error||'checkout_unavailable');result.innerHTML='<h3>Save your operator key before paying</h3><p class="key"></p><p><a class="btn" rel="noopener" href="'+data.checkout_url+'">Continue to Lemon Squeezy</a></p>';result.querySelector('.key').textContent=data.operator_key;}catch(error){result.innerHTML='<p class="muted">Checkout is not ready: '+String(error.message)+'</p>';button.disabled=false;}});`;
-  return publicPage(request, "/pricing", "XGuard Pricing — Usage Credits", "Usage Credits, without a subscription.", content, script);
+  return publicPage(request, "/pricing", "XGuard Pricing — x402 USDC per request", "One signed price. One settled request.", content, script);
 }
 
 function contentPage(request, pathname) {
@@ -164,7 +172,7 @@ function sitemap(request) {
 }
 
 function canonicalSkill(request) {
-  const body = `# ${NAME}\n\nVersion: ${VERSION}\nCanonical site: ${SITE}\nCanonical API: ${API}\nCanonical remote MCP: ${MCP}\n\n## Primary product\n\n${PRIMARY_PRODUCT}. Keep reusable upstream API credentials outside AI-agent context. Operators store encrypted credentials in XGuard and delegate short-lived scoped capabilities. XGuard validates capability and policy, commits Usage Credit billing, injects the reusable credential server-side and sends the permitted HTTPS request without returning the reusable secret to the agent.\n\nProofRail can attach ES256-signed execution evidence to authorized credential-backed outcomes.\n\n## Agent path\n\n- Discover: GET ${API}/v1/egress\n- Execute: POST ${API}/v1/egress/fetch\n- MCP: ${MCP}\n- ProofRail: GET ${API}/v1/proof\n\nCredential provisioning remains an operator-side management action and is intentionally not exposed as an agent MCP tool.\n\n## Compatibility only\n\nAction Rail and x402 facilitator endpoints remain supported compatibility rails. They do not replace the canonical product identity above. Historical descriptions involving XGuard ACE, Solana/BAM speed bumps, Child Safety, Universal Facilitator Gateway, High-Velocity x402 Facilitator or a generic spend-only control plane are not the current XGuard product identity.\n`;
+  const body = `# ${NAME}\n\nVersion: ${VERSION}\nCanonical site: ${SITE}\nCanonical API: ${API}\nCanonical remote MCP: ${MCP}\n\n## Agent path\n\n1. Discover actual tools: GET ${API}/v1/capabilities\n2. Inspect published prices: GET ${API}/v1/pricing\n3. Request a signed input-bound quote: POST ${API}/v1/pricing/quote\n4. Call POST ${API}/v1/tools/web.fetch and receive HTTP 402 plus a signed offer.\n5. Retry with an official x402 v2 Payment-Signature. XGuard verifies and settles before execution.\n6. Receive the result, signed receipt, ProofRail evidence, request ID, transaction hash, and explicit accounting.\n\nPayment-Identifier is mandatory. An exact retry returns the stored outcome without another settlement. Search, AI generation/routing, and data-query tools remain machine-readably disabled until real connectors exist.\n\n## Secretless Egress\n\nOperators can separately store encrypted reusable upstream credentials and delegate short-lived scoped capabilities at ${API}/v1/egress. Credential provisioning is intentionally not an agent MCP tool.\n`;
   return new Response(request.method === "HEAD" ? null : body, {
     status: 200,
     headers: baseHeaders(new Headers({
@@ -176,7 +184,7 @@ function canonicalSkill(request) {
 
 function normalizeAgentCard(body) {
   body.name = NAME;
-  body.description = "Read-only discovery for XGuard Secretless Agent Gateway: canonical MCP/API metadata, Secretless Egress and ProofRail. Reusable credentials are not provisioned or exposed through this discovery surface.";
+  body.description = "Discovery for XGuard paid and secretless agent tools: actual capabilities, signed pricing, x402 payment, controlled execution, signed receipts and ProofRail evidence.";
   body.version = VERSION;
   const skills = Array.isArray(body.skills) ? body.skills : [];
   if (!skills.some(skill => skill?.id === "xguard-secretless-egress")) {
@@ -201,7 +209,7 @@ function normalizePublicBody(pathname, body) {
     body.primary_product = PRIMARY_PRODUCT;
     body.primary_role = PRIMARY_ROLE;
     body.proofrail = {
-      role: "optional ES256-signed execution evidence for authorized XGuard outcomes",
+      role: "ES256-signed execution evidence for paid tool results and authorized Secretless Egress outcomes",
       discovery: `${API}/v1/proof`,
       verification: `${API}/v1/proofs/verify`,
     };
@@ -217,7 +225,7 @@ function normalizePublicBody(pathname, body) {
     body.primary_product = PRIMARY_PRODUCT;
     body.primary_role = PRIMARY_ROLE;
     body.description = DESCRIPTION;
-    body.compatibility_notice = "Action Rail and x402 facilitator routing are supported compatibility rails, not the primary XGuard product identity.";
+    body.compatibility_notice = "Action Rail and the standalone facilitator relay are secondary surfaces; x402 paid execution and Secretless Egress are the canonical product.";
   }
 
   if (pathname === "/architecture") {
@@ -262,10 +270,10 @@ function normalizePublicBody(pathname, body) {
 
   if (pathname === "/.well-known/ai-plugin.json") {
     body.name_for_human = NAME;
-    body.name_for_model = "xguard_secretless_agent_gateway";
-    body.description_for_human = "Keep reusable API credentials out of AI agents and inject them only at controlled egress.";
-    body.description_for_model = "Use XGuard Secretless Egress when an AI agent needs a credential-protected HTTPS API. Operators retain reusable secrets server-side; agents receive scoped capabilities. ProofRail provides signed execution evidence.";
-    body.xguard = { ...(body.xguard || {}), version: VERSION, product_version: VERSION, primary_product: PRIMARY_PRODUCT, component_versions: { ...(body.xguard?.component_versions || {}), x402: "5.0.1" } };
+    body.name_for_model = "xguard_paid_secretless_gateway";
+    body.description_for_human = "Discover tools, get signed prices, pay through x402 USDC, and execute without exposing reusable upstream credentials.";
+    body.description_for_model = "Use free xguard.capabilities and xguard.pricing.quote first. xguard.web.fetch executes only after x402 v2 settlement and returns a signed receipt plus ProofRail. Secretless Egress keeps operator-managed upstream credentials server-side.";
+    body.xguard = { ...(body.xguard || {}), version: VERSION, product_version: VERSION, primary_product: PRIMARY_PRODUCT, component_versions: { ...(body.xguard?.component_versions || {}), x402: VERSION } };
   }
 
   if (pathname === "/.well-known/agent-card.json" || pathname === "/.well-known/agent.json") {
@@ -285,6 +293,10 @@ async function normalizeResponse(request, response) {
   if (!(response instanceof Response)) return response;
   const url = new URL(request.url);
   const headers = baseHeaders(response.headers);
+  if (new URL(request.url).hostname === "api.xguardgate.com" && !headers.has("x-xguard-request-id")) {
+    const supplied = request.headers.get("x-request-id");
+    headers.set("x-xguard-request-id", supplied && /^[A-Za-z0-9_-]{8,128}$/.test(supplied) ? supplied : `xgr_${crypto.randomUUID().replaceAll("-", "")}`);
+  }
 
   const contentType = (headers.get("content-type") || "").toLowerCase();
   const isJson = contentType.includes("application/json") || contentType.includes("+json");
@@ -312,6 +324,19 @@ export default {
     if (redirect) return redirect;
 
     const url = new URL(request.url);
+
+    if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+      const canonicalPath = url.pathname === "/api" ? "/" : url.pathname.slice(4);
+      if (request.method === "GET" || request.method === "HEAD") return permanentRedirect(`${url.origin}${canonicalPath}${url.search}`);
+      const alias = new URL(request.url);
+      alias.pathname = canonicalPath;
+      const response = await app.fetch(new Request(alias, request), env, ctx);
+      const aliasHeaders = new Headers(response.headers);
+      aliasHeaders.set("deprecation", "true");
+      aliasHeaders.set("link", `<${url.origin}${canonicalPath}>; rel="canonical"`);
+      aliasHeaders.set("x-xguard-api-alias", "deprecated-/api-prefix");
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers: aliasHeaders });
+    }
 
     if (url.hostname === "api.xguardgate.com" && url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
       return apiRoot(request);
