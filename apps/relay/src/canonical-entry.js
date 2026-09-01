@@ -47,6 +47,7 @@ function canonicalIdentity() {
 function baseHeaders(headers = new Headers()) {
   const next = new Headers(headers);
   next.set("x-xguard-version", VERSION);
+  next.set("x-xguard-control-plane", VERSION);
   next.set("x-xguard-canonical-name", NAME);
   next.set("x-xguard-primary-product", "universal-paid-agent-secretless-gateway");
   next.set("x-xguard-canonical-site", SITE);
