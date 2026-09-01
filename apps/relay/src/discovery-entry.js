@@ -9,7 +9,7 @@ const A2A_CARD = `${API}/.well-known/agent-card.json`;
 const A2A_ENDPOINT = `${API}/a2a`;
 const REPO = "https://github.com/moelayyan90/XGuard";
 const INDEXNOW_KEY = "f3fd1a3fde659a05a8dddfa614b408ac";
-const REGISTRY_DESCRIPTION = "Discover prices and call paid or secretless AI-agent tools through x402 with signed receipts and execution proofs.";
+const REGISTRY_DESCRIPTION = "Signed prices and no-account x402 USDC tools with secretless egress and verifiable receipts.";
 const DESCRIPTION = "XGuard is a universal paid AI-agent and secretless gateway: signed prices, no-account x402 USDC payment, controlled execution, replay-safe retries, signed receipts and ProofRail evidence.";
 
 const registryManifest = {

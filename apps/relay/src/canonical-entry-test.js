@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import app from "./canonical-entry.js";
 
@@ -84,4 +85,13 @@ test("runtime responses expose the exact Cloudflare Worker version used by deplo
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("x-xguard-worker-version-id"), "00000000-0000-0000-0000-000000000001");
   assert.equal(response.headers.get("x-xguard-worker-version-tag"), "git-6469a282e5bd");
+});
+
+test("public MCP Registry manifest is identical to the repository release manifest", async () => {
+  const response = await app.fetch(new Request("https://xguardgate.com/server.json"), {}, {});
+  assert.equal(response.status, 200);
+  const publicManifest = await response.json();
+  const releaseManifest = JSON.parse(readFileSync(new URL("../../../server.json", import.meta.url), "utf8"));
+  assert.deepEqual(publicManifest, releaseManifest);
+  assert.ok(publicManifest.description.length <= 100);
 });
