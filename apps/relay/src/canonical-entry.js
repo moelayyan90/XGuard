@@ -172,7 +172,7 @@ function robots(request) {
 }
 
 function sitemap(request) {
-  const paths = ["/", "/connect", "/pricing", "/security", "/terms", "/privacy", "/refund-policy", "/identity", "/llms.txt", "/skill.md"];
+  const paths = ["/", "/connect", "/pricing", "/security", "/terms", "/privacy", "/refund-policy", "/identity", "/llms.txt", "/skill.md", "/.well-known/mcp/server-card.json"];
   const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map(path => `<url><loc>${SITE}${path}</loc></url>`).join("")}</urlset>`;
   return new Response(request.method === "HEAD" ? null : xml, { headers: baseHeaders(new Headers({ "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" })) });
 }
