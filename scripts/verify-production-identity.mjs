@@ -23,6 +23,7 @@ if (openapi.body.info?.title !== NAME || openapi.body.info?.version !== VERSION)
 for (const path of ["/v1/capabilities", "/v1/pricing", "/v1/pricing/quote", "/v1/tools/web.fetch", "/v1/egress", "/v1/egress/fetch", "/v1/proof", "/verify", "/settle"]) {
   if (!openapi.body.paths?.[path]) fail(`OpenAPI is missing ${path}`);
 }
+if (!openapi.body.paths["/v1/preflight"]?.post) fail("OpenAPI is missing the guarded preflight path");
 if (!Array.isArray(openapi.body.paths["/v1/pricing/quote"].post?.requestBody?.content?.["application/json"]?.schema?.oneOf)) fail("OpenAPI is missing tolerant quote request envelopes");
 if (openapi.body.paths["/v1/tools/web.fetch"].post?.["x-xguard-payment-flow"]?.payment_required !== true) fail("OpenAPI does not make paid execution mandatory");
 
@@ -44,9 +45,11 @@ if (initialize.body.result?.serverInfo?.name !== "xguard-universal-paid-secretle
 
 const tools = await getJson(`${API}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }) });
 const names = new Set((tools.body.result?.tools || []).map(tool => tool.name));
-for (const name of ["xguard.capabilities", "xguard.pricing.quote", "xguard.web.fetch", "xguard_secretless_egress", "xguard_egress_fetch", "xguard_proofrail", "xguard_verify_proof", "xguard_action_rail", "xguard_facilitator", "xguard_route"]) if (!names.has(name)) fail(`MCP is missing ${name}`);
+for (const name of ["xguard.capabilities", "xguard.preflight", "xguard.pricing.quote", "xguard.web.fetch", "xguard_secretless_egress", "xguard_egress_fetch", "xguard_proofrail", "xguard_verify_proof", "xguard_action_rail", "xguard_facilitator", "xguard_route"]) if (!names.has(name)) fail(`MCP is missing ${name}`);
 const paidTool = (tools.body.result?.tools || []).find(tool => tool.name === "xguard.web.fetch");
 if (paidTool?._meta?.["xguard/payment"]?.required !== true || paidTool?._meta?.["xguard/payment"]?.settlement_before_execution !== true) fail("MCP does not make the paid transition explicit");
+const preflightTool = (tools.body.result?.tools || []).find(tool => tool.name === "xguard.preflight");
+if (preflightTool?._meta?.["xguard/next"]?.quote_url !== `${API}/v1/pricing/quote`) fail("MCP preflight does not expose the canonical quote transition");
 
 const capabilities = await getJson(`${API}/v1/capabilities`);
 const actual = new Map(capabilities.body.tools?.map(tool => [tool.id, tool]));
@@ -54,6 +57,12 @@ if (actual.get("xguard.web.fetch")?.available !== true || actual.get("xguard.web
 
 const pricing = await getJson(`${API}/v1/pricing`);
 if (pricing.body.quote_request?.canonical_shape?.url !== "https://example.com/" || pricing.body.paid_flow?.first_response !== "HTTP 402 with Payment-Required and a signed offer") fail("Pricing discovery is missing the canonical automated quote flow");
+
+const preflight = await getJson(`${API}/v1/preflight`);
+if (preflight.body.name !== "xguard.preflight" || preflight.body.target_contacted !== false || preflight.body.guidance?.next?.includes("/v1/pricing/quote") !== true) fail("Preflight discovery is stale or missing the canonical next step");
+
+const toolsManifest = await getJson(`${API}/.well-known/xguard-tools.json`);
+if (toolsManifest.body.execution_chokepoint?.tool !== "xguard.web.fetch" || toolsManifest.body.execution_chokepoint?.settlement_before_execution !== true || !Array.isArray(toolsManifest.body.tools)) fail("XGuard tool manifest is stale or missing the guarded execution choke point");
 
 const payment = await getJson(`${API}/.well-known/payment-manifest`);
 if (payment.body.x402_version !== 2 || payment.body.resources?.[0]?.payment_identifier_required !== true || payment.body.resources?.[0]?.settlement_before_execution !== true) fail("Payment manifest is stale or unsafe");

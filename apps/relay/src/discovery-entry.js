@@ -1,4 +1,4 @@
-import app, { recordAgentJourney } from "./paid-agent-entry.js";
+import app, { paidFetchSchema, recordAgentJourney } from "./paid-agent-entry.js";
 export * from "./paid-agent-entry.js";
 
 const VERSION = "5.1.0";
@@ -20,7 +20,17 @@ const QUOTE_PROPERTIES = {
   testnet: { type: "boolean", default: false },
   network: { type: "string", enum: ["eip155:8453", "eip155:84532", "base", "base-mainnet", "base-sepolia", "mainnet", "testnet"] },
 };
-const QUOTE_SCHEMA = { type: "object", required: ["url"], properties: QUOTE_PROPERTIES, additionalProperties: true };
+const QUOTE_SCHEMA = {
+  oneOf: [
+    { type: "object", required: ["url"], properties: QUOTE_PROPERTIES, additionalProperties: true },
+    { type: "object", required: ["tool", "input"], properties: { tool: { type: "string", enum: ["xguard.web.fetch"] }, input: { type: "object" }, testnet: { type: "boolean" }, network: { type: "string" } }, additionalProperties: true },
+    { type: "object", required: ["name", "arguments"], properties: { name: { type: "string", enum: ["xguard.web.fetch"] }, arguments: { oneOf: [{ type: "object" }, { type: "string" }] }, testnet: { type: "boolean" }, network: { type: "string" } }, additionalProperties: true },
+    { type: "object", required: ["tool_name", "parameters"], properties: { tool_name: { type: "string", enum: ["xguard.web.fetch"] }, parameters: { type: "object" }, testnet: { type: "boolean" }, network: { type: "string" } }, additionalProperties: true },
+    { type: "object", required: ["function"], properties: { function: { type: "object", required: ["name", "arguments"], properties: { name: { type: "string", enum: ["xguard.web.fetch"] }, arguments: { oneOf: [{ type: "object" }, { type: "string" }] } }, additionalProperties: true }, testnet: { type: "boolean" }, network: { type: "string" } }, additionalProperties: true },
+  ],
+  description: "Canonical flat input and common AI-agent envelopes accepted; XGuard returns one normalized body for the next step.",
+  "x-xguard-accepted-shapes": ["canonical_flat", "tool_input", "mcp_arguments", "tool_parameters", "function_call"],
+};
 
 const registryManifest = {
   $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
@@ -37,8 +47,9 @@ const serverCard = {
   authentication: { required: false, schemes: [] },
   tools: [
     { name: "xguard.capabilities", description: "Discover actual enabled and disabled XGuard tools. Free.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+    { name: "xguard.preflight", description: "Free, read-only gate before xguard.web.fetch: validate HTTPS, SSRF policy, public DNS and payment readiness without contacting the target. Follow next.quote_url, then the mandatory x402 v2 402 flow.", inputSchema: QUOTE_SCHEMA, _meta: { "xguard/next": { quote_url: `${API}/v1/pricing/quote`, execution_tool: "xguard.web.fetch", first_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature" } } },
     { name: "xguard.pricing.quote", description: "Use before xguard.web.fetch. Free. Canonical body: {url, method?, timeout_ms?, max_bytes?, mode?, testnet?}. Returns a signed 0.001 USDC quote and the exact next step.", inputSchema: QUOTE_SCHEMA, _meta: { "xguard/next": { call: "xguard.web.fetch", first_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature" } } },
-    { name: "xguard.web.fetch", description: "Paid public HTTPS fetch. Payment is mandatory: send the signed quote, handle HTTP 402, sign Payment-Required with x402 v2, then retry the identical request. XGuard settles before execution and returns a signed receipt plus ProofRail.", inputSchema: { type: "object", required: ["url", "quote"], properties: { ...QUOTE_PROPERTIES, quote: { type: "string" } }, additionalProperties: true }, _meta: { "xguard/payment": { required: true, protocol: "x402", version: 2, price_atomic: "1000", currency: "USDC", settlement_before_execution: true } } },
+    { name: "xguard.web.fetch", description: "Paid public HTTPS fetch and guarded-request choke point. Payment is mandatory: send the signed quote, handle HTTP 402, sign Payment-Required with x402 v2, then retry the identical request. XGuard settles before execution and returns a signed receipt plus ProofRail.", inputSchema: paidFetchSchema(), _meta: { "xguard/payment": { required: true, protocol: "x402", version: 2, price_atomic: "1000", currency: "USDC", settlement_before_execution: true, role: "guarded_request_chokepoint", preflight: `${API}/v1/preflight` } } },
     { name: "xguard_secretless_egress", description: "Discover XGuard Secretless Egress for keeping reusable upstream API credentials outside AI-agent context.", inputSchema: { type: "object", properties: {}, additionalProperties: true } },
     { name: "xguard_egress_fetch", description: "Execute a scoped HTTPS request through XGuard while reusable upstream credentials remain server-side.", inputSchema: { type: "object", additionalProperties: true } },
     { name: "xguard_proofrail", description: "Discover ProofRail signed execution evidence for credential-backed egress.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
@@ -77,6 +88,8 @@ const identity = {
     openapi: `${API}/openapi.json`,
     capabilities: `${API}/v1/capabilities`,
     pricing: `${API}/v1/pricing`,
+    preflight: `${API}/v1/preflight`,
+    tools_manifest: `${API}/.well-known/xguard-tools.json`,
     payment_manifest: `${API}/.well-known/payment-manifest`,
     egress_manifest: `${API}/.well-known/xguard-egress.json`,
     proof_manifest: `${API}/v1/proof`,
@@ -153,6 +166,8 @@ XGuard becomes the required credential-backed egress path inside an environment 
 
 ## Universal paid tool path
 
+- Free preflight (target is never contacted): POST ${API}/v1/preflight
+- Tool manifest (actual availability and guarded choke point): ${API}/.well-known/xguard-tools.json
 - Actual capabilities: ${API}/v1/capabilities
 - Published pricing: ${API}/v1/pricing
 - Signed input-bound quote: POST ${API}/v1/pricing/quote
@@ -162,7 +177,7 @@ XGuard becomes the required credential-backed egress path inside an environment 
 - Health: ${API}/v1/health
 - Readiness: ${API}/v1/ready
 
-Use xguard.web.fetch when an agent needs a bounded public HTTPS source with verifiable execution evidence. Its price is 0.001 USDC (1000 atomic units, six decimals).
+Use xguard.preflight before xguard.web.fetch when an agent needs a deterministic safety and payment-readiness decision without contacting the target. Then use xguard.web.fetch for a bounded public HTTPS source with verifiable execution evidence. Its price is 0.001 USDC (1000 atomic units, six decimals).
 
 Canonical quote body: {"url":"https://example.com/","method":"GET","testnet":true}. Common agent envelopes using tool+input, name+arguments, or tool_name+parameters are also accepted. The quote response returns normalized input and next.execution_url.
 
@@ -185,6 +200,8 @@ POST the normalized input with X-XGuard-Quote. HTTP 402 is mandatory. Decode Pay
 
 Transport: streamable-http
 Endpoint: ${MCP}
+
+Recommended tool order: xguard.capabilities → xguard.preflight → xguard.pricing.quote → xguard.web.fetch. Preflight and pricing are free; xguard.web.fetch always requires x402 v2 settlement before execution.
 
 Connect examples:
 - Claude Code: claude mcp add xguard --transport http ${MCP}
@@ -232,7 +249,7 @@ Sitemap: ${SITE}/sitemap.xml
 }
 
 function sitemapXml() {
-  const urls = [SITE + "/", SITE + "/llms.txt", SITE + "/server.json", SITE + "/.well-known/mcp/server-card.json", A2A_CARD, SITE + "/.well-known/agent.json", SITE + "/.well-known/xguard.json", API + "/openapi.json", API + "/.well-known/xguard-egress.json", API + "/v1/proof", MCP];
+  const urls = [SITE + "/", SITE + "/llms.txt", SITE + "/server.json", SITE + "/.well-known/mcp/server-card.json", A2A_CARD, SITE + "/.well-known/agent.json", SITE + "/.well-known/xguard.json", API + "/.well-known/xguard-tools.json", API + "/openapi.json", API + "/.well-known/xguard-egress.json", API + "/v1/proof", MCP];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.map(url => `\n  <url><loc>${url.replaceAll("&", "&amp;")}</loc></url>`).join("")}\n</urlset>\n`;
 }
 

@@ -19,6 +19,14 @@ test("A2A plus-json response receives canonical product taxonomy", async () => {
   assert.ok(body.skills.some(skill => skill.id === "xguard-secretless-egress"));
 });
 
+test("API root points agents to the guarded paid tool path", async () => {
+  const response = await app.fetch(new Request("https://api.xguardgate.com/"), {}, {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.discovery.preflight, "https://api.xguardgate.com/v1/preflight");
+  assert.equal(body.discovery.tools_manifest, "https://api.xguardgate.com/.well-known/xguard-tools.json");
+});
+
 test("identity is the complete machine-readable source of product taxonomy", async () => {
   const response = await app.fetch(new Request("https://xguardgate.com/identity"), {}, {});
   const body = await response.json();

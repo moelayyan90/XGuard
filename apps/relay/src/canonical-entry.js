@@ -105,7 +105,9 @@ function apiRoot(request) {
     description: DESCRIPTION,
     discovery: {
       capabilities: `${API}/v1/capabilities`,
+      preflight: `${API}/v1/preflight`,
       pricing: `${API}/v1/pricing`,
+      tools_manifest: `${API}/.well-known/xguard-tools.json`,
       signed_quote: `${API}/v1/pricing/quote`,
       paid_web_fetch: `${API}/v1/tools/web.fetch`,
       payment_manifest: `${API}/.well-known/payment-manifest`,
@@ -178,7 +180,7 @@ function sitemap(request) {
 }
 
 function canonicalSkill(request) {
-  const body = `# ${NAME}\n\nVersion: ${VERSION}\nCanonical site: ${SITE}\nCanonical API: ${API}\nCanonical remote MCP: ${MCP}\n\n## When to use XGuard\n\nUse XGuard when an agent needs a bounded paid tool or credential-backed API access without receiving a reusable upstream secret. xguard.web.fetch costs 0.001 USDC (1000 atomic units, six decimals).\n\n## Agent path\n\n1. Discover actual tools: GET ${API}/v1/capabilities\n2. Inspect published prices: GET ${API}/v1/pricing\n3. Request a signed input-bound quote: POST ${API}/v1/pricing/quote with {"url":"https://example.com/","method":"GET","testnet":true}. Common tool+input, name+arguments, and tool_name+parameters envelopes are accepted.\n4. Read next.execution_url from the quote response and POST the returned normalized input with X-XGuard-Quote. HTTP 402 is required, not optional.\n5. Decode Payment-Required, sign an official x402 v2 payload, then retry the identical request with Payment-Signature. XGuard verifies and settles before execution.\n6. Receive Payment-Response, the result, signed receipt, ProofRail evidence, request ID, transaction hash, and explicit accounting.\n\nPayment-Identifier is mandatory. An exact retry returns the stored outcome without another settlement. Search, AI generation/routing, and data-query tools remain machine-readably disabled until real connectors exist.\n\n## Secretless Egress\n\nOperators can separately store encrypted reusable upstream credentials and delegate short-lived scoped capabilities at ${API}/v1/egress. Credential provisioning is intentionally not an agent MCP tool.\n`;
+  const body = `# ${NAME}\n\nVersion: ${VERSION}\nCanonical site: ${SITE}\nCanonical API: ${API}\nCanonical remote MCP: ${MCP}\n\n## When to use XGuard\n\nUse XGuard when an agent needs a bounded paid tool or credential-backed API access without receiving a reusable upstream secret. xguard.web.fetch costs 0.001 USDC (1000 atomic units, six decimals) and is the guarded execution choke point.\n\n## Agent path\n\n1. Discover actual tools: GET ${API}/v1/capabilities or ${API}/.well-known/xguard-tools.json\n2. Run the free guarded preflight: POST ${API}/v1/preflight. It validates HTTPS/SSRF/public DNS/payment readiness without contacting the target.\n3. Inspect published prices: GET ${API}/v1/pricing\n4. Request a signed input-bound quote: POST ${API}/v1/pricing/quote with {"url":"https://example.com/","method":"GET","testnet":true}. Common tool+input, name+arguments, and tool_name+parameters envelopes are accepted.\n5. Read next.execution_url from the quote response and POST the returned normalized input with X-XGuard-Quote. HTTP 402 is required, not optional.\n6. Decode Payment-Required, sign an official x402 v2 payload, then retry the identical request with Payment-Signature. XGuard verifies and settles before execution.\n7. Receive Payment-Response, the result, signed receipt, ProofRail evidence, request ID, transaction hash, and explicit accounting.\n\nPayment-Identifier is mandatory. An exact retry returns the stored outcome without another settlement. Search, AI generation/routing, and data-query tools remain machine-readably disabled until real connectors exist.\n\n## Secretless Egress\n\nOperators can separately store encrypted reusable upstream credentials and delegate short-lived scoped capabilities at ${API}/v1/egress. Credential provisioning is intentionally not an agent MCP tool.\n`;
   return new Response(request.method === "HEAD" ? null : body, {
     status: 200,
     headers: baseHeaders(new Headers({
@@ -278,7 +280,7 @@ function normalizePublicBody(pathname, body) {
     body.name_for_human = NAME;
     body.name_for_model = "xguard_paid_secretless_gateway";
     body.description_for_human = "Discover tools, get signed prices, pay through x402 USDC, and execute without exposing reusable upstream credentials.";
-    body.description_for_model = "Use free xguard.capabilities and xguard.pricing.quote first. xguard.web.fetch executes only after x402 v2 settlement and returns a signed receipt plus ProofRail. Secretless Egress keeps operator-managed upstream credentials server-side.";
+    body.description_for_model = "Use free xguard.capabilities and xguard.preflight, then xguard.pricing.quote. xguard.web.fetch is the guarded execution choke point: it executes only after x402 v2 settlement and returns a signed receipt plus ProofRail. Secretless Egress keeps operator-managed upstream credentials server-side.";
     body.xguard = { ...(body.xguard || {}), version: VERSION, product_version: VERSION, primary_product: PRIMARY_PRODUCT, component_versions: { ...(body.xguard?.component_versions || {}), x402: VERSION } };
   }
 

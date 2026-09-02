@@ -64,6 +64,11 @@ test("paid discovery advertises only the real enabled connector", async () => {
   const mcp = await app.fetch(new Request("https://api.xguardgate.com/mcp"), env, {});
   assert.equal(mcp.status, 200);
   assert.ok((await mcp.json()).tools.some(tool => tool.name === "xguard.pricing.quote"));
+  const toolsManifest = await app.fetch(new Request("https://api.xguardgate.com/.well-known/xguard-tools.json"), env, {});
+  assert.equal(toolsManifest.status, 200);
+  const manifestBody = await toolsManifest.json();
+  assert.deepEqual(manifestBody.recommended_order, ["xguard.capabilities", "xguard.preflight", "xguard.pricing.quote", "xguard.web.fetch"]);
+  assert.equal(manifestBody.execution_chokepoint.settlement_before_execution, true);
 });
 
 test("modern MCP discovery, routing headers, caching metadata, and JSON-RPC validation are enforced", async () => {
@@ -92,6 +97,9 @@ test("modern MCP discovery, routing headers, caching metadata, and JSON-RPC vali
   assert.equal(list.result.cacheScope, "public");
   assert.ok(list.result.tools.some(tool => tool.name === "xguard.web.fetch"));
   assert.ok(list.result.tools.some(tool => tool.name === "xguard_egress_fetch"));
+  const preflightTool = list.result.tools.find(tool => tool.name === "xguard.preflight");
+  assert.ok(preflightTool);
+  assert.equal(preflightTool._meta["xguard/next"].first_status, 402);
   const quoteTool = list.result.tools.find(tool => tool.name === "xguard.pricing.quote");
   const paidTool = list.result.tools.find(tool => tool.name === "xguard.web.fetch");
   assert.ok(Array.isArray(quoteTool.inputSchema.oneOf));
@@ -127,12 +135,16 @@ test("MCP, A2A, pricing, and OpenAPI publish the same canonical quote and mandat
   assert.equal(extension.params.canonical_quote_body.url, "https://example.com/");
   assert.equal(extension.params.challenge_status, 402);
   assert.equal(extension.params.settlement_before_execution, true);
+  assert.ok(card.skills.some(skill => skill.id === "xguard-preflight"));
+  const serverCard = await (await canonicalApp.fetch(new Request("https://xguardgate.com/.well-known/mcp/server-card.json"), env, {})).json();
+  assert.ok(serverCard.tools.some(tool => tool.name === "xguard.preflight"));
 
   const openapi = await (await canonicalApp.fetch(new Request("https://api.xguardgate.com/openapi.json"), env, {})).json();
   const quote = openapi.paths["/v1/pricing/quote"].post;
   assert.ok(Array.isArray(quote.requestBody.content["application/json"].schema.oneOf));
   assert.equal(quote["x-xguard-payment-flow"].payment_required, true);
   assert.equal(openapi.paths["/v1/tools/web.fetch"].post["x-xguard-payment-flow"].settlement_before_execution, true);
+  assert.ok(openapi.paths["/v1/preflight"].post);
 });
 
 test("readiness accepts the official facilitator supported shape", async t => {
@@ -210,6 +222,63 @@ test("pricing quote accepts common AI-agent envelopes and returns one canonical 
     assert.equal(quote.next.payment.challenge_header, "Payment-Required");
     assert.equal(quote.next.payment.retry_header, "Payment-Signature");
   }
+});
+
+test("free preflight returns an allow decision and one executable next step", async t => {
+  const env = environment();
+  const originalFetch = globalThis.fetch;
+  let targetCalls = 0;
+  globalThis.fetch = async input => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (["one.one.one.one", "cloudflare-dns.com", "dns.google"].includes(url.hostname)) {
+      return new Response(JSON.stringify({ Status: 0, Answer: url.searchParams.get("type") === "A" ? [{ type: 1, data: "93.184.216.34" }] : [] }), { headers: { "content-type": "application/json" } });
+    }
+    targetCalls += 1;
+    throw new Error(`preflight must not contact target: ${url}`);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const response = await app.fetch(new Request("https://api.xguardgate.com/v1/preflight", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ tool: "xguard.web.fetch", input: { targetUrl: target, timeoutMs: 5000 }, testnet: true }),
+  }), env, {});
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.decision, "allow");
+  assert.equal(body.target_contacted, false);
+  assert.equal(body.normalized_input.url, target);
+  assert.equal(body.network, "eip155:84532");
+  assert.equal(body.next.quote_url, "https://api.xguardgate.com/v1/pricing/quote");
+  assert.equal(body.next.body.testnet, true);
+  assert.equal(targetCalls, 0);
+});
+
+test("preflight blocks SSRF targets before DNS or payment", async () => {
+  const env = environment();
+  const response = await app.fetch(new Request("https://api.xguardgate.com/v1/preflight", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: "https://169.254.169.254/latest/meta-data/", testnet: true }),
+  }), env, {});
+  assert.equal(response.status, 403);
+  const body = await response.json();
+  assert.equal(body.error.code, "target_not_public");
+  assert.equal(body.error.details.target_contacted, false);
+});
+
+test("preflight validation explains the exact retry shape", async () => {
+  const env = environment();
+  const response = await app.fetch(new Request("https://api.xguardgate.com/v1/preflight", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "xguard.web.fetch", arguments: { method: "POST" } }),
+  }), env, {});
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.equal(body.error.code, "invalid_input");
+  assert.equal(body.error.details.retry.endpoint, "https://api.xguardgate.com/v1/preflight");
+  assert.ok(body.error.details.issues.some(issue => issue.path === "url"));
 });
 
 test("pricing validation tells an agent exactly how to retry", async () => {

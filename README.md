@@ -11,7 +11,7 @@ https://api.xguardgate.com
 The primary no-account path is:
 
 ```text
-discovery → capabilities → signed quote → HTTP 402 → verify + settle
+discovery → capabilities → preflight → signed quote → HTTP 402 → verify + settle
           → controlled execution → signed receipt + ProofRail
 ```
 
@@ -24,6 +24,11 @@ No account or SDK is needed to discover the service, inspect pricing, obtain a s
 ```bash
 curl -sS https://api.xguardgate.com/v1/capabilities
 curl -sS https://api.xguardgate.com/v1/pricing
+
+# Optional free guard: validates HTTPS/SSRF/DNS/payment readiness without contacting the target
+curl -sS https://api.xguardgate.com/v1/preflight \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://example.com/","testnet":true}'
 
 curl -sS https://api.xguardgate.com/v1/pricing/quote \
   -H 'content-type: application/json' \
@@ -77,7 +82,9 @@ quote = requests.post(
 ).json()
 ```
 
-Canonical discovery surfaces: `/mcp`, `/a2a`, `/.well-known/agent-card.json`, `/.well-known/payment-manifest`, `/.well-known/x402-facilitator.json`, `/openapi.json`, `/llms.txt`, `/v1/capabilities`, `/v1/pricing`, `/v1/health`, and `/v1/ready`.
+Canonical discovery surfaces: `/mcp`, `/a2a`, `/.well-known/agent-card.json`, `/.well-known/payment-manifest`, `/.well-known/x402-facilitator.json`, `/openapi.json`, `/llms.txt`, `/v1/capabilities`, `/v1/preflight`, `/v1/pricing`, `/v1/health`, and `/v1/ready`.
+
+`xguard.preflight` is the free guard at the front door: it gives an agent a deterministic allow/block decision and the exact quote URL before any upstream request or payment. `xguard.web.fetch` is the mandatory guarded execution choke point; every paid call requires a signed quote and x402 v2 settlement before the target is contacted. When an operator keeps a reusable upstream credential only in XGuard, Secretless Egress is likewise the required credential-backed path for that environment.
 
 ## Secretless credential path
 

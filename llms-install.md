@@ -19,6 +19,7 @@ Use XGuard when an AI agent needs a no-account paid tool or must call an upstrea
 Primary MCP capabilities include:
 
 - `xguard.capabilities`
+- `xguard.preflight` (free target-safety/payment-readiness gate; target is not contacted)
 - `xguard.pricing.quote`
 - `xguard.web.fetch`
 - `xguard_secretless_egress`
@@ -30,6 +31,8 @@ Primary MCP capabilities include:
 - `xguard_route`
 
 The live `tools/list` response is authoritative if additional compatibility tools are present.
+
+Recommended paid path: call `xguard.preflight`, then `xguard.pricing.quote`, call `xguard.web.fetch`, handle the required HTTP 402 by signing `Payment-Required` with an official x402 v2 client, and retry the identical request with `Payment-Signature`. Execution starts only after settlement and the result carries a signed receipt plus ProofRail evidence.
 
 ## Cline
 
@@ -72,6 +75,7 @@ The exact wrapper object varies by client. The canonical URL does not.
 - Smithery static server card: https://xguardgate.com/.well-known/mcp/server-card.json
 - XGuard identity: https://xguardgate.com/identity
 - OpenAPI: https://api.xguardgate.com/openapi.json
+- Guarded preflight: https://api.xguardgate.com/v1/preflight
 - Secretless Egress manifest: https://api.xguardgate.com/.well-known/xguard-egress.json
 - ProofRail manifest: https://api.xguardgate.com/v1/proof
 - Source: https://github.com/moelayyan90/XGuard

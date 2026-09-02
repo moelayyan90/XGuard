@@ -28,7 +28,7 @@ Configure a remote Streamable HTTP MCP server named `xguard` with URL `https://a
 
 ## Operator and agent separation
 
-- Any agent can call `xguard.capabilities` and `xguard.pricing.quote` for free, then invoke `xguard.web.fetch` after x402 settlement.
+- Any agent can call `xguard.capabilities` and the free `xguard.preflight` guard, request `xguard.pricing.quote`, then invoke `xguard.web.fetch` after the mandatory x402 settlement.
 - Operators create encrypted credential records with `POST /v1/egress/credentials` and scoped capabilities with `POST /v1/egress/capabilities`.
 - Credential provisioning is intentionally not an MCP tool.
 - Agents call `POST /v1/egress/fetch` or MCP tool `xguard_egress_fetch` with a scoped capability, never the reusable upstream credential.
@@ -36,6 +36,7 @@ Configure a remote Streamable HTTP MCP server named `xguard` with URL `https://a
 ## Machine discovery
 
 - Actual capabilities: https://api.xguardgate.com/v1/capabilities
+- Guarded preflight: https://api.xguardgate.com/v1/preflight
 - Published pricing: https://api.xguardgate.com/v1/pricing
 - x402 payment manifest: https://api.xguardgate.com/.well-known/payment-manifest
 - Secretless Egress: https://api.xguardgate.com/v1/egress
