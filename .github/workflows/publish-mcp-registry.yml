@@ -1,11 +1,10 @@
 name: Publish XGuard to Official MCP Registry
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Deploy XGuard Relay"]
     branches: [main]
-    paths:
-      - "server.json"
-      - ".github/workflows/publish-mcp-registry.yml"
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -14,12 +13,14 @@ permissions:
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - name: Install official MCP publisher
