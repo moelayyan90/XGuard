@@ -38,6 +38,7 @@ const MAX_RECONCILIATION_ATTEMPTS = 3;
 const ALLOWED_FINANCIAL_STATES = new Set(["pending", "verified", "settled", "succeeded", "failed", "ambiguous", "refunded", "credited"]);
 const JOURNEY_EVENTS = new Set([
   "discovery",
+  "preflight",
   "tools_list",
   "tools_call",
   "quote_attempt",
@@ -66,6 +67,8 @@ const QUOTE_ACCEPTED_SHAPES = [
   { name: "function_call", example: { function: { name: TOOL, arguments: "{\"url\":\"https://example.com/\",\"method\":\"GET\"}" }, testnet: true } },
 ];
 const DISCOVERY_PATHS = new Set([
+  "/.well-known/xguard-tools.json",
+  "/v1/preflight",
   "/a2a",
   "/openapi.json",
   "/llms.txt",
@@ -224,14 +227,17 @@ function capabilities(env) {
       payment_manifest: `${API}/.well-known/payment-manifest`,
       openapi: `${API}/openapi.json`,
       llms: `${API}/llms.txt`,
+      preflight: `${API}/v1/preflight`,
     },
     tools: [
       { id: "xguard.capabilities", available: true, paid: false, endpoint: `${API}/v1/capabilities` },
+      { id: "xguard.preflight", available: true, paid: false, endpoint: `${API}/v1/preflight`, request: preflightRequestGuidance(), target_contacted: false },
       { id: "xguard.pricing.quote", available: true, paid: false, endpoint: `${API}/v1/pricing/quote`, request: quoteRequestGuidance() },
       {
         id: TOOL,
         available: mainnet.configured,
         paid: true,
+        role: "guarded_request_chokepoint",
         endpoint: mainnet.resource,
         testnet_endpoint: testnet.resource,
         network: mainnet.network,
@@ -259,6 +265,26 @@ function capabilities(env) {
   };
 }
 
+function toolsManifest(env) {
+  const manifest = capabilities(env);
+  return {
+    name: manifest.name,
+    version: manifest.version,
+    canonical_mcp: manifest.discovery.mcp,
+    canonical_api: API,
+    recommended_order: ["xguard.capabilities", "xguard.preflight", "xguard.pricing.quote", TOOL],
+    execution_chokepoint: {
+      tool: TOOL,
+      endpoint: `${API}/v1/tools/web.fetch`,
+      payment: "x402-v2-exact-usdc",
+      settlement_before_execution: true,
+      replay_safe: true,
+    },
+    tools: manifest.tools,
+    guarantees: manifest.guarantees,
+  };
+}
+
 function pricing(env) {
   const mainnet = gatewayConfig(env, false);
   const testnet = gatewayConfig(env, true);
@@ -266,7 +292,8 @@ function pricing(env) {
     version: VERSION,
     currency: "USDC",
     decimals: 6,
-    free_tools: ["xguard.capabilities", "xguard.pricing.quote"],
+    free_tools: ["xguard.capabilities", "xguard.preflight", "xguard.pricing.quote"],
+    preflight_endpoint: `${API}/v1/preflight`,
     tools: {
       [TOOL]: {
         available: mainnet.configured,
@@ -284,6 +311,7 @@ function pricing(env) {
     quote_ttl_seconds: QUOTE_TTL_SECONDS,
     quote_request: quoteRequestGuidance(),
     paid_flow: {
+      preflight: "Optional free preflight validates target safety and payment readiness without contacting the target.",
       execute: `POST ${mainnet.resource}`,
       testnet_execute: `POST ${testnet.resource}`,
       first_response: "HTTP 402 with Payment-Required and a signed offer",
@@ -363,6 +391,127 @@ function quoteRequestGuidance() {
   };
 }
 
+function preflightRequestGuidance() {
+  return {
+    endpoint: `${API}/v1/preflight`,
+    method: "POST",
+    content_type: "application/json",
+    canonical_shape: QUOTE_CANONICAL_EXAMPLE,
+    accepted_shapes: QUOTE_ACCEPTED_SHAPES,
+    required: { url: "A public HTTPS URL without credentials or a fragment." },
+    optional: quoteRequestGuidance().optional,
+    purpose: "Check XGuard's public-HTTPS and payment path before requesting a signed quote. The target is not fetched and no payment is attempted.",
+    next: `POST ${API}/v1/pricing/quote with the same normalized input, then follow next.execution_url and the HTTP 402 x402-v2 challenge.`,
+  };
+}
+
+function preflightSchema() {
+  return {
+    name: "xguard.preflight",
+    title: "Preflight a guarded paid request",
+    version: VERSION,
+    free: true,
+    target_contacted: false,
+    input: quoteRequestSchema(),
+    response: {
+      decision: "allow | blocked",
+      normalized_input: fetchInputSchema(),
+      checks: ["https", "public_dns", "ssrf_policy", "payment_path"],
+      next: { quote_url: `${API}/v1/pricing/quote`, execution_url: `${API}/v1/tools/web.fetch` },
+    },
+    guidance: preflightRequestGuidance(),
+  };
+}
+
+async function handlePreflight(env, raw, id, observation = {}) {
+  const normalized = normalizeQuoteRequest(raw);
+  if (!normalized.ok) {
+    await observeStage(env, "preflight", id, {
+      traffic_class: observation.trafficClass,
+      transport: observation.transport || "http",
+      outcome: "rejected",
+      metric: { outcome: "rejected" },
+    });
+    return error(normalized.code, normalized.code === "unsupported_tool" ? 422 : 400, id, {
+      details: { issues: normalized.issues, retry: preflightRequestGuidance() },
+    });
+  }
+
+  const input = normalized.input;
+  const hostname = new URL(input.url).hostname;
+  const targetCheck = await publicDns(hostname);
+  if (!targetCheck.ok) {
+    const status = targetCheck.code === "dns_unavailable" ? 503 : targetCheck.code === "dns_unresolved" ? 422 : 403;
+    const retryable = status === 503;
+    await observeStage(env, "preflight", id, {
+      traffic_class: observation.trafficClass,
+      transport: observation.transport || "http",
+      outcome: targetCheck.code,
+      metric: { outcome: targetCheck.code },
+    });
+    return error(targetCheck.code, status, id, {
+      retryable,
+      details: {
+        issues: [{ path: "url", code: targetCheck.code, message: retryable ? "Trusted public DNS resolvers are temporarily unavailable; retry the same preflight." : "The hostname is not a permitted public HTTPS destination." }],
+        retry: preflightRequestGuidance(),
+        target_contacted: false,
+      },
+    });
+  }
+
+  const config = gatewayConfig(env, normalized.testnet);
+  if (!config.configured || !env.PROOF_AUTHORITY || !env.PAID_GATEWAY) {
+    await observeStage(env, "preflight", id, {
+      traffic_class: observation.trafficClass,
+      transport: observation.transport || "http",
+      network: config.network,
+      outcome: "payment_not_configured",
+      metric: { outcome: "payment_not_configured" },
+    });
+    return error("payment_not_configured", 503, id, {
+      retryable: true,
+      details: {
+        issues: [{ path: "payment", code: "payment_not_configured", message: `The ${config.network} paid path cannot issue a safe quote right now.` }],
+        retry: preflightRequestGuidance(),
+        target_contacted: false,
+      },
+    });
+  }
+
+  await observeStage(env, "preflight", id, {
+    traffic_class: observation.trafficClass,
+    transport: observation.transport || "http",
+    tool: TOOL,
+    network: config.network,
+    outcome: "allow",
+    metric: { outcome: "allow" },
+  });
+  return json({
+    request_id: id,
+    tool: TOOL,
+    decision: "allow",
+    target_contacted: false,
+    normalized_input: input,
+    network: config.network,
+    asset: config.asset,
+    price: { amount_atomic: config.amount, currency: "USDC", decimals: 6 },
+    checks: [
+      { id: "https", status: "pass", detail: "HTTPS URL has no credentials or fragment." },
+      { id: "ssrf_policy", status: "pass", detail: "Private, local, metadata and XGuard-owned destinations are blocked." },
+      { id: "public_dns", status: "pass", addresses_checked: targetCheck.addresses?.length || 0, detail: "A and AAAA answers were validated through trusted public resolvers." },
+      { id: "payment_path", status: "pass", detail: "Signed quote and x402 v2 settlement path are configured for the selected network." },
+    ],
+    next: {
+      quote_url: `${API}/v1/pricing/quote`,
+      method: "POST",
+      body: { ...input, testnet: normalized.testnet },
+      expected_status: 200,
+      instruction: "Request the signed quote, then send the exact normalized input and quote to execution_url. The first execution response is HTTP 402; sign Payment-Required with an official x402 v2 client and retry unchanged.",
+    },
+    guidance: preflightRequestGuidance(),
+  }, 200, { "x-xguard-request-id": id });
+}
+
 function validationError(code, id, issues, status = 400, retryable = false) {
   return error(code, status, id, {
     retryable,
@@ -376,10 +525,12 @@ function validationError(code, id, issues, status = 400, retryable = false) {
 async function quoteRejection(code, id, issues, observation = {}, status = 400, retryable = false) {
   console.log(JSON.stringify({
     event: "quote_rejected",
+    conversion_stage: "quote_attempt",
     request_id: id,
     traffic_class: observation.trafficClass === "synthetic" ? "synthetic" : "external",
     transport: safeReason(observation.transport, "http"),
     code: safeReason(code, "invalid_input"),
+    drop_reason: safeReason(code, "invalid_input"),
     retryable,
   }));
   return { response: validationError(code, id, issues, status, retryable) };
@@ -878,8 +1029,14 @@ export class PaidGatewayState {
 
     if (path === "/index/metric") {
       if (!METRIC_EVENTS.has(body.event)) return doJson({ error: "invalid_metric" }, 400);
-      const current = await this.state.storage.get("metrics:v1") || { started_at: new Date().toISOString(), events: {}, settled_usd_micros: 0, latency_ms_total: 0, latency_samples: 0 };
+      const current = await this.state.storage.get("metrics:v1") || { started_at: new Date().toISOString(), events: {}, outcomes: {}, settled_usd_micros: 0, latency_ms_total: 0, latency_samples: 0 };
       current.events[body.event] = Number(current.events[body.event] || 0) + 1;
+      if (body.outcome) {
+        const outcome = safeReason(body.outcome, "unknown");
+        const key = `${body.event}:${outcome}`;
+        current.outcomes ||= {};
+        current.outcomes[key] = Number(current.outcomes[key] || 0) + 1;
+      }
       if (body.event === "settlement_success") current.settled_usd_micros += Math.max(0, Number(body.amount_usd_micros || 0));
       if (body.event === "succeeded" && Number.isFinite(Number(body.latency_ms))) {
         current.latency_ms_total += Math.max(0, Number(body.latency_ms));
@@ -891,7 +1048,7 @@ export class PaidGatewayState {
     }
 
     if (path === "/index/metrics") {
-      const current = await this.state.storage.get("metrics:v1") || { started_at: new Date().toISOString(), events: {}, settled_usd_micros: 0, latency_ms_total: 0, latency_samples: 0 };
+      const current = await this.state.storage.get("metrics:v1") || { started_at: new Date().toISOString(), events: {}, outcomes: {}, settled_usd_micros: 0, latency_ms_total: 0, latency_samples: 0 };
       return doJson({ ...current, average_success_latency_ms: current.latency_samples ? Math.round(current.latency_ms_total / current.latency_samples) : null });
     }
 
@@ -1018,6 +1175,7 @@ async function observeStage(env, event, id, details = {}) {
   const traffic = details.traffic_class === "synthetic" ? "synthetic" : "external";
   const safe = {
     event,
+    conversion_stage: event,
     request_id: id,
     traffic_class: traffic,
     ...(details.transport ? { transport: safeLabel(details.transport) } : {}),
@@ -1026,10 +1184,16 @@ async function observeStage(env, event, id, details = {}) {
     ...(details.network ? { network: String(details.network) } : {}),
     ...(details.request_shape ? { request_shape: safeLabel(details.request_shape) } : {}),
     ...(details.outcome ? { outcome: safeReason(details.outcome, "unknown") } : {}),
+    ...(details.drop_reason ? { drop_reason: safeReason(details.drop_reason, "unknown") } : {}),
     ...(details.amount_atomic ? { amount_atomic: String(details.amount_atomic) } : {}),
   };
   console.log(JSON.stringify(safe));
-  if (traffic === "external") await recordMetric(env, event, details.metric || {});
+  if (traffic === "external") {
+    const metric = { ...(details.metric || {}) };
+    if (details.outcome) metric.outcome = safeReason(details.outcome, "unknown");
+    if (details.drop_reason) metric.drop_reason = safeReason(details.drop_reason, "unknown");
+    await recordMetric(env, event, metric);
+  }
 }
 
 export async function recordAgentJourney(request, env, event, details = {}) {
@@ -1576,6 +1740,29 @@ function quoteRequestSchema() {
   };
 }
 
+function paidFetchSchema() {
+  const canonical = fetchInputSchema({ quote: true });
+  const nestedInput = fetchInputSchema();
+  const envelopeFields = {
+    testnet: { type: "boolean" },
+    network: { type: "string", enum: [MAINNET, TESTNET, "base", "base-mainnet", "base-sepolia", "mainnet", "testnet"] },
+    quote: { type: "string", description: "Compact signed quote returned by xguard.pricing.quote." },
+  };
+  return {
+    oneOf: [
+      canonical,
+      { type: "object", required: ["tool", "input"], properties: { tool: { type: "string", enum: [TOOL] }, input: nestedInput, ...envelopeFields }, additionalProperties: true },
+      { type: "object", required: ["name", "arguments"], properties: { name: { type: "string", enum: [TOOL] }, arguments: { oneOf: [nestedInput, { type: "string", contentMediaType: "application/json" }] }, ...envelopeFields }, additionalProperties: true },
+      { type: "object", required: ["tool_name", "parameters"], properties: { tool_name: { type: "string", enum: [TOOL] }, parameters: nestedInput, ...envelopeFields }, additionalProperties: true },
+      { type: "object", required: ["function"], properties: { function: { type: "object", required: ["name", "arguments"], properties: { name: { type: "string", enum: [TOOL] }, arguments: { oneOf: [nestedInput, { type: "string", contentMediaType: "application/json" }] }, }, additionalProperties: false }, ...envelopeFields }, additionalProperties: true },
+    ],
+    description: "Canonical and common AI-agent envelopes are accepted. Include the signed quote in the body or X-XGuard-Quote header; the request must be retried unchanged after Payment-Required.",
+    "x-xguard-accepted-shapes": QUOTE_ACCEPTED_SHAPES.map(shape => shape.name),
+  };
+}
+
+export { paidFetchSchema };
+
 const PAID_MCP_TOOLS = [
   {
     name: "xguard.capabilities",
@@ -1583,6 +1770,16 @@ const PAID_MCP_TOOLS = [
     description: "Return the enabled and disabled XGuard tools, their security boundary, and canonical discovery URLs. Free.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, idempotentHint: true },
+  },
+  {
+    name: "xguard.preflight",
+    title: "Preflight a guarded paid request",
+    description: "Free, read-only safety gate for xguard.web.fetch. Validates the public HTTPS target, SSRF policy, DNS reachability and selected payment path without contacting the target or attempting payment. On allow, follow next.quote_url, then the mandatory x402 v2 402 flow.",
+    inputSchema: quoteRequestSchema(),
+    _meta: {
+      "xguard/next": { quote_url: `${API}/v1/pricing/quote`, execution_tool: TOOL, first_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature" },
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
   },
   {
     name: "xguard.pricing.quote",
@@ -1599,7 +1796,7 @@ const PAID_MCP_TOOLS = [
     name: TOOL,
     title: "Fetch a public HTTPS resource",
     description: "Paid, read-only public HTTPS fetch. First obtain xguard.pricing.quote (0.001 USDC). Call this tool with the same input and quote; HTTP 402 is required, not optional. Sign Payment-Required using x402 v2 and retry the identical MCP request with Payment-Signature. Execution starts only after settlement and returns Payment-Response, a signed receipt, and ProofRail evidence.",
-    inputSchema: fetchInputSchema({ quote: true }),
+    inputSchema: paidFetchSchema(),
     _meta: {
       "xguard/payment": { required: true, protocol: "x402", version: 2, price_atomic: DEFAULT_PRICE_ATOMIC, currency: "USDC", challenge_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature", settlement_before_execution: true },
     },
@@ -1675,7 +1872,7 @@ function discoverMcp(id) {
       supportedVersions: ["2026-07-28", "2025-11-25"],
       capabilities: { tools: {} },
       _meta: { "io.modelcontextprotocol/serverInfo": { name: "xguard-universal-paid-secretless-gateway", version: VERSION } },
-      instructions: "Discover prices and call paid or secretless tools. XGuard does not require OAuth; paid tools use x402 v2 per request.",
+      instructions: "Discover capabilities, run optional free xguard.preflight, request a signed price with xguard.pricing.quote, then call the paid tool. XGuard does not require OAuth; paid tools use x402 v2 per request and never execute before settlement.",
       ttlMs: 60000,
       cacheScope: "public",
     },
@@ -1699,6 +1896,11 @@ async function handlePaidMcp(request, env, id) {
   if (message.method === "tools/call") await observeStage(env, "tools_call", id, { traffic_class: observation.trafficClass, transport: "mcp", tool: String(message.params?.name || "unknown") });
   if (message?.method === "tools/call" && message?.params?.name === "xguard.capabilities") {
     return mcpTransportResponse(mcpEnvelope(message.id, capabilities(env), { "x-xguard-request-id": id }), message);
+  }
+  if (message?.method === "tools/call" && message?.params?.name === "xguard.preflight") {
+    const preflight = await handlePreflight(env, message?.params?.arguments || {}, id, observation);
+    if (!preflight.ok) return mcpTransportResponse(await mcpToolError(message.id, preflight, id), message);
+    return mcpTransportResponse(mcpEnvelope(message.id, await preflight.clone().json(), { "x-xguard-request-id": id }), message);
   }
   if (message?.method === "tools/call" && message?.params?.name === "xguard.pricing.quote") {
     await observeStage(env, "quote_attempt", id, { traffic_class: observation.trafficClass, transport: "mcp", tool: TOOL });
@@ -1774,9 +1976,11 @@ function paymentManifest(env) {
     currencies: [{ symbol: "USDC", decimals: 6 }],
     resources: [{
       tool: TOOL,
+      role: "guarded_request_chokepoint",
       method: "POST",
       url: mainnet.resource,
       testnet_url: testnet.resource,
+      preflight_url: `${API}/v1/preflight`,
       quote_url: `${API}/v1/pricing/quote`,
       quote_request: quoteRequestGuidance(),
       scheme: "exact",
@@ -1883,6 +2087,21 @@ function paidOpenApiPaths() {
   return {
     "/v1/capabilities": { get: { summary: "Discover actual XGuard tool availability", responses: { "200": { description: "Machine-readable capabilities", content: standard } } } },
     "/v1/pricing": { get: { summary: "Inspect prices before execution", responses: { "200": { description: "Published pricing", content: standard } } } },
+    "/v1/preflight": {
+      get: { summary: "Describe the free guarded-request preflight", responses: { "200": { description: "Preflight schema and exact next steps", content: standard } } },
+      post: {
+        summary: "Preflight a guarded paid request without contacting the target",
+        description: "Free and read-only. Validates the normalized public HTTPS target, SSRF policy, trusted public DNS and payment readiness. On allow, follow next.quote_url and then the mandatory x402 v2 flow.",
+        requestBody: { required: true, content: { "application/json": { schema: quoteRequestSchema(), examples: Object.fromEntries(QUOTE_ACCEPTED_SHAPES.map(shape => [shape.name, { value: shape.example }])) } } },
+        responses: {
+          "200": { description: "Target is safe to quote; no upstream request was made", content: standard },
+          "400": { description: "Machine-readable input error with retry guidance", content: standard },
+          "403": { description: "Target is blocked by public HTTPS or SSRF policy", content: standard },
+          "422": { description: "Hostname has no public DNS address", content: standard },
+          "503": { description: "Trusted DNS or payment path temporarily unavailable", content: standard },
+        },
+      },
+    },
     "/v1/pricing/quote": { post: {
       summary: "Create a signed quote bound to xguard.web.fetch inputs",
       description: "Free. Canonical request is {url, method?, timeout_ms?, max_bytes?, mode?, testnet?}. Common AI-agent envelopes and camelCase aliases are accepted. The response contains the exact automated next step.",
@@ -1951,6 +2170,10 @@ export default {
       await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: "mcp" });
       return json(mcpDiscovery(env), 200, { allow: "GET, HEAD, POST, OPTIONS", "cache-control": "public, max-age=60" });
     }
+    if (request.method === "GET" && url.pathname === "/.well-known/xguard-tools.json") {
+      await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: "xguard_tools" });
+      return json(toolsManifest(env), 200, { "cache-control": "public, max-age=120", "x-xguard-request-id": id });
+    }
     if (request.method === "HEAD" && url.pathname === "/mcp") return new Response(null, { status: 200, headers: headers({ allow: "GET, HEAD, POST, OPTIONS" }) });
     if (request.method === "GET" && url.pathname === "/v1/capabilities") {
       await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: "capabilities" });
@@ -1959,6 +2182,15 @@ export default {
     if (request.method === "GET" && url.pathname === "/v1/pricing") {
       await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: "pricing" });
       return json(pricing(env), 200, { "cache-control": "public, max-age=60", "x-xguard-request-id": id });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/preflight") {
+      await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: "preflight" });
+      return json(preflightSchema(), 200, { "cache-control": "public, max-age=60", "x-xguard-request-id": id });
+    }
+    if (request.method === "POST" && url.pathname === "/v1/preflight") {
+      const parsed = await jsonBody(request.clone());
+      if (parsed.error) return error(parsed.error, parsed.error === "payload_too_large" ? 413 : 400, id, { details: { retry: preflightRequestGuidance() } });
+      return handlePreflight(env, parsed.value, id, observation);
     }
     if (request.method === "GET" && url.pathname === "/v1/health") return json({ status: "ok", live: true, version: VERSION, request_id: id, checked_at: new Date().toISOString() }, 200, { "x-xguard-request-id": id });
     if (request.method === "GET" && url.pathname === "/v1/ready") {

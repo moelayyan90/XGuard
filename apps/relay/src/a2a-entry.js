@@ -33,6 +33,7 @@ const AGENT_CARD = {
       description: "Required x402 v2 payment flow for paid XGuard tools.",
       required: false,
       params: {
+        preflight: `${API}/v1/preflight`,
         quote: `${API}/v1/pricing/quote`,
         canonical_quote_body: { url: "https://example.com/", method: "GET", testnet: true },
         price: { amount_atomic: "1000", currency: "USDC", decimals: 6 },
@@ -49,9 +50,18 @@ const AGENT_CARD = {
     {
       id: "xguard-paid-web-fetch",
       name: "Paid public web fetch",
-      description: "Use for one bounded public HTTPS fetch with source evidence. Price: 0.001 USDC. First request a free signed quote, call the execution URL, handle mandatory HTTP 402, sign Payment-Required with x402 v2, and retry the identical request. XGuard settles before execution and returns a signed receipt plus ProofRail.",
+      description: "Use for one bounded public HTTPS fetch with source evidence at XGuard's guarded-request choke point. Price: 0.001 USDC. Optionally run free xguard.preflight first, then request a signed quote, call the execution URL, handle mandatory HTTP 402, sign Payment-Required with x402 v2, and retry the identical request. XGuard settles before execution and returns a signed receipt plus ProofRail.",
       tags: ["x402", "usdc", "web-fetch", "proofrail"],
       examples: ["POST /v1/pricing/quote with {\"url\":\"https://example.com/\",\"method\":\"GET\",\"testnet\":true}", "After HTTP 402, sign Payment-Required and retry the identical request with Payment-Signature."],
+      inputModes: ["text/plain", "application/json"],
+      outputModes: ["text/plain", "application/json"],
+    },
+    {
+      id: "xguard-preflight",
+      name: "Guarded request preflight",
+      description: "Run a free, read-only XGuard preflight before a paid web fetch. It validates HTTPS, SSRF policy, public DNS and payment readiness without contacting the target, then returns the exact quote endpoint and next x402 step.",
+      tags: ["preflight", "ssrf", "x402", "web-fetch"],
+      examples: ["POST /v1/preflight with {\"url\":\"https://example.com/\",\"testnet\":true}"],
       inputModes: ["text/plain", "application/json"],
       outputModes: ["text/plain", "application/json"],
     },
@@ -109,13 +119,15 @@ const PUBLIC_DISCOVERY = {
   openapi: `${API}/openapi.json`,
   capabilities: `${API}/v1/capabilities`,
   pricing: `${API}/v1/pricing`,
+  preflight: `${API}/v1/preflight`,
   signed_quote: `${API}/v1/pricing/quote`,
   quote_request: {
     canonical: { url: "https://example.com/", method: "GET", testnet: true },
-    accepted_envelopes: ["flat", "tool+input", "name+arguments", "tool_name+parameters"],
+    accepted_envelopes: ["flat", "tool+input", "name+arguments", "tool_name+parameters", "function_call"],
   },
   payment_manifest: `${API}/.well-known/payment-manifest`,
   paid_flow: {
+    preflight: `${API}/v1/preflight`,
     price: { amount_atomic: "1000", currency: "USDC", decimals: 6 },
     first_execution_status: 402,
     challenge_header: "Payment-Required",
@@ -132,7 +144,7 @@ const PUBLIC_DISCOVERY = {
   },
   purpose: "Keep reusable upstream API credentials outside AI-agent context by letting operators retain reusable secrets server-side and delegate short-lived scoped capabilities instead.",
   proof_layer: "ProofRail can attach ES256-signed evidence to authorized credential-backed outcomes without placing the reusable upstream secret in the proof.",
-  a2a_security_boundary: "This A2A SendMessage surface is discovery-only. Paid tool execution uses the advertised HTTP or MCP endpoint and requires x402 settlement first.",
+  a2a_security_boundary: "This A2A SendMessage surface is discovery-only. Use xguard.preflight before xguard.web.fetch; paid tool execution uses the advertised HTTP or MCP endpoint and requires x402 settlement first.",
 };
 
 function headers(contentType = "application/a2a+json; charset=utf-8") {

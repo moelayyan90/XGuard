@@ -5,6 +5,10 @@ on:
     paths:
       - "llms-install.md"
       - "apps/relay/src/discovery-entry.js"
+      - "apps/relay/src/paid-agent-entry.js"
+      - "apps/relay/src/a2a-entry.js"
+      - "apps/relay/src/entry.js"
+      - "scripts/verify-production-identity.mjs"
       - "apps/relay/src/rail-entry.js"
       - ".github/workflows/distribution-surfaces-ci.yml"
   workflow_run:
@@ -39,6 +43,7 @@ jobs:
           grep -q 'xguard_secretless_egress' llms-install.md
           grep -q 'xguard_egress_fetch' llms-install.md
           grep -q 'xguard.web.fetch' llms-install.md
+          grep -q 'xguard.preflight' llms-install.md
           grep -q 'xguard_proofrail' llms-install.md
           grep -q 'xguard_verify_proof' llms-install.md
           grep -q '/.well-known/mcp/server-card.json' llms-install.md
@@ -46,6 +51,7 @@ jobs:
           grep -q 'xguard_secretless_egress' apps/relay/src/discovery-entry.js
           grep -q 'xguard_egress_fetch' apps/relay/src/discovery-entry.js
           grep -q 'xguard.web.fetch' apps/relay/src/discovery-entry.js
+          grep -q 'xguard.preflight' apps/relay/src/discovery-entry.js
           grep -q 'xguard_proofrail' apps/relay/src/discovery-entry.js
           grep -q 'xguard_verify_proof' apps/relay/src/discovery-entry.js
           grep -q 'url.pathname === "/connect"' apps/relay/src/rail-entry.js
@@ -62,7 +68,7 @@ jobs:
           init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-distribution-ci","version":"1.0.0"}}}')"
           printf '%s' "$init" | jq -e '.result.serverInfo as $s | (["xguard-secretless-agent-gateway","xguard-universal-paid-secretless-gateway"] | index($s.name)) != null and (["5.0.2","5.1.0"] | index($s.version)) != null' >/dev/null
           tools="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
-          printf '%s' "$tools" | jq -e '[.result.tools[].name] as $n | ["xguard_secretless_egress","xguard_egress_fetch","xguard_proofrail","xguard_verify_proof"] | all(. as $x | $n | index($x) != null)' >/dev/null
+          printf '%s' "$tools" | jq -e '[.result.tools[].name] as $n | ["xguard.preflight","xguard_secretless_egress","xguard_egress_fetch","xguard_proofrail","xguard_verify_proof"] | all(. as $x | $n | index($x) != null)' >/dev/null
 
       - name: Verify production marketplace assets after main deploy
         if: github.event_name != 'pull_request'
@@ -81,7 +87,7 @@ jobs:
             sitemap="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/sitemap.xml' || true)"
             if grep -qi "^x-xguard-worker-version-tag: git-${DEPLOY_SHA:0:12}" "$worker_headers" && \
                printf '%s' "$connect" | grep -q 'Connect XGuard' && \
-               printf '%s' "$card" | jq -e '.serverInfo.name == "XGuard Universal Paid AI Agent + Secretless Gateway" and .serverInfo.version == "5.1.0" and ([.tools[].name] | index("xguard.web.fetch") != null) and ([.tools[].name] | index("xguard_egress_fetch") != null)' >/dev/null 2>&1 && \
+               printf '%s' "$card" | jq -e '.serverInfo.name == "XGuard Universal Paid AI Agent + Secretless Gateway" and .serverInfo.version == "5.1.0" and ([.tools[].name] | index("xguard.preflight") != null) and ([.tools[].name] | index("xguard.web.fetch") != null) and ([.tools[].name] | index("xguard_egress_fetch") != null)' >/dev/null 2>&1 && \
                printf '%s' "$identity" | jq -e '.name == "XGuard Universal Paid AI Agent + Secretless Gateway" and .version == "5.1.0" and .discovery.smithery_server_card != null' >/dev/null 2>&1 && \
                printf '%s' "$llms" | grep -q 'Smithery server card' && \
                printf '%s' "$sitemap" | grep -q '<loc>https://xguardgate.com/.well-known/mcp/server-card.json</loc>'; then
