@@ -53,7 +53,7 @@ test("robots and sitemap expose public documentation but not operator endpoints"
   const sitemap = await app.fetch(new Request("https://xguardgate.com/sitemap.xml"), {}, {});
   const xml = await sitemap.text();
   assert.match(xml, /https:\/\/xguardgate\.com\/pricing/);
-  assert.doesNotMatch(xml, /\/v1\/egress\/credentials|\/mcp/);
+  assert.match(xml, /https:\/\/xguardgate\.com\/\.well-known\/mcp\/server-card\.json/);\n  assert.doesNotMatch(xml, /\/v1\/egress\/credentials|<loc>https:\/\/api\.xguardgate\.com\/mcp<\/loc>/);
 });
 
 test("transaction-result pages are noindex and never claim redirects grant credits", async () => {
