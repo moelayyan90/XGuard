@@ -71,6 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-agent-plugin-ci/5.1.0' "$@"; }
           endpoint='https://api.xguardgate.com/mcp'
           init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-agent-plugin-ci","version":"1.0.0"}}}')"
           printf '%s' "$init" | jq -e '.result.serverInfo as $s | (["xguard-secretless-agent-gateway","xguard-universal-paid-secretless-gateway"] | index($s.name)) != null and (["5.0.2","5.1.0"] | index($s.version)) != null' >/dev/null

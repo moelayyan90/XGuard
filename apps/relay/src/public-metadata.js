@@ -31,6 +31,8 @@ function commonDiscovery() {
     signed_quote: `${API}/v1/pricing/quote`,
     paid_web_fetch: `${API}/v1/tools/web.fetch`,
     payment_manifest: `${API}/.well-known/payment-manifest`,
+    quote_request: { canonical: { url: "https://example.com/", method: "GET", testnet: true }, accepted_envelopes: ["flat", "tool+input", "name+arguments", "tool_name+parameters"] },
+    paid_flow: { price: "0.001 USDC", first_execution_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature", settlement_before_execution: true, success_artifacts: ["Payment-Response", "signed receipt", "ProofRail evidence"] },
     actions: `${API}/v1/actions`,
     action_manifest: `${API}/.well-known/xguard-actions.json`,
     action_key: `${API}/.well-known/xguard-actions-key.json`,

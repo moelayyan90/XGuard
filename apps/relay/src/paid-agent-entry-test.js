@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
 import app, { PaidGatewayState, ProofAuthority } from "./paid-agent-entry.js";
+import canonicalApp from "./canonical-entry.js";
 
 class MemoryStorage {
   constructor() { this.values = new Map(); this.alarm = null; }
@@ -91,6 +92,12 @@ test("modern MCP discovery, routing headers, caching metadata, and JSON-RPC vali
   assert.equal(list.result.cacheScope, "public");
   assert.ok(list.result.tools.some(tool => tool.name === "xguard.web.fetch"));
   assert.ok(list.result.tools.some(tool => tool.name === "xguard_egress_fetch"));
+  const quoteTool = list.result.tools.find(tool => tool.name === "xguard.pricing.quote");
+  const paidTool = list.result.tools.find(tool => tool.name === "xguard.web.fetch");
+  assert.ok(Array.isArray(quoteTool.inputSchema.oneOf));
+  assert.equal(quoteTool._meta["xguard/next"].first_status, 402);
+  assert.equal(paidTool._meta["xguard/payment"].required, true);
+  assert.equal(paidTool._meta["xguard/payment"].settlement_before_execution, true);
 
   const mismatched = await app.fetch(new Request("https://api.xguardgate.com/mcp", {
     method: "POST",
@@ -107,6 +114,25 @@ test("modern MCP discovery, routing headers, caching metadata, and JSON-RPC vali
   }), env, {});
   assert.equal(invalid.status, 400);
   assert.equal((await invalid.json()).error.code, -32600);
+});
+
+test("MCP, A2A, pricing, and OpenAPI publish the same canonical quote and mandatory payment flow", async () => {
+  const env = environment();
+  const pricing = await (await app.fetch(new Request("https://api.xguardgate.com/v1/pricing"), env, {})).json();
+  assert.equal(pricing.quote_request.canonical_shape.url, "https://example.com/");
+  assert.equal(pricing.paid_flow.first_response, "HTTP 402 with Payment-Required and a signed offer");
+
+  const card = await (await canonicalApp.fetch(new Request("https://api.xguardgate.com/.well-known/agent-card.json"), env, {})).json();
+  const extension = card.capabilities.extensions.find(item => item.uri.endsWith("/.well-known/payment-manifest"));
+  assert.equal(extension.params.canonical_quote_body.url, "https://example.com/");
+  assert.equal(extension.params.challenge_status, 402);
+  assert.equal(extension.params.settlement_before_execution, true);
+
+  const openapi = await (await canonicalApp.fetch(new Request("https://api.xguardgate.com/openapi.json"), env, {})).json();
+  const quote = openapi.paths["/v1/pricing/quote"].post;
+  assert.ok(Array.isArray(quote.requestBody.content["application/json"].schema.oneOf));
+  assert.equal(quote["x-xguard-payment-flow"].payment_required, true);
+  assert.equal(openapi.paths["/v1/tools/web.fetch"].post["x-xguard-payment-flow"].settlement_before_execution, true);
 });
 
 test("readiness accepts the official facilitator supported shape", async t => {
@@ -147,6 +173,107 @@ test("quote issuance rejects private, local, metadata, and XGuard-owned targets"
     assert.equal(response.status, 403, url);
     assert.equal((await response.json()).error.code, "target_not_public");
   }
+});
+
+test("pricing quote accepts common AI-agent envelopes and returns one canonical next step", async t => {
+  const env = environment();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (["one.one.one.one", "cloudflare-dns.com", "dns.google"].includes(url.hostname)) {
+      return new Response(JSON.stringify({ Status: 0, Answer: url.searchParams.get("type") === "A" ? [{ type: 1, data: "93.184.216.34" }] : [] }), { headers: { "content-type": "application/json" } });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const variants = [
+    { url: target, testnet: true },
+    { tool: "xguard.web.fetch", input: { target_url: target, timeoutMs: 5000 }, testnet: true },
+    { name: "xguard.web.fetch", arguments: { uri: target, maxBytes: 4096 }, environment: "testnet" },
+    { tool_name: "xguard.web.fetch", parameters: { target, method: "head" }, network: "base-sepolia" },
+    { function: { name: "xguard.web.fetch", arguments: JSON.stringify({ url: target, mode: "json" }) }, chain: "eip155:84532" },
+  ];
+  for (const body of variants) {
+    const response = await app.fetch(new Request("https://api.xguardgate.com/v1/pricing/quote", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }), env, {});
+    assert.equal(response.status, 200, JSON.stringify(body));
+    const quote = await response.json();
+    assert.equal(quote.network, "eip155:84532");
+    assert.equal(quote.amount, "1000");
+    assert.equal(quote.input.url, target);
+    assert.equal(quote.next.execution_url, "https://api.xguardgate.com/v1/tools/web.fetch/testnet");
+    assert.equal(quote.next.expected_first_status, 402);
+    assert.equal(quote.next.payment.challenge_header, "Payment-Required");
+    assert.equal(quote.next.payment.retry_header, "Payment-Signature");
+  }
+});
+
+test("pricing validation tells an agent exactly how to retry", async () => {
+  const env = environment();
+  const response = await app.fetch(new Request("https://api.xguardgate.com/v1/pricing/quote", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "xguard.web.fetch", arguments: { method: "POST", timeout_ms: 20 } }),
+  }), env, {});
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.equal(body.error.code, "invalid_input");
+  assert.equal(body.error.retryable, false);
+  assert.ok(body.error.details.issues.some(issue => issue.path === "url" && issue.code === "required"));
+  assert.ok(body.error.details.issues.some(issue => issue.path === "method" && issue.code === "unsupported_value"));
+  assert.equal(body.error.details.retry.canonical_shape.url, "https://example.com/");
+  assert.deepEqual(body.error.details.retry.optional.method.accepted, ["GET", "HEAD"]);
+  assert.ok(body.error.details.retry.accepted_shapes.some(shape => shape.name === "mcp_arguments"));
+
+  const mcp = await app.fetch(new Request("https://api.xguardgate.com/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 44, method: "tools/call", params: { name: "xguard.pricing.quote", arguments: { method: "POST" } } }),
+  }), env, {});
+  assert.equal(mcp.status, 200);
+  const rpc = await mcp.json();
+  assert.equal(rpc.id, 44);
+  assert.equal(rpc.result.isError, true);
+  assert.equal(rpc.result.structuredContent.error.code, "invalid_input");
+  assert.equal(rpc.result.structuredContent.error.details.retry.canonical_shape.url, "https://example.com/");
+});
+
+test("temporary DNS validator outage is retryable 503, not misleading 422", async t => {
+  const env = environment();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("resolver unavailable"); };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const response = await app.fetch(new Request("https://api.xguardgate.com/v1/pricing/quote", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: target, testnet: true }),
+  }), env, {});
+  assert.equal(response.status, 503);
+  const body = await response.json();
+  assert.equal(body.error.code, "dns_unavailable");
+  assert.equal(body.error.retryable, true);
+  assert.equal(body.error.details.retry.method, "POST");
+});
+
+test("definitive DNS name failure remains a descriptive non-retryable 422", async t => {
+  const env = environment();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ Status: 3 }), { headers: { "content-type": "application/json" } });
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const response = await app.fetch(new Request("https://api.xguardgate.com/v1/pricing/quote", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: "https://does-not-exist.invalid/", testnet: true }),
+  }), env, {});
+  assert.equal(response.status, 422);
+  const body = await response.json();
+  assert.equal(body.error.code, "dns_unresolved");
+  assert.equal(body.error.retryable, false);
+  assert.ok(body.error.details.issues[0].message.includes("no public"));
 });
 
 test("signed quote produces an official x402 v2 challenge", async t => {
@@ -311,6 +438,35 @@ test("settlement precedes execution and an exact retry does not settle twice", a
   assert.equal(verifyCalls, 1);
   assert.equal(settleCalls, 1);
   assert.equal(upstreamCalls, 1);
+
+  const metrics = await app.fetch(new Request("https://api.xguardgate.com/v1/metrics"), env, {});
+  const observed = await metrics.json();
+  for (const stage of ["quote_attempt", "quote_success", "payment_required", "payment_attempt", "payment_verified", "settlement_success"]) {
+    assert.ok(observed.events[stage] >= 1, stage);
+  }
+  assert.equal(observed.settled_usd_micros, 0, "testnet settlement is never revenue");
+});
+
+test("synthetic production probes are labeled in logs and excluded from journey metrics", async t => {
+  const env = environment();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (["one.one.one.one", "cloudflare-dns.com", "dns.google"].includes(url.hostname)) {
+      return new Response(JSON.stringify({ Status: 0, Answer: url.searchParams.get("type") === "A" ? [{ type: 1, data: "93.184.216.34" }] : [] }), { headers: { "content-type": "application/json" } });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const headers = { "content-type": "application/json", "x-xguard-traffic-class": "synthetic" };
+  const quoteResponse = await app.fetch(new Request("https://api.xguardgate.com/v1/pricing/quote", { method: "POST", headers, body: JSON.stringify({ url: target, testnet: true }) }), env, {});
+  const quote = await quoteResponse.json();
+  const challenge = await app.fetch(new Request("https://api.xguardgate.com/v1/tools/web.fetch/testnet", { method: "POST", headers: { ...headers, "x-xguard-quote": quote.quote }, body: JSON.stringify({ url: target }) }), env, {});
+  assert.equal(challenge.status, 402);
+  const metrics = await app.fetch(new Request("https://api.xguardgate.com/v1/metrics"), env, {});
+  const body = await metrics.json();
+  assert.deepEqual(body.events, {});
+  assert.equal(body.settled_usd_micros, 0);
 });
 
 test("pending, verified, and ambiguous states never record revenue", async () => {

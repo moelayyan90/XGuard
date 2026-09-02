@@ -1,15 +1,10 @@
 name: Verify XGuard Production Security
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Deploy XGuard Relay"]
     branches: [main]
-    paths:
-      - "apps/relay/src/product-entry.js"
-      - "apps/relay/src/paid-agent-entry.js"
-      - "apps/relay/src/egress-entry.js"
-      - "apps/relay/src/egress-vault.js"
-      - "apps/relay/wrangler.jsonc"
-      - ".github/workflows/verify-production.yml"
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -17,18 +12,24 @@ permissions:
 
 jobs:
   verify:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Wait for hardened paid and Secretless MCP
         shell: bash
         run: |
           set -euo pipefail
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-production-security/5.1.0' "$@"; }
           ready=0
           for i in {1..35}; do
-            init="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-security","version":"1.0.0"}}}' || true)"
+            version_headers="$(mktemp)"
+            init="$(curl --silent --show-error --max-time 8 -D "$version_headers" -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-security","version":"1.0.0"}}}' || true)"
             tools="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' || true)"
-            if printf '%s' "$init" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-universal-paid-secretless-gateway"&&x.result?.serverInfo?.version==="5.1.0"&&String(x.result?.instructions||"").includes("x402-paid tools")&&String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(0)}catch{}process.exit(1)})' && \
+            if grep -qi "^x-xguard-worker-version-tag: git-${DEPLOY_SHA:0:12}" "$version_headers" && \
+               printf '%s' "$init" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-universal-paid-secretless-gateway"&&x.result?.serverInfo?.version==="5.1.0"&&String(x.result?.instructions||"").includes("x402-paid tools")&&String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(0)}catch{}process.exit(1)})' && \
                printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const t=JSON.parse(s).result?.tools||[];const n=t.map(v=>v.name);const required=["xguard.capabilities","xguard.pricing.quote","xguard.web.fetch","xguard_secretless_egress","xguard_egress_fetch","xguard_action_rail","xguard_facilitator","xguard_route","xguard_inspect","xguard_health"];if(t.length>=16&&required.every(v=>n.includes(v))&&t.find(v=>v.name==="xguard.capabilities")?.annotations?.readOnlyHint===true&&t.find(v=>v.name==="xguard.web.fetch")?.annotations?.idempotentHint===true)process.exit(0)}catch{}process.exit(1)})'; then ready=1; break; fi
             sleep 4
           done
@@ -38,6 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-production-security/5.1.0' "$@"; }
           for host in api.xguardgate.com xguardgate.com; do
             curl --fail --silent --show-error --max-time 8 -I "https://$host/mcp" >"/tmp/$host.headers"
             grep -qi '^strict-transport-security: .*max-age=31536000' "/tmp/$host.headers"
@@ -50,6 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-production-security/5.1.0' "$@"; }
           init_payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-security","version":"1.0.0"}}}'
           tools_payload='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
           for host in api.xguardgate.com xguardgate.com; do

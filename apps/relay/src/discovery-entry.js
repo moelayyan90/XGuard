@@ -1,4 +1,4 @@
-import app from "./paid-agent-entry.js";
+import app, { recordAgentJourney } from "./paid-agent-entry.js";
 export * from "./paid-agent-entry.js";
 
 const VERSION = "5.1.0";
@@ -11,6 +11,16 @@ const REPO = "https://github.com/moelayyan90/XGuard";
 const INDEXNOW_KEY = "f3fd1a3fde659a05a8dddfa614b408ac";
 const REGISTRY_DESCRIPTION = "Signed prices and no-account x402 USDC tools with secretless egress and verifiable receipts.";
 const DESCRIPTION = "XGuard is a universal paid AI-agent and secretless gateway: signed prices, no-account x402 USDC payment, controlled execution, replay-safe retries, signed receipts and ProofRail evidence.";
+const QUOTE_PROPERTIES = {
+  url: { type: "string", format: "uri", pattern: "^https://", description: "Canonical public HTTPS target URL." },
+  method: { type: "string", enum: ["GET", "HEAD"], default: "GET" },
+  timeout_ms: { type: "integer", minimum: 1000, maximum: 10000, default: 8000 },
+  max_bytes: { type: "integer", minimum: 1024, maximum: 131072, default: 131072 },
+  mode: { type: "string", enum: ["auto", "text", "json"], default: "auto" },
+  testnet: { type: "boolean", default: false },
+  network: { type: "string", enum: ["eip155:8453", "eip155:84532", "base", "base-mainnet", "base-sepolia", "mainnet", "testnet"] },
+};
+const QUOTE_SCHEMA = { type: "object", required: ["url"], properties: QUOTE_PROPERTIES, additionalProperties: true };
 
 const registryManifest = {
   $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
@@ -27,8 +37,8 @@ const serverCard = {
   authentication: { required: false, schemes: [] },
   tools: [
     { name: "xguard.capabilities", description: "Discover actual enabled and disabled XGuard tools. Free.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-    { name: "xguard.pricing.quote", description: "Create a signed price quote bound to xguard.web.fetch inputs. Free.", inputSchema: { type: "object", required: ["url"], properties: { url: { type: "string", format: "uri" }, testnet: { type: "boolean" } }, additionalProperties: true } },
-    { name: "xguard.web.fetch", description: "Fetch one bounded public HTTPS resource after replay-safe x402 v2 USDC settlement.", inputSchema: { type: "object", required: ["url", "quote"], properties: { url: { type: "string", format: "uri" }, quote: { type: "string" } }, additionalProperties: true } },
+    { name: "xguard.pricing.quote", description: "Use before xguard.web.fetch. Free. Canonical body: {url, method?, timeout_ms?, max_bytes?, mode?, testnet?}. Returns a signed 0.001 USDC quote and the exact next step.", inputSchema: QUOTE_SCHEMA, _meta: { "xguard/next": { call: "xguard.web.fetch", first_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature" } } },
+    { name: "xguard.web.fetch", description: "Paid public HTTPS fetch. Payment is mandatory: send the signed quote, handle HTTP 402, sign Payment-Required with x402 v2, then retry the identical request. XGuard settles before execution and returns a signed receipt plus ProofRail.", inputSchema: { type: "object", required: ["url", "quote"], properties: { ...QUOTE_PROPERTIES, quote: { type: "string" } }, additionalProperties: true }, _meta: { "xguard/payment": { required: true, protocol: "x402", version: 2, price_atomic: "1000", currency: "USDC", settlement_before_execution: true } } },
     { name: "xguard_secretless_egress", description: "Discover XGuard Secretless Egress for keeping reusable upstream API credentials outside AI-agent context.", inputSchema: { type: "object", properties: {}, additionalProperties: true } },
     { name: "xguard_egress_fetch", description: "Execute a scoped HTTPS request through XGuard while reusable upstream credentials remain server-side.", inputSchema: { type: "object", additionalProperties: true } },
     { name: "xguard_proofrail", description: "Discover ProofRail signed execution evidence for credential-backed egress.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
@@ -152,7 +162,11 @@ XGuard becomes the required credential-backed egress path inside an environment 
 - Health: ${API}/v1/health
 - Readiness: ${API}/v1/ready
 
-Flow: discovery -> signed quote -> HTTP 402 and signed offer -> Payment-Signature verification -> settlement -> controlled fetch -> signed receipt and ProofRail. Payment-Identifier is mandatory. An exact retry returns the stored outcome without a second settlement.
+Use xguard.web.fetch when an agent needs a bounded public HTTPS source with verifiable execution evidence. Its price is 0.001 USDC (1000 atomic units, six decimals).
+
+Canonical quote body: {"url":"https://example.com/","method":"GET","testnet":true}. Common agent envelopes using tool+input, name+arguments, or tool_name+parameters are also accepted. The quote response returns normalized input and next.execution_url.
+
+POST the normalized input with X-XGuard-Quote. HTTP 402 is mandatory. Decode Payment-Required, create and sign an official x402 v2 payment, and retry the identical request with Payment-Signature. XGuard verifies and settles before the fetch. HTTP 200 returns Payment-Response, a signed receipt, and ProofRail evidence. Payment-Identifier is mandatory. An exact retry returns the stored outcome without a second settlement.
 
 ## Machine-readable discovery
 
@@ -240,6 +254,15 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method === "GET") {
+      const machineSurface = new Map([
+        ["/llms.txt", "llms"],
+        ["/server.json", "server_manifest"],
+        ["/.well-known/mcp-server.json", "server_manifest"],
+        ["/.well-known/mcp/server-card.json", "mcp_server_card"],
+        ["/.well-known/xguard.json", "xguard_manifest"],
+        ["/identity", "identity"],
+      ]).get(url.pathname);
+      if (machineSurface) await recordAgentJourney(request, env, "discovery", { transport: "http", surface: machineSurface });
       if (url.pathname === `/${INDEXNOW_KEY}.txt`) return text(INDEXNOW_KEY, 200, { "cache-control": "public, max-age=86400" });
       if (url.pathname === "/llms.txt") return text(llmsTxt());
       if (url.pathname === "/robots.txt") return text(robotsTxt());
