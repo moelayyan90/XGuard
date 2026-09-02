@@ -100,7 +100,7 @@ jobs:
           version="$(node -p 'require("./server.json").version')"
           for i in {1..24}; do
             live="$(curl --silent --show-error --max-time 8 https://xguardgate.com/identity || true)"
-            if printf '%s' "$live" | grep -Fq "\"version\": \"${version}\""; then
+            if printf '%s' "$live" | jq -e --arg version "$version" '.version == $version' >/dev/null 2>&1; then
               echo "Live discovery surface is ${version}."
               exit 0
             fi
