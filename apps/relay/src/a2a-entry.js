@@ -1,4 +1,4 @@
-import app from "./webmcp-entry.js";
+import app, { recordAgentJourney } from "./webmcp-entry.js";
 export * from "./webmcp-entry.js";
 
 const SITE = "https://xguardgate.com";
@@ -28,6 +28,20 @@ const AGENT_CARD = {
     streaming: false,
     pushNotifications: false,
     extendedAgentCard: false,
+    extensions: [{
+      uri: `${API}/.well-known/payment-manifest`,
+      description: "Required x402 v2 payment flow for paid XGuard tools.",
+      required: false,
+      params: {
+        quote: `${API}/v1/pricing/quote`,
+        canonical_quote_body: { url: "https://example.com/", method: "GET", testnet: true },
+        price: { amount_atomic: "1000", currency: "USDC", decimals: 6 },
+        challenge_status: 402,
+        challenge_header: "Payment-Required",
+        retry_header: "Payment-Signature",
+        settlement_before_execution: true,
+      },
+    }],
   },
   defaultInputModes: ["text/plain", "application/json"],
   defaultOutputModes: ["text/plain", "application/json"],
@@ -35,9 +49,9 @@ const AGENT_CARD = {
     {
       id: "xguard-paid-web-fetch",
       name: "Paid public web fetch",
-      description: "Discover the price and invoke xguard.web.fetch through x402 v2 USDC with replay-safe settlement and signed execution evidence.",
+      description: "Use for one bounded public HTTPS fetch with source evidence. Price: 0.001 USDC. First request a free signed quote, call the execution URL, handle mandatory HTTP 402, sign Payment-Required with x402 v2, and retry the identical request. XGuard settles before execution and returns a signed receipt plus ProofRail.",
       tags: ["x402", "usdc", "web-fetch", "proofrail"],
-      examples: ["What will it cost to fetch a public HTTPS URL?", "How do I pay once and safely retry the fetch?"],
+      examples: ["POST /v1/pricing/quote with {\"url\":\"https://example.com/\",\"method\":\"GET\",\"testnet\":true}", "After HTTP 402, sign Payment-Required and retry the identical request with Payment-Signature."],
       inputModes: ["text/plain", "application/json"],
       outputModes: ["text/plain", "application/json"],
     },
@@ -96,7 +110,19 @@ const PUBLIC_DISCOVERY = {
   capabilities: `${API}/v1/capabilities`,
   pricing: `${API}/v1/pricing`,
   signed_quote: `${API}/v1/pricing/quote`,
+  quote_request: {
+    canonical: { url: "https://example.com/", method: "GET", testnet: true },
+    accepted_envelopes: ["flat", "tool+input", "name+arguments", "tool_name+parameters"],
+  },
   payment_manifest: `${API}/.well-known/payment-manifest`,
+  paid_flow: {
+    price: { amount_atomic: "1000", currency: "USDC", decimals: 6 },
+    first_execution_status: 402,
+    challenge_header: "Payment-Required",
+    retry_header: "Payment-Signature",
+    settlement_before_execution: true,
+    success_artifacts: ["Payment-Response", "signed receipt", "ProofRail evidence"],
+  },
   egress_manifest: `${API}/.well-known/xguard-egress.json`,
   proofrail_manifest: `${API}/v1/proof`,
   connect: {
@@ -114,7 +140,7 @@ function headers(contentType = "application/a2a+json; charset=utf-8") {
     "content-type": contentType,
     "cache-control": "no-store",
     "access-control-allow-origin": "*",
-    "access-control-allow-headers": "content-type,a2a-version,a2a-extensions",
+    "access-control-allow-headers": "content-type,a2a-version,a2a-extensions,x-request-id,x-xguard-traffic-class",
     "access-control-allow-methods": "GET,POST,OPTIONS",
     "x-content-type-options": "nosniff",
     "a2a-version": A2A_VERSION,
@@ -145,9 +171,19 @@ function discoveryMessage() {
   };
 }
 
-async function handleA2A(request) {
+function a2aRequestId(request) {
+  const supplied = request.headers.get("x-request-id");
+  if (supplied && /^[A-Za-z0-9_-]{8,128}$/.test(supplied)) return supplied;
+  return `xgr_${crypto.randomUUID().replaceAll("-", "")}`;
+}
+
+async function handleA2A(request, env) {
+  const id = a2aRequestId(request);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: headers() });
-  if (request.method === "GET" || request.method === "HEAD") return new Response(request.method === "HEAD" ? null : JSON.stringify({ agent_card: AGENT_CARD, discovery: PUBLIC_DISCOVERY }), { status: 200, headers: headers() });
+  if (request.method === "GET" || request.method === "HEAD") {
+    if (request.method === "GET") await recordAgentJourney(request, env, "discovery", { request_id: id, transport: "a2a", surface: "a2a" });
+    return new Response(request.method === "HEAD" ? null : JSON.stringify({ agent_card: AGENT_CARD, discovery: PUBLIC_DISCOVERY }), { status: 200, headers: { ...headers(), "x-xguard-request-id": id } });
+  }
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST, OPTIONS" });
 
   const requestedVersion = request.headers.get("a2a-version");
@@ -179,7 +215,11 @@ async function handleA2A(request) {
     return rpcError(body.id, -32602, "Invalid params");
   }
 
-  return rpcResult(body.id, { message: discoveryMessage() });
+  await recordAgentJourney(request, env, "discovery", { request_id: id, transport: "a2a", surface: "send_message" });
+  const response = rpcResult(body.id, { message: discoveryMessage() });
+  const responseHeaders = new Headers(response.headers);
+  responseHeaders.set("x-xguard-request-id", id);
+  return new Response(response.body, { status: response.status, headers: responseHeaders });
 }
 
 export default {
@@ -187,10 +227,12 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && (url.pathname === "/.well-known/agent-card.json" || url.pathname === "/.well-known/agent.json")) {
-      return json(AGENT_CARD, 200, { "cache-control": "public, max-age=300", "content-type": "application/a2a+json; charset=utf-8" });
+      const id = a2aRequestId(request);
+      await recordAgentJourney(request, env, "discovery", { request_id: id, transport: "a2a", surface: "agent_card" });
+      return json(AGENT_CARD, 200, { "cache-control": "public, max-age=300", "content-type": "application/a2a+json; charset=utf-8", "x-xguard-request-id": id });
     }
 
-    if (url.pathname === "/a2a") return handleA2A(request);
+    if (url.pathname === "/a2a") return handleA2A(request, env);
 
     return app.fetch(request, env, ctx);
   },

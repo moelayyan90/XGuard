@@ -7,13 +7,10 @@ on:
       - "apps/relay/src/discovery-entry.js"
       - "apps/relay/src/rail-entry.js"
       - ".github/workflows/distribution-surfaces-ci.yml"
-  push:
+  workflow_run:
+    workflows: ["Deploy XGuard Relay"]
     branches: [main]
-    paths:
-      - "llms-install.md"
-      - "apps/relay/src/discovery-entry.js"
-      - "apps/relay/src/rail-entry.js"
-      - ".github/workflows/distribution-surfaces-ci.yml"
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -21,10 +18,16 @@ permissions:
 
 jobs:
   verify:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
 
       - name: Validate agent install guide and marketplace discovery surfaces
         shell: bash
@@ -50,9 +53,11 @@ jobs:
           grep -q 'x-xguard-image-dimensions.*400x400' apps/relay/src/rail-entry.js
 
       - name: Verify canonical MCP remains live
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-distribution-smoke/5.1.0' "$@"; }
           endpoint='https://api.xguardgate.com/mcp'
           init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-distribution-ci","version":"1.0.0"}}}')"
           printf '%s' "$init" | jq -e '.result.serverInfo as $s | (["xguard-secretless-agent-gateway","xguard-universal-paid-secretless-gateway"] | index($s.name)) != null and (["5.0.2","5.1.0"] | index($s.version)) != null' >/dev/null
@@ -64,14 +69,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-distribution-smoke/5.1.0' "$@"; }
           ready=0
           for i in {1..60}; do
+            worker_headers="$(mktemp)"
+            curl --silent --show-error --max-time 10 -D "$worker_headers" 'https://api.xguardgate.com/v1/ready?distribution-verification=1' -o /dev/null || true
             connect="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/connect' || true)"
             card="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/.well-known/mcp/server-card.json' || true)"
             identity="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/identity' || true)"
             llms="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/llms.txt' || true)"
             sitemap="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/sitemap.xml' || true)"
-            if printf '%s' "$connect" | grep -q 'Connect XGuard' && \
+            if grep -qi "^x-xguard-worker-version-tag: git-${DEPLOY_SHA:0:12}" "$worker_headers" && \
+               printf '%s' "$connect" | grep -q 'Connect XGuard' && \
                printf '%s' "$card" | jq -e '.serverInfo.name == "XGuard Universal Paid AI Agent + Secretless Gateway" and .serverInfo.version == "5.1.0" and ([.tools[].name] | index("xguard.web.fetch") != null) and ([.tools[].name] | index("xguard_egress_fetch") != null)' >/dev/null 2>&1 && \
                printf '%s' "$identity" | jq -e '.name == "XGuard Universal Paid AI Agent + Secretless Gateway" and .version == "5.1.0" and .discovery.smithery_server_card != null' >/dev/null 2>&1 && \
                printf '%s' "$llms" | grep -q 'Smithery server card' && \

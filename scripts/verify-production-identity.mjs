@@ -6,7 +6,10 @@ const NAME = "XGuard Universal Paid AI Agent + Secretless Gateway";
 function fail(message) { throw new Error(message); }
 
 async function getJson(url, options = {}) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(12_000), ...options });
+  const requestHeaders = new Headers(options.headers || {});
+  requestHeaders.set("x-xguard-traffic-class", "synthetic");
+  requestHeaders.set("user-agent", "xguard-production-verifier/5.1.0");
+  const response = await fetch(url, { signal: AbortSignal.timeout(12_000), ...options, headers: requestHeaders });
   if (!response.ok) fail(`${url}: HTTP ${response.status}`);
   return { response, body: await response.json() };
 }
@@ -20,6 +23,8 @@ if (openapi.body.info?.title !== NAME || openapi.body.info?.version !== VERSION)
 for (const path of ["/v1/capabilities", "/v1/pricing", "/v1/pricing/quote", "/v1/tools/web.fetch", "/v1/egress", "/v1/egress/fetch", "/v1/proof", "/verify", "/settle"]) {
   if (!openapi.body.paths?.[path]) fail(`OpenAPI is missing ${path}`);
 }
+if (!Array.isArray(openapi.body.paths["/v1/pricing/quote"].post?.requestBody?.content?.["application/json"]?.schema?.oneOf)) fail("OpenAPI is missing tolerant quote request envelopes");
+if (openapi.body.paths["/v1/tools/web.fetch"].post?.["x-xguard-payment-flow"]?.payment_required !== true) fail("OpenAPI does not make paid execution mandatory");
 
 const plugin = await getJson(`${API}/.well-known/ai-plugin.json`);
 if (plugin.body.name_for_human !== NAME || plugin.body.xguard?.product_version !== VERSION || plugin.body.xguard?.primary_product !== "Universal Paid AI Agent + Secretless Gateway") fail("AI plugin has stale product taxonomy");
@@ -28,6 +33,7 @@ if (plugin.body.xguard?.component_versions?.x402 !== VERSION) fail("AI plugin ha
 const agent = await getJson(`${API}/.well-known/agent-card.json`);
 if (!(agent.response.headers.get("content-type") || "").includes("application/a2a+json")) fail("Agent Card media type is wrong");
 if (agent.body.name !== NAME || agent.body.version !== VERSION || !agent.body.skills?.some(skill => skill.id === "xguard-paid-web-fetch") || !agent.body.skills?.some(skill => skill.id === "xguard-secretless-egress")) fail("Agent Card has stale identity or missing paid/secretless skills");
+if (!agent.body.capabilities?.extensions?.some(extension => extension.params?.challenge_status === 402 && extension.params?.settlement_before_execution === true)) fail("Agent Card is missing the automated x402 transition");
 
 const initialize = await getJson(`${API}/mcp`, {
   method: "POST",
@@ -39,19 +45,25 @@ if (initialize.body.result?.serverInfo?.name !== "xguard-universal-paid-secretle
 const tools = await getJson(`${API}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }) });
 const names = new Set((tools.body.result?.tools || []).map(tool => tool.name));
 for (const name of ["xguard.capabilities", "xguard.pricing.quote", "xguard.web.fetch", "xguard_secretless_egress", "xguard_egress_fetch", "xguard_proofrail", "xguard_verify_proof", "xguard_action_rail", "xguard_facilitator", "xguard_route"]) if (!names.has(name)) fail(`MCP is missing ${name}`);
+const paidTool = (tools.body.result?.tools || []).find(tool => tool.name === "xguard.web.fetch");
+if (paidTool?._meta?.["xguard/payment"]?.required !== true || paidTool?._meta?.["xguard/payment"]?.settlement_before_execution !== true) fail("MCP does not make the paid transition explicit");
 
 const capabilities = await getJson(`${API}/v1/capabilities`);
 const actual = new Map(capabilities.body.tools?.map(tool => [tool.id, tool]));
 if (actual.get("xguard.web.fetch")?.available !== true || actual.get("xguard.web.search")?.available !== false || actual.get("xguard.ai.generate")?.available !== false) fail("Capabilities advertise unavailable connectors");
 
+const pricing = await getJson(`${API}/v1/pricing`);
+if (pricing.body.quote_request?.canonical_shape?.url !== "https://example.com/" || pricing.body.paid_flow?.first_response !== "HTTP 402 with Payment-Required and a signed offer") fail("Pricing discovery is missing the canonical automated quote flow");
+
 const payment = await getJson(`${API}/.well-known/payment-manifest`);
 if (payment.body.x402_version !== 2 || payment.body.resources?.[0]?.payment_identifier_required !== true || payment.body.resources?.[0]?.settlement_before_execution !== true) fail("Payment manifest is stale or unsafe");
 
-const home = await fetch(`${SITE}/`, { signal: AbortSignal.timeout(12_000) });
+const syntheticHeaders = { "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-production-verifier/5.1.0" };
+const home = await fetch(`${SITE}/`, { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const homeText = await home.text();
 if (!home.ok || !homeText.includes("Universal Paid AI Agent + Secretless Gateway") || home.headers.get("x-xguard-version") !== VERSION) fail("Homepage has stale identity");
 
-const www = await fetch("https://www.xguardgate.com/connect?verification=1", { redirect: "manual", signal: AbortSignal.timeout(12_000) });
+const www = await fetch("https://www.xguardgate.com/connect?verification=1", { headers: syntheticHeaders, redirect: "manual", signal: AbortSignal.timeout(12_000) });
 if (www.status !== 308 || www.headers.get("location") !== `${SITE}/connect?verification=1`) fail("www canonical redirect is not active");
 
 console.log(JSON.stringify({ ok: true, name: NAME, version: VERSION, mcp_tools: names.size, www_redirect: 308 }));

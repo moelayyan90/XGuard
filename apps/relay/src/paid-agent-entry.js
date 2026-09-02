@@ -36,7 +36,54 @@ const QUOTE_TTL_SECONDS = 300;
 const PAYMENT_TIMEOUT_SECONDS = 300;
 const MAX_RECONCILIATION_ATTEMPTS = 3;
 const ALLOWED_FINANCIAL_STATES = new Set(["pending", "verified", "settled", "succeeded", "failed", "ambiguous", "refunded", "credited"]);
-const METRIC_EVENTS = new Set(["challenge", "verified", "settled", "succeeded", "replay", "verification_failed", "settlement_failed", "settlement_ambiguous", "upstream_failed", "credited"]);
+const JOURNEY_EVENTS = new Set([
+  "discovery",
+  "tools_list",
+  "tools_call",
+  "quote_attempt",
+  "quote_success",
+  "payment_required",
+  "payment_attempt",
+  "payment_verified",
+  "settlement_success",
+  "settlement_failed",
+]);
+const METRIC_EVENTS = new Set([
+  ...JOURNEY_EVENTS,
+  "succeeded",
+  "replay",
+  "verification_failed",
+  "settlement_ambiguous",
+  "upstream_failed",
+  "credited",
+]);
+const QUOTE_CANONICAL_EXAMPLE = { url: "https://example.com/", method: "GET", testnet: true };
+const QUOTE_ACCEPTED_SHAPES = [
+  { name: "canonical_flat", example: QUOTE_CANONICAL_EXAMPLE },
+  { name: "tool_input", example: { tool: TOOL, input: { url: "https://example.com/", method: "GET" }, testnet: true } },
+  { name: "mcp_arguments", example: { name: TOOL, arguments: { url: "https://example.com/", method: "GET" }, testnet: true } },
+  { name: "tool_parameters", example: { tool_name: TOOL, parameters: { url: "https://example.com/", method: "GET" }, network: TESTNET } },
+  { name: "function_call", example: { function: { name: TOOL, arguments: "{\"url\":\"https://example.com/\",\"method\":\"GET\"}" }, testnet: true } },
+];
+const DISCOVERY_PATHS = new Set([
+  "/a2a",
+  "/openapi.json",
+  "/llms.txt",
+  "/server.json",
+  "/skill.md",
+  "/architecture",
+  "/supported",
+  "/facilitator",
+  "/.well-known/agent-card.json",
+  "/.well-known/agent.json",
+  "/.well-known/payment-manifest",
+  "/.well-known/payment-manifest.json",
+  "/.well-known/x402-facilitator.json",
+  "/.well-known/xguard.json",
+  "/.well-known/xguard-egress.json",
+  "/.well-known/xguard-egress-key.json",
+  "/.well-known/xguard-proof-key.json",
+]);
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -74,7 +121,7 @@ function headers(extra = {}) {
     "cache-control": "no-store",
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,HEAD,POST,OPTIONS",
-    "access-control-allow-headers": "content-type,payment-signature,x-xguard-quote,x-xguard-credit,x-request-id",
+    "access-control-allow-headers": "content-type,payment-signature,x-xguard-quote,x-xguard-credit,x-request-id,x-xguard-traffic-class",
     "access-control-expose-headers": "payment-required,payment-response,x-xguard-request-id,x-xguard-payment-identifier,x-xguard-replay,x-xguard-proof,x-xguard-receipt,x-xguard-credit",
     "strict-transport-security": "max-age=31536000; includeSubDomains",
     "x-content-type-options": "nosniff",
@@ -109,6 +156,7 @@ const ERROR_MESSAGES = {
   invalid_json: "The request body is not valid JSON.",
   payload_too_large: "The request body exceeded the configured size limit.",
   invalid_input: "The tool input is invalid.",
+  ambiguous_input: "The request contains conflicting input envelopes or values.",
   unsupported_tool: "The requested tool is not enabled.",
   quote_required: "A current signed XGuard quote is required before payment.",
   quote_invalid: "The signed quote is invalid or does not match this request.",
@@ -123,6 +171,7 @@ const ERROR_MESSAGES = {
   rate_limited: "The request rate limit was exceeded.",
   target_not_public: "The target is not a permitted public HTTPS destination.",
   dns_unresolved: "The target did not resolve to a public address.",
+  dns_unavailable: "Public DNS validation is temporarily unavailable; no quote was issued.",
   content_type_not_allowed: "The upstream content type is not supported.",
   upstream_too_large: "The upstream response exceeded the configured size limit.",
   upstream_timeout: "The upstream request timed out.",
@@ -178,7 +227,7 @@ function capabilities(env) {
     },
     tools: [
       { id: "xguard.capabilities", available: true, paid: false, endpoint: `${API}/v1/capabilities` },
-      { id: "xguard.pricing.quote", available: true, paid: false, endpoint: `${API}/v1/pricing/quote` },
+      { id: "xguard.pricing.quote", available: true, paid: false, endpoint: `${API}/v1/pricing/quote`, request: quoteRequestGuidance() },
       {
         id: TOOL,
         available: mainnet.configured,
@@ -233,6 +282,14 @@ function pricing(env) {
     },
     quote_endpoint: `${API}/v1/pricing/quote`,
     quote_ttl_seconds: QUOTE_TTL_SECONDS,
+    quote_request: quoteRequestGuidance(),
+    paid_flow: {
+      execute: `POST ${mainnet.resource}`,
+      testnet_execute: `POST ${testnet.resource}`,
+      first_response: "HTTP 402 with Payment-Required and a signed offer",
+      retry: "Sign the advertised x402 v2 requirements and retry the identical request with Payment-Signature.",
+      success: "HTTP 200 with Payment-Response, signed receipt, and ProofRail evidence",
+    },
   };
 }
 
@@ -280,28 +337,212 @@ async function verifyJws(env, compact) {
   return response.ok && result?.valid === true ? payload : null;
 }
 
-function normalizeFetchInput(raw) {
-  const source = raw?.input && typeof raw.input === "object" ? raw.input : raw;
-  let target;
-  try { target = new URL(String(source?.url || "")); } catch { return null; }
-  if (target.protocol !== "https:" || target.username || target.password || target.hash) return null;
-  const method = String(source?.method || "GET").toUpperCase();
-  if (!new Set(["GET", "HEAD"]).has(method)) return null;
-  const timeoutMs = Math.max(1000, Math.min(10000, Number(source?.timeout_ms || 8000)));
-  const maxBytes = Math.max(1024, Math.min(HARD_MAX_BYTES, Number(source?.max_bytes || HARD_MAX_BYTES)));
-  const mode = ["auto", "text", "json"].includes(source?.mode) ? source.mode : "auto";
-  return { url: target.toString(), method, timeout_ms: Math.trunc(timeoutMs), max_bytes: Math.trunc(maxBytes), mode };
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-async function issueQuote(env, raw, id) {
-  const tool = String(raw?.tool || TOOL);
-  if (tool !== TOOL) return { response: error("unsupported_tool", 400, id) };
-  const input = normalizeFetchInput(raw);
-  if (!input) return { response: error("invalid_input", 400, id) };
+function quoteRequestGuidance() {
+  return {
+    endpoint: `${API}/v1/pricing/quote`,
+    method: "POST",
+    content_type: "application/json",
+    canonical_shape: QUOTE_CANONICAL_EXAMPLE,
+    accepted_shapes: QUOTE_ACCEPTED_SHAPES,
+    required: { url: "A public HTTPS URL without credentials or a fragment." },
+    optional: {
+      tool: { accepted: [TOOL], default: TOOL },
+      method: { accepted: ["GET", "HEAD"], default: "GET" },
+      timeout_ms: { type: "integer", minimum: 1000, maximum: 10000, default: 8000, aliases: ["timeoutMs"] },
+      max_bytes: { type: "integer", minimum: 1024, maximum: HARD_MAX_BYTES, default: HARD_MAX_BYTES, aliases: ["maxBytes"] },
+      mode: { accepted: ["auto", "text", "json"], default: "auto" },
+      testnet: { type: "boolean", default: false, equivalent_network: TESTNET },
+      network: { accepted: [MAINNET, TESTNET, "base", "base-mainnet", "base-sepolia"] },
+    },
+    url_aliases: ["url", "target_url", "targetUrl", "uri", "target"],
+    next: "Send the returned normalized input and signed quote to execution_url. The first call returns HTTP 402; construct an official x402 v2 Payment-Signature from Payment-Required and retry the identical request.",
+  };
+}
+
+function validationError(code, id, issues, status = 400, retryable = false) {
+  return error(code, status, id, {
+    retryable,
+    details: {
+      issues,
+      retry: quoteRequestGuidance(),
+    },
+  });
+}
+
+async function quoteRejection(code, id, issues, observation = {}, status = 400, retryable = false) {
+  console.log(JSON.stringify({
+    event: "quote_rejected",
+    request_id: id,
+    traffic_class: observation.trafficClass === "synthetic" ? "synthetic" : "external",
+    transport: safeReason(observation.transport, "http"),
+    code: safeReason(code, "invalid_input"),
+    retryable,
+  }));
+  return { response: validationError(code, id, issues, status, retryable) };
+}
+
+function readAliased(source, names) {
+  const entries = names
+    .filter(name => Object.prototype.hasOwnProperty.call(source, name) && source[name] !== undefined && source[name] !== null && source[name] !== "")
+    .map(name => ({ name, value: source[name] }));
+  if (!entries.length) return { value: undefined };
+  const first = String(entries[0].value);
+  if (entries.some(entry => String(entry.value) !== first)) return { conflict: entries.map(entry => entry.name) };
+  return { value: entries[0].value };
+}
+
+function parseArguments(value) {
+  if (isRecord(value)) return value;
+  if (typeof value !== "string" || value.length > MAX_TOOL_REQUEST_BYTES) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function inputEnvelope(raw) {
+  if (!isRecord(raw)) return { source: null, shape: null, issues: [{ path: "$", code: "object_required", message: "The JSON body must be an object." }] };
+  const functionCall = isRecord(raw.function) ? raw.function : null;
+  const candidates = [];
+  for (const key of ["input", "arguments", "parameters", "params", "args"]) {
+    if (!Object.prototype.hasOwnProperty.call(raw, key)) continue;
+    const value = parseArguments(raw[key]);
+    if (!value) return { source: null, shape: key, issues: [{ path: key, code: "object_required", message: `${key} must be a JSON object, or a JSON-encoded object for arguments.` }] };
+    candidates.push({ key, value });
+  }
+  if (functionCall && Object.prototype.hasOwnProperty.call(functionCall, "arguments")) {
+    const value = parseArguments(functionCall.arguments);
+    if (!value) return { source: null, shape: "function.arguments", issues: [{ path: "function.arguments", code: "object_required", message: "function.arguments must contain a JSON object." }] };
+    candidates.push({ key: "function.arguments", value });
+  }
+  if (candidates.length > 1) {
+    let first;
+    try { first = canonicalize(candidates[0].value); } catch { first = null; }
+    if (!first || candidates.some(candidate => canonicalize(candidate.value) !== first)) {
+      return { source: null, shape: "conflicting", issues: [{ path: "$", code: "conflicting_envelopes", message: `Use one input envelope. Conflicting envelopes: ${candidates.map(candidate => candidate.key).join(", ")}.` }] };
+    }
+  }
+  return { source: candidates[0]?.value || raw, shape: candidates[0]?.key || "canonical_flat", functionCall, issues: [] };
+}
+
+function normalizeFetchInputDetailed(raw) {
+  const envelope = inputEnvelope(raw);
+  if (!envelope.source) return { ok: false, issues: envelope.issues, shape: envelope.shape };
+  const source = envelope.source;
+  const issues = [];
+  const urlValue = readAliased(source, ["url", "target_url", "targetUrl", "uri", "target"]);
+  if (urlValue.conflict) issues.push({ path: "url", code: "conflicting_aliases", message: `Provide only one URL value; conflicting fields: ${urlValue.conflict.join(", ")}.` });
+  if (urlValue.value === undefined) issues.push({ path: "url", code: "required", message: "Provide url as a public HTTPS URL." });
+  let target;
+  if (urlValue.value !== undefined) {
+    try { target = new URL(String(urlValue.value)); } catch { issues.push({ path: "url", code: "invalid_url", message: "url must be an absolute public HTTPS URL." }); }
+  }
+  if (target && (target.protocol !== "https:" || target.username || target.password || target.hash)) {
+    issues.push({ path: "url", code: "https_public_url_required", message: "url must use HTTPS and must not include credentials or a fragment." });
+  }
+  const methodValue = readAliased(source, ["method", "http_method", "httpMethod"]);
+  if (methodValue.conflict) issues.push({ path: "method", code: "conflicting_aliases", message: "Conflicting method aliases were supplied." });
+  const method = String(methodValue.value || "GET").toUpperCase();
+  if (!new Set(["GET", "HEAD"]).has(method)) issues.push({ path: "method", code: "unsupported_value", message: "method must be GET or HEAD." });
+  const timeoutValue = readAliased(source, ["timeout_ms", "timeoutMs"]);
+  if (timeoutValue.conflict) issues.push({ path: "timeout_ms", code: "conflicting_aliases", message: "Conflicting timeout aliases were supplied." });
+  const timeoutMs = timeoutValue.value === undefined ? 8000 : Number(timeoutValue.value);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 10000) issues.push({ path: "timeout_ms", code: "out_of_range", message: "timeout_ms must be an integer from 1000 through 10000." });
+  const maxBytesValue = readAliased(source, ["max_bytes", "maxBytes"]);
+  if (maxBytesValue.conflict) issues.push({ path: "max_bytes", code: "conflicting_aliases", message: "Conflicting size-limit aliases were supplied." });
+  const maxBytes = maxBytesValue.value === undefined ? HARD_MAX_BYTES : Number(maxBytesValue.value);
+  if (!Number.isInteger(maxBytes) || maxBytes < 1024 || maxBytes > HARD_MAX_BYTES) issues.push({ path: "max_bytes", code: "out_of_range", message: `max_bytes must be an integer from 1024 through ${HARD_MAX_BYTES}.` });
+  const mode = String(source.mode || "auto").toLowerCase();
+  if (!["auto", "text", "json"].includes(mode)) issues.push({ path: "mode", code: "unsupported_value", message: "mode must be auto, text, or json." });
+  if (issues.length) return { ok: false, issues, shape: envelope.shape };
+  return { ok: true, input: { url: target.toString(), method, timeout_ms: timeoutMs, max_bytes: maxBytes, mode }, shape: envelope.shape };
+}
+
+function normalizeFetchInput(raw) {
+  const normalized = normalizeFetchInputDetailed(raw);
+  return normalized.ok ? normalized.input : null;
+}
+
+function normalizeTool(raw, functionCall) {
+  const values = [raw?.tool, raw?.tool_name, raw?.toolName, raw?.tool_id, raw?.toolId, raw?.name, functionCall?.name]
+    .filter(value => value !== undefined && value !== null && value !== "")
+    .map(String);
+  if (!values.length) return { value: TOOL };
+  if (values.some(value => value !== values[0])) return { conflict: values };
+  return { value: values[0] };
+}
+
+function normalizeNetwork(raw, source) {
+  const booleanValues = [raw?.testnet, source?.testnet].filter(value => value !== undefined);
+  if (booleanValues.some(value => typeof value !== "boolean")) return { issue: { path: "testnet", code: "boolean_required", message: "testnet must be true or false." } };
+  if (booleanValues.length > 1 && booleanValues.some(value => value !== booleanValues[0])) return { issue: { path: "testnet", code: "conflicting_values", message: "Conflicting testnet values were supplied." } };
+  const networkValues = [raw?.network, source?.network, raw?.chain, source?.chain, raw?.environment, source?.environment]
+    .filter(value => value !== undefined && value !== null && value !== "")
+    .map(value => String(value).toLowerCase());
+  const aliases = new Map([
+    [MAINNET, false], ["base", false], ["base-mainnet", false], ["mainnet", false], ["production", false],
+    [TESTNET, true], ["base-sepolia", true], ["sepolia", true], ["testnet", true],
+  ]);
+  if (networkValues.some(value => !aliases.has(value))) return { issue: { path: "network", code: "unsupported_value", message: `network must be one of ${[...aliases.keys()].join(", ")}.` } };
+  const requested = [...booleanValues, ...networkValues.map(value => aliases.get(value))];
+  if (requested.length > 1 && requested.some(value => value !== requested[0])) return { issue: { path: "network", code: "conflicting_values", message: "testnet, network, chain, and environment must select the same network." } };
+  return { testnet: requested[0] === true };
+}
+
+function normalizeQuoteRequest(raw) {
+  const envelope = inputEnvelope(raw);
+  if (!envelope.source) return { ok: false, code: envelope.shape === "conflicting" ? "ambiguous_input" : "invalid_input", issues: envelope.issues };
+  const tool = normalizeTool(raw, envelope.functionCall);
+  if (tool.conflict) return { ok: false, code: "ambiguous_input", issues: [{ path: "tool", code: "conflicting_values", message: `Conflicting tool names were supplied: ${tool.conflict.join(", ")}.` }] };
+  if (tool.value !== TOOL) return { ok: false, code: "unsupported_tool", issues: [{ path: "tool", code: "unsupported_value", message: `Only ${TOOL} can currently receive a paid execution quote.` }] };
+  const input = normalizeFetchInputDetailed(raw);
+  if (!input.ok) return { ok: false, code: "invalid_input", issues: input.issues };
+  const network = normalizeNetwork(raw, envelope.source);
+  if (network.issue) return { ok: false, code: "ambiguous_input", issues: [network.issue] };
+  return { ok: true, tool: TOOL, input: input.input, testnet: network.testnet, shape: envelope.shape };
+}
+
+function quoteNextStep(config, quoteToken, quote) {
+  return {
+    execution_url: config.resource,
+    method: "POST",
+    body: quote.input,
+    quote: { header: "X-XGuard-Quote", value: quoteToken },
+    expected_first_status: 402,
+    payment: {
+      protocol: "x402",
+      version: 2,
+      challenge_header: "Payment-Required",
+      retry_header: "Payment-Signature",
+      instructions: "Build an official x402 v2 payment payload from Payment-Required, sign it with the payer, then retry the identical execution request with Payment-Signature. Do not change the body or reuse this payment identifier for another request.",
+    },
+    success: "HTTP 200 returns the result, Payment-Response, a signed receipt, and ProofRail evidence.",
+  };
+}
+
+async function issueQuote(env, raw, id, observation = {}) {
+  const normalized = normalizeQuoteRequest(raw);
+  if (!normalized.ok) return quoteRejection(normalized.code, id, normalized.issues, observation);
+  const input = normalized.input;
   const targetCheck = await publicDns(new URL(input.url).hostname);
-  if (!targetCheck.ok) return { response: error(targetCheck.code, targetCheck.code === "dns_unresolved" ? 422 : 403, id) };
-  const config = gatewayConfig(env, raw?.testnet === true);
-  if (!config.configured || !env.PROOF_AUTHORITY || !env.PAID_GATEWAY) return { response: error("payment_not_configured", 503, id) };
+  if (!targetCheck.ok) {
+    const resolverUnavailable = targetCheck.code === "dns_unavailable";
+    return quoteRejection(targetCheck.code, id, [{
+      path: "url",
+      code: targetCheck.code,
+      message: resolverUnavailable
+        ? "Trusted public DNS resolvers could not be reached. Retry the same quote request later."
+        : "The hostname has no public A or AAAA address, or a private address was returned.",
+    }], observation, resolverUnavailable ? 503 : targetCheck.code === "dns_unresolved" ? 422 : 403, resolverUnavailable);
+  }
+  const config = gatewayConfig(env, normalized.testnet);
+  if (!config.configured || !env.PROOF_AUTHORITY || !env.PAID_GATEWAY) return quoteRejection("payment_not_configured", id, [{ path: "$", code: "payment_not_configured", message: "The selected network cannot safely issue paid execution quotes right now." }], observation, 503, true);
   const now = Math.floor(Date.now() / 1000);
   const inputDigest = await sha256(canonicalize(input));
   const quoteId = `xgq_${crypto.randomUUID().replaceAll("-", "")}`;
@@ -329,7 +570,18 @@ async function issueQuote(env, raw, id) {
     expires_at: now + QUOTE_TTL_SECONDS,
   };
   const quote = await createJWS(payload, await signerFor(env));
-  return { payload, quote, response: json({ quote, ...payload }, 200, { "x-xguard-request-id": id }) };
+  await observeStage(env, "quote_success", id, {
+    traffic_class: observation.trafficClass,
+    transport: observation.transport,
+    tool: TOOL,
+    network: config.network,
+    request_shape: normalized.shape,
+  });
+  return {
+    payload,
+    quote,
+    response: json({ quote, ...payload, request_shape: normalized.shape, next: quoteNextStep(config, quote, payload) }, 200, { "x-xguard-request-id": id }),
+  };
 }
 
 function isPrivateIpv4(hostname) {
@@ -379,35 +631,40 @@ async function publicDns(hostname) {
   if (!hostnameAllowed(hostname)) return { ok: false, code: "target_not_public" };
   if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname) || hostname.includes(":")) return { ok: true, addresses: [hostname] };
   const answers = [];
+  let trustedResponses = 0;
+  let successfulFamilies = 0;
+  let unavailableFamilies = 0;
   for (const type of ["A", "AAAA"]) {
     const resolvers = [
       { endpoint: "https://one.one.one.one/dns-query", accept: "application/dns-json", hosts: new Set(["one.one.one.one", "cloudflare-dns.com"]) },
       { endpoint: "https://cloudflare-dns.com/dns-query", accept: "application/dns-json", hosts: new Set(["cloudflare-dns.com", "one.one.one.one"]) },
       { endpoint: "https://dns.google/resolve", accept: "application/json", hosts: new Set(["dns.google"]) },
     ];
-    let body = null;
-    try {
-      body = await Promise.any(resolvers.map(async resolver => {
+    const results = await Promise.allSettled(resolvers.map(async resolver => {
         const endpoint = new URL(resolver.endpoint);
         endpoint.searchParams.set("name", hostname);
         endpoint.searchParams.set("type", type);
         const response = await fetch(endpoint, { headers: { accept: resolver.accept }, signal: AbortSignal.timeout(2500), redirect: "follow" });
         if (!response.ok || !resolver.hosts.has(new URL(response.url || endpoint).hostname)) throw new Error("dns_resolver_unavailable");
         const candidate = await response.json().catch(() => null);
-        if (!candidate || Number(candidate.Status ?? 0) !== 0) throw new Error("dns_resolution_failed");
+        if (!candidate || !Number.isInteger(Number(candidate.Status ?? 0))) throw new Error("dns_response_invalid");
         return candidate;
       }));
-    } catch {
-      // Both address families must be resolved by at least one trusted DoH
-      // endpoint, so availability fallback never weakens SSRF fail-closed.
-    }
-    if (!body) return { ok: false, code: "dns_unresolved" };
-    for (const answer of Array.isArray(body?.Answer) ? body.Answer : []) {
-      if (answer.type === 1 || answer.type === 28) answers.push(String(answer.data || ""));
+    const bodies = results.filter(result => result.status === "fulfilled").map(result => result.value);
+    trustedResponses += bodies.length;
+    const successful = bodies.filter(body => Number(body.Status ?? 0) === 0);
+    if (successful.length) successfulFamilies += 1;
+    else if (!bodies.length || bodies.some(body => ![0, 3].includes(Number(body.Status ?? 0)))) unavailableFamilies += 1;
+    for (const body of successful) {
+      for (const answer of Array.isArray(body?.Answer) ? body.Answer : []) {
+        if (answer.type === 1 || answer.type === 28) answers.push(String(answer.data || ""));
+      }
     }
   }
+  if (!trustedResponses || unavailableFamilies) return { ok: false, code: "dns_unavailable" };
+  if (successfulFamilies < 2) return { ok: false, code: "dns_unresolved" };
   if (!answers.length || answers.some(address => isPrivateIpv4(address) || isPrivateIpv6(address))) return { ok: false, code: answers.length ? "target_not_public" : "dns_unresolved" };
-  return { ok: true, addresses: answers };
+  return { ok: true, addresses: [...new Set(answers)] };
 }
 
 function allowedContentType(value) {
@@ -623,7 +880,7 @@ export class PaidGatewayState {
       if (!METRIC_EVENTS.has(body.event)) return doJson({ error: "invalid_metric" }, 400);
       const current = await this.state.storage.get("metrics:v1") || { started_at: new Date().toISOString(), events: {}, settled_usd_micros: 0, latency_ms_total: 0, latency_samples: 0 };
       current.events[body.event] = Number(current.events[body.event] || 0) + 1;
-      if (body.event === "settled") current.settled_usd_micros += Math.max(0, Number(body.amount_usd_micros || 0));
+      if (body.event === "settlement_success") current.settled_usd_micros += Math.max(0, Number(body.amount_usd_micros || 0));
       if (body.event === "succeeded" && Number.isFinite(Number(body.latency_ms))) {
         current.latency_ms_total += Math.max(0, Number(body.latency_ms));
         current.latency_samples += 1;
@@ -752,6 +1009,35 @@ async function recordMetric(env, event, details = {}) {
   await postStub(gatewayIndex(env), "/index/metric", { event, ...details }).catch(() => {});
 }
 
+function trafficClass(request) {
+  return request?.headers?.get("x-xguard-traffic-class") === "synthetic" ? "synthetic" : "external";
+}
+
+async function observeStage(env, event, id, details = {}) {
+  if (!JOURNEY_EVENTS.has(event)) return;
+  const traffic = details.traffic_class === "synthetic" ? "synthetic" : "external";
+  const safe = {
+    event,
+    request_id: id,
+    traffic_class: traffic,
+    ...(details.transport ? { transport: safeLabel(details.transport) } : {}),
+    ...(details.surface ? { surface: safeLabel(details.surface) } : {}),
+    ...(details.tool ? { tool: safeLabel(details.tool) } : {}),
+    ...(details.network ? { network: String(details.network) } : {}),
+    ...(details.request_shape ? { request_shape: safeLabel(details.request_shape) } : {}),
+    ...(details.outcome ? { outcome: safeReason(details.outcome, "unknown") } : {}),
+    ...(details.amount_atomic ? { amount_atomic: String(details.amount_atomic) } : {}),
+  };
+  console.log(JSON.stringify(safe));
+  if (traffic === "external") await recordMetric(env, event, details.metric || {});
+}
+
+export async function recordAgentJourney(request, env, event, details = {}) {
+  const id = details.request_id || requestId(request);
+  await observeStage(env, event, id, { ...details, traffic_class: trafficClass(request) });
+  return id;
+}
+
 async function logFinancialEvent(event, requestIdValue, paymentIdentifier, details = {}) {
   console.log(JSON.stringify({ event, request_id: requestIdValue, payment_identifier_hash: await sha256(paymentIdentifier), ...details }));
 }
@@ -759,6 +1045,11 @@ async function logFinancialEvent(event, requestIdValue, paymentIdentifier, detai
 function safeReason(value, fallback) {
   const reason = String(value || fallback || "unknown");
   return /^[a-z0-9_-]{1,80}$/i.test(reason) ? reason : String(fallback || "unknown");
+}
+
+function safeLabel(value, fallback = "unknown") {
+  const normalized = String(value || "").replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "").slice(0, 80);
+  return normalized || fallback;
 }
 
 function paymentRequirements(config, quote) {
@@ -778,7 +1069,7 @@ function paymentRequirements(config, quote) {
   };
 }
 
-async function paymentRequired(env, config, quoteToken, quote, id, reason = "payment_required") {
+async function paymentRequired(env, config, quoteToken, quote, id, reason = "payment_required", observation = {}) {
   const requirements = paymentRequirements(config, quote);
   const paymentIdentifierExtension = declarePaymentIdentifierExtension(true);
   paymentIdentifierExtension.info.id = quote.payment_identifier;
@@ -819,9 +1110,22 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
         paymentIdentifier: quote.payment_identifier,
         inputDigest: quote.input_digest,
         proofKey: `${API}/.well-known/xguard-proof-key.json`,
+        next: {
+          action: "sign_and_retry",
+          payment_header: "Payment-Signature",
+          instructions: "Use an official x402 v2 client to sign the Payment-Required requirements, then retry the identical request with Payment-Signature. Preserve Payment-Identifier and do not change the request body.",
+          success: "HTTP 200 returns Payment-Response, a signed receipt, and ProofRail evidence.",
+        },
       },
     },
   };
+  await observeStage(env, "payment_required", id, {
+    traffic_class: observation.trafficClass,
+    transport: observation.transport,
+    tool: TOOL,
+    network: config.network,
+    amount_atomic: config.amount,
+  });
   return new Response(JSON.stringify(challenge), {
     status: 402,
     headers: headers({
@@ -1002,7 +1306,7 @@ async function reconcileStoredOperation(state, env) {
   delete record.payment_payload;
   await state.storage.put("operation", record);
   await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, status: "settled" });
-  await recordMetric(env, "settled", { amount_usd_micros: record.network === TESTNET ? 0 : record.customer_price_usd_micros });
+  await recordMetric(env, "settlement_success", { amount_usd_micros: record.network === TESTNET ? 0 : record.customer_price_usd_micros });
   try {
     const result = await performWebFetch(record.input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
@@ -1055,14 +1359,17 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
   }
 }
 
-async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = false) {
+async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = false, transport = "http") {
+  const observation = { trafficClass: trafficClass(request), transport };
   if (!env.PROOF_AUTHORITY || !env.PAID_GATEWAY) return error("payment_not_configured", 503, id);
   const rate = await rateLimit(request, env, "paid-execution", 30);
   if (!rate.allowed) return error("rate_limited", 429, id, { retryable: true, details: { retry_after_seconds: rate.retry_after_seconds } });
-  const input = normalizeFetchInput(rawInput);
-  if (!input) return error("invalid_input", 400, id);
-  const quoteToken = request.headers.get("x-xguard-quote") || rawInput?.quote;
-  if (!quoteToken) return error("quote_required", 428, id, { details: { quote_endpoint: `${API}/v1/pricing/quote` } });
+  const normalizedInput = normalizeFetchInputDetailed(rawInput);
+  if (!normalizedInput.ok) return validationError("invalid_input", id, normalizedInput.issues);
+  const input = normalizedInput.input;
+  const envelope = inputEnvelope(rawInput);
+  const quoteToken = request.headers.get("x-xguard-quote") || rawInput?.quote || envelope.source?.quote;
+  if (!quoteToken) return error("quote_required", 428, id, { details: { quote_endpoint: `${API}/v1/pricing/quote`, retry: quoteRequestGuidance() } });
   const quote = await verifyJws(env, quoteToken);
   if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || quote.tool !== TOOL) return error("quote_invalid", 400, id);
   if (quote.expires_at <= Math.floor(Date.now() / 1000)) return error("quote_expired", 400, id);
@@ -1080,7 +1387,8 @@ async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = fal
   if (credited) return credited;
 
   const signatureHeader = request.headers.get("payment-signature");
-  if (!signatureHeader) return paymentRequired(env, config, quoteToken, quote, id);
+  if (!signatureHeader) return paymentRequired(env, config, quoteToken, quote, id, "payment_required", observation);
+  await observeStage(env, "payment_attempt", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount });
   let paymentPayload;
   try { paymentPayload = decodePaymentSignatureHeader(signatureHeader); } catch { return error("payment_payload_invalid", 400, id); }
   const requirements = paymentRequirements(config, quote);
@@ -1123,7 +1431,7 @@ async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = fal
     }
     if (record.status === "credited") return error("upstream_failed", 502, record.request_id, { retryable: true, details: { execution_credit: record.credit_token, credit_id: record.credit_id } });
     if (record.status === "ambiguous") return error("settlement_ambiguous", 503, record.request_id, { retryable: true, details: { status_url: `${API}/v1/operations/${paymentIdentifier}` } });
-    if (record.status === "failed") return paymentRequired(env, config, quoteToken, quote, record.request_id, "previous_payment_failed");
+    if (record.status === "failed") return paymentRequired(env, config, quoteToken, quote, record.request_id, "previous_payment_failed", observation);
     return error("settlement_ambiguous", 409, record.request_id, { retryable: true });
   }
 
@@ -1141,10 +1449,10 @@ async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = fal
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "failed" });
     await recordMetric(env, "verification_failed");
     await logFinancialEvent("paid_gateway_verification_failed", id, paymentIdentifier, { reason: safeReason(verification?.invalidReason, "invalid_payment") });
-    return paymentRequired(env, config, quoteToken, quote, id, verification?.invalidReason || "payment_verification_failed");
+    return paymentRequired(env, config, quoteToken, quote, id, verification?.invalidReason || "payment_verification_failed", observation);
   }
   await postStub(stub, "/operation/transition", { status: "verified", patch: { verified_at: new Date().toISOString(), payer: verification.payer || identity.from } });
-  await recordMetric(env, "verified");
+  await observeStage(env, "payment_verified", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount });
 
   let settlement;
   try { settlement = await facilitator.settle(paymentPayload, requirements); } catch (cause) {
@@ -1152,7 +1460,8 @@ async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = fal
     const status = classified.ambiguous ? "ambiguous" : "failed";
     await postStub(stub, "/operation/transition", { status, patch: { failure_stage: "settle", failure_reason: classified.reason } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status });
-    await recordMetric(env, classified.ambiguous ? "settlement_ambiguous" : "settlement_failed");
+    if (classified.ambiguous) await recordMetric(env, "settlement_ambiguous");
+    await observeStage(env, "settlement_failed", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, outcome: classified.ambiguous ? "ambiguous" : "failed" });
     await logFinancialEvent(classified.ambiguous ? "paid_gateway_settlement_ambiguous" : "paid_gateway_settlement_failed", id, paymentIdentifier, { reason: classified.reason, network: config.network, amount_atomic: config.amount });
     return classified.ambiguous
       ? error("settlement_ambiguous", 503, id, { retryable: true, details: { status_url: `${API}/v1/operations/${paymentIdentifier}` } })
@@ -1163,13 +1472,21 @@ async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = fal
     const status = ambiguous ? "ambiguous" : "failed";
     await postStub(stub, "/operation/transition", { status, patch: { failure_stage: "settle", failure_reason: settlement?.errorReason || "invalid_settlement_response", observed_transaction: settlement?.transaction || null } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status });
-    await recordMetric(env, ambiguous ? "settlement_ambiguous" : "settlement_failed");
+    if (ambiguous) await recordMetric(env, "settlement_ambiguous");
+    await observeStage(env, "settlement_failed", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, outcome: ambiguous ? "ambiguous" : "failed" });
     await logFinancialEvent(ambiguous ? "paid_gateway_settlement_ambiguous" : "paid_gateway_settlement_failed", id, paymentIdentifier, { reason: safeReason(settlement?.errorReason, "invalid_settlement_response"), network: config.network, amount_atomic: config.amount });
     return error(ambiguous ? "settlement_ambiguous" : "settlement_failed", ambiguous ? 503 : 402, id, { retryable: true });
   }
   const settled = await postStub(stub, "/operation/transition", { status: "settled", patch: { transaction: settlement.transaction, network: settlement.network, payer: settlement.payer || identity.from, settlement } });
   await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "settled" });
-  await recordMetric(env, "settled", { amount_usd_micros: config.testnet ? 0 : config.customerPriceUsdMicros });
+  await observeStage(env, "settlement_success", id, {
+    traffic_class: observation.trafficClass,
+    transport,
+    tool: TOOL,
+    network: config.network,
+    amount_atomic: config.amount,
+    metric: { amount_usd_micros: config.testnet ? 0 : config.customerPriceUsdMicros },
+  });
   let result;
   try {
     result = await performWebFetch(input);
@@ -1192,6 +1509,73 @@ async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = fal
   return successfulResponse(finalRecord, false);
 }
 
+function fetchInputSchema({ quote = false, quoteOptional = false, quoteNetwork = false } = {}) {
+  const properties = {
+    url: { type: "string", format: "uri", pattern: "^https://", description: "Canonical public HTTPS target URL." },
+    target_url: { type: "string", format: "uri", pattern: "^https://", deprecated: true, description: "Accepted alias for url." },
+    targetUrl: { type: "string", format: "uri", pattern: "^https://", deprecated: true, description: "Accepted alias for url." },
+    uri: { type: "string", format: "uri", pattern: "^https://", deprecated: true, description: "Accepted alias for url." },
+    target: { type: "string", format: "uri", pattern: "^https://", deprecated: true, description: "Accepted alias for url." },
+    method: { type: "string", enum: ["GET", "HEAD"], default: "GET" },
+    timeout_ms: { type: "integer", minimum: 1000, maximum: 10000, default: 8000 },
+    timeoutMs: { type: "integer", minimum: 1000, maximum: 10000, deprecated: true },
+    max_bytes: { type: "integer", minimum: 1024, maximum: HARD_MAX_BYTES, default: HARD_MAX_BYTES },
+    maxBytes: { type: "integer", minimum: 1024, maximum: HARD_MAX_BYTES, deprecated: true },
+    mode: { type: "string", enum: ["auto", "text", "json"], default: "auto" },
+  };
+  if (quote || quoteOptional) properties.quote = { type: "string", description: "Compact signed quote returned by xguard.pricing.quote." };
+  if (quoteNetwork) {
+    properties.testnet = { type: "boolean", default: false };
+    properties.network = { type: "string", enum: [MAINNET, TESTNET, "base", "base-mainnet", "base-sepolia", "mainnet", "testnet"] };
+  }
+  return {
+    type: "object",
+    ...(quote ? { required: ["quote"] } : {}),
+    anyOf: ["url", "target_url", "targetUrl", "uri", "target"].map(name => ({ required: [name] })),
+    properties,
+    additionalProperties: false,
+  };
+}
+
+function quoteRequestSchema() {
+  const canonical = fetchInputSchema({ quoteNetwork: true });
+  return {
+    oneOf: [
+      canonical,
+      {
+        type: "object",
+        required: ["input"],
+        properties: { tool: { type: "string", enum: [TOOL] }, input: fetchInputSchema({ quoteNetwork: true }), testnet: { type: "boolean" }, network: canonical.properties.network },
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        required: ["name", "arguments"],
+        properties: { name: { type: "string", enum: [TOOL] }, arguments: { oneOf: [fetchInputSchema({ quoteNetwork: true }), { type: "string", contentMediaType: "application/json" }] }, testnet: { type: "boolean" }, network: canonical.properties.network },
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        required: ["tool_name", "parameters"],
+        properties: { tool_name: { type: "string", enum: [TOOL] }, parameters: fetchInputSchema({ quoteNetwork: true }), testnet: { type: "boolean" }, network: canonical.properties.network },
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        required: ["function"],
+        properties: {
+          function: { type: "object", required: ["name", "arguments"], properties: { name: { type: "string", enum: [TOOL] }, arguments: { oneOf: [fetchInputSchema({ quoteNetwork: true }), { type: "string", contentMediaType: "application/json" }] } }, additionalProperties: false },
+          testnet: { type: "boolean" },
+          network: canonical.properties.network,
+        },
+        additionalProperties: false,
+      },
+    ],
+    description: "Canonical form is a flat object with url. Explicitly supported agent envelopes are documented in x-xguard-accepted-shapes.",
+    "x-xguard-accepted-shapes": QUOTE_ACCEPTED_SHAPES,
+  };
+}
+
 const PAID_MCP_TOOLS = [
   {
     name: "xguard.capabilities",
@@ -1203,38 +1587,21 @@ const PAID_MCP_TOOLS = [
   {
     name: "xguard.pricing.quote",
     title: "Get a signed execution quote",
-    description: "Return a short-lived signed price quote bound to xguard.web.fetch inputs. Free; set testnet=true for Base Sepolia.",
-    inputSchema: {
-      type: "object",
-      required: ["url"],
-      properties: {
-        url: { type: "string", format: "uri", pattern: "^https://" },
-        method: { type: "string", enum: ["GET", "HEAD"], default: "GET" },
-        timeout_ms: { type: "integer", minimum: 1000, maximum: 10000 },
-        max_bytes: { type: "integer", minimum: 1024, maximum: HARD_MAX_BYTES },
-        mode: { type: "string", enum: ["auto", "text", "json"] },
-        testnet: { type: "boolean", default: false },
-      },
-      additionalProperties: false,
+    description: "Use before xguard.web.fetch. Returns a five-minute signed, input-bound quote for 0.001 USDC. Free; set testnet=true for Base Sepolia. Then call xguard.web.fetch, handle HTTP 402, sign Payment-Required with an official x402 v2 client, and retry the identical call with Payment-Signature.",
+    inputSchema: quoteRequestSchema(),
+    _meta: {
+      "xguard/pricing": { amount_atomic: DEFAULT_PRICE_ATOMIC, currency: "USDC", decimals: 6, mainnet: MAINNET, testnet: TESTNET },
+      "xguard/next": { call: TOOL, first_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature" },
     },
     annotations: { readOnlyHint: true, idempotentHint: false },
   },
   {
     name: TOOL,
     title: "Fetch a public HTTPS resource",
-    description: "Fetch one bounded public HTTPS resource after x402 settlement. Requires a signed quote and Payment-Signature; returns a signed receipt and ProofRail evidence.",
-    inputSchema: {
-      type: "object",
-      required: ["url", "quote"],
-      properties: {
-        url: { type: "string", format: "uri", pattern: "^https://" },
-        method: { type: "string", enum: ["GET", "HEAD"], default: "GET" },
-        timeout_ms: { type: "integer", minimum: 1000, maximum: 10000 },
-        max_bytes: { type: "integer", minimum: 1024, maximum: HARD_MAX_BYTES },
-        mode: { type: "string", enum: ["auto", "text", "json"] },
-        quote: { type: "string", description: "Compact signed quote returned by xguard.pricing.quote." },
-      },
-      additionalProperties: false,
+    description: "Paid, read-only public HTTPS fetch. First obtain xguard.pricing.quote (0.001 USDC). Call this tool with the same input and quote; HTTP 402 is required, not optional. Sign Payment-Required using x402 v2 and retry the identical MCP request with Payment-Signature. Execution starts only after settlement and returns Payment-Response, a signed receipt, and ProofRail evidence.",
+    inputSchema: fetchInputSchema({ quote: true }),
+    _meta: {
+      "xguard/payment": { required: true, protocol: "x402", version: 2, price_atomic: DEFAULT_PRICE_ATOMIC, currency: "USDC", challenge_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature", settlement_before_execution: true },
     },
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
   },
@@ -1251,6 +1618,20 @@ function mcpEnvelope(id, value, responseHeaders = {}) {
       isError: false,
     },
   }, 200, responseHeaders);
+}
+
+async function mcpToolError(id, response, requestIdValue) {
+  const value = await response.clone().json().catch(() => ({ error: { code: "tool_error", message: "The tool call failed." } }));
+  return json({
+    jsonrpc: "2.0",
+    id: id ?? null,
+    result: {
+      resultType: "complete",
+      content: [{ type: "text", text: JSON.stringify(value) }],
+      structuredContent: value,
+      isError: true,
+    },
+  }, 200, { "x-xguard-request-id": requestIdValue });
 }
 
 function mcpRpcError(id, code, message, status = 400, data) {
@@ -1308,17 +1689,25 @@ async function handlePaidMcp(request, env, id) {
   const message = parsed.value;
   const invalid = validateMcpRequest(request, message);
   if (invalid) return invalid;
-  if (message.method === "server/discover") return discoverMcp(message.id);
+  const observation = { trafficClass: trafficClass(request), transport: "mcp" };
+  if (message.method === "server/discover") {
+    await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "mcp", surface: "server_discover" });
+    return discoverMcp(message.id);
+  }
+  if (message.method === "initialize") await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "mcp", surface: "initialize" });
+  if (message.method === "tools/list") await observeStage(env, "tools_list", id, { traffic_class: observation.trafficClass, transport: "mcp" });
+  if (message.method === "tools/call") await observeStage(env, "tools_call", id, { traffic_class: observation.trafficClass, transport: "mcp", tool: String(message.params?.name || "unknown") });
   if (message?.method === "tools/call" && message?.params?.name === "xguard.capabilities") {
     return mcpTransportResponse(mcpEnvelope(message.id, capabilities(env), { "x-xguard-request-id": id }), message);
   }
   if (message?.method === "tools/call" && message?.params?.name === "xguard.pricing.quote") {
-    const quoted = await issueQuote(env, message?.params?.arguments || {}, id);
-    if (!quoted.response.ok) return quoted.response;
+    await observeStage(env, "quote_attempt", id, { traffic_class: observation.trafficClass, transport: "mcp", tool: TOOL });
+    const quoted = await issueQuote(env, message?.params?.arguments || {}, id, observation);
+    if (!quoted.response.ok) return mcpTransportResponse(await mcpToolError(message.id, quoted.response, id), message);
     return mcpTransportResponse(mcpEnvelope(message.id, await quoted.response.clone().json(), { "x-xguard-request-id": id }), message);
   }
   if (message?.method === "tools/call" && message?.params?.name === TOOL) {
-    const paid = await handlePaidWebFetch(request, env, id, message?.params?.arguments || {});
+    const paid = await handlePaidWebFetch(request, env, id, message?.params?.arguments || {}, false, "mcp");
     if (!paid.ok) return mcpTransportResponse(paid, message);
     const value = await paid.clone().json();
     const exposed = {};
@@ -1389,6 +1778,7 @@ function paymentManifest(env) {
       url: mainnet.resource,
       testnet_url: testnet.resource,
       quote_url: `${API}/v1/pricing/quote`,
+      quote_request: quoteRequestGuidance(),
       scheme: "exact",
       mainnet: { network: mainnet.network, asset: mainnet.asset, amount: mainnet.amount, pay_to: mainnet.payTo, configured: mainnet.configured },
       testnet: { network: testnet.network, asset: testnet.asset, amount: testnet.amount, pay_to: testnet.payTo, configured: testnet.configured },
@@ -1398,6 +1788,13 @@ function paymentManifest(env) {
       settlement_before_execution: true,
       replay_safe: true,
       post_settlement_failure_policy: "signed_reusable_execution_credit",
+      agent_flow: [
+        "POST quote_url using quote_request.canonical_shape",
+        "POST the returned next.execution_url with the normalized body and X-XGuard-Quote",
+        "On HTTP 402, decode Payment-Required and sign an official x402 v2 payment payload",
+        "Retry the identical execution request with Payment-Signature",
+        "On HTTP 200, verify Payment-Response, the signed receipt, and ProofRail evidence",
+      ],
     }],
     facilitator: {
       configurable: true,
@@ -1465,12 +1862,49 @@ async function operationStatus(env, paymentIdentifier, id) {
 
 function paidOpenApiPaths() {
   const standard = { "application/json": { schema: { type: "object" } } };
+  const quoteContent = {
+    "application/json": {
+      schema: quoteRequestSchema(),
+      examples: Object.fromEntries(QUOTE_ACCEPTED_SHAPES.map(shape => [shape.name, { value: shape.example }])),
+    },
+  };
+  const paidFlow = {
+    price: { amount_atomic: DEFAULT_PRICE_ATOMIC, currency: "USDC", decimals: 6 },
+    steps: [
+      `POST ${API}/v1/pricing/quote`,
+      "POST the returned execution_url with the normalized body and X-XGuard-Quote",
+      "On HTTP 402, sign Payment-Required with an official x402 v2 payer",
+      "Retry the identical request with Payment-Signature",
+      "Verify Payment-Response, signed receipt, and ProofRail evidence on HTTP 200",
+    ],
+    settlement_before_execution: true,
+    payment_required: true,
+  };
   return {
     "/v1/capabilities": { get: { summary: "Discover actual XGuard tool availability", responses: { "200": { description: "Machine-readable capabilities", content: standard } } } },
     "/v1/pricing": { get: { summary: "Inspect prices before execution", responses: { "200": { description: "Published pricing", content: standard } } } },
-    "/v1/pricing/quote": { post: { summary: "Create a signed quote bound to web.fetch inputs", requestBody: { required: true, content: standard }, responses: { "200": { description: "Signed short-lived quote", content: standard }, "400": { description: "Invalid input" } } } },
-    "/v1/tools/web.fetch": { post: { summary: "Fetch a public HTTPS resource after x402 settlement", parameters: [{ name: "X-XGuard-Quote", in: "header", required: true, schema: { type: "string" } }, { name: "Payment-Signature", in: "header", required: false, schema: { type: "string" } }], requestBody: { required: true, content: standard }, responses: { "200": { description: "Result, signed receipt, and ProofRail evidence", content: standard }, "402": { description: "x402 v2 PaymentRequired challenge", content: standard }, "409": { description: "Replay or idempotency conflict" }, "503": { description: "Ambiguous settlement; no upstream execution" } } } },
-    "/v1/tools/web.fetch/testnet": { post: { summary: "Base Sepolia testnet form of xguard.web.fetch", requestBody: { required: true, content: standard }, responses: { "200": { description: "Testnet result" }, "402": { description: "Base Sepolia x402 challenge" } } } },
+    "/v1/pricing/quote": { post: {
+      summary: "Create a signed quote bound to xguard.web.fetch inputs",
+      description: "Free. Canonical request is {url, method?, timeout_ms?, max_bytes?, mode?, testnet?}. Common AI-agent envelopes and camelCase aliases are accepted. The response contains the exact automated next step.",
+      requestBody: { required: true, content: quoteContent },
+      responses: {
+        "200": { description: "Signed five-minute quote plus normalized input and exact next-step instructions", content: standard },
+        "400": { description: "Machine-readable validation error with accepted fields, values, shapes, and retry example", content: standard },
+        "403": { description: "Private, local, metadata, credential-bearing, or XGuard-owned target rejected", content: standard },
+        "422": { description: "Hostname definitively has no public DNS address", content: standard },
+        "503": { description: "Trusted DNS validation or payment configuration temporarily unavailable; retryable", content: standard },
+      },
+      "x-xguard-payment-flow": paidFlow,
+    } },
+    "/v1/tools/web.fetch": { post: {
+      summary: "Fetch a public HTTPS resource only after required x402 settlement",
+      description: "Payment is mandatory. Obtain a signed quote first. The first identical execution call returns HTTP 402; retry only after creating Payment-Signature from Payment-Required. XGuard verifies and settles before any upstream request.",
+      parameters: [{ name: "X-XGuard-Quote", in: "header", required: false, description: "Required here or as body.quote.", schema: { type: "string" } }, { name: "Payment-Signature", in: "header", required: false, description: "Omit on the first call to receive HTTP 402; required on the settled retry.", schema: { type: "string" } }],
+      requestBody: { required: true, content: { "application/json": { schema: fetchInputSchema({ quoteOptional: true }), example: { url: "https://example.com/", method: "GET" } } } },
+      responses: { "200": { description: "Settled result, Payment-Response, signed receipt, and ProofRail evidence", content: standard }, "402": { description: "Required x402 v2 Payment-Required challenge and signed offer", content: standard }, "409": { description: "Replay or idempotency conflict" }, "503": { description: "Ambiguous settlement; no upstream execution" } },
+      "x-xguard-payment-flow": paidFlow,
+    } },
+    "/v1/tools/web.fetch/testnet": { post: { summary: "Base Sepolia testnet form of xguard.web.fetch", description: "Same mandatory x402 v2 flow as mainnet, using Base Sepolia USDC.", requestBody: { required: true, content: { "application/json": { schema: fetchInputSchema({ quoteOptional: true }) } } }, responses: { "200": { description: "Settled testnet result, signed receipt, and ProofRail evidence" }, "402": { description: "Required Base Sepolia x402 challenge" } }, "x-xguard-payment-flow": { ...paidFlow, network: TESTNET } } },
     "/v1/operations/{payment_identifier}": { get: { summary: "Read a payment/execution state", parameters: [{ name: "payment_identifier", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Explicit financial state", content: standard }, "404": { description: "Unknown identifier" } } } },
     "/v1/health": { get: { summary: "Liveness probe", responses: { "200": { description: "Worker is live" } } } },
     "/v1/ready": { get: { summary: "Dependency readiness probe", responses: { "200": { description: "Ready" }, "503": { description: "Dependency unavailable" } } } },
@@ -1490,7 +1924,7 @@ async function improveOpenApi(response) {
   };
   body.paths = { ...(body.paths || {}), ...paidOpenApiPaths() };
   body.servers = [{ url: API }];
-  body.x_xguard = { product: "XGUARD = UNIVERSAL PAID AI AGENT + SECRETLESS GATEWAY", actual_capabilities: `${API}/v1/capabilities`, pricing: `${API}/v1/pricing`, payment_manifest: `${API}/.well-known/payment-manifest` };
+  body.x_xguard = { product: "XGUARD = UNIVERSAL PAID AI AGENT + SECRETLESS GATEWAY", when_to_use: "Use XGuard when an agent needs a paid bounded tool or credential-backed API access without receiving a reusable upstream secret.", actual_capabilities: `${API}/v1/capabilities`, pricing: `${API}/v1/pricing`, quote_request: quoteRequestGuidance(), payment_manifest: `${API}/.well-known/payment-manifest`, paid_operations_require_x402: true };
   const next = new Headers(response.headers);
   next.delete("content-length");
   next.set("x-xguard-version", VERSION);
@@ -1500,7 +1934,7 @@ async function improveOpenApi(response) {
 async function improveLlms(response) {
   if (!(response instanceof Response) || !response.ok) return response;
   const current = await response.clone().text();
-  const addition = `\n## Universal paid tool path\n\nXGuard lets an agent discover a tool, obtain a signed price, pay once with x402 v2 USDC, and execute without an XGuard account or subscription. The first production tool is xguard.web.fetch; advertised search, inference, routing and data connectors are disabled until real connectors are configured.\n\n- Capabilities: ${API}/v1/capabilities\n- Pricing: ${API}/v1/pricing\n- Signed quote: POST ${API}/v1/pricing/quote\n- Paid execution: POST ${API}/v1/tools/web.fetch\n- Testnet execution: POST ${API}/v1/tools/web.fetch/testnet\n- Payment manifest: ${API}/.well-known/payment-manifest\n- Health: ${API}/v1/health\n- Readiness: ${API}/v1/ready\n\nFlow: discovery -> signed quote -> HTTP 402 -> Payment-Signature verification -> settlement -> controlled HTTPS fetch -> signed receipt + ProofRail. Payment-Identifier is mandatory; retries return the stored outcome and do not settle twice.\n`;
+  const addition = `\n## Universal paid tool path\n\nUse XGuard when an agent needs a bounded paid tool or credential-backed API access without putting a reusable upstream API key in agent context. The production paid tool is xguard.web.fetch at 0.001 USDC per request; search, inference, routing and data connectors remain disabled until real connectors are configured.\n\n- Capabilities: ${API}/v1/capabilities\n- Pricing: ${API}/v1/pricing\n- Signed quote: POST ${API}/v1/pricing/quote\n- Paid execution: POST ${API}/v1/tools/web.fetch\n- Testnet execution: POST ${API}/v1/tools/web.fetch/testnet\n- Payment manifest: ${API}/.well-known/payment-manifest\n- Health: ${API}/v1/health\n- Readiness: ${API}/v1/ready\n\nCanonical quote body: {"url":"https://example.com/","method":"GET","testnet":true}. The quote response includes normalized input and next.execution_url. POST that exact input with X-XGuard-Quote. HTTP 402 is mandatory: decode Payment-Required, create and sign an official x402 v2 payment, then retry the identical request with Payment-Signature. XGuard verifies and settles before controlled execution. HTTP 200 returns Payment-Response, a signed receipt and ProofRail evidence. Payment-Identifier is mandatory; an exact retry returns the stored outcome without a second settlement.\n`;
   const next = new Headers(response.headers);
   next.delete("content-length");
   next.set("x-xguard-version", VERSION);
@@ -1511,11 +1945,21 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const id = requestId(request);
+    const observation = { trafficClass: trafficClass(request), transport: "http" };
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: headers() });
-    if (request.method === "GET" && url.pathname === "/mcp") return json(mcpDiscovery(env), 200, { allow: "GET, HEAD, POST, OPTIONS", "cache-control": "public, max-age=60" });
+    if (request.method === "GET" && url.pathname === "/mcp") {
+      await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: "mcp" });
+      return json(mcpDiscovery(env), 200, { allow: "GET, HEAD, POST, OPTIONS", "cache-control": "public, max-age=60" });
+    }
     if (request.method === "HEAD" && url.pathname === "/mcp") return new Response(null, { status: 200, headers: headers({ allow: "GET, HEAD, POST, OPTIONS" }) });
-    if (request.method === "GET" && url.pathname === "/v1/capabilities") return json(capabilities(env), 200, { "cache-control": "public, max-age=60", "x-xguard-request-id": id });
-    if (request.method === "GET" && url.pathname === "/v1/pricing") return json(pricing(env), 200, { "cache-control": "public, max-age=60", "x-xguard-request-id": id });
+    if (request.method === "GET" && url.pathname === "/v1/capabilities") {
+      await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: "capabilities" });
+      return json(capabilities(env), 200, { "cache-control": "public, max-age=60", "x-xguard-request-id": id });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/pricing") {
+      await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: "pricing" });
+      return json(pricing(env), 200, { "cache-control": "public, max-age=60", "x-xguard-request-id": id });
+    }
     if (request.method === "GET" && url.pathname === "/v1/health") return json({ status: "ok", live: true, version: VERSION, request_id: id, checked_at: new Date().toISOString() }, 200, { "x-xguard-request-id": id });
     if (request.method === "GET" && url.pathname === "/v1/ready") {
       const state = await readiness(env);
@@ -1526,12 +1970,19 @@ export default {
       const metrics = await postStub(gatewayIndex(env), "/index/metrics", {});
       return json({ version: VERSION, request_id: id, health_checks_excluded: true, ...metrics.body }, metrics.ok ? 200 : 503, { "x-xguard-request-id": id });
     }
-    if (request.method === "GET" && ["/.well-known/payment-manifest", "/.well-known/payment-manifest.json"].includes(url.pathname)) return json(paymentManifest(env), 200, { "cache-control": "public, max-age=120" });
-    if (request.method === "GET" && url.pathname === "/.well-known/x402-facilitator.json") return json(facilitatorManifest(env), 200, { "cache-control": "public, max-age=120" });
+    if (request.method === "GET" && ["/.well-known/payment-manifest", "/.well-known/payment-manifest.json"].includes(url.pathname)) {
+      await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: "payment_manifest" });
+      return json(paymentManifest(env), 200, { "cache-control": "public, max-age=120" });
+    }
+    if (request.method === "GET" && url.pathname === "/.well-known/x402-facilitator.json") {
+      await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: "facilitator_manifest" });
+      return json(facilitatorManifest(env), 200, { "cache-control": "public, max-age=120" });
+    }
     if (request.method === "POST" && url.pathname === "/v1/pricing/quote") {
+      await observeStage(env, "quote_attempt", id, { traffic_class: observation.trafficClass, transport: "http", tool: TOOL });
       const parsed = await jsonBody(request);
-      if (parsed.error) return error(parsed.error, parsed.error === "payload_too_large" ? 413 : 400, id);
-      return (await issueQuote(env, parsed.value, id)).response;
+      if (parsed.error) return error(parsed.error, parsed.error === "payload_too_large" ? 413 : 400, id, { details: { retry: quoteRequestGuidance() } });
+      return (await issueQuote(env, parsed.value, id, observation)).response;
     }
     if (request.method === "POST" && ["/v1/tools/web.fetch", "/v1/tools/web.fetch/testnet"].includes(url.pathname)) {
       const parsed = await jsonBody(request.clone());
@@ -1549,6 +2000,9 @@ export default {
     let response = await app.fetch(request, env, ctx);
     if (request.method === "GET" && url.pathname === "/openapi.json") response = await improveOpenApi(response);
     if (request.method === "GET" && url.pathname === "/llms.txt") response = await improveLlms(response);
+    if (request.method === "GET" && DISCOVERY_PATHS.has(url.pathname)) {
+      await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: url.pathname.replaceAll("/", "_") || "root" });
+    }
     return response;
   },
 

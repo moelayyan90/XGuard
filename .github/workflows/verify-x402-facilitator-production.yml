@@ -25,6 +25,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-facilitator-verifier/5.1.0' "$@"; }
           ok=0
           for i in {1..40}; do
             provider="$(curl --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator || true)"
@@ -44,6 +45,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-facilitator-verifier/5.1.0' "$@"; }
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.1.0"||x.x402Version!==2||x.kind!=="facilitator"||x.baseUrl!=="https://api.xguardgate.com"||x.capabilities?.verify!==true||x.capabilities?.settle!==true||x.capabilities?.bazaar_list!==true||x.capabilities?.bazaar_search!==true||x.capabilities?.settlement_ambiguous_fail_closed!==true||x.routing?.mode!=="automatic"||!String(x.routing?.settlement_safety||"").includes("fail closed"))process.exit(1);console.log(JSON.stringify({name:x.name,version:x.version,live_upstreams:x.routing?.live_upstreams?.length||0,batch_settlement:x.capabilities?.batch_settlement}))})'
 
           curl --fail --silent --show-error --max-time 8 'https://api.xguardgate.com/.well-known/x402?v=5.1.0' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!=="5.1.0"||x.kind!=="facilitator"||x.endpoints?.supported!=="https://api.xguardgate.com/supported")process.exit(1)})'
@@ -62,6 +64,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-facilitator-verifier/5.1.0' "$@"; }
 
           logo_headers="$(mktemp)"
           curl --fail --silent --show-error --max-time 8 -D "$logo_headers" https://xguardgate.com/logo.svg -o /tmp/xguard-logo.svg

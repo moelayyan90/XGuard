@@ -90,6 +90,10 @@ jobs:
           grep -q 'payment-identifier' apps/relay/src/paid-agent-entry.js
           grep -q 'settlement_ambiguous' apps/relay/src/paid-agent-entry.js
           grep -q 'revenue_source' apps/relay/src/paid-agent-entry.js
+          grep -q 'quote_attempt' apps/relay/src/paid-agent-entry.js
+          grep -q 'payment_required' apps/relay/src/paid-agent-entry.js
+          grep -q 'payment_verified' apps/relay/src/paid-agent-entry.js
+          grep -q 'settlement_success' apps/relay/src/paid-agent-entry.js
           grep -q 'xguard_mandate_required' apps/relay/src/authority.js
           grep -q 'permit_replay_detected' apps/relay/src/rail.js
           grep -q 'action_replay_detected' apps/relay/src/action-rail.js

@@ -29,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           for i in {1..30}; do
-            body="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"registry-smoke","version":"1.0.0"}}}' || true)"
+            body="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-registry-smoke/5.1.0' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"registry-smoke","version":"1.0.0"}}}' || true)"
             if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-universal-paid-secretless-gateway"&&x.result?.serverInfo?.version==="5.1.0"&&String(x.result?.instructions||"").includes("x402-paid tools")&&String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(0)}catch{}process.exit(1)})'; then exit 0; fi
             sleep 4
           done
