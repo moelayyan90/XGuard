@@ -71,16 +71,25 @@ test("transaction-result pages are noindex and never claim redirects grant credi
   assert.match(await response.text(), /redirect alone does not grant credits/i);
 });
 
-test("OAuth discovery probes fail explicitly because public MCP uses x402 rather than fake OAuth", async () => {
-  for (const path of ["/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-authorization-server/mcp"]) {
+test("OAuth protected-resource metadata is RFC 9728 compatible without inventing an issuer", async () => {
+  for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"]) {
     const response = await app.fetch(new Request(`https://api.xguardgate.com${path}`), {}, {});
-    assert.equal(response.status, 404);
+    assert.equal(response.status, 200);
     assert.match(response.headers.get("content-type") || "", /^application\/json/);
     const body = await response.json();
-    assert.equal(body.error, "oauth_not_required");
-    assert.equal(body.authentication_required, false);
-    assert.equal(body.resource, "https://api.xguardgate.com/mcp");
+    assert.equal(body.resource, path.endsWith("/mcp") ? "https://api.xguardgate.com/mcp" : "https://api.xguardgate.com");
+    assert.equal(body["x-xguard-authentication"].required, false);
+    assert.equal(body["x-xguard-authentication"].oauth_supported, false);
   }
+  const authorization = await app.fetch(new Request("https://api.xguardgate.com/.well-known/oauth-authorization-server/mcp"), {}, {});
+  assert.equal(authorization.status, 404);
+  assert.equal((await authorization.json()).error, "oauth_authorization_server_unconfigured");
+  const options = await app.fetch(new Request("https://api.xguardgate.com/.well-known/oauth-protected-resource/mcp", { method: "OPTIONS" }), {}, {});
+  assert.equal(options.status, 204);
+  assert.equal(options.headers.get("access-control-allow-origin"), "*");
+  const head = await app.fetch(new Request("https://api.xguardgate.com/.well-known/oauth-protected-resource/mcp", { method: "HEAD" }), {}, {});
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), "");
 });
 
 test("runtime responses expose the exact Cloudflare Worker version used by deployment verification", async () => {

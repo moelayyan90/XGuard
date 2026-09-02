@@ -99,6 +99,8 @@ jobs:
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/pricing | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),p=x.tools?.["xguard.web.fetch"];if(p?.amount_atomic!=="1000"||p?.network!=="eip155:8453"||p?.maximum_upstream_cost_usd_micros!==0||p?.customer_price_usd_micros!==1000)process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/health | grep -q '"live":true'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/ready | grep -q '"ready":true'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/payment/readiness | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.production_payment_ready!==true||x.production?.environment!=="production"||x.production?.network!=="eip155:8453"||x.test?.environment!=="test"||x.test?.network!=="eip155:84532"||x.test?.revenue!==false)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/oauth-protected-resource/mcp | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.resource!=="https://api.xguardgate.com/mcp"||x["x-xguard-authentication"]?.required!==false||x["x-xguard-authentication"]?.oauth_supported!==false)process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/mcp | grep -q 'xguard.web.fetch'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/a2a | grep -q 'xguard-paid-web-fetch'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/payment-manifest | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),r=x.resources?.[0];if(x.x402_version!==2||r?.tool!=="xguard.web.fetch"||r?.payment_identifier_required!==true||r?.settlement_before_execution!==true)process.exit(1)})'
@@ -116,6 +118,14 @@ jobs:
           test "$challenge_code" = "402"
           grep -qi '^payment-required:' /tmp/xg-payment-headers
           cat /tmp/xg-payment-required | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||x.accepts?.[0]?.network!=="eip155:84532"||!x.extensions?.["offer-receipt"]?.info?.offers?.[0]?.signature)process.exit(1)})'
+
+          production_quote_code="$(curl --silent --show-error --max-time 12 -o /tmp/xg-production-quote.json -w '%{http_code}' -X POST https://api.xguardgate.com/v1/pricing/quote -H 'content-type: application/json' --data '{"command":"curl https://example.com/","environment":"production"}')"
+          test "$production_quote_code" = "200"
+          production_quote="$(node -e 'const x=JSON.parse(require("node:fs").readFileSync("/tmp/xg-production-quote.json","utf8"));if(x.payment_environment!=="production"||x.network!=="eip155:8453"||x.next?.payment?.environment!=="production"||!String(x.payment_rail).startsWith("x402:eip155:8453:"))process.exit(1);process.stdout.write(x.quote)')"
+          production_challenge_code="$(curl --silent --show-error --max-time 12 -D /tmp/xg-production-payment-headers -o /tmp/xg-production-payment-required -w '%{http_code}' -X POST https://api.xguardgate.com/v1/tools/web.fetch -H 'content-type: application/json' -H "X-XGuard-Quote: $production_quote" --data '{"url":"https://example.com/"}')"
+          test "$production_challenge_code" = "402"
+          grep -qi '^x-xguard-payment-environment: production' /tmp/xg-production-payment-headers
+          node -e 'const x=JSON.parse(require("node:fs").readFileSync("/tmp/xg-production-payment-required","utf8"));if(x.accepts?.[0]?.network!=="eip155:8453"||x.extensions?.xguard?.paymentEnvironment!=="production"||x.extensions?.xguard?.next?.action!=="sign_and_retry")process.exit(1)'
 
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-egress.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Secretless Egress"||!x.fetch||!x.capabilities||!x.controls?.some(v=>v.includes("never returned")))process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-egress-key.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.alg!=="RSA-OAEP-256"||x.jwk?.kty!=="RSA"||!x.kid)process.exit(1)})'

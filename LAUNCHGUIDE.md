@@ -67,9 +67,9 @@ https://api.xguardgate.com/mcp
 
 ## Security boundary
 
-Public MCP and A2A discovery are not the credential-management boundary. Reusable upstream credentials are provisioned through XGuard's authenticated management path. Agents are intended to receive scoped XGuard capabilities rather than reusable upstream secrets. XGuard does not claim that unrelated Internet traffic is forced through the service; it becomes the required credential-backed path only when an operator keeps the reusable upstream credential exclusively in XGuard and delegates capabilities instead.
+Public MCP and A2A are not the credential-management boundary. Reusable upstream credentials are provisioned through XGuard's authenticated management path. Agents are intended to receive scoped XGuard capabilities rather than reusable upstream secrets. XGuard does not claim that unrelated Internet traffic is forced through the service; it becomes the required credential-backed path only when an operator keeps the reusable upstream credential exclusively in XGuard and delegates capabilities instead.
 
-The A2A surface is discovery-only: it does not provision credentials, consume XGuard Usage Credits, mutate accounts, or execute upstream side effects.
+The A2A 1.0.0 SendMessage surface bridges free preflight, signed quotes, x402 PaymentRequired, and paid `xguard.web.fetch` execution. It does not provision reusable credentials; paid target execution still occurs only after settlement.
 
 ## Suggested tags
 
@@ -80,8 +80,8 @@ The A2A surface is discovery-only: it does not provision credentials, consume XG
 - Let an AI agent call GitHub, Stripe, OpenAI, Anthropic, or another HTTPS API without placing the reusable API key in the agent context.
 - Give an autonomous workflow a short-lived capability that is narrower than the underlying credential.
 - Produce signed evidence that an authorized credential-backed attempt passed through the expected XGuard execution boundary.
-- Let MCP and A2A discovery systems resolve XGuard's canonical public metadata without giving the discovery agent authority to execute credential-backed actions.
+- Let MCP and A2A agents resolve canonical metadata and invoke the guarded paid fetch without receiving reusable upstream credentials.
 
 ## Submission notes
 
-XGuard is a hosted remote MCP server with a separate read-only A2A discovery agent. Marketplace scanners should probe the canonical remote endpoint directly rather than requiring a local npm/PyPI install. The repository and machine-readable discovery documents are public for verification.
+XGuard is a hosted remote MCP server with an A2A 1.0.0 execution bridge. Marketplace scanners should probe the canonical remote endpoint directly rather than requiring a local npm/PyPI install. The repository and machine-readable discovery documents are public for verification.

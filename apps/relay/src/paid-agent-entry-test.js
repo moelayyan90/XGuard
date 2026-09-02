@@ -26,12 +26,15 @@ function namespaceFor(Class, env) {
 
 function environment() {
   const env = {
+    XGUARD_PAYMENT_ENVIRONMENT: "production",
     XGUARD_PAID_FACILITATOR: "https://facilitator.test",
     XGUARD_TESTNET_FACILITATOR: "https://facilitator.test",
     XGUARD_TREASURY_USDC_ADDRESS: "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
     XGUARD_TESTNET_PAY_TO: "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
     XGUARD_WEB_FETCH_PRICE_ATOMIC: "1000",
     XGUARD_MARGIN_USD_MICROS: "1000",
+    XGUARD_TESTNET_WEB_FETCH_PRICE_ATOMIC: "1000",
+    XGUARD_TESTNET_MARGIN_USD_MICROS: "1000",
   };
   env.PROOF_AUTHORITY = namespaceFor(ProofAuthority, env);
   env.PAID_GATEWAY = namespaceFor(PaidGatewayState, env);
@@ -153,7 +156,7 @@ test("readiness accepts the official facilitator supported shape", async t => {
   globalThis.fetch = async input => {
     const url = new URL(input instanceof Request ? input.url : input);
     if (url.hostname === "facilitator.test" && url.pathname === "/supported") {
-      return new Response(JSON.stringify({ kinds: [{ x402Version: 2, scheme: "exact", network: "eip155:8453" }] }), { headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ kinds: ["eip155:8453", "eip155:84532"].map(network => ({ x402Version: 2, scheme: "exact", network })) }), { headers: { "content-type": "application/json" } });
     }
     throw new Error(`unexpected fetch ${url}`);
   };
@@ -162,7 +165,9 @@ test("readiness accepts the official facilitator supported shape", async t => {
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.ready, true);
-  assert.deepEqual(body.checks, { proof_authority: true, paid_state: true, mainnet_config: true, facilitator: true });
+  assert.deepEqual(body.checks, { proof_authority: true, paid_state: true, mainnet_config: true, facilitator: true, testnet_config: true, testnet_facilitator: true });
+  assert.equal(body.production_payment_ready, true);
+  assert.equal(body.test_payment_ready, true);
 });
 
 test("quote issuance rejects private, local, metadata, and XGuard-owned targets", async () => {
@@ -205,6 +210,10 @@ test("pricing quote accepts common AI-agent envelopes and returns one canonical 
     { name: "xguard.web.fetch", arguments: { uri: target, maxBytes: 4096 }, environment: "testnet" },
     { tool_name: "xguard.web.fetch", parameters: { target, method: "head" }, network: "base-sepolia" },
     { function: { name: "xguard.web.fetch", arguments: JSON.stringify({ url: target, mode: "json" }) }, chain: "eip155:84532" },
+    { capability: "fetch", resource: target, testnet: true },
+    { action: { toolName: "web.fetch", input: { endpoint: target } }, testnet: true },
+    { operation: { name: "xguard_web_fetch", arguments: { href: target } }, testnet: true },
+    { command: `curl ${target}`, testnet: true },
   ];
   for (const body of variants) {
     const response = await app.fetch(new Request("https://api.xguardgate.com/v1/pricing/quote", {
@@ -215,6 +224,8 @@ test("pricing quote accepts common AI-agent envelopes and returns one canonical 
     assert.equal(response.status, 200, JSON.stringify(body));
     const quote = await response.json();
     assert.equal(quote.network, "eip155:84532");
+    assert.equal(quote.payment_environment, "test");
+    assert.equal(quote.payment_rail, "x402:eip155:84532:exact");
     assert.equal(quote.amount, "1000");
     assert.equal(quote.input.url, target);
     assert.equal(quote.next.execution_url, "https://api.xguardgate.com/v1/tools/web.fetch/testnet");
@@ -480,7 +491,7 @@ test("settlement precedes execution and an exact retry does not settle twice", a
   assert.equal(firstBody.replay, false);
   assert.equal(firstBody.accounting.gross_revenue_usd_micros, 0);
   assert.equal(firstBody.accounting.net_profit_usd_micros, 0);
-  assert.equal(firstBody.accounting.revenue_source, "testnet_settlement_non_revenue");
+  assert.equal(firstBody.accounting.revenue_source, "test_settlement_non_revenue");
   assert.ok(firstBody.receipt.signature);
   assert.ok(firstBody.proofrail.proof);
   const verifiedProof = await app.fetch(new Request("https://api.xguardgate.com/v1/proofs/verify", {
@@ -542,7 +553,7 @@ test("pending, verified, and ambiguous states never record revenue", async () =>
   const env = environment();
   const object = new PaidGatewayState({ storage: new MemoryStorage() }, env);
   const post = (path, body) => object.fetch(new Request(`https://paid-gateway${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
-  await post("/operation/begin", { request_id: "xgr_financial_test", payment_identifier: "pay_12345678901234567890123456789012", authorization_fingerprint: "a".repeat(64), request_digest: "b".repeat(64), customer_price_usd_micros: 1000, maximum_upstream_cost_usd_micros: 0 });
+  await post("/operation/begin", { request_id: "xgr_financial_test", payment_identifier: "pay_12345678901234567890123456789012", authorization_fingerprint: "a".repeat(64), request_digest: "b".repeat(64), customer_price_usd_micros: 1000, maximum_upstream_cost_usd_micros: 0, environment: "production", traffic_class: "external", network: "eip155:8453" });
   for (const status of ["verified", "ambiguous"]) {
     const response = await post("/operation/transition", { status, patch: {} });
     assert.equal(response.status, 200);
@@ -556,5 +567,5 @@ test("pending, verified, and ambiguous states never record revenue", async () =>
   const settledRecord = (await settled.json()).record;
   assert.equal(settledRecord.gross_revenue_usd_micros, 1000);
   assert.equal(settledRecord.net_profit_usd_micros, 1000);
-  assert.equal(settledRecord.revenue_source, "x402_settlement");
+  assert.equal(settledRecord.revenue_source, "external_production_x402_settlement");
 });

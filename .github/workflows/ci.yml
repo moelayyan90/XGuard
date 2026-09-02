@@ -37,6 +37,8 @@ jobs:
           node --check apps/relay/src/egress-entry.js
           node --check apps/relay/src/product-entry.js
           node --check apps/relay/src/paid-agent-entry.js
+          node --check apps/relay/src/core/payment-rail.js
+          node --check apps/relay/src/core/payment-rail-test.js
           node --check apps/relay/src/paid-agent-entry-test.js
           node --check apps/relay/src/discovery-entry.js
           node --check apps/relay/src/webmcp-entry.js
@@ -85,7 +87,7 @@ jobs:
           grep -q 'protocolBinding: "JSONRPC"' apps/relay/src/a2a-entry.js
           grep -q 'protocolVersion: A2A_VERSION' apps/relay/src/a2a-entry.js
           grep -q 'SendMessage' apps/relay/src/a2a-entry.js
-          grep -q 'discovery-only' apps/relay/src/a2a-entry.js
+          grep -q 'execution-bridge-v1' apps/relay/src/a2a-entry.js
           grep -q 'xguard.web.fetch' apps/relay/src/paid-agent-entry.js
           grep -q 'payment-identifier' apps/relay/src/paid-agent-entry.js
           grep -q 'settlement_ambiguous' apps/relay/src/paid-agent-entry.js
@@ -110,6 +112,7 @@ jobs:
           node --test apps/relay/src/egress-vault-test.js
           node --test apps/relay/src/product-entry-test.js
           node --test apps/relay/src/paid-agent-entry-test.js
+          node --test apps/relay/src/core/payment-rail-test.js
       - name: SDK syntax and package check
         run: |
           node --check sdk/index.js
