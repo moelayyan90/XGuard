@@ -32,10 +32,42 @@ const X402_DISCOVERY = new Set([
   "/.well-known/x402-facilitator.json",
 ]);
 
-const OAUTH_DISCOVERY_PROBES = new Set([
+const OAUTH_RESOURCE_METADATA = new Set([
+  "/.well-known/oauth-protected-resource",
   "/.well-known/oauth-protected-resource/mcp",
+]);
+
+const OAUTH_AUTHORIZATION_METADATA = new Set([
+  "/.well-known/oauth-authorization-server",
   "/.well-known/oauth-authorization-server/mcp",
 ]);
+
+function oauthHeaders() {
+  return baseHeaders(new Headers({
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "public, max-age=300",
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, HEAD, OPTIONS",
+    "access-control-allow-headers": "authorization,content-type,mcp-protocol-version",
+  }));
+}
+
+function oauthResourceMetadata(request, pathname) {
+  const resource = pathname.endsWith("/mcp") ? MCP : API;
+  const body = {
+    resource,
+    resource_documentation: `${SITE}/connect`,
+    bearer_methods_supported: [],
+    "x-xguard-authentication": {
+      required: false,
+      oauth_supported: false,
+      reason: "Public discovery and pay-per-request tools do not require an XGuard account or OAuth bearer token.",
+      paid_tools: "x402-v2-per-request",
+      payment_manifest: `${API}/.well-known/payment-manifest`,
+    },
+  };
+  return new Response(request.method === "HEAD" ? null : JSON.stringify(body), { status: 200, headers: oauthHeaders() });
+}
 
 function canonicalIdentity() {
   return {
@@ -110,6 +142,7 @@ function apiRoot(request) {
       tools_manifest: `${API}/.well-known/xguard-tools.json`,
       signed_quote: `${API}/v1/pricing/quote`,
       paid_web_fetch: `${API}/v1/tools/web.fetch`,
+      payment_readiness: `${API}/v1/payment/readiness`,
       payment_manifest: `${API}/.well-known/payment-manifest`,
       secretless_egress: `${API}/v1/egress`,
       egress_manifest: `${API}/.well-known/xguard-egress.json`,
@@ -335,15 +368,19 @@ export default {
 
     const url = new URL(request.url);
 
-    if ((request.method === "GET" || request.method === "HEAD") && OAUTH_DISCOVERY_PROBES.has(url.pathname)) {
+    if (request.method === "OPTIONS" && (OAUTH_RESOURCE_METADATA.has(url.pathname) || OAUTH_AUTHORIZATION_METADATA.has(url.pathname))) {
+      return new Response(null, { status: 204, headers: oauthHeaders() });
+    }
+    if ((request.method === "GET" || request.method === "HEAD") && OAUTH_RESOURCE_METADATA.has(url.pathname)) {
+      return oauthResourceMetadata(request, url.pathname);
+    }
+    if ((request.method === "GET" || request.method === "HEAD") && OAUTH_AUTHORIZATION_METADATA.has(url.pathname)) {
       const body = request.method === "HEAD" ? null : JSON.stringify({
-        error: "oauth_not_required",
-        resource: MCP,
-        authentication_required: false,
-        payment: "x402-v2-per-paid-tool",
-        discovery: `${API}/.well-known/mcp/server-card.json`,
+        error: "oauth_authorization_server_unconfigured",
+        error_description: "XGuard does not advertise a fictitious OAuth issuer. Public and x402 paid tools do not require OAuth.",
+        resource_metadata: `${API}/.well-known/oauth-protected-resource${url.pathname.endsWith("/mcp") ? "/mcp" : ""}`,
       });
-      return new Response(body, { status: 404, headers: baseHeaders(new Headers({ "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=300" })) });
+      return new Response(body, { status: 404, headers: oauthHeaders() });
     }
 
     if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {

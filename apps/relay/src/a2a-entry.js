@@ -1,11 +1,12 @@
-import app, { recordAgentJourney } from "./webmcp-entry.js";
+import app, { handlePaidWebFetch, handlePreflight, issueQuote, recordAgentJourney } from "./webmcp-entry.js";
 export * from "./webmcp-entry.js";
 
 const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const MCP = `${API}/mcp`;
 const VERSION = "5.1.0";
-const A2A_VERSION = "1.0";
+const A2A_VERSION = "1.0.0";
+const A2A_SUPPORTED_VERSIONS = new Set(["1.0", "1.0.0"]);
 const A2A_ENDPOINT = `${API}/a2a`;
 
 const AGENT_CARD = {
@@ -142,9 +143,9 @@ const PUBLIC_DISCOVERY = {
     codex: `[mcp_servers.xguard]\nurl = "${MCP}"`,
     cursor_vscode: MCP,
   },
-  purpose: "Keep reusable upstream API credentials outside AI-agent context by letting operators retain reusable secrets server-side and delegate short-lived scoped capabilities instead.",
+  purpose: "Validate and execute bounded public-HTTPS operations in-path, or keep reusable upstream API credentials outside AI-agent context by using scoped Secretless Egress capabilities.",
   proof_layer: "ProofRail can attach ES256-signed evidence to authorized credential-backed outcomes without placing the reusable upstream secret in the proof.",
-  a2a_security_boundary: "This A2A SendMessage surface is discovery-only. Use xguard.preflight before xguard.web.fetch; paid tool execution uses the advertised HTTP or MCP endpoint and requires x402 settlement first.",
+  a2a_security_boundary: "A2A SendMessage bridges preflight, signed quote, and paid xguard.web.fetch execution. Paid execution requires x402 settlement before the target is contacted.",
 };
 
 function headers(contentType = "application/a2a+json; charset=utf-8") {
@@ -152,11 +153,11 @@ function headers(contentType = "application/a2a+json; charset=utf-8") {
     "content-type": contentType,
     "cache-control": "no-store",
     "access-control-allow-origin": "*",
-    "access-control-allow-headers": "content-type,a2a-version,a2a-extensions,x-request-id,x-xguard-traffic-class",
+    "access-control-allow-headers": "content-type,a2a-version,a2a-extensions,x-request-id,x-xguard-traffic-class,payment-signature,x-xguard-quote,x-xguard-credit",
     "access-control-allow-methods": "GET,POST,OPTIONS",
     "x-content-type-options": "nosniff",
     "a2a-version": A2A_VERSION,
-    "x-xguard-a2a": "discovery-readonly-v1",
+    "x-xguard-a2a": "execution-bridge-v1",
   };
 }
 
@@ -164,8 +165,8 @@ function json(body, status = 200, extra = {}) {
   return new Response(JSON.stringify(body), { status, headers: { ...headers(), ...extra } });
 }
 
-function rpcResult(id, result) {
-  return json({ jsonrpc: "2.0", id: id ?? null, result });
+function rpcResult(id, result, status = 200, extra = {}) {
+  return json({ jsonrpc: "2.0", id: id ?? null, result }, status, extra);
 }
 
 function rpcError(id, code, message, data) {
@@ -181,6 +182,71 @@ function discoveryMessage() {
     role: "ROLE_AGENT",
     parts: [{ text: JSON.stringify(PUBLIC_DISCOVERY) }],
   };
+}
+
+function parseTextPart(part) {
+  if (!part || typeof part !== "object" || typeof part.text !== "string") return null;
+  const value = part.text.trim();
+  if (!value) return null;
+  try { return JSON.parse(value); } catch { return value; }
+}
+
+function a2aIntent(message) {
+  for (const part of message.parts || []) {
+    if (part?.data && typeof part.data === "object") return part.data;
+    const parsed = parseTextPart(part);
+    if (parsed && typeof parsed === "object") return parsed;
+  }
+  return null;
+}
+
+function a2aMessage(value) {
+  return {
+    messageId: crypto.randomUUID(),
+    contextId: crypto.randomUUID(),
+    role: "ROLE_AGENT",
+    parts: [{ data: value }],
+  };
+}
+
+function paymentHeaders(request) {
+  const headers = new Headers({ "content-type": "application/json", "x-xguard-traffic-class": request.headers.get("x-xguard-traffic-class") || "external" });
+  for (const name of ["payment-signature", "x-xguard-quote", "x-xguard-credit", "x-request-id"]) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  return headers;
+}
+
+async function bridgeIntent(request, env, id, intent) {
+  const action = String(intent?.action || intent?.operation || intent?.tool || intent?.name || "").toLowerCase();
+  const input = intent?.input || intent?.arguments || intent?.parameters || intent;
+  const observation = { trafficClass: request.headers.get("x-xguard-traffic-class") || "external", transport: "a2a" };
+  if (["preflight", "xguard.preflight", "xguard_preflight"].includes(action)) {
+    const response = await handlePreflight(env, input, id, observation);
+    const value = await response.clone().json();
+    return rpcResult(intent.rpc_id, { message: a2aMessage(value), status: response.ok ? "COMPLETED" : "FAILED" }, response.status);
+  }
+  if (["quote", "pricing.quote", "xguard.pricing.quote", "xguard_pricing_quote"].includes(action)) {
+    const quoted = await issueQuote(env, input, id, observation);
+    const value = await quoted.response.clone().json();
+    return rpcResult(intent.rpc_id, { message: a2aMessage(value), status: quoted.response.ok ? "COMPLETED" : "FAILED" }, quoted.response.status);
+  }
+  if (["xguard.web.fetch", "xguard_web_fetch", "guarded_execute", "xguard_guarded_execute", "web.fetch", "fetch"].includes(action)) {
+    const testnet = input?.testnet === true || intent?.testnet === true;
+    const path = testnet ? "/v1/tools/web.fetch/testnet" : "/v1/tools/web.fetch";
+    const paidRequest = new Request(`${API}${path}`, { method: "POST", headers: paymentHeaders(request), body: JSON.stringify(input) });
+    const paid = await handlePaidWebFetch(paidRequest, env, id, input, testnet, "a2a");
+    const value = await paid.clone().json().catch(() => ({ error: "invalid_gateway_response" }));
+    const exposed = {};
+    for (const name of ["payment-required", "payment-response", "x-xguard-payment-environment", "x-xguard-payment-rail", "x-xguard-payment-identifier", "x-xguard-replay", "x-xguard-proof", "x-xguard-receipt"]) {
+      const header = paid.headers.get(name);
+      if (header) exposed[name] = header;
+    }
+    const state = paid.status === 402 ? "INPUT_REQUIRED" : paid.ok ? "COMPLETED" : "FAILED";
+    return rpcResult(intent.rpc_id, { message: a2aMessage(value), status: state, payment: exposed }, paid.status, exposed);
+  }
+  return null;
 }
 
 function a2aRequestId(request) {
@@ -199,8 +265,8 @@ async function handleA2A(request, env) {
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405, { allow: "POST, OPTIONS" });
 
   const requestedVersion = request.headers.get("a2a-version");
-  if (requestedVersion && requestedVersion !== A2A_VERSION) {
-    return rpcError(null, -32009, "Version not supported", { supported: [A2A_VERSION], requested: requestedVersion });
+  if (requestedVersion && !A2A_SUPPORTED_VERSIONS.has(requestedVersion)) {
+    return rpcError(null, -32009, "Version not supported", { supported: [...A2A_SUPPORTED_VERSIONS], requested: requestedVersion });
   }
 
   let body;
@@ -227,7 +293,16 @@ async function handleA2A(request, env) {
     return rpcError(body.id, -32602, "Invalid params");
   }
 
-  await recordAgentJourney(request, env, "discovery", { request_id: id, transport: "a2a", surface: "send_message" });
+  const intent = a2aIntent(message);
+  if (intent && typeof intent === "object") {
+    const bridged = await bridgeIntent(request, env, id, { ...intent, rpc_id: body.id });
+    if (bridged) {
+      const responseHeaders = new Headers(bridged.headers);
+      responseHeaders.set("x-xguard-request-id", id);
+      return new Response(bridged.body, { status: bridged.status, headers: responseHeaders });
+    }
+  }
+  await recordAgentJourney(request, env, "discovery", { request_id: id, transport: "a2a", surface: "send_message", drop_reason: intent ? "no_matching_capability" : undefined });
   const response = rpcResult(body.id, { message: discoveryMessage() });
   const responseHeaders = new Headers(response.headers);
   responseHeaders.set("x-xguard-request-id", id);
@@ -238,10 +313,12 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    if (request.method === "GET" && (url.pathname === "/.well-known/agent-card.json" || url.pathname === "/.well-known/agent.json")) {
+    if ((request.method === "GET" || request.method === "HEAD") && (url.pathname === "/.well-known/agent-card.json" || url.pathname === "/.well-known/agent.json")) {
       const id = a2aRequestId(request);
-      await recordAgentJourney(request, env, "discovery", { request_id: id, transport: "a2a", surface: "agent_card" });
-      return json(AGENT_CARD, 200, { "cache-control": "public, max-age=300", "content-type": "application/a2a+json; charset=utf-8", "x-xguard-request-id": id });
+      if (request.method === "GET") await recordAgentJourney(request, env, "discovery", { request_id: id, transport: "a2a", surface: "agent_card" });
+      return request.method === "HEAD"
+        ? new Response(null, { status: 200, headers: { ...headers(), "cache-control": "public, max-age=300", "content-type": "application/a2a+json; charset=utf-8", "x-xguard-request-id": id } })
+        : json(AGENT_CARD, 200, { "cache-control": "public, max-age=300", "content-type": "application/a2a+json; charset=utf-8", "x-xguard-request-id": id });
     }
 
     if (url.pathname === "/a2a") return handleA2A(request, env);

@@ -24,6 +24,7 @@ No account or SDK is needed to discover the service, inspect pricing, obtain a s
 ```bash
 curl -sS https://api.xguardgate.com/v1/capabilities
 curl -sS https://api.xguardgate.com/v1/pricing
+curl -sS https://api.xguardgate.com/v1/payment/readiness
 
 # Optional free guard: validates HTTPS/SSRF/DNS/payment readiness without contacting the target
 curl -sS https://api.xguardgate.com/v1/preflight \
@@ -56,8 +57,8 @@ curl -sS https://api.xguardgate.com/mcp \
 
 ```bash
 curl -sS https://api.xguardgate.com/a2a \
-  -H 'content-type: application/json' -H 'a2a-version: 1.0' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":{"message":{"messageId":"discover-1","role":"ROLE_USER","parts":[{"text":"discover XGuard"}]}}}'
+  -H 'content-type: application/json' -H 'a2a-version: 1.0.0' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":{"message":{"messageId":"quote-1","role":"ROLE_USER","parts":[{"data":{"action":"quote","input":{"url":"https://example.com/","testnet":true}}}]}}}'
 ```
 
 ### TypeScript and Python discovery
@@ -82,7 +83,9 @@ quote = requests.post(
 ).json()
 ```
 
-Canonical discovery surfaces: `/mcp`, `/a2a`, `/.well-known/agent-card.json`, `/.well-known/payment-manifest`, `/.well-known/x402-facilitator.json`, `/openapi.json`, `/llms.txt`, `/v1/capabilities`, `/v1/preflight`, `/v1/pricing`, `/v1/health`, and `/v1/ready`.
+Canonical discovery surfaces: `/mcp`, `/a2a`, `/.well-known/agent-card.json`, `/.well-known/oauth-protected-resource/mcp`, `/.well-known/payment-manifest`, `/.well-known/x402-facilitator.json`, `/openapi.json`, `/llms.txt`, `/v1/capabilities`, `/v1/preflight`, `/v1/pricing`, `/v1/payment/readiness`, `/v1/health`, and `/v1/ready`.
+
+Base Sepolia is integration-only and every test settlement is recorded as `environment=test, revenue=false`. Production quotes use Base Mainnet and the configured production recipient/facilitator; revenue is recorded only for an external production settlement with transaction evidence.
 
 `xguard.preflight` is the free guard at the front door: it gives an agent a deterministic allow/block decision and the exact quote URL before any upstream request or payment. `xguard.web.fetch` is the mandatory guarded execution choke point; every paid call requires a signed quote and x402 v2 settlement before the target is contacted. When an operator keeps a reusable upstream credential only in XGuard, Secretless Egress is likewise the required credential-backed path for that environment.
 

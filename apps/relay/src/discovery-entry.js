@@ -1,4 +1,4 @@
-import app, { paidFetchSchema, recordAgentJourney } from "./paid-agent-entry.js";
+import app, { paidFetchSchema, quoteRequestSchema, recordAgentJourney } from "./paid-agent-entry.js";
 export * from "./paid-agent-entry.js";
 
 const VERSION = "5.1.0";
@@ -11,26 +11,7 @@ const REPO = "https://github.com/moelayyan90/XGuard";
 const INDEXNOW_KEY = "f3fd1a3fde659a05a8dddfa614b408ac";
 const REGISTRY_DESCRIPTION = "Signed prices and no-account x402 USDC tools with secretless egress and verifiable receipts.";
 const DESCRIPTION = "XGuard is a universal paid AI-agent and secretless gateway: signed prices, no-account x402 USDC payment, controlled execution, replay-safe retries, signed receipts and ProofRail evidence.";
-const QUOTE_PROPERTIES = {
-  url: { type: "string", format: "uri", pattern: "^https://", description: "Canonical public HTTPS target URL." },
-  method: { type: "string", enum: ["GET", "HEAD"], default: "GET" },
-  timeout_ms: { type: "integer", minimum: 1000, maximum: 10000, default: 8000 },
-  max_bytes: { type: "integer", minimum: 1024, maximum: 131072, default: 131072 },
-  mode: { type: "string", enum: ["auto", "text", "json"], default: "auto" },
-  testnet: { type: "boolean", default: false },
-  network: { type: "string", enum: ["eip155:8453", "eip155:84532", "base", "base-mainnet", "base-sepolia", "mainnet", "testnet"] },
-};
-const QUOTE_SCHEMA = {
-  oneOf: [
-    { type: "object", required: ["url"], properties: QUOTE_PROPERTIES, additionalProperties: true },
-    { type: "object", required: ["tool", "input"], properties: { tool: { type: "string", enum: ["xguard.web.fetch"] }, input: { type: "object" }, testnet: { type: "boolean" }, network: { type: "string" } }, additionalProperties: true },
-    { type: "object", required: ["name", "arguments"], properties: { name: { type: "string", enum: ["xguard.web.fetch"] }, arguments: { oneOf: [{ type: "object" }, { type: "string" }] }, testnet: { type: "boolean" }, network: { type: "string" } }, additionalProperties: true },
-    { type: "object", required: ["tool_name", "parameters"], properties: { tool_name: { type: "string", enum: ["xguard.web.fetch"] }, parameters: { type: "object" }, testnet: { type: "boolean" }, network: { type: "string" } }, additionalProperties: true },
-    { type: "object", required: ["function"], properties: { function: { type: "object", required: ["name", "arguments"], properties: { name: { type: "string", enum: ["xguard.web.fetch"] }, arguments: { oneOf: [{ type: "object" }, { type: "string" }] } }, additionalProperties: true }, testnet: { type: "boolean" }, network: { type: "string" } }, additionalProperties: true },
-  ],
-  description: "Canonical flat input and common AI-agent envelopes accepted; XGuard returns one normalized body for the next step.",
-  "x-xguard-accepted-shapes": ["canonical_flat", "tool_input", "mcp_arguments", "tool_parameters", "function_call"],
-};
+const QUOTE_SCHEMA = quoteRequestSchema();
 
 const registryManifest = {
   $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
@@ -162,7 +143,7 @@ XGuard becomes the required credential-backed egress path inside an environment 
 - ProofRail: ES256-signed execution evidence for authorized credential-backed outcomes.
 - Action Rail: policy-gated action execution.
 - x402 facilitator routing compatibility for existing resource servers.
-- A2A discovery: a read-only v1 discovery agent that returns canonical XGuard connection metadata without provisioning credentials or executing side effects.
+- A2A 1.0.0 execution bridge: SendMessage can run free preflight, obtain a signed quote, receive the mandatory x402 PaymentRequired result, and resume paid xguard.web.fetch execution. Credential provisioning remains outside the public A2A surface.
 
 ## Universal paid tool path
 
@@ -176,10 +157,11 @@ XGuard becomes the required credential-backed egress path inside an environment 
 - Payment manifest: ${API}/.well-known/payment-manifest
 - Health: ${API}/v1/health
 - Readiness: ${API}/v1/ready
+- Payment readiness and production/test separation: ${API}/v1/payment/readiness
 
 Use xguard.preflight before xguard.web.fetch when an agent needs a deterministic safety and payment-readiness decision without contacting the target. Then use xguard.web.fetch for a bounded public HTTPS source with verifiable execution evidence. Its price is 0.001 USDC (1000 atomic units, six decimals).
 
-Canonical quote body: {"url":"https://example.com/","method":"GET","testnet":true}. Common agent envelopes using tool+input, name+arguments, or tool_name+parameters are also accepted. The quote response returns normalized input and next.execution_url.
+Canonical quote body: {"url":"https://example.com/","method":"GET","testnet":true}. Common aliases, nested operation/action payloads, JSON arguments, and a bounded curl command are normalized before strict validation. The quote response returns normalized input and next.execution_url.
 
 POST the normalized input with X-XGuard-Quote. HTTP 402 is mandatory. Decode Payment-Required, create and sign an official x402 v2 payment, and retry the identical request with Payment-Signature. XGuard verifies and settles before the fetch. HTTP 200 returns Payment-Response, a signed receipt, and ProofRail evidence. Payment-Identifier is mandatory. An exact retry returns the stored outcome without a second settlement.
 
@@ -210,10 +192,10 @@ Connect examples:
 
 ## A2A
 
-Protocol version: 1.0
+Protocol version: 1.0.0 (1.0 compatibility accepted)
 Agent Card: ${A2A_CARD}
 JSON-RPC endpoint: ${A2A_ENDPOINT}
-Role: read-only discovery and connection metadata only.
+Role: discovery plus execution bridge for preflight, signed quote, mandatory x402 PaymentRequired, and paid xguard.web.fetch resume.
 
 Do not advertise search, inference, routing or data-query tools unless ${API}/v1/capabilities marks them available. The canonical product identity is XGuard Universal Paid AI Agent + Secretless Gateway.
 `;

@@ -20,7 +20,7 @@ if (root.response.headers.get("x-xguard-version") !== VERSION) fail("API root ha
 
 const openapi = await getJson(`${API}/openapi.json`);
 if (openapi.body.info?.title !== NAME || openapi.body.info?.version !== VERSION) fail("OpenAPI has stale canonical identity");
-for (const path of ["/v1/capabilities", "/v1/pricing", "/v1/pricing/quote", "/v1/tools/web.fetch", "/v1/egress", "/v1/egress/fetch", "/v1/proof", "/verify", "/settle"]) {
+for (const path of ["/v1/capabilities", "/v1/pricing", "/v1/pricing/quote", "/v1/tools/web.fetch", "/v1/payment/readiness", "/v1/egress", "/v1/egress/fetch", "/v1/proof", "/verify", "/settle"]) {
   if (!openapi.body.paths?.[path]) fail(`OpenAPI is missing ${path}`);
 }
 if (!openapi.body.paths["/v1/preflight"]?.post) fail("OpenAPI is missing the guarded preflight path");
@@ -35,6 +35,10 @@ const agent = await getJson(`${API}/.well-known/agent-card.json`);
 if (!(agent.response.headers.get("content-type") || "").includes("application/a2a+json")) fail("Agent Card media type is wrong");
 if (agent.body.name !== NAME || agent.body.version !== VERSION || !agent.body.skills?.some(skill => skill.id === "xguard-paid-web-fetch") || !agent.body.skills?.some(skill => skill.id === "xguard-secretless-egress")) fail("Agent Card has stale identity or missing paid/secretless skills");
 if (!agent.body.capabilities?.extensions?.some(extension => extension.params?.challenge_status === 402 && extension.params?.settlement_before_execution === true)) fail("Agent Card is missing the automated x402 transition");
+if (agent.body.supportedInterfaces?.[0]?.protocolVersion !== "1.0.0") fail("Agent Card does not advertise A2A 1.0.0");
+
+const oauth = await getJson(`${API}/.well-known/oauth-protected-resource/mcp`);
+if (oauth.body.resource !== `${API}/mcp` || oauth.body["x-xguard-authentication"]?.required !== false || oauth.body["x-xguard-authentication"]?.oauth_supported !== false) fail("OAuth protected-resource metadata is stale or misleading");
 
 const initialize = await getJson(`${API}/mcp`, {
   method: "POST",
@@ -66,6 +70,9 @@ if (toolsManifest.body.execution_chokepoint?.tool !== "xguard.web.fetch" || tool
 
 const payment = await getJson(`${API}/.well-known/payment-manifest`);
 if (payment.body.x402_version !== 2 || payment.body.resources?.[0]?.payment_identifier_required !== true || payment.body.resources?.[0]?.settlement_before_execution !== true) fail("Payment manifest is stale or unsafe");
+
+const paymentReadiness = await getJson(`${API}/v1/payment/readiness`);
+if (paymentReadiness.body.production?.environment !== "production" || paymentReadiness.body.production?.network !== "eip155:8453" || paymentReadiness.body.test?.environment !== "test" || paymentReadiness.body.test?.network !== "eip155:84532" || paymentReadiness.body.test?.revenue !== false) fail("Production and test payment rails are not isolated");
 
 const syntheticHeaders = { "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-production-verifier/5.1.0" };
 const home = await fetch(`${SITE}/`, { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
