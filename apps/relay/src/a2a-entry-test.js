@@ -120,7 +120,7 @@ test("A2A SendMessage bridges a useful preflight action instead of discovery onl
   assert.equal(body.result.message.parts[0].data.error.code, "target_not_public");
 });
 
-test("A2A bridges signed quote to an actionable x402 PaymentRequired response", async t => {
+test("A2A direct paid call creates a signed quote and returns actionable x402 PaymentRequired", async t => {
   const env = paidEnvironment();
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async input => {
@@ -132,17 +132,13 @@ test("A2A bridges signed quote to an actionable x402 PaymentRequired response", 
   };
   t.after(() => { globalThis.fetch = originalFetch; });
 
-  const quoteResponse = await app.fetch(sendMessage(10, { action: "quote", input: { url: "https://example.com/", testnet: true } }), env, {});
-  assert.equal(quoteResponse.status, 200);
-  const quoteBody = await quoteResponse.json();
-  const quote = quoteBody.result.message.parts[0].data;
-  assert.equal(quote.payment_environment, "test");
-
-  const paidResponse = await app.fetch(sendMessage(11, { action: "xguard.web.fetch", input: { url: "https://example.com/", testnet: true, quote: quote.quote } }), env, {});
+  const paidResponse = await app.fetch(sendMessage(11, { action: "xguard.web.fetch", input: { url: "https://example.com/", testnet: true } }), env, {});
   assert.equal(paidResponse.status, 402);
   assert.ok(paidResponse.headers.get("payment-required"));
+  assert.match(paidResponse.headers.get("x-xguard-quote") || "", /^[^.]+\.[^.]+\.[^.]+$/);
   const paidBody = await paidResponse.json();
   assert.equal(paidBody.result.status, "INPUT_REQUIRED");
   assert.equal(paidBody.result.message.parts[0].data.x402Version, 2);
+  assert.equal(paidBody.result.payment["x-xguard-quote"], paidResponse.headers.get("x-xguard-quote"));
   assert.equal(paidBody.result.message.parts[0].data.extensions.xguard.next.action, "sign_and_retry");
 });
