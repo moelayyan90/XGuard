@@ -70,7 +70,8 @@ test("paid discovery advertises only the real enabled connector", async () => {
   const toolsManifest = await app.fetch(new Request("https://api.xguardgate.com/.well-known/xguard-tools.json"), env, {});
   assert.equal(toolsManifest.status, 200);
   const manifestBody = await toolsManifest.json();
-  assert.deepEqual(manifestBody.recommended_order, ["xguard.capabilities", "xguard.preflight", "xguard.pricing.quote", "xguard.web.fetch"]);
+  assert.deepEqual(manifestBody.recommended_order, ["xguard.web.fetch"]);
+  assert.deepEqual(manifestBody.optional_preparation, ["xguard.capabilities", "xguard.preflight", "xguard.pricing.quote"]);
   assert.equal(manifestBody.execution_chokepoint.settlement_before_execution, true);
 });
 
@@ -131,7 +132,7 @@ test("MCP, A2A, pricing, and OpenAPI publish the same canonical quote and mandat
   const env = environment();
   const pricing = await (await app.fetch(new Request("https://api.xguardgate.com/v1/pricing"), env, {})).json();
   assert.equal(pricing.quote_request.canonical_shape.url, "https://example.com/");
-  assert.equal(pricing.paid_flow.first_response, "HTTP 402 with Payment-Required and a signed offer");
+  assert.match(pricing.paid_flow.first_response, /automatically created signed quote/);
 
   const card = await (await canonicalApp.fetch(new Request("https://api.xguardgate.com/.well-known/agent-card.json"), env, {})).json();
   const extension = card.capabilities.extensions.find(item => item.uri.endsWith("/.well-known/payment-manifest"));
@@ -260,7 +261,9 @@ test("free preflight returns an allow decision and one executable next step", as
   assert.equal(body.target_contacted, false);
   assert.equal(body.normalized_input.url, target);
   assert.equal(body.network, "eip155:84532");
-  assert.equal(body.next.quote_url, "https://api.xguardgate.com/v1/pricing/quote");
+  assert.equal(body.next.execution_url, "https://api.xguardgate.com/v1/tools/web.fetch/testnet");
+  assert.equal(body.next.quote_url_optional, "https://api.xguardgate.com/v1/pricing/quote");
+  assert.equal(body.next.expected_status, 402);
   assert.equal(body.next.body.testnet, true);
   assert.equal(targetCalls, 0);
 });
@@ -390,6 +393,37 @@ test("signed quote produces an official x402 v2 challenge", async t => {
   }), env, {});
   assert.equal(mcpResponse.status, 402);
   assert.equal((await mcpResponse.json()).accepts[0].network, "eip155:84532");
+});
+
+test("one direct paid call creates a signed quote and returns 402 without upstream execution", async t => {
+  const env = environment();
+  const originalFetch = globalThis.fetch;
+  let upstreamCalls = 0;
+  globalThis.fetch = async input => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (["one.one.one.one", "cloudflare-dns.com", "dns.google"].includes(url.hostname)) {
+      return new Response(JSON.stringify({ Status: 0, Answer: url.searchParams.get("type") === "A" ? [{ type: 1, data: "93.184.216.34" }] : [] }), { headers: { "content-type": "application/dns-json" } });
+    }
+    upstreamCalls += 1;
+    throw new Error(`upstream contacted before settlement: ${url}`);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const response = await app.fetch(new Request("https://api.xguardgate.com/v1/tools/web.fetch/testnet", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-xguard-traffic-class": "synthetic" },
+    body: JSON.stringify({ url: target, testnet: true }),
+  }), env, {});
+  assert.equal(response.status, 402);
+  assert.equal(upstreamCalls, 0);
+  assert.ok(response.headers.get("payment-required"));
+  assert.match(response.headers.get("x-xguard-quote") || "", /^[^.]+\.[^.]+\.[^.]+$/);
+  const required = await response.json();
+  assert.equal(required.x402Version, 2);
+  assert.equal(required.accepts[0].network, "eip155:84532");
+  assert.equal(required.extensions.xguard.quote, response.headers.get("x-xguard-quote"));
+  assert.equal(required.extensions.xguard.paymentIdentifier, response.headers.get("x-xguard-payment-identifier"));
+  assert.equal(required.extensions.xguard.next.action, "sign_and_retry");
 });
 
 test("DNS validation uses an independent resolver when the primary is unavailable", async t => {
