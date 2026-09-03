@@ -11,17 +11,26 @@ https://api.xguardgate.com
 The primary no-account path is:
 
 ```text
-discovery → capabilities → preflight → signed quote → HTTP 402 → verify + settle
-          → controlled execution → signed receipt + ProofRail
+direct tool call → signed quote + HTTP 402 → verify + settle
+                 → controlled execution → signed receipt + ProofRail
 ```
 
 The first paid production tool is `xguard.web.fetch`: bounded public HTTPS `GET`/`HEAD` with SSRF protection, public-DNS validation, safe manual redirects, content/type/size/time limits, caching, stable errors, source timestamps and content hashes. Search, AI generation/routing and data-query tools are explicitly disabled until real connectors are configured.
 
 ## Five-minute quickstart
 
-No account or SDK is needed to discover the service, inspect pricing, obtain a signed quote, and receive the standard x402 challenge:
+No account or SDK is needed. The shortest path is one request; XGuard creates the signed quote and returns the standard x402 challenge without contacting the target:
 
 ```bash
+curl -i https://api.xguardgate.com/v1/tools/web.fetch \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://example.com/"}'
+
+# Response: HTTP 402 + Payment-Required + X-XGuard-Quote.
+# Sign the challenge with an x402 v2 payer and retry the identical request with
+# Payment-Signature and X-XGuard-Quote. XGuard settles before execution.
+
+# Optional machine discovery and free preparation:
 curl -sS https://api.xguardgate.com/v1/capabilities
 curl -sS https://api.xguardgate.com/v1/pricing
 curl -sS https://api.xguardgate.com/v1/payment/readiness
@@ -35,8 +44,8 @@ curl -sS https://api.xguardgate.com/v1/pricing/quote \
   -H 'content-type: application/json' \
   -d '{"url":"https://example.com/","testnet":true}'
 
-# Send the returned compact `quote` as X-XGuard-Quote. The response is HTTP 402
-# with PAYMENT-REQUIRED and a signed offer until PAYMENT-SIGNATURE is supplied.
+# A standalone signed quote remains available for clients that need a price preview.
+# Send its compact `quote` as X-XGuard-Quote; the response is the same HTTP 402.
 curl -i https://api.xguardgate.com/v1/tools/web.fetch/testnet \
   -H 'content-type: application/json' \
   -H 'X-XGuard-Quote: <signed-quote>' \
@@ -48,17 +57,17 @@ The final payment payload is standard x402 v2; it can be produced by any compati
 ### MCP
 
 ```bash
-curl -sS https://api.xguardgate.com/mcp \
+curl -i https://api.xguardgate.com/mcp \
   -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"xguard.pricing.quote","arguments":{"url":"https://example.com/","testnet":true}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"xguard.web.fetch","arguments":{"url":"https://example.com/"}}}'
 ```
 
 ### A2A
 
 ```bash
-curl -sS https://api.xguardgate.com/a2a \
+curl -i https://api.xguardgate.com/a2a \
   -H 'content-type: application/json' -H 'a2a-version: 1.0.0' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":{"message":{"messageId":"quote-1","role":"ROLE_USER","parts":[{"data":{"action":"quote","input":{"url":"https://example.com/","testnet":true}}}]}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":{"message":{"messageId":"fetch-1","role":"ROLE_USER","parts":[{"data":{"action":"xguard.web.fetch","input":{"url":"https://example.com/"}}}]}}}'
 ```
 
 ### TypeScript and Python discovery
@@ -87,7 +96,7 @@ Canonical discovery surfaces: `/mcp`, `/a2a`, `/.well-known/agent-card.json`, `/
 
 Base Sepolia is integration-only and every test settlement is recorded as `environment=test, revenue=false`. Production quotes use Base Mainnet and the configured production recipient/facilitator; revenue is recorded only for an external production settlement with transaction evidence.
 
-`xguard.preflight` is the free guard at the front door: it gives an agent a deterministic allow/block decision and the exact quote URL before any upstream request or payment. `xguard.web.fetch` is the mandatory guarded execution choke point; every paid call requires a signed quote and x402 v2 settlement before the target is contacted. When an operator keeps a reusable upstream credential only in XGuard, Secretless Egress is likewise the required credential-backed path for that environment.
+`xguard.web.fetch` is the mandatory guarded execution choke point: its first direct call returns the input-bound quote and 402 automatically, and every paid retry requires x402 v2 settlement before the target is contacted. `xguard.preflight` and the standalone quote endpoint remain optional free preparation. When an operator keeps a reusable upstream credential only in XGuard, Secretless Egress is likewise the required credential-backed path for that environment.
 
 ## Secretless credential path
 
