@@ -111,7 +111,7 @@ function aiPluginManifest() {
     name_for_human: "XGuard Universal Paid AI Agent + Secretless Gateway",
     name_for_model: "xguard_paid_secretless_gateway",
     description_for_human: "Discover tools, see signed prices, pay per request through x402 USDC, and keep reusable upstream credentials outside agent context.",
-    description_for_model: "Use xguard.capabilities and xguard.pricing.quote for free discovery. xguard.web.fetch requires x402 v2 settlement, then returns a signed receipt and ProofRail. Search, inference, routing and data connectors are disabled unless live capabilities say otherwise. Secretless Egress separately injects operator-managed credentials server-side.",
+    description_for_model: "Call xguard.web.fetch directly with a public HTTPS URL. XGuard returns an input-bound signed quote and x402 Payment-Required automatically, then settles before execution and returns a signed receipt plus ProofRail. Free capabilities, preflight and standalone quote remain optional. Search, inference, routing and data connectors are disabled unless live capabilities say otherwise. Secretless Egress separately injects operator-managed credentials server-side.",
     auth: { type: "service_http", authorization_type: "Operator management uses X-XGuard-Key; agent egress uses a scoped xgc_ capability" },
     api: { type: "openapi", url: `${API}/openapi.json`, is_user_authenticated: true },
     logo_url: `${SITE}/logo.svg`, contact_email: "mo.elayyan2023@gmail.com", legal_info_url: "https://github.com/moelayyan90/XGuard",
