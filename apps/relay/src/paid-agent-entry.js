@@ -43,6 +43,8 @@ const PAYMENT_TIMEOUT_SECONDS = 300;
 const MAX_RECONCILIATION_ATTEMPTS = 3;
 const ALLOWED_FINANCIAL_STATES = new Set(PAYMENT_STATES);
 const JOURNEY_EVENTS = new Set([
+  "request_received",
+  "operation_resolved",
   "discovery",
   "preflight",
   "tools_list",
@@ -52,16 +54,26 @@ const JOURNEY_EVENTS = new Set([
   "quote_failed",
   "payment_required",
   "payment_attempt",
+  "payment_proof_received",
   "payment_payload_received",
   "payment_parse_failed",
   "payment_authorization_received",
+  "payment_verification_started",
   "payment_verified",
+  "payment_rejected",
+  "replay_rejected",
+  "authorization_created",
   "settlement_started",
+  "settlement_created",
   "settlement_success",
   "settlement_failed",
   "execution_started",
+  "execution_completed",
   "execution_success",
   "execution_failed",
+  "usage_recorded",
+  "receipt_created",
+  "response_sent",
 ]);
 const METRIC_EVENTS = new Set([
   ...JOURNEY_EVENTS,
@@ -1286,6 +1298,7 @@ async function observeStage(env, event, id, details = {}) {
     event,
     conversion_stage: event,
     request_id: id,
+    trace_id: safeLabel(details.trace_id || id),
     traffic_class: traffic,
     ...(details.transport ? { transport: safeLabel(details.transport) } : {}),
     ...(details.surface ? { surface: safeLabel(details.surface) } : {}),
@@ -1406,6 +1419,15 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
     amount_atomic: config.amount,
     environment: config.environment,
     payment_state: "pending",
+  });
+  await observeStage(env, "response_sent", id, {
+    traffic_class: observation.trafficClass,
+    transport: observation.transport,
+    tool: TOOL,
+    network: config.network,
+    environment: config.environment,
+    payment_state: "pending",
+    outcome: "payment_required",
   });
   return new Response(JSON.stringify(challenge), {
     status: 402,
@@ -1578,14 +1600,18 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
     await logFinancialEvent("paid_gateway_execution_credited", record.request_id, record.payment_identifier, { reason: code, network: record.network, amount_atomic: record.amount, transaction: settlement.transaction });
     return error("upstream_failed", code === "upstream_timeout" ? 504 : 502, record.request_id, { retryable: true, details: { execution_credit: credit.token, credit_id: credit.payload.credit_id, original_transaction: settlement.transaction } });
   }
+  await observeStage(env, "execution_completed", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool: TOOL, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled", outcome: "succeeded" });
   const artifacts = await deliveryArtifacts(env, record, settlement, result);
+  await observeStage(env, "receipt_created", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool: TOOL, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled", outcome: artifacts.proof ? "signed" : "proof_unavailable" });
   const completed = await postStub(stub, "/operation/complete", { claim_token: claim.body.claim_token, result, settlement, receipt: artifacts.receipt, proof: artifacts.proof, payment_response: artifacts.paymentResponseHeader });
   if (!completed.ok) return error("settlement_ambiguous", 409, record.request_id, { retryable: true, details: { status_url: `${API}/v1/operations/${record.payment_identifier}` } });
   await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, status: "succeeded" });
   const finalRecord = completed.body.record;
   await recordMetric(env, "succeeded", { latency_ms: result.latency_ms, traffic_class: finalRecord.traffic_class, environment: finalRecord.environment });
+  await observeStage(env, "usage_recorded", finalRecord.request_id, { traffic_class: observation.trafficClass || finalRecord.traffic_class, transport: observation.transport || finalRecord.transport || "reconcile", tool: TOOL, network: finalRecord.network, amount_atomic: finalRecord.amount, environment: finalRecord.environment, payment_state: "settled", outcome: "succeeded" });
   await observeStage(env, "execution_success", finalRecord.request_id, { traffic_class: observation.trafficClass || finalRecord.traffic_class, transport: observation.transport || finalRecord.transport || "reconcile", tool: TOOL, network: finalRecord.network, amount_atomic: finalRecord.amount, environment: finalRecord.environment, payment_state: "settled", outcome: "succeeded" });
   console.log(JSON.stringify({ event: "paid_gateway_succeeded", request_id: finalRecord.request_id, payment_identifier_hash: await sha256(finalRecord.payment_identifier), tool: TOOL, target_host: new URL(finalRecord.input.url).hostname, network: finalRecord.network, environment: finalRecord.environment, amount_atomic: finalRecord.amount, transaction: settlement.transaction, latency_ms: result.latency_ms, revenue_usd_micros: finalRecord.gross_revenue_usd_micros, upstream_cost_usd_micros: finalRecord.actual_upstream_cost_usd_micros, net_profit_usd_micros: finalRecord.net_profit_usd_micros, resumed }));
+  await observeStage(env, "response_sent", finalRecord.request_id, { traffic_class: observation.trafficClass || finalRecord.traffic_class, transport: observation.transport || finalRecord.transport || "reconcile", tool: TOOL, network: finalRecord.network, amount_atomic: finalRecord.amount, environment: finalRecord.environment, payment_state: "settled", outcome: "succeeded" });
   return successfulResponse(finalRecord, false);
 }
 
@@ -1684,12 +1710,14 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
 
 export async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = false, transport = "http") {
   const observation = { trafficClass: trafficClass(request), transport };
+  await observeStage(env, "request_received", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, environment: forceTestnet ? "test" : "production" });
   if (!env.PROOF_AUTHORITY || !env.PAID_GATEWAY) return error("payment_not_configured", 503, id);
   const rate = await rateLimit(request, env, "paid-execution", 30);
   if (!rate.allowed) return error("rate_limited", 429, id, { retryable: true, details: { retry_after_seconds: rate.retry_after_seconds } });
   const normalizedInput = normalizeFetchInputDetailed(rawInput);
   if (!normalizedInput.ok) return validationError("invalid_input", id, normalizedInput.issues);
   const input = normalizedInput.input;
+  await observeStage(env, "operation_resolved", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, environment: forceTestnet ? "test" : "production", outcome: "normalized" });
   await observeStage(env, "tool_call_valid", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, environment: forceTestnet ? "test" : "production" });
   const envelope = inputEnvelope(rawInput);
   let quoteToken = request.headers.get("x-xguard-quote") || rawInput?.quote || envelope.source?.quote;
@@ -1736,10 +1764,12 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   const signatureHeader = request.headers.get("payment-signature");
   if (!signatureHeader) return paymentRequired(env, config, quoteToken, quote, id, "payment_required", observation);
   await observeStage(env, "payment_attempt", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
+  await observeStage(env, "payment_proof_received", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
   await observeStage(env, "payment_payload_received", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
   let paymentPayload;
   try { paymentPayload = decodePaymentSignatureHeader(signatureHeader); } catch {
     await observeStage(env, "payment_parse_failed", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "pending", outcome: "malformed_payment_signature" });
+    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: "malformed_payment_signature" });
     return error("payment_payload_invalid", 400, id);
   }
   const requirements = paymentRequirements(config, quote);
@@ -1747,12 +1777,16 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   const identity = authIdentity(paymentPayload);
   if (paymentPayload?.x402Version !== 2 || !requirementsMatch(paymentPayload?.accepted, requirements) || (paymentPayload.resource?.url && paymentPayload.resource.url !== config.resource) || paymentIdentifier !== quote.payment_identifier || !identity) {
     await observeStage(env, "payment_parse_failed", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "pending", outcome: "payment_binding_mismatch" });
+    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: "payment_binding_mismatch" });
     return error("payment_payload_invalid", 400, id);
   }
   await observeStage(env, "payment_authorization_received", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
   const authorizationFingerprint = await sha256(`${config.network}|${config.asset.toLowerCase()}|${identity.from}|${identity.nonce}`);
   const reserve = await postStub(gatewayIndex(env), "/index/reserve", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, request_digest: digest, request_id: id });
-  if (!reserve.ok) return error("payment_identifier_conflict", 409, id, { details: reserve.body.record || null });
+  if (!reserve.ok) {
+    await observeStage(env, "replay_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: "payment_identifier_conflict" });
+    return error("payment_identifier_conflict", 409, id, { details: reserve.body.record || null });
+  }
   const stub = operationStub(env, authorizationFingerprint);
   const begin = await postStub(stub, "/operation/begin", {
     request_id: reserve.body.record.request_id || id,
@@ -1780,6 +1814,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   });
   if (!begin.ok) {
     await postStub(gatewayIndex(env), "/index/release", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint });
+    await observeStage(env, "replay_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: "authorization_conflict" });
     return error("payment_identifier_conflict", 409, id, { details: begin.body.record || null });
   }
   if (begin.body.replay) {
@@ -1795,12 +1830,15 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     return error("settlement_ambiguous", 409, record.request_id, { retryable: true });
   }
 
+  await observeStage(env, "authorization_created", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending", outcome: "scoped" });
   const facilitator = new HTTPFacilitatorClient({ url: config.facilitator, timeoutMs: 10000 });
   let verification;
+  await observeStage(env, "payment_verification_started", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
   try { verification = await facilitator.verify(paymentPayload, requirements); } catch (cause) {
     await postStub(stub, "/operation/transition", { status: "failed", patch: { failure_stage: "verify", failure_reason: "facilitator_verify_unavailable" } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "failed" });
     await recordMetric(env, "verification_failed");
+    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: "facilitator_unavailable" });
     await logFinancialEvent("paid_gateway_verification_failed", id, paymentIdentifier, { reason: "facilitator_unavailable" });
     return error("payment_verification_failed", 402, id, { retryable: true, details: { reason: cause?.invalidReason || "facilitator_unavailable" } });
   }
@@ -1808,6 +1846,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     await postStub(stub, "/operation/transition", { status: "failed", patch: { failure_stage: "verify", failure_reason: verification?.invalidReason || "invalid_payment" } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "failed" });
     await recordMetric(env, "verification_failed");
+    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: verification?.invalidReason || "invalid_payment" });
     await logFinancialEvent("paid_gateway_verification_failed", id, paymentIdentifier, { reason: safeReason(verification?.invalidReason, "invalid_payment") });
     return paymentRequired(env, config, quoteToken, quote, id, verification?.invalidReason || "payment_verification_failed", observation);
   }
@@ -1840,6 +1879,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   }
   const settled = await postStub(stub, "/operation/transition", { status: "settled", patch: { transaction: settlement.transaction, network: settlement.network, payer: settlement.payer || identity.from, settlement } });
   await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "settled" });
+  await observeStage(env, "settlement_created", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "settled", outcome: "confirmed" });
   await observeStage(env, "settlement_success", id, {
     traffic_class: observation.trafficClass,
     transport,
