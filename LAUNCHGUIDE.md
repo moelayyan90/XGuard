@@ -6,7 +6,7 @@
 - **Version:** 5.1.0
 - **Category:** Security
 - **Secondary categories:** Developer Tools, AI & ML, Cloud & DevOps
-- **Pricing:** Public discovery and signed quotes are free. Paid tools use x402 USDC per request with no account or subscription; operator-provisioned Secretless Egress remains a separate management surface.
+- **Pricing:** A direct paid-tool call returns its signed quote and x402 payment requirement automatically. Public discovery, preflight, and standalone signed quotes remain free; no account or subscription is required. Operator-provisioned Secretless Egress remains a separate management surface.
 - **Website:** https://xguardgate.com
 - **Source:** https://github.com/moelayyan90/XGuard
 - **Remote MCP:** https://api.xguardgate.com/mcp
@@ -69,7 +69,7 @@ https://api.xguardgate.com/mcp
 
 Public MCP and A2A are not the credential-management boundary. Reusable upstream credentials are provisioned through XGuard's authenticated management path. Agents are intended to receive scoped XGuard capabilities rather than reusable upstream secrets. XGuard does not claim that unrelated Internet traffic is forced through the service; it becomes the required credential-backed path only when an operator keeps the reusable upstream credential exclusively in XGuard and delegates capabilities instead.
 
-The A2A 1.0.0 SendMessage surface bridges free preflight, signed quotes, x402 PaymentRequired, and paid `xguard.web.fetch` execution. It does not provision reusable credentials; paid target execution still occurs only after settlement.
+The A2A 1.0.0 SendMessage surface accepts a direct paid `xguard.web.fetch` intent and returns its signed quote plus x402 PaymentRequired automatically. Free preflight and standalone quotes remain optional. It does not provision reusable credentials; paid target execution still occurs only after settlement.
 
 ## Suggested tags
 
