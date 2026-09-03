@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - run: npm install --prefix apps/relay --no-audit --no-fund
+      - run: npm ci --prefix apps/relay --no-audit --no-fund
 
       - name: Snapshot current production version
         id: previous
@@ -95,7 +95,7 @@ jobs:
           test "$ready" = "1"
 
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/capabilities | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),t=Object.fromEntries(x.tools.map(v=>[v.id,v]));if(x.version!=="5.1.0"||t["xguard.preflight"]?.available!==true||t["xguard.web.fetch"]?.available!==true||t["xguard.web.search"]?.available!==false||t["xguard.ai.generate"]?.available!==false)process.exit(1)})'
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/preflight | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="xguard.preflight"||x.target_contacted!==false||!String(x.guidance?.next||"").includes("/v1/pricing/quote"))process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/preflight | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="xguard.preflight"||x.target_contacted!==false||!String(x.guidance?.next||"").includes("/v1/tools/web.fetch"))process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/pricing | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),p=x.tools?.["xguard.web.fetch"];if(p?.amount_atomic!=="1000"||p?.network!=="eip155:8453"||p?.maximum_upstream_cost_usd_micros!==0||p?.customer_price_usd_micros!==1000)process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/health | grep -q '"live":true'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/ready | grep -q '"ready":true'
@@ -119,13 +119,12 @@ jobs:
           grep -qi '^payment-required:' /tmp/xg-payment-headers
           cat /tmp/xg-payment-required | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||x.accepts?.[0]?.network!=="eip155:84532"||!x.extensions?.["offer-receipt"]?.info?.offers?.[0]?.signature)process.exit(1)})'
 
-          production_quote_code="$(curl --silent --show-error --max-time 12 -o /tmp/xg-production-quote.json -w '%{http_code}' -X POST https://api.xguardgate.com/v1/pricing/quote -H 'content-type: application/json' --data '{"command":"curl https://example.com/","environment":"production"}')"
-          test "$production_quote_code" = "200"
-          production_quote="$(node -e 'const x=JSON.parse(require("node:fs").readFileSync("/tmp/xg-production-quote.json","utf8"));if(x.payment_environment!=="production"||x.network!=="eip155:8453"||x.next?.payment?.environment!=="production"||!String(x.payment_rail).startsWith("x402:eip155:8453:"))process.exit(1);process.stdout.write(x.quote)')"
-          production_challenge_code="$(curl --silent --show-error --max-time 12 -D /tmp/xg-production-payment-headers -o /tmp/xg-production-payment-required -w '%{http_code}' -X POST https://api.xguardgate.com/v1/tools/web.fetch -H 'content-type: application/json' -H "X-XGuard-Quote: $production_quote" --data '{"url":"https://example.com/"}')"
+          production_challenge_code="$(curl --silent --show-error --max-time 12 -D /tmp/xg-production-payment-headers -o /tmp/xg-production-payment-required -w '%{http_code}' -X POST https://api.xguardgate.com/v1/tools/web.fetch -H 'content-type: application/json' --data '{"url":"https://example.com/"}')"
           test "$production_challenge_code" = "402"
+          grep -qi '^payment-required:' /tmp/xg-production-payment-headers
+          grep -qi '^x-xguard-quote:' /tmp/xg-production-payment-headers
           grep -qi '^x-xguard-payment-environment: production' /tmp/xg-production-payment-headers
-          node -e 'const x=JSON.parse(require("node:fs").readFileSync("/tmp/xg-production-payment-required","utf8"));if(x.accepts?.[0]?.network!=="eip155:8453"||x.extensions?.xguard?.paymentEnvironment!=="production"||x.extensions?.xguard?.next?.action!=="sign_and_retry")process.exit(1)'
+          node -e 'const fs=require("node:fs"),x=JSON.parse(fs.readFileSync("/tmp/xg-production-payment-required","utf8")),h=fs.readFileSync("/tmp/xg-production-payment-headers","utf8").match(/^x-xguard-quote:\s*(.+)$/im)?.[1]?.trim();if(x.accepts?.[0]?.network!=="eip155:8453"||x.extensions?.xguard?.paymentEnvironment!=="production"||x.extensions?.xguard?.next?.action!=="sign_and_retry"||!h||x.extensions?.xguard?.quote!==h)process.exit(1)'
 
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-egress.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard Secretless Egress"||!x.fetch||!x.capabilities||!x.controls?.some(v=>v.includes("never returned")))process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-egress-key.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.alg!=="RSA-OAEP-256"||x.jwk?.kty!=="RSA"||!x.kid)process.exit(1)})'
@@ -168,13 +167,16 @@ jobs:
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!x.endpoints?.verify||!x.endpoints?.settle||x.capabilities?.settlement_ambiguous_fail_closed!==true)process.exit(1)})'
 
           page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${DEPLOY_SHA}")"
-          printf '%s' "$page" | grep -q 'See the price'
+          printf '%s' "$page" | grep -q 'Generate a live signed 402'
           printf '%s' "$page" | grep -q 'Pay once. Run safely'
           printf '%s' "$page" | grep -q 'ProofRail'
           printf '%s' "$page" | grep -q 'signed execution evidence'
           printf '%s' "$page" | grep -q 'font-family:Arial'
           printf '%s' "$page" | grep -q 'rel="canonical"'
           printf '%s' "$page" | grep -q 'application/ld+json'
+          try_page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/try?build=${DEPLOY_SHA}")"
+          printf '%s' "$try_page" | grep -q 'Generate signed 402'
+          printf '%s' "$try_page" | grep -q '/v1/tools/web.fetch'
 
       - name: Verify canonical identity and discovery contract
         id: identity_contract
