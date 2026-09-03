@@ -28,9 +28,9 @@ const serverCard = {
   authentication: { required: false, schemes: [] },
   tools: [
     { name: "xguard.capabilities", description: "Discover actual enabled and disabled XGuard tools. Free.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-    { name: "xguard.preflight", description: "Free, read-only gate before xguard.web.fetch: validate HTTPS, SSRF policy, public DNS and payment readiness without contacting the target. Follow next.quote_url, then the mandatory x402 v2 402 flow.", inputSchema: QUOTE_SCHEMA, _meta: { "xguard/next": { quote_url: `${API}/v1/pricing/quote`, execution_tool: "xguard.web.fetch", first_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature" } } },
-    { name: "xguard.pricing.quote", description: "Use before xguard.web.fetch. Free. Canonical body: {url, method?, timeout_ms?, max_bytes?, mode?, testnet?}. Returns a signed 0.001 USDC quote and the exact next step.", inputSchema: QUOTE_SCHEMA, _meta: { "xguard/next": { call: "xguard.web.fetch", first_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature" } } },
-    { name: "xguard.web.fetch", description: "Paid public HTTPS fetch and guarded-request choke point. Payment is mandatory: send the signed quote, handle HTTP 402, sign Payment-Required with x402 v2, then retry the identical request. XGuard settles before execution and returns a signed receipt plus ProofRail.", inputSchema: paidFetchSchema(), _meta: { "xguard/payment": { required: true, protocol: "x402", version: 2, price_atomic: "1000", currency: "USDC", settlement_before_execution: true, role: "guarded_request_chokepoint", preflight: `${API}/v1/preflight` } } },
+    { name: "xguard.preflight", description: "Optional free, read-only gate before xguard.web.fetch: validate HTTPS, SSRF policy, public DNS and payment readiness without contacting the target. Then call xguard.web.fetch directly for the mandatory x402 flow.", inputSchema: QUOTE_SCHEMA, _meta: { "xguard/next": { execution_tool: "xguard.web.fetch", quote_url_optional: `${API}/v1/pricing/quote`, first_status: 402, challenge_header: "Payment-Required", quote_header: "X-XGuard-Quote", retry_header: "Payment-Signature" } } },
+    { name: "xguard.pricing.quote", description: "Optional free price preview for xguard.web.fetch. Canonical body: {url, method?, timeout_ms?, max_bytes?, mode?, testnet?}. The fastest path is a direct xguard.web.fetch call, which creates and returns the same signed quote in HTTP 402.", inputSchema: QUOTE_SCHEMA, _meta: { "xguard/next": { call: "xguard.web.fetch", first_status: 402, challenge_header: "Payment-Required", quote_header: "X-XGuard-Quote", retry_header: "Payment-Signature" } } },
+    { name: "xguard.web.fetch", description: "Paid public HTTPS fetch and guarded-request choke point. Call directly with {url}; XGuard returns an input-bound signed quote plus Payment-Required automatically. Sign it with x402 v2 and retry the identical request with X-XGuard-Quote and Payment-Signature. XGuard settles before execution and returns a signed receipt plus ProofRail.", inputSchema: paidFetchSchema(), _meta: { "xguard/payment": { required: true, protocol: "x402", version: 2, price_atomic: "1000", currency: "USDC", first_call_creates_quote: true, settlement_before_execution: true, role: "guarded_request_chokepoint", preflight_optional: `${API}/v1/preflight` } } },
     { name: "xguard_secretless_egress", description: "Discover XGuard Secretless Egress for keeping reusable upstream API credentials outside AI-agent context.", inputSchema: { type: "object", properties: {}, additionalProperties: true } },
     { name: "xguard_egress_fetch", description: "Execute a scoped HTTPS request through XGuard while reusable upstream credentials remain server-side.", inputSchema: { type: "object", additionalProperties: true } },
     { name: "xguard_proofrail", description: "Discover ProofRail signed execution evidence for credential-backed egress.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
@@ -129,7 +129,7 @@ Version: ${VERSION}
 
 ## How XGuard works
 
-For a paid tool, the agent discovers capabilities, obtains a short-lived signed quote, receives an x402 v2 402 challenge and signed offer, then retries with Payment-Signature. XGuard verifies and settles before controlled execution, and returns the result with a signed receipt and ProofRail evidence. Payment-Identifier and durable authorization state make retries idempotent.
+For a paid tool, the agent sends one direct call. XGuard validates the input and returns a short-lived signed quote inside an x402 v2 402 challenge, then the agent retries with Payment-Signature and X-XGuard-Quote. XGuard verifies and settles before controlled execution, and returns the result with a signed receipt and ProofRail evidence. Payment-Identifier and durable authorization state make retries idempotent.
 
 For a secretless tool, the operator stores a reusable upstream credential in XGuard and the agent receives only a scoped capability. XGuard validates the capability and policy, injects the credential server-side and calls the permitted HTTPS API without returning the secret.
 
@@ -151,7 +151,7 @@ XGuard becomes the required credential-backed egress path inside an environment 
 - Tool manifest (actual availability and guarded choke point): ${API}/.well-known/xguard-tools.json
 - Actual capabilities: ${API}/v1/capabilities
 - Published pricing: ${API}/v1/pricing
-- Signed input-bound quote: POST ${API}/v1/pricing/quote
+- Optional signed price preview: POST ${API}/v1/pricing/quote
 - Mainnet execution: POST ${API}/v1/tools/web.fetch
 - Base Sepolia integration route: POST ${API}/v1/tools/web.fetch/testnet
 - Payment manifest: ${API}/.well-known/payment-manifest
@@ -159,11 +159,11 @@ XGuard becomes the required credential-backed egress path inside an environment 
 - Readiness: ${API}/v1/ready
 - Payment readiness and production/test separation: ${API}/v1/payment/readiness
 
-Use xguard.preflight before xguard.web.fetch when an agent needs a deterministic safety and payment-readiness decision without contacting the target. Then use xguard.web.fetch for a bounded public HTTPS source with verifiable execution evidence. Its price is 0.001 USDC (1000 atomic units, six decimals).
+Call xguard.web.fetch directly with {"url":"https://example.com/"} for the shortest path. Use xguard.preflight first only when an agent needs a separate deterministic safety and payment-readiness decision without contacting the target. The execution price is 0.001 USDC (1000 atomic units, six decimals).
 
-Canonical quote body: {"url":"https://example.com/","method":"GET","testnet":true}. Common aliases, nested operation/action payloads, JSON arguments, and a bounded curl command are normalized before strict validation. The quote response returns normalized input and next.execution_url.
+Canonical direct body: {"url":"https://example.com/","method":"GET"}. Common aliases, nested operation/action payloads, JSON arguments, and a bounded curl command are normalized before strict validation. The first response is HTTP 402 with Payment-Required, X-XGuard-Quote, and a signed offer; the target is not contacted.
 
-POST the normalized input with X-XGuard-Quote. HTTP 402 is mandatory. Decode Payment-Required, create and sign an official x402 v2 payment, and retry the identical request with Payment-Signature. XGuard verifies and settles before the fetch. HTTP 200 returns Payment-Response, a signed receipt, and ProofRail evidence. Payment-Identifier is mandatory. An exact retry returns the stored outcome without a second settlement.
+Decode Payment-Required, create and sign an official x402 v2 payment, and retry the identical request with Payment-Signature and X-XGuard-Quote. XGuard verifies and settles before the fetch. HTTP 200 returns Payment-Response, a signed receipt, and ProofRail evidence. Payment-Identifier is mandatory. An exact retry returns the stored outcome without a second settlement.
 
 ## Machine-readable discovery
 
@@ -183,7 +183,7 @@ POST the normalized input with X-XGuard-Quote. HTTP 402 is mandatory. Decode Pay
 Transport: streamable-http
 Endpoint: ${MCP}
 
-Recommended tool order: xguard.capabilities → xguard.preflight → xguard.pricing.quote → xguard.web.fetch. Preflight and pricing are free; xguard.web.fetch always requires x402 v2 settlement before execution.
+Fastest tool path: xguard.web.fetch directly. Capabilities, preflight and standalone pricing quote are optional free preparation; xguard.web.fetch always requires x402 v2 settlement before execution.
 
 Connect examples:
 - Claude Code: claude mcp add xguard --transport http ${MCP}
@@ -195,7 +195,7 @@ Connect examples:
 Protocol version: 1.0.0 (1.0 compatibility accepted)
 Agent Card: ${A2A_CARD}
 JSON-RPC endpoint: ${A2A_ENDPOINT}
-Role: discovery plus execution bridge for preflight, signed quote, mandatory x402 PaymentRequired, and paid xguard.web.fetch resume.
+Role: discovery plus a direct execution bridge that returns signed quote + mandatory x402 PaymentRequired and resumes paid xguard.web.fetch after payment.
 
 Do not advertise search, inference, routing or data-query tools unless ${API}/v1/capabilities marks them available. The canonical product identity is XGuard Universal Paid AI Agent + Secretless Gateway.
 `;
