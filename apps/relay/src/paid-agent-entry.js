@@ -2059,7 +2059,11 @@ function discoverMcp(id) {
     result: {
       resultType: "complete",
       supportedVersions: ["2026-07-28", "2025-11-25"],
-      capabilities: { tools: {} },
+      capabilities: {
+        tools: { listChanged: false },
+        resources: { subscribe: false, listChanged: false },
+        prompts: { listChanged: false },
+      },
       _meta: { "io.modelcontextprotocol/serverInfo": { name: "xguard-universal-paid-secretless-gateway", version: VERSION } },
       instructions: "Call xguard.web.fetch directly with a public HTTPS URL. XGuard returns its signed price and x402 PaymentRequired automatically; sign and retry the identical call. Capabilities, preflight and standalone pricing quote are optional and free. XGuard never executes a paid tool before settlement.",
       ttlMs: 60000,
@@ -2079,6 +2083,21 @@ async function handlePaidMcp(request, env, id) {
   if (message.method === "server/discover") {
     await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "mcp", surface: "server_discover" });
     return discoverMcp(message.id);
+  }
+  if (message.method === "notifications/initialized" || message.method === "notifications/cancelled") {
+    return mcpTransportResponse(new Response(null, { status: 204 }), message);
+  }
+  if (message.method === "resources/list") {
+    await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "mcp", surface: "resources_list" });
+    return mcpTransportResponse(json({ jsonrpc: "2.0", id: message.id ?? null, result: { resources: [], resultType: "complete", ttlMs: 60000, cacheScope: "public" } }), message);
+  }
+  if (message.method === "resources/templates/list") {
+    await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "mcp", surface: "resource_templates_list" });
+    return mcpTransportResponse(json({ jsonrpc: "2.0", id: message.id ?? null, result: { resourceTemplates: [], resultType: "complete", ttlMs: 60000, cacheScope: "public" } }), message);
+  }
+  if (message.method === "prompts/list") {
+    await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "mcp", surface: "prompts_list" });
+    return mcpTransportResponse(json({ jsonrpc: "2.0", id: message.id ?? null, result: { prompts: [], resultType: "complete", ttlMs: 60000, cacheScope: "public" } }), message);
   }
   if (message.method === "initialize") await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "mcp", surface: "initialize" });
   if (message.method === "tools/list") await observeStage(env, "tools_list", id, { traffic_class: observation.trafficClass, transport: "mcp" });
@@ -2126,7 +2145,18 @@ async function augmentMcpTools(message, response, env) {
   if (!response.ok) return mcpTransportResponse(response, message);
   const body = await response.clone().json().catch(() => null);
   if (!body?.result || typeof body.result !== "object") return mcpTransportResponse(response, message);
-  if (message.method === "tools/list" && Array.isArray(body.result.tools)) {
+  if (message.method === "initialize") {
+    const requested = message.params?.protocolVersion;
+    body.result.protocolVersion = ["2026-07-28", "2025-11-25"].includes(requested) ? requested : "2026-07-28";
+    body.result.capabilities = {
+      ...(body.result.capabilities || {}),
+      tools: { listChanged: false },
+      resources: { subscribe: false, listChanged: false },
+      prompts: { listChanged: false },
+    };
+    body.result.serverInfo = { name: "xguard-universal-paid-secretless-gateway", version: VERSION };
+    body.result.instructions = "Call xguard.web.fetch with a public HTTPS URL. The first call returns an input-bound signed x402 v2 payment requirement; retry the identical call with Payment-Signature and X-XGuard-Quote. XGuard settles before exactly-once execution. Resources and prompts are intentionally empty because executable outcomes are exposed as tools.";
+  } else if (message.method === "tools/list" && Array.isArray(body.result.tools)) {
     for (const tool of [...mcpToolsForEnv(env)].reverse()) {
       const existing = body.result.tools.findIndex(item => item?.name === tool.name);
       if (existing >= 0) body.result.tools.splice(existing, 1);
@@ -2154,7 +2184,7 @@ function mcpDiscovery(env) {
     transport: "streamable-http",
     endpoint: `${API}/mcp`,
     protocol: "MCP",
-    methods: ["server/discover", "initialize", "notifications/initialized", "tools/list", "tools/call"],
+    methods: ["server/discover", "initialize", "notifications/initialized", "notifications/cancelled", "tools/list", "tools/call", "resources/list", "resources/templates/list", "prompts/list"],
     protocolVersions: ["2026-07-28", "2025-11-25"],
     authentication: { required: false, oauth: false, payment: "x402-v2-per-paid-tool" },
     tools: mcpToolsForEnv(env),
