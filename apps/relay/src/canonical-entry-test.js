@@ -25,6 +25,21 @@ test("API root points agents to the guarded paid tool path", async () => {
   const body = await response.json();
   assert.equal(body.discovery.preflight, "https://api.xguardgate.com/v1/preflight");
   assert.equal(body.discovery.tools_manifest, "https://api.xguardgate.com/.well-known/xguard-tools.json");
+  assert.equal(body.discovery.interactive_try, "https://xguardgate.com/try");
+});
+
+test("homepage and live try page expose the one-call paid conversion path", async () => {
+  const homepage = await app.fetch(new Request("https://xguardgate.com/"), {}, {});
+  assert.equal(homepage.status, 200);
+  assert.match(await homepage.text(), /href="\/try"/);
+
+  const response = await app.fetch(new Request("https://xguardgate.com/try"), {}, {});
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Generate signed 402/);
+  assert.match(html, /\/v1\/tools\/web\.fetch/);
+  assert.match(html, /x-xguard-traffic-class':'synthetic/);
+  assert.match(response.headers.get("content-security-policy") || "", /connect-src[^;]*https:\/\/api\.xguardgate\.com/);
 });
 
 test("identity is the complete machine-readable source of product taxonomy", async () => {
@@ -50,7 +65,8 @@ test("pricing is truthful about billing boundary and uses a nonce-scoped checkou
   assert.match(html, /https:\/\/hooks\.xguardgate\.com\/v1\/checkout/);
   const csp = response.headers.get("content-security-policy") || "";
   assert.match(csp, /script-src 'nonce-[a-f0-9]{32}'/);
-  assert.match(csp, /connect-src https:\/\/hooks\.xguardgate\.com/);
+  assert.match(csp, /connect-src[^;]*https:\/\/api\.xguardgate\.com/);
+  assert.match(csp, /connect-src[^;]*https:\/\/hooks\.xguardgate\.com/);
 });
 
 test("robots and sitemap expose public documentation but not operator endpoints", async () => {
@@ -61,6 +77,7 @@ test("robots and sitemap expose public documentation but not operator endpoints"
   const sitemap = await app.fetch(new Request("https://xguardgate.com/sitemap.xml"), {}, {});
   const xml = await sitemap.text();
   assert.match(xml, /https:\/\/xguardgate\.com\/pricing/);
+  assert.match(xml, /https:\/\/xguardgate\.com\/try/);
   assert.match(xml, /https:\/\/xguardgate\.com\/\.well-known\/mcp\/server-card\.json/);
   assert.doesNotMatch(xml, /\/v1\/egress\/credentials|<loc>https:\/\/api\.xguardgate\.com\/mcp<\/loc>/);
 });
