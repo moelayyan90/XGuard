@@ -142,7 +142,7 @@ function headers(extra = {}) {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,HEAD,POST,OPTIONS",
     "access-control-allow-headers": "content-type,payment-signature,x-xguard-quote,x-xguard-credit,x-request-id,x-xguard-traffic-class",
-    "access-control-expose-headers": "payment-required,payment-response,x-xguard-request-id,x-xguard-payment-identifier,x-xguard-payment-environment,x-xguard-payment-rail,x-xguard-replay,x-xguard-proof,x-xguard-receipt,x-xguard-credit",
+    "access-control-expose-headers": "payment-required,payment-response,x-xguard-quote,x-xguard-request-id,x-xguard-payment-identifier,x-xguard-payment-environment,x-xguard-payment-rail,x-xguard-replay,x-xguard-proof,x-xguard-receipt,x-xguard-credit",
     "strict-transport-security": "max-age=31536000; includeSubDomains",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
@@ -269,6 +269,14 @@ function capabilities(env) {
       openapi: `${API}/openapi.json`,
       llms: `${API}/llms.txt`,
       preflight: `${API}/v1/preflight`,
+      interactive_try: "https://xguardgate.com/try",
+    },
+    fastest_path: {
+      method: "POST",
+      endpoint: `${API}/v1/tools/web.fetch`,
+      body: { url: "https://example.com/" },
+      first_response: "HTTP 402 with Payment-Required and X-XGuard-Quote",
+      target_contacted_before_settlement: false,
     },
     tools: [
       { id: "xguard.capabilities", available: true, paid: false, endpoint: `${API}/v1/capabilities` },
@@ -319,7 +327,8 @@ function toolsManifest(env) {
     version: manifest.version,
     canonical_mcp: manifest.discovery.mcp,
     canonical_api: API,
-    recommended_order: ["xguard.capabilities", "xguard.preflight", "xguard.pricing.quote", TOOL],
+    recommended_order: [TOOL],
+    optional_preparation: ["xguard.capabilities", "xguard.preflight", "xguard.pricing.quote"],
     execution_chokepoint: {
       tool: TOOL,
       endpoint: `${API}/v1/tools/web.fetch`,
@@ -363,7 +372,8 @@ function pricing(env) {
       preflight: "Optional free preflight validates target safety and payment readiness without contacting the target.",
       execute: `POST ${mainnet.resource}`,
       testnet_execute: `POST ${testnet.resource}`,
-      first_response: "HTTP 402 with Payment-Required and a signed offer",
+      request_body: { url: "https://example.com/" },
+      first_response: "HTTP 402 with Payment-Required, an automatically created signed quote, and X-XGuard-Quote",
       retry: "Sign the advertised x402 v2 requirements and retry the identical request with Payment-Signature.",
       success: "HTTP 200 with Payment-Response, signed receipt, and ProofRail evidence",
     },
@@ -437,7 +447,7 @@ function quoteRequestGuidance() {
     },
     url_aliases: ["url", "target_url", "targetUrl", "uri", "target", "resource", "endpoint", "href"],
     deterministic_command_aliases: ["curl", "command"],
-    next: "Send the returned normalized input and signed quote to execution_url. The first call returns HTTP 402; construct an official x402 v2 Payment-Signature from Payment-Required and retry the identical request.",
+    next: "Fastest path: call the paid execution URL directly with the input. XGuard automatically creates the same signed quote and returns it with HTTP 402. Construct an official x402 v2 Payment-Signature from Payment-Required and retry the identical request. Advanced clients may request this quote separately first.",
   };
 }
 
@@ -450,8 +460,8 @@ function preflightRequestGuidance() {
     accepted_shapes: QUOTE_ACCEPTED_SHAPES,
     required: { url: "A public HTTPS URL without credentials or a fragment." },
     optional: quoteRequestGuidance().optional,
-    purpose: "Check XGuard's public-HTTPS and payment path before requesting a signed quote. The target is not fetched and no payment is attempted.",
-    next: `POST ${API}/v1/pricing/quote with the same normalized input, then follow next.execution_url and the HTTP 402 x402-v2 challenge.`,
+    purpose: "Optionally check XGuard's public-HTTPS and payment path before the paid call. The target is not fetched and no payment is attempted.",
+    next: `POST the same normalized input directly to ${API}/v1/tools/web.fetch. XGuard creates the signed quote and returns it with the HTTP 402 x402-v2 challenge. A separate quote request is optional.`,
   };
 }
 
@@ -467,7 +477,7 @@ function preflightSchema() {
       decision: "allow | blocked",
       normalized_input: fetchInputSchema(),
       checks: ["https", "public_dns", "ssrf_policy", "payment_path"],
-      next: { quote_url: `${API}/v1/pricing/quote`, execution_url: `${API}/v1/tools/web.fetch` },
+      next: { execution_url: `${API}/v1/tools/web.fetch`, quote_url_optional: `${API}/v1/pricing/quote`, expected_first_status: 402 },
     },
     guidance: preflightRequestGuidance(),
   };
@@ -552,11 +562,12 @@ export async function handlePreflight(env, raw, id, observation = {}) {
       { id: "payment_path", status: "pass", detail: "Signed quote and x402 v2 settlement path are configured for the selected network." },
     ],
     next: {
-      quote_url: `${API}/v1/pricing/quote`,
+      execution_url: normalized.testnet ? `${API}/v1/tools/web.fetch/testnet` : `${API}/v1/tools/web.fetch`,
+      quote_url_optional: `${API}/v1/pricing/quote`,
       method: "POST",
       body: { ...input, testnet: normalized.testnet },
-      expected_status: 200,
-      instruction: "Request the signed quote, then send the exact normalized input and quote to execution_url. The first execution response is HTTP 402; sign Payment-Required with an official x402 v2 client and retry unchanged.",
+      expected_status: 402,
+      instruction: "Send the normalized input directly to execution_url. XGuard returns Payment-Required and X-XGuard-Quote automatically; sign with an official x402 v2 client and retry the identical request with both headers.",
     },
     guidance: preflightRequestGuidance(),
   }, 200, { "x-xguard-request-id": id });
@@ -1402,6 +1413,7 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
       "payment-required": encodePaymentRequiredHeader(challenge),
       "x-xguard-request-id": id,
       "x-xguard-payment-identifier": quote.payment_identifier,
+      "x-xguard-quote": quoteToken,
       "x-xguard-payment-environment": config.environment,
       "x-xguard-payment-rail": config.rail.id,
       "link": `<${API}/v1/pricing/quote>; rel="pricing", <${API}/.well-known/xguard-proof-key.json>; rel="verification-key"`,
@@ -1678,10 +1690,34 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   const normalizedInput = normalizeFetchInputDetailed(rawInput);
   if (!normalizedInput.ok) return validationError("invalid_input", id, normalizedInput.issues);
   const input = normalizedInput.input;
+  await observeStage(env, "tool_call_valid", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, environment: forceTestnet ? "test" : "production" });
   const envelope = inputEnvelope(rawInput);
-  const quoteToken = request.headers.get("x-xguard-quote") || rawInput?.quote || envelope.source?.quote;
-  if (!quoteToken) return error("quote_required", 428, id, { details: { quote_endpoint: `${API}/v1/pricing/quote`, retry: quoteRequestGuidance() } });
-  const quote = await verifyJws(env, quoteToken);
+  let quoteToken = request.headers.get("x-xguard-quote") || rawInput?.quote || envelope.source?.quote;
+  let quote;
+  if (!quoteToken) {
+    await observeStage(env, "quote_attempt", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, environment: forceTestnet ? "test" : "production" });
+    const requestedTestnet = rawInput?.testnet;
+    if (requestedTestnet !== undefined && typeof requestedTestnet !== "boolean") {
+      return validationError("invalid_input", id, [{ path: "testnet", code: "boolean_required", message: "testnet must be true or false." }]);
+    }
+    if (requestedTestnet !== undefined && requestedTestnet !== forceTestnet) {
+      return validationError("invalid_input", id, [{
+        path: "testnet",
+        code: "route_environment_mismatch",
+        message: forceTestnet
+          ? "Use testnet=true with /v1/tools/web.fetch/testnet."
+          : "Use testnet=false or omit it with /v1/tools/web.fetch; use /v1/tools/web.fetch/testnet for Base Sepolia.",
+      }]);
+    }
+    const quoteInput = { ...rawInput, testnet: forceTestnet };
+    const issued = await issueQuote(env, quoteInput, id, observation);
+    if (!issued.payload) return issued.response;
+    quoteToken = issued.quote;
+    quote = issued.payload;
+    const autoConfig = gatewayConfig(env, forceTestnet);
+    return paymentRequired(env, autoConfig, quoteToken, quote, id, "payment_required", observation);
+  }
+  quote = await verifyJws(env, quoteToken);
   if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || quote.tool !== TOOL) return error("quote_invalid", 400, id);
   if (quote.expires_at <= Math.floor(Date.now() / 1000)) return error("quote_expired", 400, id);
   const config = gatewayConfig(env, quote.network === TESTNET);
@@ -1909,7 +1945,7 @@ function paidFetchSchema() {
       { type: "object", required: ["tool_name", "parameters"], properties: { tool_name: { type: "string", enum: [TOOL] }, parameters: nestedInput, ...envelopeFields }, additionalProperties: true },
       { type: "object", required: ["function"], properties: { function: { type: "object", required: ["name", "arguments"], properties: { name: { type: "string", enum: [TOOL] }, arguments: { oneOf: [nestedInput, { type: "string", contentMediaType: "application/json" }] }, }, additionalProperties: false }, ...envelopeFields }, additionalProperties: true },
     ],
-    description: "Canonical and common AI-agent envelopes are accepted. Include the signed quote in the body or X-XGuard-Quote header; the request must be retried unchanged after Payment-Required.",
+    description: "Canonical and common AI-agent envelopes are accepted. A first call without a quote returns HTTP 402 plus an automatically created signed quote. Retry the identical request with X-XGuard-Quote and Payment-Signature.",
     "x-xguard-accepted-shapes": QUOTE_ACCEPTED_SHAPES.map(shape => shape.name),
   };
 }
@@ -1927,17 +1963,17 @@ const PAID_MCP_TOOLS = [
   {
     name: "xguard.preflight",
     title: "Preflight a guarded paid request",
-    description: "Free, read-only safety gate for xguard.web.fetch. Validates the public HTTPS target, SSRF policy, DNS reachability and selected payment path without contacting the target or attempting payment. On allow, follow next.quote_url, then the mandatory x402 v2 402 flow.",
+    description: "Free, read-only safety gate for xguard.web.fetch. Validates the public HTTPS target, SSRF policy, DNS reachability and selected payment path without contacting the target or attempting payment. On allow, call xguard.web.fetch directly; it creates the signed quote and returns the mandatory x402 v2 PaymentRequired result.",
     inputSchema: quoteRequestSchema(),
     _meta: {
-      "xguard/next": { quote_url: `${API}/v1/pricing/quote`, execution_tool: TOOL, first_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature" },
+      "xguard/next": { execution_tool: TOOL, quote_url_optional: `${API}/v1/pricing/quote`, first_status: 402, challenge_header: "Payment-Required", quote_header: "X-XGuard-Quote", retry_header: "Payment-Signature" },
     },
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
   },
   {
     name: "xguard.pricing.quote",
     title: "Get a signed execution quote",
-    description: "Use before xguard.web.fetch. Returns a five-minute signed, input-bound quote for 0.001 USDC. Free; set testnet=true for Base Sepolia. Then call xguard.web.fetch, handle HTTP 402, sign Payment-Required with an official x402 v2 client, and retry the identical call with Payment-Signature.",
+    description: "Optional free preview before xguard.web.fetch. Returns a five-minute signed, input-bound quote for 0.001 USDC; set testnet=true for Base Sepolia. The fastest path is to call xguard.web.fetch directly and receive this quote in its HTTP 402 response.",
     inputSchema: quoteRequestSchema(),
     _meta: {
       "xguard/pricing": { amount_atomic: DEFAULT_PRICE_ATOMIC, currency: "USDC", decimals: 6, mainnet: MAINNET, testnet: TESTNET },
@@ -1948,7 +1984,7 @@ const PAID_MCP_TOOLS = [
   {
     name: TOOL,
     title: "Fetch a public HTTPS resource",
-    description: "Paid, read-only public HTTPS fetch. First obtain xguard.pricing.quote (0.001 USDC). Call this tool with the same input and quote; HTTP 402 is required, not optional. Sign Payment-Required using x402 v2 and retry the identical MCP request with Payment-Signature. Execution starts only after settlement and returns Payment-Response, a signed receipt, and ProofRail evidence.",
+    description: "Paid, read-only public HTTPS fetch. Call it directly with {url}; XGuard automatically creates an input-bound signed quote and returns an actionable x402 v2 PaymentRequired result for 0.001 USDC. Sign Payment-Required and retry the identical MCP request with Payment-Signature. Execution starts only after settlement and returns Payment-Response, a signed receipt, and ProofRail evidence. xguard.pricing.quote remains available for agents that want a quote before calling.",
     inputSchema: paidFetchSchema(),
     _meta: {
       "xguard/payment": { required: true, protocol: "x402", version: 2, price_atomic: DEFAULT_PRICE_ATOMIC, currency: "USDC", challenge_status: 402, challenge_header: "Payment-Required", retry_header: "Payment-Signature", settlement_before_execution: true },
@@ -2025,7 +2061,7 @@ function discoverMcp(id) {
       supportedVersions: ["2026-07-28", "2025-11-25"],
       capabilities: { tools: {} },
       _meta: { "io.modelcontextprotocol/serverInfo": { name: "xguard-universal-paid-secretless-gateway", version: VERSION } },
-      instructions: "Discover capabilities, run optional free xguard.preflight, request a signed price with xguard.pricing.quote, then call the paid tool. XGuard does not require OAuth; paid tools use x402 v2 per request and never execute before settlement.",
+      instructions: "Call xguard.web.fetch directly with a public HTTPS URL. XGuard returns its signed price and x402 PaymentRequired automatically; sign and retry the identical call. Capabilities, preflight and standalone pricing quote are optional and free. XGuard never executes a paid tool before settlement.",
       ttlMs: 60000,
       cacheScope: "public",
     },
@@ -2145,6 +2181,8 @@ function paymentManifest(env) {
       testnet_url: testnet.resource,
       preflight_url: `${API}/v1/preflight`,
       quote_url: `${API}/v1/pricing/quote`,
+      quote_optional: true,
+      first_call_creates_quote: true,
       quote_request: quoteRequestGuidance(),
       scheme: "exact",
       mainnet: { environment: mainnet.environment, rail: mainnet.rail.id, network: mainnet.network, asset: mainnet.asset, amount: mainnet.amount, pay_to: mainnet.payTo, configured: mainnet.configured },
@@ -2156,10 +2194,9 @@ function paymentManifest(env) {
       replay_safe: true,
       post_settlement_failure_policy: "signed_reusable_execution_credit",
       agent_flow: [
-        "POST quote_url using quote_request.canonical_shape",
-        "POST the returned next.execution_url with the normalized body and X-XGuard-Quote",
-        "On HTTP 402, decode Payment-Required and sign an official x402 v2 payment payload",
-        "Retry the identical execution request with Payment-Signature",
+        "POST {url: 'https://example.com/'} directly to the resource URL",
+        "On HTTP 402, preserve X-XGuard-Quote, decode Payment-Required and sign an official x402 v2 payment payload",
+        "Retry the identical execution request with Payment-Signature and X-XGuard-Quote",
         "On HTTP 200, verify Payment-Response, the signed receipt, and ProofRail evidence",
       ],
     }],
@@ -2266,12 +2303,13 @@ function paidOpenApiPaths() {
   const paidFlow = {
     price: { amount_atomic: DEFAULT_PRICE_ATOMIC, currency: "USDC", decimals: 6 },
     steps: [
-      `POST ${API}/v1/pricing/quote`,
-      "POST the returned execution_url with the normalized body and X-XGuard-Quote",
-      "On HTTP 402, sign Payment-Required with an official x402 v2 payer",
-      "Retry the identical request with Payment-Signature",
+      `POST ${API}/v1/tools/web.fetch with {url: \"https://example.com/\"}`,
+      "Read Payment-Required and X-XGuard-Quote from HTTP 402",
+      "Sign Payment-Required with an official x402 v2 payer",
+      "Retry the identical request with Payment-Signature and X-XGuard-Quote",
       "Verify Payment-Response, signed receipt, and ProofRail evidence on HTTP 200",
     ],
+    standalone_quote_optional: `${API}/v1/pricing/quote`,
     settlement_before_execution: true,
     payment_required: true,
   };
@@ -2282,7 +2320,7 @@ function paidOpenApiPaths() {
       get: { summary: "Describe the free guarded-request preflight", responses: { "200": { description: "Preflight schema and exact next steps", content: standard } } },
       post: {
         summary: "Preflight a guarded paid request without contacting the target",
-        description: "Free and read-only. Validates the normalized public HTTPS target, SSRF policy, trusted public DNS and payment readiness. On allow, follow next.quote_url and then the mandatory x402 v2 flow.",
+        description: "Free and read-only. Validates the normalized public HTTPS target, SSRF policy, trusted public DNS and payment readiness. On allow, call /v1/tools/web.fetch directly for an automatically quoted mandatory x402 v2 flow.",
         requestBody: { required: true, content: { "application/json": { schema: quoteRequestSchema(), examples: Object.fromEntries(QUOTE_ACCEPTED_SHAPES.map(shape => [shape.name, { value: shape.example }])) } } },
         responses: {
           "200": { description: "Target is safe to quote; no upstream request was made", content: standard },
@@ -2308,13 +2346,13 @@ function paidOpenApiPaths() {
     } },
     "/v1/tools/web.fetch": { post: {
       summary: "Fetch a public HTTPS resource only after required x402 settlement",
-      description: "Payment is mandatory. Obtain a signed quote first. The first identical execution call returns HTTP 402; retry only after creating Payment-Signature from Payment-Required. XGuard verifies and settles before any upstream request.",
-      parameters: [{ name: "X-XGuard-Quote", in: "header", required: false, description: "Required here or as body.quote.", schema: { type: "string" } }, { name: "Payment-Signature", in: "header", required: false, description: "Omit on the first call to receive HTTP 402; required on the settled retry.", schema: { type: "string" } }],
+      description: "Payment is mandatory. Call directly with a public HTTPS URL: if no quote is supplied, XGuard creates an input-bound signed quote and returns it inside HTTP 402 and X-XGuard-Quote. Retry only after creating Payment-Signature from Payment-Required. Advanced clients may obtain the same quote first from /v1/pricing/quote. XGuard verifies and settles before any upstream request.",
+      parameters: [{ name: "X-XGuard-Quote", in: "header", required: false, description: "Omit on the first call; XGuard returns an input-bound quote in this response header. Send it on the paid retry.", schema: { type: "string" } }, { name: "Payment-Signature", in: "header", required: false, description: "Omit on the first call to receive HTTP 402; required on the settled retry.", schema: { type: "string" } }],
       requestBody: { required: true, content: { "application/json": { schema: fetchInputSchema({ quoteOptional: true }), example: { url: "https://example.com/", method: "GET" } } } },
-      responses: { "200": { description: "Settled result, Payment-Response, signed receipt, and ProofRail evidence", content: standard }, "402": { description: "Required x402 v2 Payment-Required challenge and signed offer", content: standard }, "409": { description: "Replay or idempotency conflict" }, "503": { description: "Ambiguous settlement; no upstream execution" } },
+      responses: { "200": { description: "Settled result, Payment-Response, signed receipt, and ProofRail evidence", content: standard }, "402": { description: "Required x402 v2 Payment-Required challenge, automatically issued input-bound quote, and signed offer", content: standard }, "409": { description: "Replay or idempotency conflict" }, "503": { description: "Ambiguous settlement; no upstream execution" } },
       "x-xguard-payment-flow": paidFlow,
     } },
-    "/v1/tools/web.fetch/testnet": { post: { summary: "Base Sepolia testnet form of xguard.web.fetch", description: "Same mandatory x402 v2 flow as mainnet, using Base Sepolia USDC.", requestBody: { required: true, content: { "application/json": { schema: fetchInputSchema({ quoteOptional: true }) } } }, responses: { "200": { description: "Settled testnet result, signed receipt, and ProofRail evidence" }, "402": { description: "Required Base Sepolia x402 challenge" } }, "x-xguard-payment-flow": { ...paidFlow, network: TESTNET } } },
+    "/v1/tools/web.fetch/testnet": { post: { summary: "Base Sepolia testnet form of xguard.web.fetch", description: "Same mandatory one-call x402 v2 flow as mainnet, using Base Sepolia USDC. A first request without a quote automatically returns a signed testnet quote and Payment-Required challenge; test settlement never counts as revenue.", requestBody: { required: true, content: { "application/json": { schema: fetchInputSchema({ quoteOptional: true }) } } }, responses: { "200": { description: "Settled testnet result, signed receipt, and ProofRail evidence" }, "402": { description: "Required Base Sepolia x402 challenge with automatically created signed quote" } }, "x-xguard-payment-flow": { ...paidFlow, network: TESTNET } } },
     "/v1/operations/{payment_identifier}": { get: { summary: "Read a payment/execution state", parameters: [{ name: "payment_identifier", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Explicit financial state", content: standard }, "404": { description: "Unknown identifier" } } } },
     "/v1/health": { get: { summary: "Liveness probe", responses: { "200": { description: "Worker is live" } } } },
     "/v1/ready": { get: { summary: "Dependency readiness probe", responses: { "200": { description: "Ready" }, "503": { description: "Dependency unavailable" } } } },
@@ -2345,7 +2383,7 @@ async function improveOpenApi(response) {
 async function improveLlms(response) {
   if (!(response instanceof Response) || !response.ok) return response;
   const current = await response.clone().text();
-  const addition = `\n## Universal paid tool path\n\nUse XGuard when an agent needs a bounded paid tool or credential-backed API access without putting a reusable upstream API key in agent context. The production paid tool is xguard.web.fetch at 0.001 USDC per request; search, inference, routing and data connectors remain disabled until real connectors are configured.\n\n- Capabilities: ${API}/v1/capabilities\n- Pricing: ${API}/v1/pricing\n- Signed quote: POST ${API}/v1/pricing/quote\n- Paid execution: POST ${API}/v1/tools/web.fetch\n- Testnet execution: POST ${API}/v1/tools/web.fetch/testnet\n- Payment manifest: ${API}/.well-known/payment-manifest\n- Health: ${API}/v1/health\n- Readiness: ${API}/v1/ready\n\nCanonical quote body: {"url":"https://example.com/","method":"GET","testnet":true}. The quote response includes normalized input and next.execution_url. POST that exact input with X-XGuard-Quote. HTTP 402 is mandatory: decode Payment-Required, create and sign an official x402 v2 payment, then retry the identical request with Payment-Signature. XGuard verifies and settles before controlled execution. HTTP 200 returns Payment-Response, a signed receipt and ProofRail evidence. Payment-Identifier is mandatory; an exact retry returns the stored outcome without a second settlement.\n`;
+  const addition = `\n## Universal paid tool path\n\nUse XGuard when an agent needs a bounded paid tool or credential-backed API access without putting a reusable upstream API key in agent context. The production paid tool is xguard.web.fetch at 0.001 USDC per request; search, inference, routing and data connectors remain disabled until real connectors are configured.\n\n- Capabilities: ${API}/v1/capabilities\n- Pricing: ${API}/v1/pricing\n- Optional signed quote: POST ${API}/v1/pricing/quote\n- Paid execution: POST ${API}/v1/tools/web.fetch\n- Testnet execution: POST ${API}/v1/tools/web.fetch/testnet\n- Payment manifest: ${API}/.well-known/payment-manifest\n- Health: ${API}/v1/health\n- Readiness: ${API}/v1/ready\n\nFastest path: POST {"url":"https://example.com/"} directly to the paid execution URL. XGuard validates the target and returns HTTP 402 with Payment-Required, X-XGuard-Quote, and an input-bound signed offer; no upstream request occurs. Create and sign an official x402 v2 payment, then retry the identical input with Payment-Signature and X-XGuard-Quote. XGuard verifies and settles before controlled execution. HTTP 200 returns Payment-Response, a signed receipt and ProofRail evidence. Payment-Identifier is mandatory; an exact retry returns the stored outcome without a second settlement.\n`;
   const next = new Headers(response.headers);
   next.delete("content-length");
   next.set("x-xguard-version", VERSION);
