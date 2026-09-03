@@ -88,6 +88,38 @@ test("modern MCP discovery, routing headers, caching metadata, and JSON-RPC vali
   assert.deepEqual(discovered.result.supportedVersions, ["2026-07-28", "2025-11-25"]);
   assert.equal(discovered.result.cacheScope, "public");
   assert.equal(discovered.result._meta["io.modelcontextprotocol/serverInfo"].version, "5.1.0");
+  assert.equal(discovered.result.capabilities.resources.subscribe, false);
+  assert.equal(discovered.result.capabilities.prompts.listChanged, false);
+
+  const initialized = await app.fetch(new Request("https://api.xguardgate.com/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json", "mcp-protocol-version": "2026-07-28", "mcp-method": "initialize" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: "init-1", method: "initialize", params: { protocolVersion: "2026-07-28", capabilities: {}, clientInfo: { name: "integration-test", version: "1.0.0" } } }),
+  }), env, {});
+  const initializedBody = await initialized.json();
+  assert.equal(initialized.status, 200);
+  assert.equal(initializedBody.result.protocolVersion, "2026-07-28");
+  assert.equal(initializedBody.result.serverInfo.name, "xguard-universal-paid-secretless-gateway");
+  assert.equal(initializedBody.result.capabilities.resources.subscribe, false);
+
+  for (const [method, field] of [["resources/list", "resources"], ["resources/templates/list", "resourceTemplates"], ["prompts/list", "prompts"]]) {
+    const response = await app.fetch(new Request("https://api.xguardgate.com/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json", "mcp-protocol-version": "2026-07-28", "mcp-method": method },
+      body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params: {} }),
+    }), env, {});
+    const result = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(result.result[field], []);
+    assert.equal(result.result.resultType, "complete");
+  }
+
+  const initializedNotification = await app.fetch(new Request("https://api.xguardgate.com/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json", "mcp-protocol-version": "2026-07-28", "mcp-method": "notifications/initialized" },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }),
+  }), env, {});
+  assert.equal(initializedNotification.status, 204);
 
   const listed = await app.fetch(new Request("https://api.xguardgate.com/mcp", {
     method: "POST",
