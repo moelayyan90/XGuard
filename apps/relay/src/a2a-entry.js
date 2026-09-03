@@ -11,7 +11,7 @@ const A2A_ENDPOINT = `${API}/a2a`;
 
 const AGENT_CARD = {
   name: "XGuard Universal Paid AI Agent + Secretless Gateway",
-  description: "Discover real XGuard capabilities and prices, obtain a signed x402 quote, and call public or secretless tools without an XGuard account. Paid execution settles before the tool runs and returns a signed receipt plus ProofRail evidence.",
+  description: "Call one guarded public or secretless tool without an XGuard account. A direct paid call returns its signed x402 quote and PaymentRequired instructions automatically; XGuard settles before execution and returns a signed receipt plus ProofRail evidence.",
   supportedInterfaces: [
     {
       url: A2A_ENDPOINT,
@@ -36,6 +36,8 @@ const AGENT_CARD = {
       params: {
         preflight: `${API}/v1/preflight`,
         quote: `${API}/v1/pricing/quote`,
+        quote_optional: true,
+        direct_execution: `${API}/v1/tools/web.fetch`,
         canonical_quote_body: { url: "https://example.com/", method: "GET", testnet: true },
         price: { amount_atomic: "1000", currency: "USDC", decimals: 6 },
         challenge_status: 402,
@@ -51,16 +53,16 @@ const AGENT_CARD = {
     {
       id: "xguard-paid-web-fetch",
       name: "Paid public web fetch",
-      description: "Use for one bounded public HTTPS fetch with source evidence at XGuard's guarded-request choke point. Price: 0.001 USDC. Optionally run free xguard.preflight first, then request a signed quote, call the execution URL, handle mandatory HTTP 402, sign Payment-Required with x402 v2, and retry the identical request. XGuard settles before execution and returns a signed receipt plus ProofRail.",
+      description: "Use for one bounded public HTTPS fetch with source evidence at XGuard's guarded-request choke point. Price: 0.001 USDC. Send {action:\"xguard.web.fetch\",input:{url}} directly. XGuard returns a signed quote and mandatory x402 PaymentRequired result automatically; sign it and retry the identical message. XGuard settles before execution and returns a signed receipt plus ProofRail. Preflight and standalone quote are optional.",
       tags: ["x402", "usdc", "web-fetch", "proofrail"],
-      examples: ["POST /v1/pricing/quote with {\"url\":\"https://example.com/\",\"method\":\"GET\",\"testnet\":true}", "After HTTP 402, sign Payment-Required and retry the identical request with Payment-Signature."],
+      examples: ["SendMessage with {\"action\":\"xguard.web.fetch\",\"input\":{\"url\":\"https://example.com/\",\"testnet\":true}}", "Read the returned PaymentRequired and signed quote, then retry the identical request with Payment-Signature."],
       inputModes: ["text/plain", "application/json"],
       outputModes: ["text/plain", "application/json"],
     },
     {
       id: "xguard-preflight",
       name: "Guarded request preflight",
-      description: "Run a free, read-only XGuard preflight before a paid web fetch. It validates HTTPS, SSRF policy, public DNS and payment readiness without contacting the target, then returns the exact quote endpoint and next x402 step.",
+      description: "Optionally run a free, read-only XGuard preflight before a paid web fetch. It validates HTTPS, SSRF policy, public DNS and payment readiness without contacting the target, then points directly to the one-call x402 execution step.",
       tags: ["preflight", "ssrf", "x402", "web-fetch"],
       examples: ["POST /v1/preflight with {\"url\":\"https://example.com/\",\"testnet\":true}"],
       inputModes: ["text/plain", "application/json"],
@@ -122,6 +124,7 @@ const PUBLIC_DISCOVERY = {
   pricing: `${API}/v1/pricing`,
   preflight: `${API}/v1/preflight`,
   signed_quote: `${API}/v1/pricing/quote`,
+  direct_paid_execution: `${API}/v1/tools/web.fetch`,
   quote_request: {
     canonical: { url: "https://example.com/", method: "GET", testnet: true },
     accepted_envelopes: ["flat", "tool+input", "name+arguments", "tool_name+parameters", "function_call"],
@@ -129,6 +132,8 @@ const PUBLIC_DISCOVERY = {
   payment_manifest: `${API}/.well-known/payment-manifest`,
   paid_flow: {
     preflight: `${API}/v1/preflight`,
+    preflight_optional: true,
+    direct_request: { action: "xguard.web.fetch", input: { url: "https://example.com/" } },
     price: { amount_atomic: "1000", currency: "USDC", decimals: 6 },
     first_execution_status: 402,
     challenge_header: "Payment-Required",
@@ -145,7 +150,7 @@ const PUBLIC_DISCOVERY = {
   },
   purpose: "Validate and execute bounded public-HTTPS operations in-path, or keep reusable upstream API credentials outside AI-agent context by using scoped Secretless Egress capabilities.",
   proof_layer: "ProofRail can attach ES256-signed evidence to authorized credential-backed outcomes without placing the reusable upstream secret in the proof.",
-  a2a_security_boundary: "A2A SendMessage bridges preflight, signed quote, and paid xguard.web.fetch execution. Paid execution requires x402 settlement before the target is contacted.",
+  a2a_security_boundary: "A2A SendMessage calls paid xguard.web.fetch directly and returns a signed quote plus PaymentRequired automatically. Paid execution requires x402 settlement before the target is contacted.",
 };
 
 function headers(contentType = "application/a2a+json; charset=utf-8") {
@@ -154,6 +159,7 @@ function headers(contentType = "application/a2a+json; charset=utf-8") {
     "cache-control": "no-store",
     "access-control-allow-origin": "*",
     "access-control-allow-headers": "content-type,a2a-version,a2a-extensions,x-request-id,x-xguard-traffic-class,payment-signature,x-xguard-quote,x-xguard-credit",
+    "access-control-expose-headers": "payment-required,payment-response,x-xguard-quote,x-xguard-payment-environment,x-xguard-payment-rail,x-xguard-payment-identifier,x-xguard-replay,x-xguard-proof,x-xguard-receipt",
     "access-control-allow-methods": "GET,POST,OPTIONS",
     "x-content-type-options": "nosniff",
     "a2a-version": A2A_VERSION,
@@ -239,7 +245,7 @@ async function bridgeIntent(request, env, id, intent) {
     const paid = await handlePaidWebFetch(paidRequest, env, id, input, testnet, "a2a");
     const value = await paid.clone().json().catch(() => ({ error: "invalid_gateway_response" }));
     const exposed = {};
-    for (const name of ["payment-required", "payment-response", "x-xguard-payment-environment", "x-xguard-payment-rail", "x-xguard-payment-identifier", "x-xguard-replay", "x-xguard-proof", "x-xguard-receipt"]) {
+    for (const name of ["payment-required", "payment-response", "x-xguard-quote", "x-xguard-payment-environment", "x-xguard-payment-rail", "x-xguard-payment-identifier", "x-xguard-replay", "x-xguard-proof", "x-xguard-receipt"]) {
       const header = paid.headers.get(name);
       if (header) exposed[name] = header;
     }
