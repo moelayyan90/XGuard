@@ -194,6 +194,9 @@ jobs:
         id: identity_contract
         run: node scripts/verify-production-identity.mjs
 
+      - name: Verify outside-in MCP contract parity
+        run: node scripts/verify-outside-in.mjs
+
       - name: Record actual commercial counters without making a payment
         continue-on-error: true
         env:
