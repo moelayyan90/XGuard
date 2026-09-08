@@ -54,6 +54,7 @@ export function paymentStateCanTransition(from, to) {
 export function isRealRevenueSettlement(record, settlement = {}) {
   return record?.environment === PAYMENT_ENVIRONMENTS.PRODUCTION
     && record?.traffic_class === "external"
+    && !(record?.payer && record?.pay_to && String(record.payer).toLowerCase() === String(record.pay_to).toLowerCase())
     && networkEnvironment(settlement.network || record?.network) === PAYMENT_ENVIRONMENTS.PRODUCTION
     && settlement?.success === true
     && /^0x[0-9a-fA-F]{64}$/.test(String(settlement.transaction || ""));

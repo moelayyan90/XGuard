@@ -29,5 +29,6 @@ test("only an external production settlement can be real revenue", () => {
   assert.equal(isRealRevenueSettlement({ environment: "production", traffic_class: "external" }, settlement), true);
   assert.equal(isRealRevenueSettlement({ environment: "test", traffic_class: "external" }, { ...settlement, network: "eip155:84532" }), false);
   assert.equal(isRealRevenueSettlement({ environment: "production", traffic_class: "synthetic" }, settlement), false);
+  assert.equal(isRealRevenueSettlement({ environment: "production", traffic_class: "external", payer: ADDRESS, pay_to: ADDRESS }, settlement), false);
   assert.equal(isRealRevenueSettlement({ environment: "production", traffic_class: "external" }, { ...settlement, transaction: null }), false);
 });

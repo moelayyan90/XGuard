@@ -68,6 +68,11 @@ export class ProofAuthority {
   }
 
   async keyRecord() {
+    if (!this.keyPromise) this.keyPromise = this.loadKeyRecord().catch(cause => { this.keyPromise = null; throw cause; });
+    return this.keyPromise;
+  }
+
+  async loadKeyRecord() {
     let record = await this.state.storage.get("key");
     if (record?.public_jwk && record?.private_jwk && record?.kid) return record;
     const pair = await crypto.subtle.generateKey(
@@ -259,6 +264,9 @@ async function verifyProof(env, proof) {
 
 async function attachProof(requestSnapshot, response, env) {
   if (!(response instanceof Response) || !requestSnapshot || !env.PROOF_AUTHORITY) return response;
+  // Durable Secretless Egress persists the proof with the encrypted response.
+  // Re-signing a replay would invent a new execution timestamp and proof ID.
+  if (response.headers.has("x-xguard-proof")) return response;
   const billedCredits = response.headers.get("x-xguard-billed-credits");
   const ambiguous = response.headers.get("x-xguard-egress-state") === "ambiguous";
   if (billedCredits == null && !ambiguous) return response;

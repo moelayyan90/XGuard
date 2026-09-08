@@ -158,7 +158,7 @@ jobs:
           printf '%s' "$robots" | grep -q 'User-agent: ClaudeBot'
 
           init="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"deploy-smoke","version":"1.0.0"}}}')"
-          printf '%s' "$init" | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-universal-paid-secretless-gateway"||x.result?.serverInfo?.version!==process.env.EXPECTED_VERSION||!String(x.result?.instructions||"").includes("x402-paid tools")||!String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(1)})'
+          printf '%s' "$init" | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.result?.serverInfo?.name!=="xguard-universal-paid-secretless-gateway"||x.result?.serverInfo?.version!==process.env.EXPECTED_VERSION||x.result?.capabilities?.tools?.listChanged!==false||x.result?.protocolVersion!=="2026-07-28")process.exit(1)})'
           tools="$(curl --fail --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
           printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const n=(JSON.parse(s).result?.tools||[]).map(x=>x.name);if(!["xguard.capabilities","xguard.preflight","xguard.pricing.quote","xguard.web.fetch","xguard_proofrail","xguard_verify_proof","xguard_secretless_egress","xguard_egress_fetch","xguard_action_rail","xguard_facilitator","xguard_route"].every(v=>n.includes(v)))process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/.well-known/xguard-tools.json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.execution_chokepoint?.tool!=="xguard.web.fetch"||x.execution_chokepoint?.settlement_before_execution!==true)process.exit(1)})'
@@ -181,6 +181,12 @@ jobs:
       - name: Verify canonical identity and discovery contract
         id: identity_contract
         run: node scripts/verify-production-identity.mjs
+
+      - name: Record actual commercial counters without making a payment
+        continue-on-error: true
+        env:
+          XGUARD_OPERATOR_KEY: ${{ secrets.XGUARD_OPERATOR_KEY }}
+        run: node scripts/inspect-commercial.mjs
 
       - name: Roll back compatible code-only deployment after failed verification
         if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true'
