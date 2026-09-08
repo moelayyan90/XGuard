@@ -223,7 +223,7 @@ function developersPage(request) {
   <section class="card"><h2>4. Use credential-backed API actions</h2><p class="muted">For Secretless Egress, the operator supplies an authorized provider credential and XGuard Usage Credits, then delegates a short-lived capability scoped to host, path, method and budget. Provider charges remain separate. Keep reusable credentials outside the agent context.</p>
   <p class="muted">Use one stable Idempotency-Key per write operation. Completed retries replay the stored signed outcome; ambiguous in-flight writes fail closed and are not automatically retried.</p>
   <p><a href="https://github.com/moelayyan90/XGuard/blob/main/docs/secretless-outcomes.md">Execution contract and limits</a> · <a href="https://github.com/moelayyan90/XGuard/blob/main/sdk/README.md">SDK examples and installation</a> · <a href="/pricing">Credits and pricing</a></p></section>
-  <p><a href="https://github.com/moelayyan90/XGuard">Public source</a> · <a href="https://github.com/moelayyan90/XGuard/releases">Release downloads</a> · <a href="/llms-install.md">Agent installation guide</a></p>`);
+  <p><a href="https://github.com/moelayyan90/XGuard">Public source</a> · <a href="https://github.com/moelayyan90/XGuard/releases">Release downloads</a> · <a href="https://github.com/moelayyan90/XGuard/blob/main/llms-install.md">Agent installation guide</a></p>`);
 }
 
 function randomNonce() { return crypto.randomUUID().replaceAll("-", ""); }
