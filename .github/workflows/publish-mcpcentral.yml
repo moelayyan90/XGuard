@@ -1,11 +1,10 @@
 name: Publish XGuard to MCPCentral
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Deploy XGuard Relay"]
     branches: [main]
-    paths:
-      - "server.json"
-      - ".github/workflows/publish-mcpcentral.yml"
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -14,11 +13,13 @@ permissions:
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - name: Install official MCP publisher
@@ -50,7 +51,7 @@ jobs:
           version="$(node -p 'require("./server.json").version')"
           encoded="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")"
           body="$(curl --fail --silent --show-error "https://registry.mcpcentral.io/v0.1/servers?search=${encoded}&limit=100" || true)"
-          if printf '%s' "$body" | grep -Fq "\"name\":\"${name}\"" && printf '%s' "$body" | grep -Fq "\"version\":\"${version}\""; then
+          if printf '%s' "$body" | jq -e --arg name "$name" --arg version "$version" 'any(.servers[]?; .server.name == $name and .server.version == $version and any(.server.remotes[]?; .url == "https://api.xguardgate.com/mcp"))' >/dev/null; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "MCPCentral already contains ${name} ${version}."
           else
@@ -74,7 +75,7 @@ jobs:
           encoded="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")"
           for i in {1..12}; do
             body="$(curl --fail --silent --show-error "https://registry.mcpcentral.io/v0.1/servers?search=${encoded}&limit=100" || true)"
-            if printf '%s' "$body" | grep -Fq "\"name\":\"${name}\"" && printf '%s' "$body" | grep -Fq "\"version\":\"${version}\""; then
+            if printf '%s' "$body" | jq -e --arg name "$name" --arg version "$version" 'any(.servers[]?; .server.name == $name and .server.version == $version and any(.server.remotes[]?; .url == "https://api.xguardgate.com/mcp"))' >/dev/null; then
               echo "Verified ${name} ${version} in MCPCentral."
               exit 0
             fi

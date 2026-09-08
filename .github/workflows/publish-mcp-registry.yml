@@ -52,7 +52,7 @@ jobs:
           version="$(node -p 'require("./server.json").version')"
           encoded="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")"
           body="$(curl --fail --silent --show-error "https://registry.modelcontextprotocol.io/v0.1/servers?search=${encoded}&limit=100")"
-          if printf '%s' "$body" | grep -Fq "\"name\":\"${name}\"" && printf '%s' "$body" | grep -Fq "\"version\":\"${version}\""; then
+          if printf '%s' "$body" | jq -e --arg name "$name" --arg version "$version" 'any(.servers[]?; .server.name == $name and .server.version == $version and any(.server.remotes[]?; .url == "https://api.xguardgate.com/mcp"))' >/dev/null; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "Registry already contains ${name} ${version}; publication is idempotently skipped."
           else
@@ -84,7 +84,7 @@ jobs:
           encoded="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")"
           for i in {1..12}; do
             body="$(curl --fail --silent --show-error "https://registry.modelcontextprotocol.io/v0.1/servers?search=${encoded}&limit=100")"
-            if printf '%s' "$body" | grep -Fq "\"name\":\"${name}\"" && printf '%s' "$body" | grep -Fq "\"version\":\"${version}\""; then
+            if printf '%s' "$body" | jq -e --arg name "$name" --arg version "$version" 'any(.servers[]?; .server.name == $name and .server.version == $version and any(.server.remotes[]?; .url == "https://api.xguardgate.com/mcp"))' >/dev/null; then
               echo "Verified ${name} ${version} in Official MCP Registry."
               exit 0
             fi

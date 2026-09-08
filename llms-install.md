@@ -32,7 +32,9 @@ Primary MCP capabilities include:
 
 The live `tools/list` response is authoritative if additional compatibility tools are present.
 
-Recommended paid path: call `xguard.preflight`, then `xguard.pricing.quote`, call `xguard.web.fetch`, handle the required HTTP 402 by signing `Payment-Required` with an official x402 v2 client, and retry the identical request with `Payment-Signature`. Execution starts only after settlement and the result carries a signed receipt plus ProofRail evidence.
+Recommended paid path: call `xguard.web.fetch` directly, inspect the signed quote and payment challenge, then use a funded compatible x402 v2 payer to retry the identical request with `Payment-Signature`. Preflight and standalone quoting are optional. Execution starts only after settlement. MCP editor installation alone does not provide a wallet or authorize payment.
+
+Public quickstart and ready-to-merge editor configuration downloads: https://xguardgate.com/developers
 
 ## Cline
 
@@ -65,7 +67,7 @@ Point the remote MCP configuration at:
 https://api.xguardgate.com/mcp
 ```
 
-The exact wrapper object varies by client. The canonical URL does not.
+Download exact wrappers from [the developer quickstart](https://xguardgate.com/developers): Cursor uses `mcpServers`; VS Code uses `servers` with `type: "http"`; Claude Code uses `mcpServers` with `type: "http"`. Merge into your existing configuration.
 
 ## Machine-readable discovery
 

@@ -1,3 +1,5 @@
+> **Developer quickstart:** [Connect your editor](https://xguardgate.com/developers) · [Try the live 402 flow](https://xguardgate.com/try) · [Hosted MCP](https://api.xguardgate.com/mcp). Discovery is free; execution requires the authorization described in the quickstart.
+
 # XGuard — Universal Paid AI Agent + Secretless Gateway
 
 **Canonical production API**

@@ -169,7 +169,7 @@ function apiRoot(request) {
 
 function connectPage(request) {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect XGuard — Paid + Secretless Agent Gateway</title><meta name="description" content="Connect an AI agent to XGuard over HTTP or MCP, then call a paid protected tool with one URL."><meta name="robots" content="index,follow"><link rel="canonical" href="${SITE}/connect"><style>body{margin:0;background:#0b0b0b;color:#f7f7f3;font-family:Arial,Helvetica,sans-serif}.w{width:min(920px,calc(100% - 32px));margin:auto;padding:64px 0}h1{font-size:clamp(44px,7vw,76px);letter-spacing:-.055em;line-height:.95;margin:16px 0 24px}.muted{color:#a8a8a1;line-height:1.7}.badge{display:inline-block;border:1px solid #4a4a45;padding:7px 11px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:34px}.c{border:1px solid #30302d;background:#131311;padding:22px}.c h2{margin-top:0;font-size:18px}.orange{color:#ff5a1f}.btn{display:inline-block;margin-top:10px;padding:11px 14px;background:#ff5a1f;color:#fff;text-decoration:none;font-weight:700}pre{white-space:pre-wrap;background:#070707;border:1px solid #30302d;padding:13px;color:#e8e8e2;overflow:auto}.notice{margin-top:32px;border-left:3px solid #ff5a1f;padding:8px 0 8px 16px;color:#bdbdb6;line-height:1.65}.foot{margin-top:34px;color:#77776f;font-size:12px}@media(max-width:680px){.grid{grid-template-columns:1fr}}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · canonical identity</span><h1>Connect. Call once. <span class="orange">Receive payment instructions.</span></h1><p class="muted">The fastest path is one HTTP or MCP call with a public HTTPS URL. XGuard returns an input-bound signed quote and x402 Payment-Required response immediately. After a compatible payer signs and retries, XGuard settles before execution and returns the result, receipt and ProofRail evidence.</p><section class="c"><h2>HTTP · no SDK</h2><pre>curl -i ${API}/v1/tools/web.fetch -H 'content-type: application/json' -d '{"url":"https://example.com/"}'</pre><a class="btn" href="/try">Try the real 402 flow</a></section><div class="grid"><section class="c"><h2>Claude Code</h2><pre>claude mcp add xguard --transport http ${MCP}</pre></section><section class="c"><h2>Codex</h2><pre>[mcp_servers.xguard]\nurl = "${MCP}"</pre></section><section class="c"><h2>Cursor / VS Code</h2><p class="muted">Configure a remote Streamable HTTP MCP server with this URL:</p><pre>${MCP}</pre></section><section class="c"><h2>Machine discovery</h2><p><a class="btn" href="${SITE}/server.json">MCP manifest</a></p><p><a class="btn" href="${API}/openapi.json">OpenAPI</a></p></section></div><div class="notice"><strong>Use xguard.web.fetch when:</strong> the agent needs a bounded public HTTPS result with SSRF enforcement, payment-bound idempotency, a signed receipt and verifiable execution evidence. Use Secretless Egress when the operation requires a reusable provider credential that must never enter agent context.</div><p class="foot">Paid agent tools · Secretless Egress · ProofRail</p></main></body></html>`;
-  const labeledHtml = html.replace(
+  const labeledHtml = html.replace('<div class="grid">', '<p><a class="btn" href="/developers">Developer quickstart and editor configuration downloads</a></p><div class="grid">').replace(
     '<p class="foot">',
     `<div class="notice"><strong>Primary identity:</strong> ${NAME}. Action Rail and x402 facilitator routing are compatibility rails. Historical ACE/Solana/BAM, Child Safety, Universal Facilitator and High-Velocity Facilitator descriptions are not the current XGuard product identity.</div><p class="foot">`,
   );
@@ -183,14 +183,53 @@ const PAGE_STYLE = `body{margin:0;background:#0b0b0b;color:#f7f7f3;font-family:A
 
 function publicPage(request, pathname, title, heading, content, script = "") {
   const nonce = script ? randomNonce() : "";
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><meta name="description" content="XGuard Universal Paid AI Agent + Secretless Gateway"><link rel="canonical" href="${SITE}${pathname}"><style>${PAGE_STYLE}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · Paid + Secretless Gateway</span><h1>${heading}</h1>${content}<p class="foot"><a href="/">Home</a> · <a href="/connect">Connect</a> · <a href="/pricing">Pricing</a> · <a href="/security">Security</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/refund-policy">Refunds</a></p></main>${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><meta name="description" content="XGuard Universal Paid AI Agent + Secretless Gateway"><link rel="canonical" href="${SITE}${pathname}"><style>${PAGE_STYLE}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · Paid + Secretless Gateway</span><h1>${heading}</h1>${content}<p class="foot"><a href="/">Home</a> · <a href="/connect">Connect</a> · <a href="/developers">Developers</a> · <a href="/pricing">Pricing</a> · <a href="/security">Security</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/refund-policy">Refunds</a></p></main>${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
   return new Response(request.method === "HEAD" ? null : html, { status: 200, headers: htmlHeaders(pathname, nonce) });
+}
+
+
+const CLIENT_CONFIGS = {
+  "/install/cursor.json": { mcpServers: { xguard: { url: MCP } } },
+  "/install/vscode.json": { servers: { xguard: { type: "http", url: MCP } } },
+  "/install/claude-code.json": { mcpServers: { xguard: { type: "http", url: MCP } } },
+};
+function developerInstall(request, path) {
+  const toml = path === "/install/codex.toml";
+  if (!toml && !Object.hasOwn(CLIENT_CONFIGS, path)) return null;
+  const body = toml ? `[mcp_servers.xguard]\nurl = "${MCP}"\n` : JSON.stringify(CLIENT_CONFIGS[path], null, 2) + "\n";
+  return new Response(request.method === "HEAD" ? null : body, { headers: baseHeaders(new Headers({
+    "content-type": toml ? "text/plain; charset=utf-8" : "application/json; charset=utf-8",
+    "cache-control": "public, max-age=300",
+    "content-disposition": `attachment; filename="${path.split("/").pop()}"`,
+  })) });
+}
+function developersPage(request) {
+  return publicPage(request, "/developers", "XGuard for developers — Connect and make your first call", "Give your agent a controlled API boundary.", `
+  <p class="muted">Connect to the hosted MCP server, inspect live capabilities for free, then authorize the operation you need. No local server is required.</p>
+  <section class="card"><h2>1. Connect your editor</h2><pre class="key">${MCP}</pre>
+  <p>Transport: Streamable HTTP. Download your configuration and merge it into your existing configuration file; preserve your other servers.</p>
+  <ul><li><a href="/install/cursor.json">Cursor JSON</a> → <code>.cursor/mcp.json</code></li>
+  <li><a href="/install/vscode.json">VS Code JSON</a> → <code>.vscode/mcp.json</code></li>
+  <li><a href="/install/claude-code.json">Claude Code JSON</a> → project <code>.mcp.json</code></li>
+  <li><a href="/install/codex.toml">Codex TOML</a> → your Codex configuration</li></ul>
+  <p>Or connect Claude Code from your terminal:</p><pre class="key">claude mcp add --transport http xguard ${MCP}</pre>
+  <p class="muted">A connected editor can discover tools. Connection alone does not supply a funded wallet, authorize payment, or provision a provider account.</p></section>
+  <section class="card"><h2>2. Inspect without paying</h2><p>Ask your agent: “List XGuard capabilities and prices without executing a paid tool.”</p>
+  <pre class="key">curl ${API}/v1/capabilities</pre><p><a href="${API}/v1/pricing">Live prices</a> · <a href="${API}/openapi.json">OpenAPI</a> · <a href="/.well-known/agent-card.json">A2A agent card</a></p></section>
+  <section class="card"><h2>3. Make your first payment-request call</h2>
+  <pre class="key">curl -i ${API}/v1/tools/web.fetch -H 'content-type: application/json' -d '{"url":"https://example.com/"}'</pre>
+  <p class="muted">Expected response: HTTP 402 with a signed quote and payment instructions. This first call does not pay or contact the target. To execute, a funded compatible x402 v2 payer must sign the challenge and retry the identical request. Check the signed price before approving payment.</p>
+  <a class="btn" href="/try">Try the live 402 flow</a></section>
+  <section class="card"><h2>4. Use credential-backed API actions</h2><p class="muted">For Secretless Egress, the operator supplies an authorized provider credential and XGuard Usage Credits, then delegates a short-lived capability scoped to host, path, method and budget. Provider charges remain separate. Keep reusable credentials outside the agent context.</p>
+  <p class="muted">Use one stable Idempotency-Key per write operation. Completed retries replay the stored signed outcome; ambiguous in-flight writes fail closed and are not automatically retried.</p>
+  <p><a href="https://github.com/moelayyan90/XGuard/blob/main/docs/secretless-outcomes.md">Execution contract and limits</a> · <a href="https://github.com/moelayyan90/XGuard/blob/main/sdk/README.md">SDK examples and installation</a> · <a href="/pricing">Credits and pricing</a></p></section>
+  <p><a href="https://github.com/moelayyan90/XGuard">Public source</a> · <a href="https://github.com/moelayyan90/XGuard/releases">Release downloads</a> · <a href="https://github.com/moelayyan90/XGuard/blob/main/llms-install.md">Agent installation guide</a></p>`);
 }
 
 function randomNonce() { return crypto.randomUUID().replaceAll("-", ""); }
 
 function pricingPage(request) {
-  const content = `<p class="muted">The public paid-tool path uses x402 v2 USDC per request: no XGuard account, subscription, or mandatory SDK.</p><section class="card"><div class="price">$0.001 USDC</div><h2>xguard.web.fetch</h2><p class="muted">Maximum external upstream cost: $0. XGuard margin: $0.001. The exact atomic amount, receiving address, network, asset, input digest, and execution limits are bound into a five-minute signed quote before payment. Base Mainnet is the production network; Base Sepolia is available for safe integration tests.</p><p><a class="btn" href="/try">Generate a live payment request</a> <a href="${API}/v1/pricing">Machine pricing</a></p></section><p class="muted">On successful settlement, XGuard executes once and returns an x402 receipt plus ProofRail evidence. An exact retry returns the stored outcome without settling again. If execution fails after settlement, XGuard issues a signed reusable execution credit tied to the original payment.</p><section class="card"><div class="price">JOD 3.550</div><h2>5,000 operator Usage Credits</h2><p class="muted">Optional one-time credits for operator-managed Secretless Egress. This is separate from the no-account x402 paid-tool path and is not a subscription.</p><button class="btn" id="checkout">Create secure checkout</button><div id="result" aria-live="polite"></div></section><p class="muted">Do not place an operator key in an AI prompt. A checkout redirect is not proof of payment; credits become available only after a valid Lemon Squeezy webhook is processed.</p>`;
+  const content = `<p class="muted">The public paid-tool path uses x402 v2 USDC per request: no XGuard account, subscription, or mandatory SDK.</p><section class="card"><div class="price">$0.001 USDC</div><h2>xguard.web.fetch</h2><p class="muted">Public fetch has no external API fee. The $0.001 price is revenue before infrastructure and other costs, not measured profit. The exact atomic amount, receiving address, network, asset, input digest, and execution limits are bound into a five-minute signed quote before payment. Base Mainnet is the production network; Base Sepolia is available for safe integration tests.</p><p><a class="btn" href="/try">Generate a live payment request</a> <a href="${API}/v1/pricing">Machine pricing</a></p></section><p class="muted">On successful settlement, XGuard executes once and returns an x402 receipt plus ProofRail evidence. An exact retry returns the stored outcome without settling again. If execution fails after settlement, XGuard issues a signed reusable execution credit tied to the original payment.</p><section class="card"><div class="price">JOD 3.550</div><h2>5,000 operator Usage Credits</h2><p class="muted">Optional one-time credits for operator-managed Secretless Egress. This is separate from the no-account x402 paid-tool path and is not a subscription.</p><button class="btn" id="checkout">Create secure checkout</button><div id="result" aria-live="polite"></div></section><p class="muted">Do not place an operator key in an AI prompt. A checkout redirect is not proof of payment; credits become available only after a valid Lemon Squeezy webhook is processed.</p>`;
   const script = `const button=document.getElementById('checkout'),result=document.getElementById('result');button.addEventListener('click',async()=>{button.disabled=true;result.innerHTML='<p class="muted">Creating checkout…</p>';try{const response=await fetch('https://hooks.xguardgate.com/v1/checkout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});const data=await response.json();if(!response.ok)throw new Error(data.error||'checkout_unavailable');result.innerHTML='<h3>Save your operator key before paying</h3><p class="key"></p><p><a class="btn" rel="noopener" href="'+data.checkout_url+'">Continue to Lemon Squeezy</a></p>';result.querySelector('.key').textContent=data.operator_key;}catch(error){result.innerHTML='<p class="muted">Checkout is not ready: '+String(error.message)+'</p>';button.disabled=false;}});`;
   return publicPage(request, "/pricing", "XGuard Pricing — x402 USDC per request", "One signed price. One settled request.", content, script);
 }
@@ -220,7 +259,7 @@ function robots(request) {
 }
 
 function sitemap(request) {
-  const paths = ["/", "/try", "/connect", "/pricing", "/security", "/terms", "/privacy", "/refund-policy", "/identity", "/llms.txt", "/skill.md", "/.well-known/mcp/server-card.json"];
+  const paths = ["/", "/developers", "/try", "/connect", "/pricing", "/security", "/terms", "/privacy", "/refund-policy", "/identity", "/llms.txt", "/skill.md", "/.well-known/mcp/server-card.json"];
   const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map(path => `<url><loc>${SITE}${path}</loc></url>`).join("")}</urlset>`;
   return new Response(request.method === "HEAD" ? null : xml, { headers: baseHeaders(new Headers({ "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" })) });
 }
@@ -380,6 +419,11 @@ export default {
     if (redirect) return redirect;
 
     const url = new URL(request.url);
+    if (request.method === "GET" || request.method === "HEAD") {
+      if (url.pathname === "/developers") return developersPage(request);
+      const install = developerInstall(request, url.pathname);
+      if (install) return install;
+    }
 
     if (request.method === "OPTIONS" && (OAUTH_RESOURCE_METADATA.has(url.pathname) || OAUTH_AUTHORIZATION_METADATA.has(url.pathname))) {
       return new Response(null, { status: 204, headers: oauthHeaders() });
