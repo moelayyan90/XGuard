@@ -3,6 +3,8 @@ name: XGuard Distribution Surfaces CI
 on:
   pull_request:
     paths:
+      - "scripts/verify-outside-in.mjs"
+      - "scripts/expected-mcp-tools.json"
       - "llms-install.md"
       - "apps/relay/src/discovery-entry.js"
       - "apps/relay/src/paid-agent-entry.js"
@@ -32,6 +34,13 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Observe both public MCP contracts from outside
+        run: node scripts/verify-outside-in.mjs
 
       - name: Validate agent install guide and marketplace discovery surfaces
         shell: bash
