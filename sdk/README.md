@@ -1,4 +1,26 @@
-# XGuard x402 facilitator client
+# XGuard SDK
+
+## Delegated API actions
+
+An operator provisions the vendor credential, prepays gateway credits and grants a scoped capability. An agent uses only that capability:
+
+```js
+import { createXGuardAgentClient } from "xguard-x402-control-plane";
+
+const agent = createXGuardAgentClient(process.env.XGUARD_CAPABILITY);
+const response = await agent.fetch("https://api.github.com/repos/your-org/your-repo/issues", {
+  method: "POST",
+  idempotencyKey: "support-case-123-v1",
+  json: { title: "Investigate customer case 123" },
+});
+console.log(response.status, response.headers.get("x-xguard-execution-id"));
+```
+
+All writes now require `idempotencyKey`. Reuse the same key and identical input to recover the saved response without another gateway charge or upstream request. A changed request with the same key returns 409. Ambiguous results are never automatically reexecuted; do not rotate keys to bypass that protection. The helper returns a native `Response`, including `X-XGuard-Proof` and `X-XGuard-Replay`.
+
+This change applies to the source release; no npm publication is claimed. Install the tested GitHub revision. Existing write callers must add a stable business operation key. Vendor fees are separate, replay requires an unexpired capability, and results are limited to 48 KiB. See [the full execution contract](../docs/secretless-outcomes.md).
+
+## x402 facilitator client
 
 Drop-in production facilitator configuration for the official x402 v2 TypeScript SDK.
 

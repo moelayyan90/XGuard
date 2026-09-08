@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
 import app, { PaidGatewayState, ProofAuthority } from "./paid-agent-entry.js";
 import canonicalApp from "./canonical-entry.js";
+import { pricingEconomics } from "./core/unit-economics.js";
 
 class MemoryStorage {
   constructor() { this.values = new Map(); this.alarm = null; }
@@ -10,6 +11,7 @@ class MemoryStorage {
   async put(key, value) { this.values.set(key, structuredClone(value)); }
   async delete(key) { return this.values.delete(key); }
   async setAlarm(value) { this.alarm = value; }
+  async transaction(callback) { return callback(this); }
 }
 
 function namespaceFor(Class, env) {
@@ -33,6 +35,9 @@ function environment() {
     XGUARD_TESTNET_PAY_TO: "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
     XGUARD_WEB_FETCH_PRICE_ATOMIC: "1000",
     XGUARD_MARGIN_USD_MICROS: "1000",
+    XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: "100",
+    XGUARD_PAYMENT_COST_BUDGET_USD_MICROS: "0",
+    XGUARD_MIN_CONTRIBUTION_BPS: "2000",
     XGUARD_TESTNET_WEB_FETCH_PRICE_ATOMIC: "1000",
     XGUARD_TESTNET_MARGIN_USD_MICROS: "1000",
   };
@@ -556,7 +561,7 @@ test("settlement precedes execution and an exact retry does not settle twice", a
   assert.equal(firstBody.status, "succeeded");
   assert.equal(firstBody.replay, false);
   assert.equal(firstBody.accounting.gross_revenue_usd_micros, 0);
-  assert.equal(firstBody.accounting.net_profit_usd_micros, 0);
+  assert.equal(firstBody.accounting.net_profit_usd_micros, null);
   assert.equal(firstBody.accounting.revenue_source, "test_settlement_non_revenue");
   assert.ok(firstBody.receipt.signature);
   assert.ok(firstBody.proofrail.proof);
@@ -625,13 +630,110 @@ test("pending, verified, and ambiguous states never record revenue", async () =>
     assert.equal(response.status, 200);
     const record = (await response.json()).record;
     assert.equal(record.gross_revenue_usd_micros, 0);
-    assert.equal(record.net_profit_usd_micros, 0);
+    assert.equal(record.net_profit_usd_micros, null);
     assert.equal(record.revenue_source, null);
   }
   const settled = await post("/operation/transition", { status: "settled", patch: { transaction, network: "eip155:8453" } });
   assert.equal(settled.status, 200);
   const settledRecord = (await settled.json()).record;
   assert.equal(settledRecord.gross_revenue_usd_micros, 1000);
-  assert.equal(settledRecord.net_profit_usd_micros, 1000);
+  assert.equal(settledRecord.net_profit_usd_micros, null);
   assert.equal(settledRecord.revenue_source, "external_production_x402_settlement");
+});
+
+test("commercial ledger recognizes delivery once and measures repeat paying wallets without inventing actual profit", async () => {
+  const env = environment();
+  const objects = [];
+  for (const [index, fingerprint] of ["a", "b"].entries()) {
+    const object = new PaidGatewayState({ storage: new MemoryStorage() }, env);
+    const post = (path, body) => object.fetch(new Request(`https://paid-gateway${path}`, { method: "POST", body: JSON.stringify(body) }));
+    objects.push(post);
+    await post("/operation/begin", { request_id: `xgr_ledger_${index}`, payment_identifier: `pay_${String(index).repeat(32)}`, authorization_fingerprint: fingerprint.repeat(64), request_digest: "c".repeat(64), customer_price_usd_micros: 1000, maximum_upstream_cost_usd_micros: 0, cost_budget: pricingEconomics(env, 1000), environment: "production", traffic_class: "external", network: "eip155:8453", payer });
+    await post("/operation/transition", { status: "verified" });
+    await post("/operation/transition", { status: "settled", patch: { transaction: `0x${fingerprint.repeat(64)}`, network: "eip155:8453" } });
+  }
+  const metrics = async () => (await (await app.fetch(new Request("https://api.xguardgate.com/v1/metrics"), env, {})).json()).economics;
+  assert.equal((await metrics()).settled_cash_usd_micros, 2000);
+  assert.equal((await metrics()).recognized_revenue_usd_micros, 0);
+  assert.equal((await metrics()).unfulfilled_liability_usd_micros, 2000);
+  for (const post of objects) {
+    const claimed = await (await post("/operation/claim-execution", {})).json();
+    const complete = { claim_token: claimed.claim_token, result: { status: 200 } };
+    assert.equal((await post("/operation/complete", complete)).status, 200);
+    assert.equal((await post("/operation/complete", complete)).status, 200);
+  }
+  const totals = await metrics();
+  assert.equal(totals.recognized_revenue_usd_micros, 2000);
+  assert.equal(totals.successful_paid_executions, 2);
+  assert.equal(totals.unfulfilled_liability_usd_micros, 0);
+  assert.equal(totals.estimated_contribution_usd_micros, 1800);
+  assert.equal(totals.paying_wallets, 1);
+  assert.equal(totals.repeat_paying_wallets, 1);
+  assert.equal(totals.net_profit_usd_micros, null);
+});
+
+test("credit fulfillment releases the original cash liability once and includes both execution attempts", async () => {
+  const env = environment();
+  const object = new PaidGatewayState({ storage: new MemoryStorage() }, env);
+  const post = (path, body) => object.fetch(new Request(`https://paid-gateway${path}`, { method: "POST", body: JSON.stringify(body) }));
+  await post("/operation/begin", { request_id: "xgr_credit_ledger", payment_identifier: `pay_${"8".repeat(32)}`, authorization_fingerprint: "d".repeat(64), request_digest: "e".repeat(64), customer_price_usd_micros: 1000, maximum_upstream_cost_usd_micros: 0, cost_budget: pricingEconomics(env, 1000), environment: "production", traffic_class: "external", network: "eip155:8453", payer });
+  await post("/operation/transition", { status: "verified" });
+  await post("/operation/transition", { status: "settled", patch: { transaction, network: "eip155:8453" } });
+  await post("/operation/claim-execution", {});
+  await post("/operation/transition", { status: "credited", patch: { credit_id: "fixture-credit", execution_claim: null } });
+  const metrics = async () => (await (await app.fetch(new Request("https://api.xguardgate.com/v1/metrics"), env, {})).json()).economics;
+  assert.equal((await metrics()).unfulfilled_liability_usd_micros, 1000);
+  const attempt = { credit_id: "fixture-credit", request_id: "xgr_credit_attempt" };
+  await post("/operation/credit-attempt", attempt);
+  await post("/operation/credit-attempt", attempt);
+  assert.equal((await post("/operation/credit-delivered", { ...attempt, request_id: "wrong-request" })).status, 409);
+  await post("/operation/credit-delivered", attempt);
+  await post("/operation/credit-delivered", attempt);
+  const totals = await metrics();
+  assert.equal(totals.settled_cash_usd_micros, 1000);
+  assert.equal(totals.recognized_revenue_usd_micros, 1000);
+  assert.equal(totals.unfulfilled_liability_usd_micros, 0);
+  assert.equal(totals.successful_paid_executions, 1);
+  assert.equal(totals.estimated_contribution_usd_micros, 800);
+});
+
+test("simulated paid HTTP flow redeems a failed execution credit without another settlement", async t => {
+  const env = environment();
+  let settlements = 0, upstreams = 0;
+  t.mock.method(globalThis, "fetch", async input => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (["one.one.one.one", "cloudflare-dns.com", "dns.google"].includes(url.hostname)) return Response.json({ Status: 0, Answer: url.searchParams.get("type") === "A" ? [{ type: 1, data: "93.184.216.34" }] : [] });
+    if (url.hostname === "facilitator.test" && url.pathname === "/verify") return Response.json({ isValid: true, payer });
+    if (url.hostname === "facilitator.test" && url.pathname === "/settle") { settlements += 1; return Response.json({ success: true, payer, transaction, network: "eip155:8453" }); }
+    assert.equal(url.hostname, "example.com");
+    assert.equal(settlements, 1);
+    upstreams += 1;
+    return upstreams === 1 ? new Response("unavailable", { status: 503 }) : Response.json({ delivered: true });
+  });
+  const execute = headers => app.fetch(new Request("https://api.xguardgate.com/v1/tools/web.fetch", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ url: target }) }), env, {});
+  const challengeResponse = await execute({});
+  assert.equal(challengeResponse.status, 402);
+  const quote = challengeResponse.headers.get("x-xguard-quote");
+  const challenge = await challengeResponse.json();
+  const pid = challenge.extensions["payment-identifier"].info.id;
+  const signature = encodePaymentSignatureHeader({ x402Version: 2, resource: challenge.resource, accepted: challenge.accepts[0], payload: { signature: `0x${"1".repeat(130)}`, authorization: { from: payer, to: challenge.accepts[0].payTo, value: challenge.accepts[0].amount, validAfter: "0", validBefore: String(Math.floor(Date.now() / 1000) + 300), nonce: `0x${"9".repeat(64)}` } }, extensions: { "payment-identifier": { info: { id: pid } } } });
+  const failed = await execute({ "x-xguard-quote": quote, "payment-signature": signature });
+  assert.equal(failed.status, 502);
+  const failure = await failed.json();
+  const credit = failure.error.details.execution_credit;
+  assert.ok(credit);
+  const metrics = async () => (await (await app.fetch(new Request("https://api.xguardgate.com/v1/metrics"), env, {})).json()).economics;
+  assert.equal((await metrics()).unfulfilled_liability_usd_micros, 1000);
+  const redeemed = await execute({ "x-xguard-quote": quote, "x-xguard-credit": credit });
+  assert.equal(redeemed.status, 200);
+  const result = await redeemed.json();
+  assert.equal(result.used_execution_credit, true);
+  assert.ok(result.proofrail.proof);
+  assert.equal(result.accounting.new_cash_usd_micros, 0);
+  assert.equal((await metrics()).recognized_revenue_usd_micros, 1000);
+  assert.equal((await metrics()).unfulfilled_liability_usd_micros, 0);
+  assert.equal((await metrics()).estimated_contribution_usd_micros, 800);
+  assert.equal((await execute({ "x-xguard-quote": quote, "x-xguard-credit": credit })).status, 409);
+  assert.equal(upstreams, 2);
+  assert.equal(settlements, 1);
 });

@@ -191,7 +191,9 @@ Content-Type: application/json
   "path_prefix": "/repos/",
   "allowed_methods": ["GET", "POST"],
   "ttl_seconds": 300,
-  "max_calls": 10
+  "max_calls": 10,
+  "max_total_credits": 10,
+  "max_credits_per_call": 1
 }
 ```
 
@@ -209,6 +211,7 @@ Content-Type: application/json
   "capability": "xgc_...",
   "target": "https://api.github.com/repos/org/repo/issues",
   "method": "POST",
+  "idempotency_key": "issue-operation-001",
   "body_json": {
     "title": "Example"
   }
@@ -328,3 +331,8 @@ Repository:
 ```text
 https://github.com/moelayyan90/XGuard
 ```
+# Durable delegated API actions
+
+The commercial focus is recurring business automation that must call authenticated APIs without giving agents reusable vendor secrets. XGuard now binds each write to a stable business operation key, reserves its gateway-credit budget atomically, and stores an encrypted, signed outcome for identical retries. The operator still supplies the vendor account and pays vendor charges separately.
+
+See [the execution contract and migration guide](docs/secretless-outcomes.md) and [the SDK quick start](sdk/README.md#delegated-api-actions).

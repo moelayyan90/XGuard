@@ -41,7 +41,7 @@ const EGRESS_DISCOVERY_TOOL = {
 
 const EGRESS_FETCH_TOOL = {
   name: "xguard_egress_fetch",
-  description: "Execute one scoped outbound HTTPS request using an XGuard capability. XGuard validates the capability, bills Usage Credits, injects the upstream credential server-side, never follows redirects and never returns the reusable credential to the agent.",
+  description: "Execute a delegated API action with scoped credentials and a gateway-credit budget. Supply idempotency_key for writes and reuse it with the identical request to retrieve the stored signed result without another charge or upstream call. Unknown outcomes never trigger automatic reexecution. The operator provisions the upstream account; the agent receives only the capability.",
   inputSchema: {
     type: "object",
     required: ["capability", "target"],
@@ -49,6 +49,7 @@ const EGRESS_FETCH_TOOL = {
       capability: { type: "string", description: "Short-lived XGuard capability issued by the operator." },
       target: { type: "string", description: "Public HTTPS URL within the capability scope." },
       method: { type: "string", enum: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] },
+      idempotency_key: { type: "string", minLength: 8, maxLength: 128, pattern: "^[A-Za-z0-9_:.\\-]+$", description: "Required for POST/PUT/PATCH/DELETE. Stable business-operation key; retry the exact same request with this key." },
       headers: { type: "object", additionalProperties: { type: "string" } },
       body_json: {}, body_text: { type: "string" }, body_base64: { type: "string" }, content_type: { type: "string" },
     },
@@ -56,6 +57,28 @@ const EGRESS_FETCH_TOOL = {
   outputSchema: { type: "object", additionalProperties: true },
   annotations: { title: "XGuard Egress Fetch", readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
 };
+
+export function secretlessCapability(env = {}) {
+  const units = Number(env.EGRESS_EXECUTION_CREDITS || 1);
+  const priceValid = Number.isSafeInteger(units) && units > 0 && units <= 1000000;
+  return {
+    id: EGRESS_FETCH_TOOL.name,
+    available: Boolean(priceValid && env.EGRESS_KEYS && env.EGRESS_CREDENTIALS && env.EGRESS_CAPABILITIES && env.EGRESS_METER && env.PROOF_AUTHORITY),
+    paid: true,
+    provider: "operator_connected_api",
+    outcome: "A scoped API action with an immutable retry key, gateway-credit budget and signed execution evidence",
+    endpoint: `${API}/v1/egress/fetch`,
+    input_schema: EGRESS_FETCH_TOOL.inputSchema,
+    pricing: { endpoint: `${API}/v1/egress/pricing`, unit: "XGuard Usage Credit", credits_per_authorized_attempt: priceValid ? units : null, provider_charges: "paid separately by the operator" },
+    authentication: { operator_provisions_credential: true, agent_uses: "short_lived_scoped_capability", provider_account_required_for_operator: true },
+    retry_policy: "same key and exact request returns stored outcome; never reexecute an unknown write",
+    refund_policy: "known pre-billing failures release reserved credits; billed attempts have no automatic refund",
+    proof_semantics: "XGuard signs request and response digests, execution identity and gateway billing; it does not attest the truth of provider content",
+    sla: null,
+    estimated_latency_ms: null,
+    measured_reliability: null,
+  };
+}
 
 function harden(response) {
   if (!(response instanceof Response)) return response;
@@ -91,8 +114,13 @@ async function handleEgressMcp(snapshot, env) {
     const args = message?.params?.arguments || {};
     const response = await egress.fetch(new Request(`${API}/v1/egress/fetch`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(args) }), env);
     const contentType = response.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) return mcpResult(message.id, await response.json());
-    return mcpResult(message.id, { status: response.status, body: await response.text(), headers: Object.fromEntries(response.headers) });
+    const text = await response.text();
+    let value = text;
+    if (contentType.includes("application/json") && text) { try { value = JSON.parse(text); } catch { /* An upstream may mislabel its response. */ } }
+    const result = mcpResult(message.id, { status: response.status, body: value, headers: Object.fromEntries(response.headers), replay: response.headers.get("x-xguard-replay") === "true", execution_id: response.headers.get("x-xguard-execution-id"), proof: response.headers.get("x-xguard-proof") });
+    const envelope = await result.json();
+    envelope.result.isError = !response.ok;
+    return new Response(JSON.stringify(envelope), { status: 200, headers: result.headers });
   }
   return null;
 }
@@ -145,9 +173,14 @@ async function improvePublicJson(url, response) {
       "/v1/egress": { get: { summary: "Discover XGuard Secretless Egress", responses: { "200": { description: "Egress manifest" } } } },
       "/v1/egress/credentials": { post: { summary: "Store an encrypted upstream credential (operator only)", responses: { "201": { description: "Credential metadata; secret is never returned" }, "401": { description: "XGuard key required" } } }, get: { summary: "List operator credential metadata", responses: { "200": { description: "Credential metadata" } } } },
       "/v1/egress/capabilities": { post: { summary: "Issue a short-lived scoped capability for an agent", responses: { "201": { description: "Scoped capability" } } } },
+      "/v1/egress/capabilities/{id}": { delete: { summary: "Revoke a capability; already dispatched work may finish", parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", pattern: "^[a-f0-9]{32}$" } }, { name: "X-XGuard-Key", in: "header", required: true, schema: { type: "string" } }], responses: { "200": { description: "Revoked" }, "403": { description: "Not the capability owner" } } } },
       "/v1/egress/fetch": { post: { summary: "Execute one credential-backed outbound request using an XGuard capability", responses: { "200": { description: "Upstream response" }, "401": { description: "Capability required" }, "402": { description: "Usage Credits required" }, "403": { description: "Capability or credential scope denied" }, "503": { description: "Billing/decryption/network ambiguity; no automatic replay" } } } },
       "/v1/egress/pricing": { get: { summary: "Secretless Egress Usage Credit boundary", responses: { "200": { description: "Billing contract" } } } },
     };
+    body.paths["/v1/egress/fetch"].post.requestBody = { required: true, content: { "application/json": { schema: EGRESS_FETCH_TOOL.inputSchema } } };
+    body.paths["/v1/egress/fetch"].post.parameters = [{ name: "Idempotency-Key", in: "header", schema: { type: "string", minLength: 8, maxLength: 128 }, description: "Same value as idempotency_key when both are provided" }];
+    body.paths["/v1/egress/fetch"].post.responses["409"] = { description: "Request digest conflicts with the key, execution is in progress, or its outcome is unknown; do not use a new key to retry an uncertain write" };
+    body.paths["/v1/egress/capabilities"].post.requestBody = { required: true, content: { "application/json": { schema: { type: "object", required: ["credential_id"], properties: { credential_id: { type: "string" }, target_origin: { type: "string", format: "uri" }, path_prefix: { type: "string" }, allowed_methods: { type: "array", items: { type: "string", enum: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] } }, ttl_seconds: { type: "integer", minimum: 30, maximum: 3600 }, max_calls: { type: "integer", minimum: 1, maximum: 1000 }, max_total_credits: { type: "integer", minimum: 1, maximum: 1000000000, description: "XGuard gateway-credit budget; excludes provider charges" }, max_credits_per_call: { type: "integer", minimum: 1, maximum: 1000000 } } } } } };
   }
   if (["/.well-known/agent-card.json", "/.well-known/agent.json", "/a2a"].includes(url.pathname)) {
     body.name = "XGuard Universal Paid AI Agent + Secretless Gateway";

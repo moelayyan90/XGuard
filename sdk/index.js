@@ -96,20 +96,22 @@ export async function xguardIssueCapability(options = {}) {
 
 /** Agent-facing. The upstream reusable credential is never required here. */
 export async function xguardEgressFetch(options = {}) {
-  const { capability, target, method = "GET", headers = {}, bodyJson, bodyText, bodyBase64, contentType, baseUrl = XGUARD_FACILITATOR_URL, fetchImpl, signal } = options;
+  const { capability, target, method = "GET", headers = {}, idempotencyKey, bodyJson, bodyText, bodyBase64, contentType, baseUrl = XGUARD_FACILITATOR_URL, fetchImpl, signal } = options;
   if (!capability) throw new Error("xguardEgressFetch requires capability");
   if (!target) throw new Error("xguardEgressFetch requires target");
+  if (!["GET", "HEAD"].includes(String(method).toUpperCase()) && !idempotencyKey) throw new Error("xguardEgressFetch requires a stable idempotencyKey for writes; reuse it on retries");
   const payload = { capability, target, method, headers };
+  if (idempotencyKey) payload.idempotency_key = idempotencyKey;
   if (bodyJson !== undefined) payload.body_json = bodyJson;
   if (bodyText !== undefined) payload.body_text = bodyText;
   if (bodyBase64 !== undefined) payload.body_base64 = bodyBase64;
   if (contentType) payload.content_type = contentType;
-  return getFetch(fetchImpl)(`${normalizeBaseUrl(baseUrl)}/v1/egress/fetch`, { method: "POST", headers: { "content-type": "application/json", accept: "*/*" }, body: JSON.stringify(payload), signal });
+  return getFetch(fetchImpl)(`${normalizeBaseUrl(baseUrl)}/v1/egress/fetch`, { method: "POST", headers: { "content-type": "application/json", accept: "*/*" }, body: JSON.stringify(payload), signal, redirect: "manual" });
 }
 
 /**
  * Drop-in secretless client for agents.
- * Usage: const agent = createXGuardAgentClient(capability); await agent.fetch(url, { method: "POST", json: {...} });
+ * Usage: const agent = createXGuardAgentClient(capability); await agent.fetch(url, { method: "POST", idempotencyKey: "operation-001", json: {...} });
  */
 export function createXGuardAgentClient(capability, options = {}) {
   if (!capability) throw new Error("createXGuardAgentClient requires capability");
@@ -121,6 +123,7 @@ export function createXGuardAgentClient(capability, options = {}) {
         target: String(target),
         method: init.method || "GET",
         headers,
+        idempotencyKey: init.idempotencyKey,
         baseUrl: options.baseUrl,
         fetchImpl: options.fetchImpl,
         signal: init.signal,

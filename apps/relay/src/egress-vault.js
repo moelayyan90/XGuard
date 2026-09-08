@@ -1,3 +1,6 @@
+import { digestBytes, executionKey, requestDigest, readBoundedBody, responseHeaders as safeResponseHeaders, credentialVariants, MAX_RESULT_BYTES, MAX_STORED_RESULT_BYTES } from "./core/execution-contract.js";
+import { publicDns } from "./core/network-policy.js";
+
 const VERSION = "1.0.0";
 const API = "https://api.xguardgate.com";
 const DEFAULT_CREDITS = 1;
@@ -101,7 +104,7 @@ function safeTarget(value) {
   if (rawPath.includes("//") || /\/(?:\.{1,2})(?:\/|$)/.test(rawPath)) return null;
   let url;
   try { url = new URL(raw); } catch { return null; }
-  if (url.protocol !== "https:" || url.username || url.password || privateHost(url.hostname)) return null;
+  if (url.protocol !== "https:" || url.port || url.username || url.password || url.hash || privateHost(url.hostname)) return null;
   if (url.hostname === "xguardgate.com" || url.hostname.endsWith(".xguardgate.com")) return null;
   return url;
 }
@@ -111,7 +114,8 @@ function billingUrl(env) {
 }
 
 function egressCredits(env) {
-  return Math.max(1, Math.trunc(Number(env.EGRESS_EXECUTION_CREDITS || DEFAULT_CREDITS)));
+  const units = Number(env.EGRESS_EXECUTION_CREDITS ?? DEFAULT_CREDITS);
+  return Number.isSafeInteger(units) && units > 0 && units <= 1000000 ? units : null;
 }
 
 async function billingBalance(env, key) {
@@ -263,6 +267,14 @@ async function encryptSecret(env, plaintext) {
   return response.json();
 }
 
+async function encryptResult(env, plaintext) {
+  const response = await keyStub(env).fetch("https://egress-key/encrypt-result", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ plaintext }),
+  });
+  if (!response.ok) throw new Error("egress_encryption_unavailable");
+  return response.json();
+}
+
 async function decryptSecret(env, envelope) {
   const response = await keyStub(env).fetch("https://egress-key/decrypt", {
     method: "POST",
@@ -296,10 +308,15 @@ function discovery(env) {
     credentials: `POST ${API}/v1/egress/credentials`,
     list_credentials: `GET ${API}/v1/egress/credentials`,
     capabilities: `POST ${API}/v1/egress/capabilities`,
+    revoke_capability: `DELETE ${API}/v1/egress/capabilities/{id}`,
     fetch: `POST ${API}/v1/egress/fetch`,
     providers: `GET ${API}/v1/egress/providers`,
     public_key: `${API}/.well-known/xguard-egress-key.json`,
     credits_per_authorized_egress_attempt: egressCredits(env),
+    outcome: "Execute a delegated API action once per capability and idempotency key, with a gateway-credit budget and a signed, retrievable outcome.",
+    idempotency: { field: "idempotency_key", header: "Idempotency-Key", required_for: ["POST", "PUT", "PATCH", "DELETE"], scope: "capability + key + exact request digest", replay: "same encrypted stored response; no additional billing or upstream execution", ambiguity: "no automatic retry or takeover after an unknown outcome", retention: "replay while the capability is valid; records deleted 24 hours after expiry" },
+    budgets: { fields: ["max_total_credits", "max_credits_per_call"], scope: "XGuard Usage Credits only; upstream vendor charges are billed to the operator separately", uncertain_attempts: "remain reserved until reconciliation" },
+    maximum_response_bytes: MAX_RESULT_BYTES,
     providers_supported: Object.keys(PROVIDERS).concat("custom"),
     controls: [
       "secret never returned to the agent",
@@ -313,6 +330,8 @@ function discovery(env) {
       "private/local targets blocked",
       "automatic Idempotency-Key for unsafe methods",
       "no automatic retry after network ambiguity",
+      "durable request-bound idempotency and encrypted response replay",
+      "atomic per-capability gateway-credit reservations",
     ],
     boundary: "Once an operator keeps upstream credentials only in XGuard and gives agents XGuard capabilities instead, secret-backed calls must pass through the egress gateway unless the operator deliberately re-distributes those credentials elsewhere.",
   };
@@ -413,7 +432,7 @@ async function issueCapability(request, env) {
 
   let origin;
   try { origin = new URL(String(body?.target_origin || `https://${credential.allowed_hosts?.[0] || ""}`)); } catch { return json({ error: "invalid_target_origin" }, 400); }
-  if (origin.protocol !== "https:" || origin.pathname !== "/" || origin.search || origin.hash || !credential.allowed_hosts.includes(low(origin.hostname))) {
+  if (origin.protocol !== "https:" || origin.port || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash || !credential.allowed_hosts.includes(low(origin.hostname))) {
     return json({ error: "target_origin_not_allowed" }, 403);
   }
   const pathPrefix = normalizePolicyPath(body?.path_prefix || credential.allowed_paths?.[0] || "/");
@@ -421,8 +440,14 @@ async function issueCapability(request, env) {
   const capMethods = normalizeMethods(body?.allowed_methods || credential.allowed_methods);
   if (!capMethods || capMethods.some(method => !credential.allowed_methods.includes(method))) return json({ error: "method_scope_not_allowed" }, 403);
 
-  const ttlSeconds = Math.max(30, Math.min(3600, Math.trunc(Number(body?.ttl_seconds || 300))));
-  const maxCalls = Math.max(1, Math.min(1000, Math.trunc(Number(body?.max_calls || 1))));
+  const ttlSeconds = Number(body?.ttl_seconds ?? 300);
+  const maxCalls = Number(body?.max_calls ?? 1);
+  const units = egressCredits(env);
+  const maxPerCall = Number(body?.max_credits_per_call ?? units);
+  const maxTotal = Number(body?.max_total_credits ?? maxCalls * units);
+  if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 30 || ttlSeconds > 3600 || !Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > 1000) return json({ error: "invalid_capability_limits" }, 400);
+  if (!units) return json({ error: "egress_price_invalid" }, 503);
+  if (!Number.isSafeInteger(maxPerCall) || maxPerCall < units || maxPerCall > 1000000 || !Number.isSafeInteger(maxTotal) || maxTotal < units || maxTotal > 1000000000) return json({ error: "invalid_credit_budget" }, 400);
   let billingEnvelope;
   try { billingEnvelope = await encryptSecret(env, key); } catch { return json({ error: "capability_encryption_unavailable" }, 503); }
   const capId = randomHex();
@@ -438,6 +463,9 @@ async function issueCapability(request, env) {
     allowed_methods: capMethods,
     max_calls: maxCalls,
     used_calls: 0,
+    max_credits_per_call: maxPerCall,
+    max_total_credits: maxTotal,
+    reserved_credits: 0,
     billing_envelope: billingEnvelope,
     created_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
@@ -451,11 +479,15 @@ async function issueCapability(request, env) {
   if (!stored.ok) return json({ error: "capability_store_unavailable" }, 503);
   return json({
     capability: token,
+    capability_id: capId,
     credential_id: credentialId,
     target_origin: record.target_origin,
     path_prefix: record.path_prefix,
     allowed_methods: record.allowed_methods,
     max_calls: maxCalls,
+    max_credits_per_call: maxPerCall,
+    max_total_credits: maxTotal,
+    budget_scope: "XGuard Usage Credits; excludes upstream provider charges",
     expires_at: record.expires_at,
     note: "Give this scoped capability to the agent. Do not give the agent the upstream credential or XGuard Usage Credit key.",
   }, 201);
@@ -477,7 +509,8 @@ function serializeBody(body) {
 
 async function egressFetch(request, env) {
   let body;
-  try { body = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
+  try { body = JSON.parse(dec.decode(await readBoundedBody(request.body, MAX_BODY_BYTES * 2))); } catch (cause) { return json({ error: cause.message === "response_too_large" ? "request_body_too_large" : "invalid_json" }, cause.message === "response_too_large" ? 413 : 400); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "invalid_json" }, 400);
   const parsed = parseCapabilityToken(body?.capability || request.headers.get("x-xguard-capability"));
   if (!parsed) return json({ error: "valid_xguard_capability_required" }, 401);
   const target = safeTarget(body?.target);
@@ -488,14 +521,64 @@ async function egressFetch(request, env) {
   if (!serialized) return json({ error: "invalid_body_encoding" }, 400);
   const size = serialized.data == null ? 0 : (typeof serialized.data === "string" ? enc.encode(serialized.data).byteLength : serialized.data.byteLength);
   if (size > MAX_BODY_BYTES) return json({ error: "request_body_too_large", max_bytes: MAX_BODY_BYTES }, 413);
+  if (["GET", "HEAD"].includes(method) && serialized.data !== null) return json({ error: "body_not_allowed_for_method" }, 400);
+  if (["body_json", "body_text", "body_base64"].filter(key => Object.hasOwn(body, key)).length > 1) return json({ error: "ambiguous_body" }, 400);
+  const units = egressCredits(env);
+  if (!units || !env.PROOF_AUTHORITY) return json({ error: "execution_configuration_unavailable" }, 503);
+  let key, outgoing;
+  try {
+    key = executionKey(request, body, method);
+    outgoing = sanitizeHeaders(body.headers, "");
+    if (serialized.contentType && !outgoing.has("content-type")) outgoing.set("content-type", serialized.contentType);
+  } catch (cause) { return json({ error: cause.message.startsWith("idempotency") || cause.message === "invalid_idempotency_key" ? cause.message : "invalid_headers" }, 400); }
+  const digest = await requestDigest(target.toString(), method, outgoing, serialized.data);
+  const keyHash = await sha256(key);
 
   const begun = await capabilityStub(env, parsed.id).fetch("https://capability/begin", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: parsed.token, target: target.toString(), method }),
+    body: JSON.stringify({ token: parsed.token, target: target.toString(), method, key_hash: keyHash, request_digest: digest, units }),
   });
   const cap = await begun.json().catch(() => ({}));
   if (!begun.ok) return json(cap, begun.status);
+  if (cap.replay) {
+    try {
+      const stored = JSON.parse(await decryptSecret(env, cap.response_envelope));
+      const headers = new Headers(stored.headers);
+      headers.set("x-xguard-replay", "true");
+      return new Response([204, 205, 304].includes(stored.status) || method === "HEAD" ? null : unb64url(stored.body), { status: stored.status, headers });
+    } catch { return json({ error: "execution_result_unavailable", execution_id: cap.execution_id, may_have_executed: true }, 503); }
+  }
+  const finish = async (response, state, billedCredits = 0) => {
+    try {
+      const bytes = await readBoundedBody(response.body, MAX_RESULT_BYTES);
+      const headers = new Headers(response.headers);
+      headers.set("x-xguard-execution-id", cap.execution_id);
+      headers.set("x-xguard-egress-capability", parsed.id);
+      headers.set("x-xguard-egress-state", state);
+      headers.set("x-xguard-replay", "false");
+      headers.set("x-xguard-request-digest", digest);
+      if (billedCredits !== null) headers.set("x-xguard-billed-credits", String(billedCredits));
+      const proofResponse = await env.PROOF_AUTHORITY.get(env.PROOF_AUTHORITY.idFromName("proofrail-root-v1")).fetch("https://proofrail/sign", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ payload: { v: 1, typ: "xguard-proofrail-egress", iss: API, execution_id: cap.execution_id, capability_id: parsed.id, request_digest: digest, body_sha256: await digestBytes(bytes), target_origin: target.origin, target_path: target.pathname, method, outcome: state, upstream_status: headers.has("x-xguard-upstream-status") ? Number(headers.get("x-xguard-upstream-status")) : null, billed_credits: billedCredits, issued_at: new Date().toISOString() } }),
+      });
+      const signed = await proofResponse.json();
+      if (!proofResponse.ok || !signed.proof) throw new Error("proof_unavailable");
+      headers.set("x-xguard-proof", signed.proof);
+      headers.set("x-xguard-proof-kid", signed.kid);
+      headers.set("x-xguard-proof-alg", signed.alg);
+      headers.set("access-control-expose-headers", "x-xguard-execution-id,x-xguard-egress-state,x-xguard-replay,x-xguard-request-digest,x-xguard-proof,x-xguard-proof-kid,x-xguard-proof-alg,x-xguard-billed-credits,x-xguard-upstream-status");
+      const envelope = await encryptResult(env, JSON.stringify({ status: response.status, headers: [...headers], body: b64url(bytes) }));
+      const saved = await capabilityStub(env, parsed.id).fetch("https://capability/complete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key_hash: keyHash, claim_token: cap.claim_token, response_envelope: envelope, state, billed_credits: billedCredits }) });
+      if (!saved.ok) throw new Error("result_commit_failed");
+      return new Response([204, 205, 304].includes(response.status) || method === "HEAD" ? null : bytes, { status: response.status, headers });
+    } catch {
+      return json({ error: "execution_result_unavailable", execution_id: cap.execution_id, may_have_executed: true, message: "The reserved operation will not be repeated. Retry only the identical request with the same key to retrieve a committed result." }, 503);
+    }
+  };
+  const dns = await publicDns(target.hostname);
+  if (!dns.ok) return finish(json({ error: dns.code }, dns.code === "target_not_public" ? 403 : 503), "failed_before_execution");
 
   const credentialResponse = await credentialStub(env, cap.credential_id).fetch("https://credential/use", {
     method: "POST",
@@ -503,23 +586,22 @@ async function egressFetch(request, env) {
     body: JSON.stringify({ owner_hash: cap.owner_hash, target: target.toString(), method }),
   });
   const credential = await credentialResponse.json().catch(() => ({}));
-  if (!credentialResponse.ok) return json({ error: credential.error || "credential_access_denied" }, credentialResponse.status);
+  if (!credentialResponse.ok) return finish(json({ error: credential.error || "credential_access_denied" }, credentialResponse.status), "failed_before_execution");
 
   let billingKey;
-  try { billingKey = await decryptSecret(env, cap.billing_envelope); } catch { return json({ error: "billing_key_unavailable" }, 503); }
-  const units = egressCredits(env);
+  try { billingKey = await decryptSecret(env, cap.billing_envelope); } catch { return finish(json({ error: "billing_key_unavailable" }, 503), "failed_before_execution"); }
   const balance = await billingBalance(env, billingKey);
-  if (!balance.ok) return json({ error: balance.status === 404 ? "unknown_xguard_license" : "billing_unavailable" }, balance.status === 404 ? 401 : 503);
-  if (balance.credits < units) return json({ error: "insufficient_xguard_credits", credits: balance.credits, required: units, checkout_url: env.XGUARD_CHECKOUT_URL || null }, 402);
+  if (!balance.ok) return finish(json({ error: balance.status === 404 ? "unknown_xguard_license" : "billing_unavailable" }, balance.status === 404 ? 401 : 503), "failed_before_execution");
+  if (!Number.isFinite(balance.credits) || balance.credits < units) return finish(json({ error: "insufficient_xguard_credits", required: units, checkout_url: env.XGUARD_CHECKOUT_URL || null }, 402), "failed_before_execution");
   const billed = await consumeCredits(env, billingKey, units, `xguard-egress:${cap.execution_id}`);
-  if (!billed.ok) return json({ error: billed.status === 402 ? "insufficient_xguard_credits" : "billing_commit_failed", checkout_url: env.XGUARD_CHECKOUT_URL || null }, billed.status === 402 ? 402 : 503);
+  if (!billed.ok) return finish(json({ error: billed.status === 402 ? "insufficient_xguard_credits" : "billing_commit_failed", checkout_url: env.XGUARD_CHECKOUT_URL || null }, billed.status === 402 ? 402 : 503), billed.status === 402 ? "failed_before_execution" : "billing_ambiguous", billed.status === 402 ? 0 : null);
 
   let secret;
-  try { secret = await decryptSecret(env, credential.envelope); } catch { return json({ error: "credential_decryption_unavailable" }, 503); }
-  const headers = sanitizeHeaders(body?.headers, credential.injection?.header);
+  try { secret = await decryptSecret(env, credential.envelope); } catch { return finish(json({ error: "credential_decryption_unavailable" }, 503), "failed_before_execution", units); }
+  const headers = sanitizeHeaders(Object.fromEntries(outgoing), credential.injection?.header);
   headers.set(credential.injection.header, `${credential.injection.prefix || ""}${secret}`);
   if (serialized.contentType && !headers.has("content-type")) headers.set("content-type", serialized.contentType);
-  if (!["GET", "HEAD"].includes(method) && !headers.has("idempotency-key")) headers.set("idempotency-key", `xge_${cap.execution_id}`);
+  if (!["GET", "HEAD"].includes(method)) headers.set("idempotency-key", cap.execution_id);
   headers.set("x-xguard-egress-capability", parsed.id);
 
   const started = Date.now();
@@ -531,27 +613,28 @@ async function egressFetch(request, env) {
       redirect: "manual",
       signal: AbortSignal.timeout(EGRESS_TIMEOUT_MS),
     });
-    await meterStub(env).fetch("https://meter/record", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ billed_credits: units, upstream_status: upstream.status, latency_ms: Date.now() - started, ambiguous: false }),
-    }).catch(() => null);
-    const responseHeaders = new Headers(upstream.headers);
-    responseHeaders.delete("content-length");
-    responseHeaders.delete("server");
+    const bytes = await readBoundedBody(upstream.body, MAX_RESULT_BYTES);
+    const decoded = dec.decode(bytes);
+    if (credentialVariants(secret).some(value => decoded.includes(value))) throw new Error("credential_reflected_by_upstream");
+    const responseHeaders = safeResponseHeaders(upstream.headers, secret, credential.injection.header);
     responseHeaders.set("x-xguard-egress", VERSION);
     responseHeaders.set("x-xguard-egress-capability", parsed.id);
     responseHeaders.set("x-xguard-billed-credits", String(units));
     responseHeaders.set("x-xguard-upstream-status", String(upstream.status));
     responseHeaders.set("cache-control", "no-store");
-    return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers: responseHeaders });
+    await meterStub(env).fetch("https://meter/record", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ billed_credits: units, upstream_status: upstream.status, latency_ms: Date.now() - started, ambiguous: false }),
+    }).catch(() => null);
+    return finish(new Response([204, 205, 304].includes(upstream.status) || method === "HEAD" ? null : bytes, { status: upstream.status, headers: responseHeaders }), "completed", units);
   } catch (error) {
     await meterStub(env).fetch("https://meter/record", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ billed_credits: units, latency_ms: Date.now() - started, ambiguous: true }),
     }).catch(() => null);
-    return json({ error: "egress_outcome_ambiguous", message: "XGuard billed the authorized egress attempt before releasing the credential. The network outcome is unknown and XGuard will not replay it automatically.", execution_id: cap.execution_id }, 503, { "x-xguard-egress-state": "ambiguous" });
+    return finish(json({ error: "egress_outcome_ambiguous", reason: ["response_too_large", "response_headers_too_large", "credential_reflected_by_upstream"].includes(error.message) ? error.message : "upstream_transport_failed", message: "The authorized attempt was billed. XGuard cannot safely deliver its outcome and will not repeat it.", execution_id: cap.execution_id }, 503), "ambiguous", units);
   }
 }
 
@@ -559,6 +642,11 @@ export class EgressKeyAuthority {
   constructor(state) { this.state = state; }
 
   async keys() {
+    if (!this.keyPromise) this.keyPromise = this.loadKeys().catch(cause => { this.keyPromise = null; throw cause; });
+    return this.keyPromise;
+  }
+
+  async loadKeys() {
     let record = await this.state.storage.get("keys");
     if (record) return record;
     const pair = await crypto.subtle.generateKey({ name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["encrypt", "decrypt"]);
@@ -576,10 +664,10 @@ export class EgressKeyAuthority {
     const path = new URL(request.url).pathname;
     const record = await this.keys();
     if (path === "/public") return json({ kid: record.kid, alg: "RSA-OAEP-256", jwk: record.public_jwk, created_at: record.created_at }, 200, { "cache-control": "public, max-age=300" });
-    if (path === "/encrypt" && request.method === "POST") {
+    if (["/encrypt", "/encrypt-result"].includes(path) && request.method === "POST") {
       const body = await request.json();
       const plaintext = String(body?.plaintext || "");
-      if (!plaintext || enc.encode(plaintext).byteLength > MAX_SECRET_BYTES) return json({ error: "invalid_plaintext" }, 400);
+      if (!plaintext || enc.encode(plaintext).byteLength > (path === "/encrypt-result" ? MAX_STORED_RESULT_BYTES : MAX_SECRET_BYTES)) return json({ error: "invalid_plaintext" }, 400);
       const aes = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
       const iv = crypto.getRandomValues(new Uint8Array(12));
       const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aes, enc.encode(plaintext));
@@ -662,18 +750,54 @@ export class EgressTenantIndex {
 
 export class EgressCapabilityState {
   constructor(state) { this.state = state; }
+  async alarm() {
+    const record = await this.state.storage.get("record");
+    const cleanupAt = Date.parse(record?.expires_at || "") + 86400000;
+    if (!record || Date.now() >= cleanupAt) await this.state.storage.deleteAll();
+    else await this.state.storage.setAlarm(cleanupAt);
+  }
   async fetch(request) {
     const path = new URL(request.url).pathname;
     if (path === "/create" && request.method === "POST") {
       if (await this.state.storage.get("record")) return json({ error: "capability_exists" }, 409);
       const record = await request.json();
       await this.state.storage.put("record", record);
+      await this.state.storage.setAlarm(Date.parse(record.expires_at) + 86400000);
       return json({ ok: true }, 201);
     }
     const record = await this.state.storage.get("record");
     if (!record) return json({ error: "capability_not_found" }, 404);
+    if (path === "/revoke" && request.method === "POST") {
+      const body = await request.json();
+      if (!equalHash(body.owner_hash, record.owner_hash)) return json({ error: "capability_access_denied" }, 403);
+      await this.state.storage.transaction(async txn => {
+        const current = await txn.get("record");
+        await txn.put("record", { ...current, revoked: true, revoked_at: new Date().toISOString() });
+      });
+      return json({ ok: true, revoked: true, in_flight_execution_may_finish: true });
+    }
+    if (path === "/complete" && request.method === "POST") {
+      const body = await request.json();
+      if (!/^[a-f0-9]{64}$/.test(body.key_hash || "") || !["completed", "failed_before_execution", "ambiguous", "billing_ambiguous"].includes(body.state)) return json({ error: "invalid_execution_result" }, 400);
+      let result;
+      await this.state.storage.transaction(async txn => {
+        const key = `execution:${body.key_hash}`;
+        const operation = await txn.get(key);
+        if (!operation || operation.state !== "reserved" || operation.claim_token !== body.claim_token || !body.response_envelope?.ciphertext) { result = json({ error: "execution_claim_invalid" }, 409); return; }
+        if (body.billed_credits !== null && (!Number.isSafeInteger(body.billed_credits) || body.billed_credits < 0 || body.billed_credits > operation.units)) { result = json({ error: "invalid_billed_credits" }, 400); return; }
+        await txn.put(key, { ...operation, state: body.state, claim_token: null, billed_credits: body.billed_credits, response_envelope: body.response_envelope, completed_at: new Date().toISOString() });
+        if (body.billed_credits === 0) {
+          const current = await txn.get("record");
+          current.reserved_credits = Math.max(0, current.reserved_credits - operation.units);
+          await txn.put("record", current);
+        }
+        result = json({ ok: true });
+      });
+      return result;
+    }
     if (path === "/begin" && request.method === "POST") {
       const body = await request.json();
+      if (!/^[a-f0-9]{64}$/.test(body.key_hash || "") || !/^[a-f0-9]{64}$/.test(body.request_digest || "") || !Number.isSafeInteger(body.units) || body.units <= 0) return json({ error: "invalid_execution_request" }, 400);
       if (!equalHash(await sha256(body?.token || ""), record.token_hash)) return json({ error: "invalid_capability" }, 403);
       const target = safeTarget(body?.target);
       const method = String(body?.method || "GET").toUpperCase();
@@ -683,11 +807,26 @@ export class EgressCapabilityState {
         const current = await txn.get("record");
         if (current.revoked) { result = { status: 403, body: { error: "capability_revoked" } }; return; }
         if (Date.now() >= Date.parse(current.expires_at)) { result = { status: 410, body: { error: "capability_expired" } }; return; }
+        const operationKey = `execution:${body.key_hash}`;
+        const existing = await txn.get(operationKey);
+        if (existing) {
+          if (existing.request_digest !== body.request_digest) { result = { status: 409, body: { error: "idempotency_request_conflict", execution_id: existing.execution_id } }; return; }
+          if (existing.response_envelope) { result = { status: 200, body: { replay: true, execution_id: existing.execution_id, response_envelope: existing.response_envelope } }; return; }
+          result = { status: 409, body: { error: Date.now() - Date.parse(existing.created_at) > 60000 ? "execution_outcome_unknown" : "execution_in_progress", execution_id: existing.execution_id, retry_with_same_key_only: true, automatic_reexecution: false } };
+          return;
+        }
         if (current.used_calls >= current.max_calls) { result = { status: 409, body: { error: "capability_exhausted" } }; return; }
+        const reserved = current.reserved_credits ?? current.used_calls * DEFAULT_CREDITS;
+        const maxPerCall = current.max_credits_per_call ?? DEFAULT_CREDITS;
+        const maxTotal = current.max_total_credits ?? current.max_calls * DEFAULT_CREDITS;
+        if (body.units > maxPerCall || reserved + body.units > maxTotal) { result = { status: 402, body: { error: "capability_credit_budget_exceeded", required: body.units, remaining: Math.max(0, maxTotal - reserved) } }; return; }
+        const operation = { execution_id: `xge_${randomHex()}`, claim_token: randomHex(), request_digest: body.request_digest, units: body.units, state: "reserved", created_at: new Date().toISOString() };
+        current.reserved_credits = reserved + body.units;
         current.used_calls += 1;
         current.last_used_at = new Date().toISOString();
         await txn.put("record", current);
-        result = { status: 200, body: { credential_id: current.credential_id, owner_hash: current.owner_hash, billing_envelope: current.billing_envelope, execution_id: `xge_${randomHex()}`, used_calls: current.used_calls, max_calls: current.max_calls } };
+        await txn.put(operationKey, operation);
+        result = { status: 200, body: { credential_id: current.credential_id, owner_hash: current.owner_hash, billing_envelope: current.billing_envelope, execution_id: operation.execution_id, claim_token: operation.claim_token, used_calls: current.used_calls, max_calls: current.max_calls } };
       });
       return json(result.body, result.status);
     }
@@ -754,6 +893,11 @@ export default {
       return deleteCredential(request, env, id);
     }
     if (path === "/v1/egress/capabilities" && request.method === "POST") return issueCapability(request, env);
+    if (/^\/v1\/egress\/capabilities\/[a-f0-9]{32}$/.test(path) && request.method === "DELETE") {
+      const key = keyOf(request);
+      if (!key) return json({ error: "xguard_key_required" }, 401);
+      return capabilityStub(env, path.split("/").pop()).fetch("https://capability/revoke", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ owner_hash: await sha256(key) }) });
+    }
     if (path === "/v1/egress/fetch" && request.method === "POST") return egressFetch(request, env);
     if (path === "/v1/egress/pricing" && request.method === "GET") return json({ credits_per_authorized_egress_attempt: egressCredits(env), billing_boundary: "XGuard Usage Credits are consumed before credential release and before outbound network egress.", failed_billing: "no upstream request is sent", upstream_failure_after_billing: "the egress attempt remains billed; XGuard never auto-replays an ambiguous attempt", checkout_url: env.XGUARD_CHECKOUT_URL || null });
     if (path === "/v1/egress/stats" && request.method === "GET") return meterStub(env).fetch("https://meter/stats");

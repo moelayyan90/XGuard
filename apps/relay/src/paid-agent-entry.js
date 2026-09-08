@@ -1,3 +1,6 @@
+import { isPrivateIpv4, isPrivateIpv6, hostnameAllowed, publicDns } from "./core/network-policy.js";
+import { pricingEconomics, executionEconomics } from "./core/unit-economics.js";
+import { secretlessCapability } from "./egress-entry.js";
 import app from "./product-entry.js";
 export * from "./product-entry.js";
 
@@ -153,7 +156,7 @@ function headers(extra = {}) {
     "cache-control": "no-store",
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,HEAD,POST,OPTIONS",
-    "access-control-allow-headers": "content-type,payment-signature,x-xguard-quote,x-xguard-credit,x-request-id,x-xguard-traffic-class",
+    "access-control-allow-headers": "content-type,payment-signature,x-xguard-quote,x-xguard-credit,x-request-id,x-xguard-traffic-class,idempotency-key,x-xguard-key,x-xguard-capability",
     "access-control-expose-headers": "payment-required,payment-response,x-xguard-quote,x-xguard-request-id,x-xguard-payment-identifier,x-xguard-payment-environment,x-xguard-payment-rail,x-xguard-replay,x-xguard-proof,x-xguard-receipt,x-xguard-credit",
     "strict-transport-security": "max-age=31536000; includeSubDomains",
     "x-content-type-options": "nosniff",
@@ -234,13 +237,16 @@ function gatewayConfig(env, testnet = false) {
   const facilitator = String(testnet ? env.XGUARD_TESTNET_FACILITATOR || "" : env.XGUARD_PAID_FACILITATOR || env.X402_BASE_PRIMARY || "").replace(/\/+$/, "");
   const marginMicros = Number(testnet ? env.XGUARD_TESTNET_MARGIN_USD_MICROS || amount : env.XGUARD_MARGIN_USD_MICROS || amount);
   const railValidation = validatePaymentRailConfig({ environment, network, asset, payTo, amount, facilitator });
-  const economicsValid = Number.isSafeInteger(marginMicros) && marginMicros >= 0 && marginMicros === Number(amount);
+  const economics = pricingEconomics(env, Number(amount));
+  const economicsValid = Number.isSafeInteger(marginMicros) && marginMicros >= 0 && marginMicros === Number(amount) && economics.available;
   const configured = railValidation.configured && economicsValid;
   const configurationError = !railValidation.environment_configured ? "payment_environment_invalid"
     : !railValidation.environment_matches_network ? "payment_environment_network_mismatch"
     : !railValidation.recipient_configured ? "payment_recipient_missing"
       : !railValidation.asset_configured ? "payment_asset_invalid"
-        : !railValidation.amount_configured || !economicsValid ? "payment_price_invalid"
+        : !railValidation.amount_configured ? "payment_price_invalid"
+          : !economics.available ? economics.rejection_reason
+          : !economicsValid ? "payment_price_invalid"
           : !railValidation.facilitator_configured ? "payment_facilitator_missing" : null;
   const rail = {
     id: `x402:${network}:exact`,
@@ -260,6 +266,7 @@ function gatewayConfig(env, testnet = false) {
     payTo,
     amount,
     facilitator,
+    economics,
     upstreamCostMaxUsdMicros: 0,
     marginUsdMicros: marginMicros,
     customerPriceUsdMicros: Number(amount),
@@ -308,6 +315,7 @@ function capabilities(env) {
         safety: ["https_only", "ssrf_guard", "dns_public_address_check", "manual_redirect_validation", "bounded_response", "timeout", "cache", "idempotent_payment"],
         unavailable_reason: mainnet.configured ? null : { code: mainnet.configurationError || "payment_not_configured", missing: ["valid production receiving address", "positive price", "HTTPS facilitator", "production network/environment match"], readiness: `${API}/v1/payment/readiness` },
       },
+      secretlessCapability(env),
       { id: "xguard.web.search", available: false, paid: true, unavailable_reason: { code: "connector_not_configured", message: "No production search connector with funded or post-paid capacity is configured." } },
       { id: "xguard.ai.generate", available: false, paid: true, unavailable_reason: { code: "connector_not_configured", message: "No production inference connector with funded or post-paid capacity is configured." } },
       { id: "xguard.ai.route", available: false, paid: true, unavailable_reason: { code: "connector_not_configured", message: "No eligible inference routes are configured." } },
@@ -366,7 +374,9 @@ function pricing(env) {
       [TOOL]: {
         available: mainnet.configured,
         payment_environment: mainnet.environment,
-        formula: "customer_price = maximum_upstream_cost + configured_xguard_margin",
+        formula: "fixed customer price must cover configured direct-cost budgets and the minimum contribution margin",
+        economics: mainnet.economics,
+        legacy_margin_semantics: "xguard_margin is markup before infrastructure and payment costs; it is not profit",
         maximum_upstream_cost_usd_micros: 0,
         xguard_margin_usd_micros: mainnet.marginUsdMicros,
         customer_price_usd_micros: mainnet.customerPriceUsdMicros,
@@ -816,6 +826,7 @@ export async function issueQuote(env, raw, id, observation = {}) {
     upstream_cost_max_usd_micros: config.upstreamCostMaxUsdMicros,
     xguard_margin_usd_micros: config.marginUsdMicros,
     customer_price_usd_micros: config.customerPriceUsdMicros,
+    cost_budget: config.economics,
     issued_at: now,
     expires_at: now + QUOTE_TTL_SECONDS,
   };
@@ -833,89 +844,6 @@ export async function issueQuote(env, raw, id, observation = {}) {
     quote,
     response: json({ quote, ...payload, request_shape: normalized.shape, next: quoteNextStep(config, quote, payload) }, 200, { "x-xguard-request-id": id }),
   };
-}
-
-function isPrivateIpv4(hostname) {
-  const parts = hostname.split(".");
-  if (parts.length !== 4 || parts.some(part => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return false;
-  const [a, b, c] = parts.map(Number);
-  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19)) || a >= 224 || (a === 192 && b === 0) || (a === 192 && b === 0 && c === 2) || (a === 198 && b === 51 && c === 100) || (a === 203 && b === 0 && c === 113);
-}
-
-function isPrivateIpv6(hostname) {
-  const value = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (!value.includes(":")) return false;
-  const dotted = value.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
-  let normalized = value;
-  if (dotted) {
-    const octets = dotted[2].split(".").map(Number);
-    if (octets.length !== 4 || octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) return true;
-    normalized = `${dotted[1]}${((octets[0] << 8) | octets[1]).toString(16)}:${((octets[2] << 8) | octets[3]).toString(16)}`;
-  }
-  const halves = normalized.split("::");
-  if (halves.length > 2) return true;
-  const left = halves[0] ? halves[0].split(":") : [];
-  const right = halves[1] ? halves[1].split(":") : [];
-  const missing = 8 - left.length - right.length;
-  if ((halves.length === 1 && missing !== 0) || missing < 0) return true;
-  const words = [...left, ...Array(missing).fill("0"), ...right].map(part => /^[0-9a-f]{1,4}$/.test(part) ? Number.parseInt(part, 16) : -1);
-  if (words.length !== 8 || words.some(word => word < 0)) return true;
-  const unspecified = words.every(word => word === 0);
-  const loopback = words.slice(0, 7).every(word => word === 0) && words[7] === 1;
-  const mapped = words.slice(0, 5).every(word => word === 0) && words[5] === 0xffff;
-  if (mapped) return isPrivateIpv4(`${words[6] >> 8}.${words[6] & 255}.${words[7] >> 8}.${words[7] & 255}`);
-  const globalUnicast = (words[0] & 0xe000) === 0x2000;
-  const documentation = words[0] === 0x2001 && words[1] === 0x0db8;
-  return unspecified || loopback || !globalUnicast || documentation;
-}
-
-function hostnameAllowed(hostname) {
-  const host = String(hostname || "").replace(/\.$/, "").toLowerCase();
-  if (!host || host.length > 253 || host === "localhost" || !host.includes(".")) return false;
-  if (host.endsWith(".local") || host.endsWith(".internal") || host.endsWith(".localhost") || host.endsWith(".home") || host.endsWith(".lan")) return false;
-  if (host === "metadata.google.internal" || host === "metadata.azure.internal" || host.endsWith(".xguardgate.com") || host === "xguardgate.com") return false;
-  if (isPrivateIpv4(host) || isPrivateIpv6(host)) return false;
-  return true;
-}
-
-async function publicDns(hostname) {
-  if (!hostnameAllowed(hostname)) return { ok: false, code: "target_not_public" };
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname) || hostname.includes(":")) return { ok: true, addresses: [hostname] };
-  const answers = [];
-  let trustedResponses = 0;
-  let successfulFamilies = 0;
-  let unavailableFamilies = 0;
-  for (const type of ["A", "AAAA"]) {
-    const resolvers = [
-      { endpoint: "https://one.one.one.one/dns-query", accept: "application/dns-json", hosts: new Set(["one.one.one.one", "cloudflare-dns.com"]) },
-      { endpoint: "https://cloudflare-dns.com/dns-query", accept: "application/dns-json", hosts: new Set(["cloudflare-dns.com", "one.one.one.one"]) },
-      { endpoint: "https://dns.google/resolve", accept: "application/json", hosts: new Set(["dns.google"]) },
-    ];
-    const results = await Promise.allSettled(resolvers.map(async resolver => {
-        const endpoint = new URL(resolver.endpoint);
-        endpoint.searchParams.set("name", hostname);
-        endpoint.searchParams.set("type", type);
-        const response = await fetch(endpoint, { headers: { accept: resolver.accept }, signal: AbortSignal.timeout(2500), redirect: "follow" });
-        if (!response.ok || !resolver.hosts.has(new URL(response.url || endpoint).hostname)) throw new Error("dns_resolver_unavailable");
-        const candidate = await response.json().catch(() => null);
-        if (!candidate || !Number.isInteger(Number(candidate.Status ?? 0))) throw new Error("dns_response_invalid");
-        return candidate;
-      }));
-    const bodies = results.filter(result => result.status === "fulfilled").map(result => result.value);
-    trustedResponses += bodies.length;
-    const successful = bodies.filter(body => Number(body.Status ?? 0) === 0);
-    if (successful.length) successfulFamilies += 1;
-    else if (!bodies.length || bodies.some(body => ![0, 3].includes(Number(body.Status ?? 0)))) unavailableFamilies += 1;
-    for (const body of successful) {
-      for (const answer of Array.isArray(body?.Answer) ? body.Answer : []) {
-        if (answer.type === 1 || answer.type === 28) answers.push(String(answer.data || ""));
-      }
-    }
-  }
-  if (!trustedResponses || unavailableFamilies) return { ok: false, code: "dns_unavailable" };
-  if (successfulFamilies < 2) return { ok: false, code: "dns_unresolved" };
-  if (!answers.length || answers.some(address => isPrivateIpv4(address) || isPrivateIpv6(address))) return { ok: false, code: answers.length ? "target_not_public" : "dns_unresolved" };
-  return { ok: true, addresses: [...new Set(answers)] };
 }
 
 function allowedContentType(value) {
@@ -1033,21 +961,42 @@ function safeFinancialPatch(record, next, patch = {}) {
     updated.gross_revenue_usd_micros = economicallyReal ? Number(record.customer_price_usd_micros || 0) : 0;
     updated.actual_upstream_cost_usd_micros = economicallyReal ? Number(record.maximum_upstream_cost_usd_micros || 0) : 0;
     updated.credit_liability_usd_micros = 0;
-    updated.net_profit_usd_micros = updated.gross_revenue_usd_micros - updated.actual_upstream_cost_usd_micros;
+    updated.net_profit_usd_micros = null;
     updated.revenue_source = economicallyReal ? "external_production_x402_settlement" : `${record.environment || "unknown"}_settlement_non_revenue`;
   } else if (!["succeeded", "credited"].includes(next) && !record.settled_at) {
     updated.gross_revenue_usd_micros = 0;
     updated.actual_upstream_cost_usd_micros = 0;
     updated.credit_liability_usd_micros = 0;
-    updated.net_profit_usd_micros = 0;
+    updated.net_profit_usd_micros = null;
     updated.revenue_source = null;
   }
   if (next === "credited") {
     if (!record.settled_at) throw new Error("credit_requires_settlement");
     updated.credit_liability_usd_micros = record.gross_revenue_usd_micros > 0 ? Number(record.customer_price_usd_micros || 0) : 0;
-    updated.net_profit_usd_micros = 0;
+    updated.net_profit_usd_micros = null;
   }
   return updated;
+}
+
+function emptyCommerce() {
+  return { schema_version: 1, observed_since: null, historical_backfill_complete: false, settled_cash_usd_micros: 0, recognized_revenue_usd_micros: 0, unfulfilled_liability_usd_micros: 0, successful_paid_executions: 0, budgeted_executions: 0, estimated_contribution_usd_micros: 0, paying_wallets: 0, repeat_paying_wallets: 0, gross_profit_usd_micros: null, net_profit_usd_micros: null, basis: "unique external production settlements; revenue recognized after delivery; contribution is a budget estimate; actual profit unknown" };
+}
+
+async function syncCommerce(state, env, record) {
+  if (!(record.gross_revenue_usd_micros > 0) || !/^[a-f0-9]{64}$/.test(record.authorization_fingerprint || "")) return;
+  try {
+    await state.storage.put("commerce_pending", true);
+    const financials = executionEconomics(record);
+    const response = await postStub(gatewayIndex(env), "/index/commerce", { operation_hash: record.authorization_fingerprint, payer_hash: await sha256(`${record.network}:${String(record.payer || "").toLowerCase()}`), financials, status: record.credit_redeemed ? "succeeded" : record.status });
+    if (!response.ok) throw new Error("commerce_sync_failed");
+    await state.storage.delete("commerce_pending");
+    await state.storage.delete("commerce_sync_attempts");
+  } catch {
+    const attempts = Number(await state.storage.get("commerce_sync_attempts") || 0) + 1;
+    await state.storage.put("commerce_sync_attempts", attempts);
+    if (attempts <= 5) await state.storage.setAlarm(Date.now() + 30000);
+    console.log(JSON.stringify({ event: "commerce_accounting_pending", request_id: record.request_id, attempts }));
+  }
 }
 
 export class PaidGatewayState {
@@ -1062,6 +1011,38 @@ export class PaidGatewayState {
     if (request.method !== "POST") return doJson({ error: "method_not_allowed" }, 405);
     let body;
     try { body = await request.json(); } catch { return doJson({ error: "invalid_json" }, 400); }
+
+    if (path === "/index/commerce") {
+      if (!/^[a-f0-9]{64}$/.test(body.operation_hash || "") || !/^[a-f0-9]{64}$/.test(body.payer_hash || "") || !["settled", "credited", "succeeded"].includes(body.status)) return doJson({ error: "invalid_commerce_record" }, 400);
+      const f = body.financials || {};
+      if (![f.settled_cash_usd_micros, f.recognized_revenue_usd_micros, f.unfulfilled_liability_usd_micros].every(value => Number.isSafeInteger(value) && value >= 0)) return doJson({ error: "invalid_commerce_amount" }, 400);
+      await this.state.storage.transaction(async txn => {
+        const key = `commerce:operation:${body.operation_hash}`;
+        const previous = await txn.get(key);
+        const rank = { settled: 1, credited: 2, succeeded: 3 };
+        if (previous && rank[previous.status] >= rank[body.status]) return;
+        const completed = body.status === "succeeded" && f.recognized_revenue_usd_micros > 0;
+        const snapshot = { status: body.status, settled_cash_usd_micros: f.settled_cash_usd_micros, recognized_revenue_usd_micros: f.recognized_revenue_usd_micros, unfulfilled_liability_usd_micros: f.unfulfilled_liability_usd_micros, successful_paid_executions: completed ? 1 : 0, budgeted_executions: completed && Number.isSafeInteger(f.estimated_contribution_usd_micros) ? 1 : 0, estimated_contribution_usd_micros: completed && Number.isSafeInteger(f.estimated_contribution_usd_micros) ? f.estimated_contribution_usd_micros : 0 };
+        const aggregate = await txn.get("commerce:v1") || emptyCommerce();
+        aggregate.observed_since ||= new Date().toISOString();
+        for (const field of ["settled_cash_usd_micros", "recognized_revenue_usd_micros", "unfulfilled_liability_usd_micros", "successful_paid_executions", "budgeted_executions", "estimated_contribution_usd_micros"]) aggregate[field] += snapshot[field] - (previous?.[field] || 0);
+        if (completed && !previous?.successful_paid_executions) {
+          const walletKey = `commerce:wallet:${body.payer_hash}`;
+          const wallet = await txn.get(walletKey) || { executions: 0, observed_revenue_usd_micros: 0 };
+          if (wallet.executions === 0) aggregate.paying_wallets += 1;
+          if (wallet.executions === 1) aggregate.repeat_paying_wallets += 1;
+          wallet.executions += 1;
+          wallet.observed_revenue_usd_micros += snapshot.recognized_revenue_usd_micros;
+          await txn.put(walletKey, wallet);
+        }
+        aggregate.updated_at = new Date().toISOString();
+        aggregate.revenue_per_successful_execution_usd_micros = aggregate.successful_paid_executions ? aggregate.recognized_revenue_usd_micros / aggregate.successful_paid_executions : null;
+        aggregate.observed_revenue_per_paying_wallet_usd_micros = aggregate.paying_wallets ? aggregate.recognized_revenue_usd_micros / aggregate.paying_wallets : null;
+        await txn.put(key, snapshot);
+        await txn.put("commerce:v1", aggregate);
+      });
+      return doJson({ ok: true });
+    }
 
     if (path === "/index/reserve") {
       if (!isValidPaymentId(body.payment_identifier) || !/^[a-f0-9]{64}$/.test(body.authorization_fingerprint) || !/^[a-f0-9]{64}$/.test(body.request_digest)) return doJson({ error: "invalid_reservation" }, 400);
@@ -1143,6 +1124,7 @@ export class PaidGatewayState {
       const current = await this.state.storage.get("metrics:v1") || { started_at: new Date().toISOString(), events: {}, outcomes: {}, test_volume_usd_micros: 0, real_revenue_usd_micros: 0, qualified_external_executions: 0, latency_ms_total: 0, latency_samples: 0 };
       return doJson({
         ...current,
+        economics: await this.state.storage.get("commerce:v1") || emptyCommerce(),
         test_volume_usd_micros: Number(current.test_volume_usd_micros || 0),
         real_revenue_usd_micros: Number(current.real_revenue_usd_micros || 0),
         settled_usd_micros: Number(current.real_revenue_usd_micros || 0),
@@ -1191,7 +1173,7 @@ export class PaidGatewayState {
         gross_revenue_usd_micros: 0,
         actual_upstream_cost_usd_micros: 0,
         credit_liability_usd_micros: 0,
-        net_profit_usd_micros: 0,
+        net_profit_usd_micros: null,
         revenue_source: null,
         reconciliation_attempts: 0,
       };
@@ -1207,6 +1189,7 @@ export class PaidGatewayState {
       if (["failed", "settled"].includes(record.status)) delete record.payment_payload;
       await this.state.storage.put("operation", record);
       if (record.status === "ambiguous") await this.state.storage.setAlarm(Date.now() + 30000);
+      await syncCommerce(this.state, this.env, record);
       return doJson({ ok: true, record });
     }
 
@@ -1239,7 +1222,25 @@ export class PaidGatewayState {
       });
       delete record.payment_payload;
       await this.state.storage.put("operation", record);
+      await syncCommerce(this.state, this.env, record);
       return doJson({ ok: true, record });
+    }
+
+    if (["/operation/credit-attempt", "/operation/credit-delivered"].includes(path)) {
+      const existing = await this.state.storage.get("operation");
+      if (!existing || existing.status !== "credited" || existing.credit_id !== body.credit_id) return doJson({ error: "credit_invalid" }, 409);
+      if (existing.credit_redeemed) return doJson({ ok: true, delivered: true });
+      if (path === "/operation/credit-attempt") {
+        if (existing.credit_attempt_request_id !== body.request_id) {
+          await this.state.storage.put("operation", { ...existing, execution_attempts: Number(existing.execution_attempts || 0) + 1, credit_attempt_request_id: body.request_id });
+        }
+      } else {
+        if (existing.credit_attempt_request_id !== body.request_id) return doJson({ error: "credit_attempt_mismatch" }, 409);
+        const record = { ...existing, credit_redeemed: true, credit_liability_usd_micros: 0, credit_fulfillment: { request_id: body.request_id, input_digest: body.input_digest, body_sha256: body.body_sha256, delivered_at: new Date().toISOString() }, net_profit_usd_micros: null };
+        await this.state.storage.put("operation", record);
+        await syncCommerce(this.state, this.env, record);
+      }
+      return doJson({ ok: true });
     }
 
     if (path === "/operation/get") {
@@ -1251,6 +1252,8 @@ export class PaidGatewayState {
   }
 
   async alarm() {
+    const record = await this.state.storage.get("operation");
+    if (record && await this.state.storage.get("commerce_pending")) await syncCommerce(this.state, this.env, record);
     await reconcileStoredOperation(this.state, this.env);
   }
 }
@@ -1559,10 +1562,11 @@ function successfulResponse(record, replay = false) {
     receipt: record.receipt,
     proofrail: record.proof,
     accounting: {
+      ...executionEconomics(record),
       gross_revenue_usd_micros: record.gross_revenue_usd_micros,
       actual_upstream_cost_usd_micros: record.actual_upstream_cost_usd_micros,
       credit_liability_usd_micros: record.credit_liability_usd_micros,
-      net_profit_usd_micros: record.net_profit_usd_micros,
+      net_profit_usd_micros: null,
       revenue_source: record.revenue_source,
     },
   }, 200, {
@@ -1691,14 +1695,21 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
   const reserve = await postStub(gatewayIndex(env), "/index/credit-consume", { credit_id: payload.credit_id, tool: TOOL, amount: config.amount, request_id: id });
   if (!reserve.ok) return error("credit_invalid", 409, id);
   try {
+    const original = await postStub(gatewayIndex(env), "/index/lookup", { payment_identifier: payload.original_payment_identifier });
+    if (!original.ok) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
+    const originalStub = operationStub(env, original.body.record.authorization_fingerprint);
+    const attempt = await postStub(originalStub, "/operation/credit-attempt", { credit_id: payload.credit_id, request_id: id });
+    if (!attempt.ok || attempt.body.delivered) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
     const result = await performWebFetch(input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
-    await postStub(gatewayIndex(env), "/index/credit-finalize", { credit_id: payload.credit_id, request_id: id, success: true });
     const proof = await signProof(env, {
       v: 1, typ: "xguard-credited-execution", iss: API, request_id: id, credit_id: payload.credit_id, tool: TOOL,
       input_digest: quote.input_digest, original_transaction: payload.original_transaction, body_sha256: result.body_sha256, executed_at: new Date().toISOString(),
     });
-    return json({ request_id: id, status: "succeeded", used_execution_credit: true, original_payment_identifier: payload.original_payment_identifier, result, proofrail: proof, accounting: { gross_revenue_usd_micros: 0, actual_upstream_cost_usd_micros: 0, net_profit_usd_micros: 0, revenue_source: "original_settlement_fulfillment" } }, 200, {
+    const delivered = await postStub(originalStub, "/operation/credit-delivered", { credit_id: payload.credit_id, request_id: id, input_digest: quote.input_digest, body_sha256: result.body_sha256 });
+    if (!delivered.ok) throw Object.assign(new Error("credit_accounting_unavailable"), { code: "credit_accounting_unavailable" });
+    await postStub(gatewayIndex(env), "/index/credit-finalize", { credit_id: payload.credit_id, request_id: id, success: true });
+    return json({ request_id: id, status: "succeeded", used_execution_credit: true, original_payment_identifier: payload.original_payment_identifier, result, proofrail: proof, accounting: { new_cash_usd_micros: 0, gross_revenue_usd_micros: 0, actual_upstream_cost_usd_micros: 0, net_profit_usd_micros: null, revenue_source: "original_settlement_fulfillment", original_liability_released: true } }, 200, {
       "x-xguard-request-id": id,
       "x-xguard-proof": proof?.proof || "",
     });
@@ -1798,12 +1809,14 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     tool: TOOL,
     input,
     payer: identity.from,
+    pay_to: config.payTo,
     nonce: identity.nonce,
     network: config.network,
     asset: config.asset,
     amount: config.amount,
     maximum_upstream_cost_usd_micros: 0,
     customer_price_usd_micros: config.customerPriceUsdMicros,
+    cost_budget: quote.cost_budget || config.economics,
     environment: config.environment,
     traffic_class: observation.trafficClass,
     transport,
@@ -2355,7 +2368,8 @@ async function operationStatus(env, paymentIdentifier, id) {
     transaction: record.transaction || null,
     gross_revenue_usd_micros: record.gross_revenue_usd_micros,
     actual_upstream_cost_usd_micros: record.actual_upstream_cost_usd_micros,
-    net_profit_usd_micros: record.net_profit_usd_micros,
+    net_profit_usd_micros: null,
+    economics: executionEconomics(record),
     revenue_source: record.revenue_source,
     created_at: record.created_at,
     updated_at: record.updated_at,

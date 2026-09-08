@@ -110,6 +110,8 @@ jobs:
           node --test apps/relay/src/canonical-entry-test.js
           node --test apps/relay/src/action-rail-test.js
           node --test apps/relay/src/egress-vault-test.js
+          node --test apps/relay/src/egress-execution-test.js
+          node --test apps/relay/src/core/unit-economics-test.js
           node --test apps/relay/src/product-entry-test.js
           node --test apps/relay/src/paid-agent-entry-test.js
           node --test apps/relay/src/core/payment-rail-test.js
