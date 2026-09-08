@@ -2,6 +2,13 @@ const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const VERSION = "5.1.0";
 const NAME = "XGuard Universal Paid AI Agent + Secretless Gateway";
+const DEPLOYMENT = process.env.DEPLOY_SHA || process.env.GITHUB_SHA || String(Date.now());
+
+function freshDiscoveryUrl(url) {
+  const target = new URL(url);
+  target.searchParams.set("deployment_probe", DEPLOYMENT);
+  return target.toString();
+}
 
 function fail(message) { throw new Error(message); }
 
@@ -9,7 +16,9 @@ async function getJson(url, options = {}) {
   const requestHeaders = new Headers(options.headers || {});
   requestHeaders.set("x-xguard-traffic-class", "synthetic");
   requestHeaders.set("user-agent", "xguard-production-verifier/5.1.0");
-  const response = await fetch(url, { signal: AbortSignal.timeout(12_000), ...options, headers: requestHeaders });
+  requestHeaders.set("cache-control", "no-cache");
+  const requestUrl = ["GET", "HEAD"].includes(options.method || "GET") ? freshDiscoveryUrl(url) : url;
+  const response = await fetch(requestUrl, { signal: AbortSignal.timeout(12_000), ...options, headers: requestHeaders });
   if (!response.ok) fail(`${url}: HTTP ${response.status}`);
   return { response, body: await response.json() };
 }
@@ -63,7 +72,7 @@ const pricing = await getJson(`${API}/v1/pricing`);
 if (pricing.body.quote_request?.canonical_shape?.url !== "https://example.com/" || !String(pricing.body.paid_flow?.first_response || "").includes("automatically created signed quote")) fail("Pricing discovery is missing the one-call payment flow");
 
 const preflight = await getJson(`${API}/v1/preflight`);
-if (preflight.body.name !== "xguard.preflight" || preflight.body.target_contacted !== false || preflight.body.guidance?.next?.includes("/v1/tools/web.fetch") !== true) fail("Preflight discovery is stale or missing the direct execution step");
+if (preflight.body.name !== "xguard.preflight" || preflight.body.target_contacted !== false || preflight.body.response?.next?.execution_url !== `${API}/v1/tools/web.fetch` || preflight.body.response?.next?.expected_first_status !== 402) fail("Preflight discovery is stale or missing the direct execution step");
 
 const toolsManifest = await getJson(`${API}/.well-known/xguard-tools.json`);
 if (toolsManifest.body.execution_chokepoint?.tool !== "xguard.web.fetch" || toolsManifest.body.execution_chokepoint?.settlement_before_execution !== true || !Array.isArray(toolsManifest.body.tools)) fail("XGuard tool manifest is stale or missing the guarded execution choke point");
@@ -85,10 +94,10 @@ if (direct.status !== 402 || !direct.headers.get("payment-required") || !direct.
 if (directBody.accepts?.[0]?.network !== "eip155:8453" || directBody.extensions?.xguard?.quote !== direct.headers.get("x-xguard-quote") || directBody.extensions?.xguard?.next?.action !== "sign_and_retry") fail("Direct paid 402 is incomplete or inconsistent");
 
 const syntheticHeaders = { "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-production-verifier/5.1.0" };
-const home = await fetch(`${SITE}/`, { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
+const home = await fetch(freshDiscoveryUrl(`${SITE}/`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const homeText = await home.text();
 if (!home.ok || !homeText.includes("Universal Paid AI Agent + Secretless Gateway") || home.headers.get("x-xguard-version") !== VERSION) fail("Homepage has stale identity");
-const tryPage = await fetch(`${SITE}/try`, { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
+const tryPage = await fetch(freshDiscoveryUrl(`${SITE}/try`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const tryText = await tryPage.text();
 if (!tryPage.ok || !tryText.includes("Generate signed 402") || !tryText.includes("/v1/tools/web.fetch")) fail("Live try page is missing the one-call payment path");
 

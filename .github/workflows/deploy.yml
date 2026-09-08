@@ -73,11 +73,23 @@ jobs:
           # apart. Retry only transport/HTTP failures; contract mismatches still fail.
           curl() {
             local endpoint=""
+            local read_only=1
+            local argument separator
+            local -a request_arguments=()
+            for argument in "$@"; do
+              case "$argument" in -X|--request|--data*|-d|--upload-file) read_only=0 ;; esac
+            done
             for argument in "$@"; do
               [[ "$argument" == https://* ]] && endpoint="${argument%%\?*}"
+              if [[ "$read_only" == "1" && "$argument" == https://* ]]; then
+                separator='?'
+                [[ "$argument" == *\?* ]] && separator='&'
+                argument="${argument}${separator}deployment_probe=${DEPLOY_SHA}"
+              fi
+              request_arguments+=("$argument")
             done
             [[ -z "$endpoint" ]] || echo "::notice title=Production probe::${endpoint}" >&2
-            command curl --retry 5 --retry-delay 2 -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-deploy-smoke/5.1.0' "$@"
+            command curl --retry 5 --retry-delay 2 -H 'cache-control: no-cache' -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-deploy-smoke/5.1.0' "${request_arguments[@]}"
           }
           expected_discovery_version="$(node -p 'require("./server.json").version')"
           ready=0
@@ -95,7 +107,7 @@ jobs:
           test "$ready" = "1"
 
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/capabilities | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),t=Object.fromEntries(x.tools.map(v=>[v.id,v]));if(x.version!=="5.1.0"||t["xguard.preflight"]?.available!==true||t["xguard.web.fetch"]?.available!==true||t["xguard.web.search"]?.available!==false||t["xguard.ai.generate"]?.available!==false)process.exit(1)})'
-          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/preflight | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="xguard.preflight"||x.target_contacted!==false||!String(x.guidance?.next||"").includes("/v1/tools/web.fetch"))process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/preflight | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="xguard.preflight"||x.target_contacted!==false||x.response?.next?.execution_url!=="https://api.xguardgate.com/v1/tools/web.fetch"||x.response?.next?.expected_first_status!==402){console.error(JSON.stringify({probe:"preflight",name:x.name,target_contacted:x.target_contacted,next:x.response?.next}));process.exit(1)}})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/pricing | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s),p=x.tools?.["xguard.web.fetch"];if(p?.amount_atomic!=="1000"||p?.network!=="eip155:8453"||p?.maximum_upstream_cost_usd_micros!==0||p?.customer_price_usd_micros!==1000)process.exit(1)})'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/health | grep -q '"live":true'
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/v1/ready | grep -q '"ready":true'

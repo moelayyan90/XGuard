@@ -1,7 +1,8 @@
 // Read-only production evidence. A 402 challenge is not a purchase or revenue.
 const api = "https://api.xguardgate.com";
+const deployment = process.env.DEPLOY_SHA || process.env.GITHUB_SHA || String(Date.now());
 const rows = await Promise.all(["/v1/pricing", "/v1/metrics", "/v1/egress", "/v1/egress/stats", "/v1/payment/readiness"].map(async path => {
-  const response = await fetch(api + path, { headers: { "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-commercial-observer/1.0" }, signal: AbortSignal.timeout(15000) });
+  const response = await fetch(`${api}${path}?deployment_probe=${encodeURIComponent(deployment)}`, { headers: { "cache-control": "no-cache", "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-commercial-observer/1.0" }, signal: AbortSignal.timeout(15000) });
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
   return [path, await response.json()];
 }));
