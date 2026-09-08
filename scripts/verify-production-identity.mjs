@@ -101,7 +101,18 @@ const tryPage = await fetch(freshDiscoveryUrl(`${SITE}/try`), { headers: synthet
 const tryText = await tryPage.text();
 if (!tryPage.ok || !tryText.includes("Generate signed 402") || !tryText.includes("/v1/tools/web.fetch")) fail("Live try page is missing the one-call payment path");
 
+const developers = await fetch(freshDiscoveryUrl(`${SITE}/developers`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
+const developersText = await developers.text();
+if (!developers.ok || !developersText.includes("/install/vscode.json") || !developersText.includes("Expected response: HTTP 402")) fail("Developer quickstart is missing or incomplete");
+for (const [file, root, type] of [["cursor.json", "mcpServers", undefined], ["vscode.json", "servers", "http"], ["claude-code.json", "mcpServers", "http"]]) {
+  const config = await getJson(`${SITE}/install/${file}`);
+  if (config.body[root]?.xguard?.url !== `${API}/mcp` || config.body[root]?.xguard?.type !== type) fail(`Invalid editor configuration: ${file}`);
+}
+const codex = await fetch(freshDiscoveryUrl(`${SITE}/install/codex.toml`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
+const codexText = await codex.text();
+if (!codex.ok || !codexText.includes("[mcp_servers.xguard]") || !codexText.includes(`${API}/mcp`)) fail("Invalid Codex configuration");
+
 const www = await fetch("https://www.xguardgate.com/connect?verification=1", { headers: syntheticHeaders, redirect: "manual", signal: AbortSignal.timeout(12_000) });
 if (www.status !== 308 || www.headers.get("location") !== `${SITE}/connect?verification=1`) fail("www canonical redirect is not active");
 
-console.log(JSON.stringify({ ok: true, name: NAME, version: VERSION, mcp_tools: names.size, www_redirect: 308 }));
+console.log(JSON.stringify({ ok: true, name: NAME, version: VERSION, mcp_tools: names.size, developer_quickstart: true, editor_configs: 4, www_redirect: 308 }));

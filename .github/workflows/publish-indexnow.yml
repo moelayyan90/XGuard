@@ -1,14 +1,10 @@
 name: Publish XGuard through IndexNow
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Deploy XGuard Relay"]
     branches: [main]
-    paths:
-      - "apps/relay/src/discovery-entry.js"
-      - "apps/relay/src/webmcp-entry.js"
-      - "apps/relay/src/a2a-entry.js"
-      - "apps/relay/src/site-egress.js"
-      - ".github/workflows/publish-indexnow.yml"
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -16,11 +12,13 @@ permissions:
 
 jobs:
   indexnow:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - name: Wait for public ownership key
@@ -52,6 +50,9 @@ jobs:
             '{host:$host,key:$key,keyLocation:$keyLocation,urlList:[
               "https://xguardgate.com/",
               "https://xguardgate.com/identity",
+              "https://xguardgate.com/developers",
+              "https://xguardgate.com/connect",
+              "https://xguardgate.com/try",
               "https://xguardgate.com/llms.txt",
               "https://xguardgate.com/server.json",
               "https://xguardgate.com/.well-known/mcp/server-card.json",

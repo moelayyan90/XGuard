@@ -130,3 +130,23 @@ test("public MCP Registry manifest is identical to the repository release manife
   assert.deepEqual(publicManifest, releaseManifest);
   assert.ok(publicManifest.description.length <= 100);
 });
+
+test("developer onboarding serves client-specific public configurations without authorization", async () => {
+  for (const [path, root, type] of [["cursor.json", "mcpServers", undefined], ["vscode.json", "servers", "http"], ["claude-code.json", "mcpServers", "http"]]) {
+    const response = await app.fetch(new Request(`https://xguardgate.com/install/${path}`), {}, {});
+    assert.equal(response.status, 200);
+    const config = await response.json();
+    assert.equal(config[root].xguard.url, "https://api.xguardgate.com/mcp");
+    assert.equal(config[root].xguard.type, type);
+  }
+  const toml = await app.fetch(new Request("https://xguardgate.com/install/codex.toml"), {}, {});
+  assert.match(await toml.text(), /\[mcp_servers\.xguard\]/);
+  const page = await app.fetch(new Request("https://xguardgate.com/developers"), {}, {});
+  const html = await page.text();
+  assert.match(html, /Expected response: HTTP 402/);
+  assert.match(html, /does not supply a funded wallet/);
+  for (const client of ["cursor.json", "vscode.json", "claude-code.json", "codex.toml"]) assert.ok(html.includes(`/install/${client}`));
+  const head = await app.fetch(new Request("https://xguardgate.com/developers", { method: "HEAD" }), {}, {});
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), "");
+});

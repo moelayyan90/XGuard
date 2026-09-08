@@ -1,15 +1,6 @@
 name: Publish XGuard to MCP Registry
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "server.json"
-      - ".github/workflows/publish-mcp.yml"
-      - "apps/relay/src/canonical-entry.js"
-      - "apps/relay/src/product-entry.js"
-      - "apps/relay/src/paid-agent-entry.js"
-      - "apps/relay/src/egress-entry.js"
   workflow_dispatch:
 
 permissions:
