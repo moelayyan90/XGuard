@@ -3,14 +3,16 @@
   "version": "5.1.0",
   "private": false,
   "type": "module",
-  "description": "x402 compatibility SDK for XGuard Universal Paid AI Agent + Secretless Gateway.",
+  "description": "Public-source outcomes: page extraction, product offers and feed digests with bounded x402 execution.",
   "main": "./sdk/index.js",
   "exports": {
     ".": "./sdk/index.js",
+    "./outcomes": "./sdk/outcomes.js",
     "./package.json": "./package.json"
   },
   "files": [
     "sdk/index.js",
+    "sdk/outcomes.js",
     "sdk/README.md",
     "sdk/examples",
     "integrations",
@@ -24,6 +26,12 @@
     "node": ">=20"
   },
   "keywords": [
+    "intent-execution",
+    "web-extraction",
+    "product-offers",
+    "rss",
+    "mcp",
+    "a2a",
     "xguard",
     "secretless-egress",
     "ai-agent-security",

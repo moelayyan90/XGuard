@@ -53,6 +53,10 @@ jobs:
               "https://xguardgate.com/developers",
               "https://xguardgate.com/connect",
               "https://xguardgate.com/try",
+              "https://xguardgate.com/capabilities/extract-preview",
+              "https://xguardgate.com/capabilities/web-extraction",
+              "https://xguardgate.com/capabilities/product-offers",
+              "https://xguardgate.com/capabilities/feed-digest",
               "https://xguardgate.com/llms.txt",
               "https://xguardgate.com/server.json",
               "https://xguardgate.com/.well-known/mcp/server-card.json",
@@ -81,6 +85,8 @@ jobs:
             --arg keyLocation "https://api.xguardgate.com/${key}.txt" \
             '{host:$host,key:$key,keyLocation:$keyLocation,urlList:[
               "https://api.xguardgate.com/openapi.json",
+              "https://api.xguardgate.com/agent.txt",
+              "https://api.xguardgate.com/v1/capabilities",
               "https://api.xguardgate.com/architecture",
               "https://api.xguardgate.com/supported",
               "https://api.xguardgate.com/facilitator",

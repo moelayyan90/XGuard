@@ -1,340 +1,123 @@
-> **Developer quickstart:** [Connect your editor](https://xguardgate.com/developers) · [Try the live 402 flow](https://xguardgate.com/try) · [Hosted MCP](https://api.xguardgate.com/mcp). Discovery is free; execution requires the authorization described in the quickstart.
+# XGuard: public sources into usable results
 
-# XGuard — Universal Paid AI Agent + Secretless Gateway
+Give an agent pages, product URLs or feeds. XGuard fetches bounded public sources,
+selects working alternatives, parses and normalizes the output, removes duplicates,
+and returns source evidence in one result.
 
-**Canonical production API**
-
-```text
-https://api.xguardgate.com
-```
-
-> **Canonical identity — v5.1.0:** XGuard Universal Paid AI Agent + Secretless Gateway. Agents discover real tools, get a signed price, pay per request through x402 v2 USDC, and receive a signed receipt plus ProofRail evidence. Secretless Egress keeps reusable upstream credentials outside agent context. See [`CANONICAL_IDENTITY.md`](./CANONICAL_IDENTITY.md).
-
-The primary no-account path is:
-
-```text
-direct tool call → signed quote + HTTP 402 → verify + settle
-                 → controlled execution → signed receipt + ProofRail
-```
-
-The first paid production tool is `xguard.web.fetch`: bounded public HTTPS `GET`/`HEAD` with SSRF protection, public-DNS validation, safe manual redirects, content/type/size/time limits, caching, stable errors, source timestamps and content hashes. Search, AI generation/routing and data-query tools are explicitly disabled until real connectors are configured.
-
-## Five-minute quickstart
-
-No account or SDK is needed. The shortest path is one request; XGuard creates the signed quote and returns the standard x402 challenge without contacting the target:
+Get your first result without an account, key, wallet or installation:
 
 ```bash
-curl -i https://api.xguardgate.com/v1/tools/web.fetch \
+curl https://api.xguardgate.com/v1/execute \
   -H 'content-type: application/json' \
-  -d '{"url":"https://example.com/"}'
-
-# Response: HTTP 402 + Payment-Required + X-XGuard-Quote.
-# Sign the challenge with an x402 v2 payer and retry the identical request with
-# Payment-Signature and X-XGuard-Quote. XGuard settles before execution.
-
-# Optional machine discovery and free preparation:
-curl -sS https://api.xguardgate.com/v1/capabilities
-curl -sS https://api.xguardgate.com/v1/pricing
-curl -sS https://api.xguardgate.com/v1/payment/readiness
-
-# Optional free guard: validates HTTPS/SSRF/DNS/payment readiness without contacting the target
-curl -sS https://api.xguardgate.com/v1/preflight \
-  -H 'content-type: application/json' \
-  -d '{"url":"https://example.com/","testnet":true}'
-
-curl -sS https://api.xguardgate.com/v1/pricing/quote \
-  -H 'content-type: application/json' \
-  -d '{"url":"https://example.com/","testnet":true}'
-
-# A standalone signed quote remains available for clients that need a price preview.
-# Send its compact `quote` as X-XGuard-Quote; the response is the same HTTP 402.
-curl -i https://api.xguardgate.com/v1/tools/web.fetch/testnet \
-  -H 'content-type: application/json' \
-  -H 'X-XGuard-Quote: <signed-quote>' \
-  -d '{"url":"https://example.com/"}'
+  -d '{"intent":"demo"}'
 ```
 
-The final payment payload is standard x402 v2; it can be produced by any compatible wallet/client. XGuard additionally requires the server-recommended `payment-identifier` returned in the quote and challenge. An exact retry returns the stored result and does not settle twice.
+This runs the real extraction parser on labelled sample HTML. Supply `html` to process
+up to 12 KiB of your own document for free. The preview makes no external requests.
 
-### MCP
+| Outcome | Exact USDC price | Delivery |
+| --- | ---: | --- |
+| `extract-preview` | Free | Supplied HTML or labelled sample: text, metadata, offers and digests |
+| `web-extraction` | 0.003 | Up to three pages, normalized evidence and duplicate groups |
+| `product-offers` | 0.006 | Schema.org offers, identifier/currency grouping and provenance |
+| `feed-digest` | 0.002 | RSS/Atom merge, backup sources, deduplication and chronology |
 
-```bash
-curl -i https://api.xguardgate.com/mcp \
-  -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"xguard.web.fetch","arguments":{"url":"https://example.com/"}}}'
+Prices are per bounded execution, including fallback. Read the live
+[capability index](https://api.xguardgate.com/v1/capabilities) for current availability,
+exact prices, limits, schemas and examples. There is no web-wide search, browser
+rendering, OCR or general AI model. Supplied merchant data is not independently verified.
+
+## One paid call from an agent
+
+Send a supported intent directly, for example
+`{"intent":"Get a technology news digest","limit":10}`.
+The first HTTP request returns 402, the exact price, delivery description,
+`Payment-Required` and an input-bound `X-XGuard-Quote`. A funded x402 v2 client signs
+and retries the identical body. XGuard verifies and settles before source access.
+
+The repository includes an automatic helper:
+
+```js
+import { createXGuardOutcomeClient } from './sdk/outcomes.js';
+
+// payer is your configured x402Client with a caller-owned, funded signer.
+const xguard = createXGuardOutcomeClient({ payer, maxAmountAtomic: '2000' });
+const output = await xguard.execute({ intent: 'Get a technology news digest' });
+console.log(output.result);
+// Keep output.recovery private; use it if delivery needs to be retrieved later.
+const same = await xguard.getResult(output.recovery);
 ```
 
-### A2A
+One logical `execute` call uses two XGuard HTTP requests for paid work. It refuses
+payments outside the explicit budget, network or USDC asset. It never creates a new
+payment to recover an uncertain response. A wallet is required for paid work; installing
+MCP alone does not provide one. This helper ships in this repository; no new npm release
+is claimed. See [the runnable paid example](sdk/examples/outcome-paid.mjs).
 
-```bash
-curl -i https://api.xguardgate.com/a2a \
-  -H 'content-type: application/json' -H 'a2a-version: 1.0.0' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":{"message":{"messageId":"fetch-1","role":"ROLE_USER","parts":[{"data":{"action":"xguard.web.fetch","input":{"url":"https://example.com/"}}}]}}}'
-```
+If all sources fail after settlement, the response carries an execution credit bound
+to the same outcome. Retry with `X-XGuard-Credit` and the signed quote; no second payment
+is required. Credit fulfillment is stored and recoverable using the original quote.
+A credit is not an automatic cash refund. Read-only recovery continues to accept the
+original quote after its execution expiry; treat that quote as a private bearer token.
 
-### TypeScript and Python discovery
+## JavaScript, Python, MCP and A2A
 
-```ts
-const capabilities = await fetch("https://api.xguardgate.com/v1/capabilities").then(r => r.json());
-const quote = await fetch("https://api.xguardgate.com/v1/pricing/quote", {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({ url: "https://example.com/", testnet: true }),
-}).then(r => r.json());
+```js
+const response = await fetch('https://api.xguardgate.com/v1/execute', {
+  method: 'POST', headers: {'content-type': 'application/json'},
+  body: JSON.stringify({intent: 'demo'})
+});
+console.log(await response.json());
 ```
 
 ```python
 import requests
-
-capabilities = requests.get("https://api.xguardgate.com/v1/capabilities", timeout=10).json()
-quote = requests.post(
-    "https://api.xguardgate.com/v1/pricing/quote",
-    json={"url": "https://example.com/", "testnet": True},
-    timeout=10,
-).json()
+print(requests.post('https://api.xguardgate.com/v1/execute',
+                    json={'intent': 'demo'}, timeout=15).json())
 ```
 
-Canonical discovery surfaces: `/mcp`, `/a2a`, `/.well-known/agent-card.json`, `/.well-known/oauth-protected-resource/mcp`, `/.well-known/payment-manifest`, `/.well-known/x402-facilitator.json`, `/openapi.json`, `/llms.txt`, `/v1/capabilities`, `/v1/preflight`, `/v1/pricing`, `/v1/payment/readiness`, `/v1/health`, and `/v1/ready`.
+The [MCP endpoint](https://api.xguardgate.com/mcp) lists only `xguard_discover`,
+`xguard_execute` and `xguard_get_result`. Call `xguard_execute` with `{"intent":"demo"}`.
+[Editor configurations](https://xguardgate.com/developers) are ready to copy.
 
-Base Sepolia is integration-only and every test settlement is recorded as `environment=test, revenue=false`. Production quotes use Base Mainnet and the configured production recipient/facilitator; revenue is recorded only for an external production settlement with transaction evidence.
+For [A2A](https://api.xguardgate.com/.well-known/agent-card.json), use `SendMessage`
+with one user part: `{"text":"demo"}` or `{"data":{"intent":"demo"}}`.
+The same four executable outcomes are the advertised skills.
 
-`xguard.web.fetch` is the mandatory guarded execution choke point: its first direct call returns the input-bound quote and 402 automatically, and every paid retry requires x402 v2 settlement before the target is contacted. `xguard.preflight` and the standalone quote endpoint remain optional free preparation. When an operator keeps a reusable upstream credential only in XGuard, Secretless Egress is likewise the required credential-backed path for that environment.
+[Agent instructions](https://api.xguardgate.com/agent.txt) explain discovery, execution,
+402 retry, recovery and errors. [OpenAPI](https://api.xguardgate.com/openapi.json) starts
+with `POST /v1/execute`. Malformed or unsupported intents return `repair.suggested_request`.
+English/Arabic intent matching is bounded; arbitrary natural-language jobs are not promised.
 
-## Secretless credential path
+## Evidence, limits and compatibility
 
-XGuard keeps reusable upstream credentials **out of AI agents**. Operators store a Stripe, GitHub, OpenAI, Anthropic, Slack, Notion, Cloudflare, Gemini or custom API credential once, then give the agent only a short-lived scoped XGuard capability.
+A successful response has `ok`, `intent`, `capability`, `result`, `verification`, `cost`
+and `receipt`. Paid receipts and digests establish execution/content integrity, not the
+truth of a page or a merchant's actual checkout price. Partial source coverage is explicit.
+Caches require origin permission and caller allowance; product offers always use fresh reads.
 
-```text
-Operator secret
-     ↓
-Encrypted XGuard credential vault
-     ↓
-Scoped capability
-     ↓
-AI agent
-     ↓
-XGuard Secretless Egress
-     ↓
-credential injected server-side
-     ↓
-upstream API
-```
+HTTPS/443, public-DNS/private-IP checks, manual redirects, bounded decompressed bodies,
+credential isolation, payment binding, replay protection and durable state remain enforced.
+The current Cloudflare fetch transport does not pin the connection to the DNS-checked IP;
+complete DNS-rebinding prevention remains a transport limitation.
 
-The agent never receives the reusable upstream credential.
+Existing credential-backed actions and operator credits remain supported at
+[operator pricing](https://xguardgate.com/pricing/operator). The old gateway quickstart is
+[archived](docs/legacy-gateway-quickstart.md); [durable delegated actions](docs/secretless-outcomes.md)
+and existing SDK imports remain compatible. Reusable vendor credentials are never required
+for the public-source outcomes.
 
-> XGuard becomes an actual choke point when an operator keeps the reusable credential only in XGuard and delegates capabilities instead of redistributing that credential. XGuard does not claim control over unrelated Internet traffic.
+## Verification and commercial evidence
 
-## Why Secretless Egress
+Run `npm ci --prefix apps/relay` and
+`node --test apps/relay/src/outcome-http-test.js` for real HTTP-socket flows with controlled
+source/facilitator fixtures and actual quote/proof cryptography. Mock settlement is not
+an on-chain payment. `node scripts/verify-production-identity.mjs` verifies public free
+execution and signed paid challenges without spending funds.
 
-A reusable bearer token inside an autonomous agent can be copied, logged, placed in context, reused outside the intended request or leaked to an untrusted tool. XGuard changes the primitive from **secret possession** to **scoped capability possession**.
-
-The current egress boundary provides:
-
-- encrypted reusable credential storage;
-- provider presets for OpenAI, Anthropic, GitHub, Stripe, Slack, Notion, Cloudflare and Gemini;
-- custom header-based credentials restricted to explicit public HTTPS hosts;
-- short-lived capabilities;
-- exact HTTPS origin binding;
-- path-prefix allowlists;
-- HTTP method allowlists;
-- maximum call counts;
-- Usage Credit billing before secret release and before outbound network egress;
-- no automatic credential forwarding across redirects;
-- private/local target blocking;
-- automatic `Idempotency-Key` injection for unsafe methods;
-- no blind automatic replay after network ambiguity;
-- MCP discovery and egress execution without exposing credential provisioning to model context.
-
-## Egress API
-
-Machine-readable contract:
-
-```text
-GET https://api.xguardgate.com/v1/egress
-GET https://api.xguardgate.com/.well-known/xguard-egress.json
-GET https://api.xguardgate.com/.well-known/xguard-egress-key.json
-GET https://api.xguardgate.com/v1/egress/providers
-```
-
-### 1. Operator stores a reusable credential
-
-Credential provisioning is intentionally an **operator API**, not an MCP tool.
-
-```http
-POST /v1/egress/credentials
-X-XGuard-Key: <usage-credit-key>
-Content-Type: application/json
-```
-
-```json
-{
-  "provider": "github",
-  "value": "<github-token>",
-  "label": "production-github",
-  "allowed_paths": ["/repos/"],
-  "allowed_methods": ["GET", "POST"]
-}
-```
-
-XGuard returns only credential metadata such as `xcred_...`; the reusable secret is not returned.
-
-### 2. Operator issues a short capability
-
-```http
-POST /v1/egress/capabilities
-X-XGuard-Key: <usage-credit-key>
-Content-Type: application/json
-```
-
-```json
-{
-  "credential_id": "xcred_...",
-  "target_origin": "https://api.github.com",
-  "path_prefix": "/repos/",
-  "allowed_methods": ["GET", "POST"],
-  "ttl_seconds": 300,
-  "max_calls": 10,
-  "max_total_credits": 10,
-  "max_credits_per_call": 1
-}
-```
-
-The returned `xgc_...` capability is what the agent receives.
-
-### 3. Agent executes without the upstream secret
-
-```http
-POST /v1/egress/fetch
-Content-Type: application/json
-```
-
-```json
-{
-  "capability": "xgc_...",
-  "target": "https://api.github.com/repos/org/repo/issues",
-  "method": "POST",
-  "idempotency_key": "issue-operation-001",
-  "body_json": {
-    "title": "Example"
-  }
-}
-```
-
-XGuard validates capability scope and billing, injects the GitHub credential server-side, sends one HTTPS request and never exposes the reusable GitHub token to the agent.
-
-Pricing contract:
-
-```text
-GET /v1/egress/pricing
-```
-
-The current configuration consumes **1 XGuard Usage Credit per authorized credential-backed egress attempt**. Billing is committed before credential decryption and before outbound network egress. If billing cannot commit, no upstream request is sent.
-
-## MCP
-
-Canonical MCP endpoint:
-
-```text
-https://api.xguardgate.com/mcp
-```
-
-Agent-facing tools include:
-
-```text
-xguard_secretless_egress
-xguard_egress_fetch
-xguard_action_rail
-```
-
-Reusable credential creation is deliberately **not** exposed as an MCP tool.
-
-## Action Rail underneath
-
-The no-account paid-tool path and Secretless Egress are the primary product boundaries. XGuard Action Rail remains available underneath for stronger execution controls around payments, purchases, bookings, messages, deployments, deletes, API writes and tool calls.
-
-```text
-POST /v1/mandates
-POST /v1/actions/permits
-POST /v1/actions/execute
-GET  /v1/actions/permits/{permit_id}
-```
-
-Action Rail adds scoped mandates, request-bound cryptographic permits, replay rejection, durable execution state and receipts.
-
-## Universal and Edge deployment
-
-For operator-controlled infrastructure XGuard can also be placed in front of an origin:
-
-```text
-Internet / Ingress
-      ↓
-XGuard Universal Gate
-      ↓
-private origin
-```
-
-The repository includes Cloudflare Edge Gate, portable Node deployment, Docker, Docker Compose, Kubernetes and OpenAPI AutoGate components.
-
-## Native x402 and paid execution
-
-x402 v2 is the primary no-account payment path for paid agent tools. XGuard also retains its facilitator relay endpoints for backwards compatibility.
-
-```text
-GET  /supported
-POST /verify
-POST /settle
-GET  /facilitator
-GET  /.well-known/x402
-GET  /v1/facilitator/route
-```
-
-XGuard remains a non-custodial x402 v2 facilitator gateway with capability-aware routing, replay protection, Base USDC reconciliation and fail-closed ambiguous settlement behavior.
-
-## Security model
-
-- reusable upstream credentials are encrypted at rest using per-record AES-GCM keys wrapped by an XGuard RSA-OAEP authority;
-- secret values are not included in agent capabilities;
-- operator XGuard Usage Credit keys are encrypted into capability state and are not handed to agents;
-- capabilities bind an origin, path prefix, methods, expiry and maximum calls;
-- user-supplied headers cannot override the injected credential header or XGuard control headers;
-- private/local targets and XGuard self-targets are blocked;
-- redirects are not automatically followed with injected credentials;
-- billing commits before secret decryption and network egress;
-- unsafe methods receive an XGuard-generated `Idempotency-Key` when the caller did not supply one;
-- XGuard does not automatically replay a credential-backed request after a network ambiguity.
-
-## Machine discovery
-
-```text
-GET /.well-known/xguard-egress.json
-GET /.well-known/xguard-actions.json
-GET /.well-known/xguard.json
-GET /.well-known/ai-plugin.json
-GET /.well-known/agent-card.json
-GET /architecture
-GET /v1/protocols
-GET /openapi.json
-GET /llms.txt
-GET /skill.md
-GET /sitemap.xml
-```
-
-## Production domains
-
-```text
-https://xguardgate.com
-https://api.xguardgate.com
-```
-
-The Cloudflare Worker configuration disables the public `workers.dev` route so XGuard's production identity is limited to the custom XGuard domains.
-
-Repository:
-
-```text
-https://github.com/moelayyan90/XGuard
-```
-# Durable delegated API actions
-
-The commercial focus is recurring business automation that must call authenticated APIs without giving agents reusable vendor secrets. XGuard now binds each write to a stable business operation key, reserves its gateway-credit budget atomically, and stores an encrypted, signed outcome for identical retries. The operator still supplies the vendor account and pays vendor charges separately.
-
-See [the execution contract and migration guide](docs/secretless-outcomes.md) and [the SDK quick start](sdk/README.md#delegated-api-actions).
+Read [the audit](PRODUCT_REFOUNDATION.md), [capability selection](HIGH_VALUE_CAPABILITIES.md),
+[distribution work](DISTRIBUTION.md) and [release verification](REFOUNDATION_VERIFICATION.md).
+The [metrics endpoint](https://api.xguardgate.com/v1/metrics) distinguishes external
+production settlement, recognized delivery, liabilities and synthetic tests. Event ratios
+are not user cohorts; actual infrastructure costs and gross margin remain unknown.
+Working outcomes and successful deployment do not establish customer demand or adoption.

@@ -1,21 +1,5 @@
 [
-  "xguard.capabilities",
-  "xguard.preflight",
-  "xguard.pricing.quote",
-  "xguard.web.fetch",
-  "xguard_action_rail",
-  "xguard_discovery_search",
-  "xguard_egress_fetch",
-  "xguard_facilitator",
-  "xguard_health",
-  "xguard_inspect",
-  "xguard_integration",
-  "xguard_proofrail",
-  "xguard_protocols",
-  "xguard_receipt",
-  "xguard_route",
-  "xguard_safety_test",
-  "xguard_secretless_egress",
-  "xguard_supported",
-  "xguard_verify_proof"
+  "xguard_discover",
+  "xguard_execute",
+  "xguard_get_result"
 ]

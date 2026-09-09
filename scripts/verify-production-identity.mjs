@@ -29,11 +29,11 @@ if (root.response.headers.get("x-xguard-version") !== VERSION) fail("API root ha
 
 const openapi = await getJson(`${API}/openapi.json`);
 if (openapi.body.info?.title !== NAME || openapi.body.info?.version !== VERSION) fail("OpenAPI has stale canonical identity");
-for (const path of ["/v1/capabilities", "/v1/pricing", "/v1/pricing/quote", "/v1/tools/web.fetch", "/v1/payment/readiness", "/v1/egress", "/v1/egress/fetch", "/v1/proof", "/verify", "/settle"]) {
+for (const path of ["/v1/execute", "/v1/capabilities/{id}", "/v1/results/{payment_identifier}", "/v1/capabilities", "/v1/pricing", "/v1/pricing/quote", "/v1/tools/web.fetch", "/v1/payment/readiness", "/v1/egress", "/v1/egress/fetch", "/v1/proof", "/verify", "/settle"]) {
   if (!openapi.body.paths?.[path]) fail(`OpenAPI is missing ${path}`);
 }
 if (!openapi.body.paths["/v1/preflight"]?.post) fail("OpenAPI is missing the guarded preflight path");
-if (!Array.isArray(openapi.body.paths["/v1/pricing/quote"].post?.requestBody?.content?.["application/json"]?.schema?.oneOf)) fail("OpenAPI is missing tolerant quote request envelopes");
+if (!Array.isArray(openapi.body.paths["/v1/pricing/quote"].post?.requestBody?.content?.["application/json"]?.schema?.anyOf)) fail("OpenAPI is missing tolerant quote request envelopes");
 if (openapi.body.paths["/v1/tools/web.fetch"].post?.["x-xguard-payment-flow"]?.payment_required !== true) fail("OpenAPI does not make paid execution mandatory");
 
 const plugin = await getJson(`${API}/.well-known/ai-plugin.json`);
@@ -42,7 +42,7 @@ if (plugin.body.xguard?.component_versions?.x402 !== VERSION) fail("AI plugin ha
 
 const agent = await getJson(`${API}/.well-known/agent-card.json`);
 if (!(agent.response.headers.get("content-type") || "").includes("application/a2a+json")) fail("Agent Card media type is wrong");
-if (agent.body.name !== NAME || agent.body.version !== VERSION || !agent.body.skills?.some(skill => skill.id === "xguard-paid-web-fetch") || !agent.body.skills?.some(skill => skill.id === "xguard-secretless-egress")) fail("Agent Card has stale identity or missing paid/secretless skills");
+if (agent.body.name !== NAME || agent.body.version !== VERSION || !(["extract-preview", "web-extraction", "product-offers", "feed-digest"].every(id => agent.body.skills?.some(skill => skill.id === id)))) fail("Agent Card has stale identity or missing executable outcome skills");
 if (!agent.body.capabilities?.extensions?.some(extension => extension.params?.challenge_status === 402 && extension.params?.settlement_before_execution === true)) fail("Agent Card is missing the automated x402 transition");
 if (agent.body.supportedInterfaces?.[0]?.protocolVersion !== "1.0.0") fail("Agent Card does not advertise A2A 1.0.0");
 
@@ -58,24 +58,33 @@ if (initialize.body.result?.serverInfo?.name !== "xguard-universal-paid-secretle
 
 const tools = await getJson(`${API}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }) });
 const names = new Set((tools.body.result?.tools || []).map(tool => tool.name));
-for (const name of ["xguard.capabilities", "xguard.preflight", "xguard.pricing.quote", "xguard.web.fetch", "xguard_secretless_egress", "xguard_egress_fetch", "xguard_proofrail", "xguard_verify_proof", "xguard_action_rail", "xguard_facilitator", "xguard_route"]) if (!names.has(name)) fail(`MCP is missing ${name}`);
-const paidTool = (tools.body.result?.tools || []).find(tool => tool.name === "xguard.web.fetch");
-if (paidTool?._meta?.["xguard/payment"]?.required !== true || paidTool?._meta?.["xguard/payment"]?.settlement_before_execution !== true) fail("MCP does not make the paid transition explicit");
-const preflightTool = (tools.body.result?.tools || []).find(tool => tool.name === "xguard.preflight");
-if (preflightTool?._meta?.["xguard/next"]?.execution_tool !== "xguard.web.fetch" || preflightTool?._meta?.["xguard/next"]?.quote_url_optional !== `${API}/v1/pricing/quote`) fail("MCP preflight does not expose the direct paid transition");
+for (const name of ["xguard_discover", "xguard_execute", "xguard_get_result"]) if (!names.has(name)) fail(`MCP is missing ${name}`);
+if (names.size !== 3) fail("Internal tools leaked into the primary catalog");
+const paidTool = tools.body.result.tools.find(tool => tool.name === "xguard_execute");
+if (paidTool?._meta?.["xguard/payment"]?.paid_capabilities?.length !== 3 || paidTool?._meta?.["xguard/payment"]?.settlement_before_execution !== true) fail("MCP does not make paid outcomes explicit");
 
 const capabilities = await getJson(`${API}/v1/capabilities`);
-const actual = new Map(capabilities.body.tools?.map(tool => [tool.id, tool]));
-if (actual.get("xguard.web.fetch")?.available !== true || actual.get("xguard.web.search")?.available !== false || actual.get("xguard.ai.generate")?.available !== false) fail("Capabilities advertise unavailable connectors");
-
+const actual = new Map(capabilities.body.capabilities?.map(item => [item.id, item]));
+for (const [id, amount] of [["extract-preview", "0"], ["web-extraction", "3000"], ["product-offers", "6000"], ["feed-digest", "2000"]]) {
+  const item = actual.get(id);
+  if (item?.availability !== "live" || item.pricing?.amount_atomic !== amount || !item.input_schema || !item.output_schema || item.execute_url !== `${API}/v1/execute`) fail(`Incomplete executable capability ${id}`);
+  const detail = await getJson(`${API}/v1/capabilities/${id}`);
+  if (detail.body.id !== id) fail(`Capability detail mismatch ${id}`);
+}
+if (actual.size !== 4) fail("Unexpected executable catalog");
 const pricing = await getJson(`${API}/v1/pricing`);
-if (pricing.body.quote_request?.canonical_shape?.url !== "https://example.com/" || !String(pricing.body.paid_flow?.first_response || "").includes("automatically created signed quote")) fail("Pricing discovery is missing the one-call payment flow");
+if (pricing.body.execution_url !== `${API}/v1/execute` || pricing.body.capabilities?.length !== 4) fail("Pricing does not expose outcome execution");
+const first = await getJson(root.body.first_result.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(root.body.first_result.body) });
+if (first.body.ok !== true || first.body.cost.amount_atomic !== "0" || !first.body.result.document.text || first.body.result.network_calls !== 0) fail("An anonymous root client cannot reach a free result");
+const outcome402 = await fetch(`${API}/v1/execute`, { method: "POST", headers: { "content-type": "application/json", "x-xguard-traffic-class": "synthetic" }, body: JSON.stringify({ intent: "Get a technology news digest" }), signal: AbortSignal.timeout(12000) });
+const challenge = await outcome402.json();
+if (outcome402.status !== 402 || challenge.accepts?.[0]?.amount !== "2000" || !outcome402.headers.get("x-xguard-quote") || !challenge.will_return) fail("The paid intent has no exact actionable price");
 
 const preflight = await getJson(`${API}/v1/preflight`);
 if (preflight.body.name !== "xguard.preflight" || preflight.body.target_contacted !== false || preflight.body.response?.next?.execution_url !== `${API}/v1/tools/web.fetch` || preflight.body.response?.next?.expected_first_status !== 402) fail("Preflight discovery is stale or missing the direct execution step");
 
 const toolsManifest = await getJson(`${API}/.well-known/xguard-tools.json`);
-if (toolsManifest.body.execution_chokepoint?.tool !== "xguard.web.fetch" || toolsManifest.body.execution_chokepoint?.settlement_before_execution !== true || !Array.isArray(toolsManifest.body.tools)) fail("XGuard tool manifest is stale or missing the guarded execution choke point");
+if (toolsManifest.body.execution_chokepoint?.tool !== "xguard_execute" || toolsManifest.body.execution_chokepoint?.settlement_before_execution !== true || !Array.isArray(toolsManifest.body.tools)) fail("XGuard tool manifest is stale or missing the guarded execution choke point");
 
 const payment = await getJson(`${API}/.well-known/payment-manifest`);
 if (payment.body.x402_version !== 2 || payment.body.resources?.[0]?.payment_identifier_required !== true || payment.body.resources?.[0]?.settlement_before_execution !== true || payment.body.resources?.[0]?.first_call_creates_quote !== true) fail("Payment manifest is stale or unsafe");
@@ -96,14 +105,14 @@ if (directBody.accepts?.[0]?.network !== "eip155:8453" || directBody.extensions?
 const syntheticHeaders = { "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-production-verifier/5.1.0" };
 const home = await fetch(freshDiscoveryUrl(`${SITE}/`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const homeText = await home.text();
-if (!home.ok || !homeText.includes("Universal Paid AI Agent + Secretless Gateway") || home.headers.get("x-xguard-version") !== VERSION) fail("Homepage has stale identity");
+if (!home.ok || !homeText.includes("Three sources.") || home.headers.get("x-xguard-version") !== VERSION) fail("Homepage has stale identity");
 const tryPage = await fetch(freshDiscoveryUrl(`${SITE}/try`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const tryText = await tryPage.text();
-if (!tryPage.ok || !tryText.includes("Generate signed 402") || !tryText.includes("/v1/tools/web.fetch")) fail("Live try page is missing the one-call payment path");
+if (!tryPage.ok || !tryText.includes("Run free extraction") || !tryText.includes("/v1/execute")) fail("Live try page is missing the one-call payment path");
 
 const developers = await fetch(freshDiscoveryUrl(`${SITE}/developers`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const developersText = await developers.text();
-if (!developers.ok || !developersText.includes("/install/vscode.json") || !developersText.includes("Expected response: HTTP 402")) fail("Developer quickstart is missing or incomplete");
+if (!developers.ok || !developersText.includes("/install/vscode.json") || !developersText.includes("YOUR FIRST RESULT")) fail("Developer quickstart is missing or incomplete");
 for (const [file, root, type] of [["cursor.json", "mcpServers", undefined], ["vscode.json", "servers", "http"], ["claude-code.json", "mcpServers", "http"]]) {
   const config = await getJson(`${SITE}/install/${file}`);
   if (config.body[root]?.xguard?.url !== `${API}/mcp` || config.body[root]?.xguard?.type !== type) fail(`Invalid editor configuration: ${file}`);
@@ -115,4 +124,4 @@ if (!codex.ok || !codexText.includes("[mcp_servers.xguard]") || !codexText.inclu
 const www = await fetch("https://www.xguardgate.com/connect?verification=1", { headers: syntheticHeaders, redirect: "manual", signal: AbortSignal.timeout(12_000) });
 if (www.status !== 308 || www.headers.get("location") !== `${SITE}/connect?verification=1`) fail("www canonical redirect is not active");
 
-console.log(JSON.stringify({ ok: true, name: NAME, version: VERSION, mcp_tools: names.size, developer_quickstart: true, editor_configs: 4, www_redirect: 308 }));
+console.log(JSON.stringify({ ok: true, name: NAME, version: VERSION, mcp_tools: names.size, developer_quickstart: true, free_result: true, paid_intent_402: true, real_payment_performed: false, editor_configs: 4, www_redirect: 308 }));

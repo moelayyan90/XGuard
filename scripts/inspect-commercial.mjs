@@ -23,7 +23,7 @@ const evidence = {
   observed_at: new Date().toISOString(),
   source: api,
   worker_payment_ready: data["/v1/payment/readiness"].production_payment_ready,
-  price: data["/v1/pricing"].tools?.["xguard.web.fetch"],
+  price: data["/v1/pricing"].capabilities,
   historical_settlement_counter_usd_micros: data["/v1/metrics"].real_revenue_usd_micros,
   delivery_ledger: data["/v1/metrics"].economics,
   paid_credit_account: paidCreditAccount,

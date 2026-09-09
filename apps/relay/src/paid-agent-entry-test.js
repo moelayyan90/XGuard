@@ -173,16 +173,16 @@ test("MCP, A2A, pricing, and OpenAPI publish the same canonical quote and mandat
 
   const card = await (await canonicalApp.fetch(new Request("https://api.xguardgate.com/.well-known/agent-card.json"), env, {})).json();
   const extension = card.capabilities.extensions.find(item => item.uri.endsWith("/.well-known/payment-manifest"));
-  assert.equal(extension.params.canonical_quote_body.url, "https://example.com/");
+  assert.equal(extension.params.direct_execution, "https://api.xguardgate.com/v1/execute");
   assert.equal(extension.params.challenge_status, 402);
   assert.equal(extension.params.settlement_before_execution, true);
-  assert.ok(card.skills.some(skill => skill.id === "xguard-preflight"));
+  assert.ok(card.skills.some(skill => skill.id === "web-extraction"));
   const serverCard = await (await canonicalApp.fetch(new Request("https://xguardgate.com/.well-known/mcp/server-card.json"), env, {})).json();
-  assert.ok(serverCard.tools.some(tool => tool.name === "xguard.preflight"));
+  assert.deepEqual(serverCard.tools.map(tool => tool.name), ["xguard_discover", "xguard_execute", "xguard_get_result"]);
 
   const openapi = await (await canonicalApp.fetch(new Request("https://api.xguardgate.com/openapi.json"), env, {})).json();
   const quote = openapi.paths["/v1/pricing/quote"].post;
-  assert.ok(Array.isArray(quote.requestBody.content["application/json"].schema.oneOf));
+  assert.ok(Array.isArray(quote.requestBody.content["application/json"].schema.anyOf));
   assert.equal(quote["x-xguard-payment-flow"].payment_required, true);
   assert.equal(openapi.paths["/v1/tools/web.fetch"].post["x-xguard-payment-flow"].settlement_before_execution, true);
   assert.ok(openapi.paths["/v1/preflight"].post);

@@ -1,5 +1,9 @@
 # Install XGuard MCP
 
+Start with `xguard_execute {"intent":"demo"}` for a free, real extraction. The primary tools are `xguard_discover`, `xguard_execute`, and `xguard_get_result`. Live pages, product offers and feed digests have an exact USDC price before execution. A funded x402 payer is required for paid work.
+Read https://api.xguardgate.com/agent.txt . Legacy explicit tools below are compatibility references, not the default catalog.
+
+
 XGuard is a hosted remote MCP server. Do **not** clone, build, or run a local process merely to connect it.
 
 Canonical endpoint:
