@@ -76,7 +76,7 @@ async function harness(t, options = {}) {
       const request = new Request(`https://${host}${req.url}`, { method: req.method, headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks) });
       const response = await app.fetch(request, env, {});
       res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(Buffer.from(await response.arrayBuffer()));
-    } catch (error) { res.writeHead(500, JSON_HEADERS); res.end(JSON.stringify({ error: error.stack })); }
+    } catch (error) { logs.push(String(error)); res.writeHead(500, JSON_HEADERS); res.end(JSON.stringify({ error: "test_handler_failed" })); }
   });
   await new Promise(r => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${server.address().port}`;
