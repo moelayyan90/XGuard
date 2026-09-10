@@ -1,6 +1,8 @@
 # Connect XGuard 5.1.0
 
-XGuard Universal Paid AI Agent + Secretless Gateway exposes no-account x402 USDC tools with signed prices, replay-safe settlement, signed receipts and ProofRail. It also keeps reusable upstream API credentials outside AI-agent context through controlled Secretless Egress.
+XGuard turns public pages, product offers and RSS/Atom feeds into normalized results. Start with `xguard_execute {"intent":"demo"}` for a free extraction. The default MCP list contains `xguard_discover`, `xguard_execute` and `xguard_get_result`. Paid work returns signed prices in a 402 and requires your funded payer.
+
+The compatibility identity remains XGuard Universal Paid AI Agent + Secretless Gateway; existing scoped credential APIs remain supported.
 
 Canonical remote MCP endpoint:
 
@@ -26,7 +28,9 @@ url = "https://api.xguardgate.com/mcp"
 
 Configure a remote Streamable HTTP MCP server named `xguard` with URL `https://api.xguardgate.com/mcp`. Project-native examples are committed in `.cursor/mcp.json` and `.vscode/mcp.json`.
 
-## Operator and agent separation
+## Advanced compatibility routes
+
+These older tools remain explicitly callable; they are not in the default catalog.
 
 - Any agent can call `xguard.capabilities` and the free `xguard.preflight` guard, request `xguard.pricing.quote`, then invoke `xguard.web.fetch` after the mandatory x402 settlement.
 - Operators create encrypted credential records with `POST /v1/egress/credentials` and scoped capabilities with `POST /v1/egress/capabilities`.

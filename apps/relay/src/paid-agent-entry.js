@@ -1,6 +1,10 @@
 import { isPrivateIpv4, isPrivateIpv6, hostnameAllowed, publicDns } from "./core/network-policy.js";
 import { pricingEconomics, executionEconomics } from "./core/unit-economics.js";
 import { secretlessCapability } from "./egress-entry.js";
+import { outcomeAmount, outcomeDefinition } from "./outcome-catalog.js";
+import { executeOutcome } from "./outcome-engine.js";
+import { applyOutcomeMetric, applyOutcomeCommerce, outcomeMetrics } from "./outcome-metrics.js";
+import { readBoundedBody } from "./core/execution-contract.js";
 import app from "./product-entry.js";
 export * from "./product-entry.js";
 
@@ -46,6 +50,9 @@ const PAYMENT_TIMEOUT_SECONDS = 300;
 const MAX_RECONCILIATION_ATTEMPTS = 3;
 const ALLOWED_FINANCIAL_STATES = new Set(PAYMENT_STATES);
 const JOURNEY_EVENTS = new Set([
+  "discovery_seen", "capability_viewed", "execute_attempted", "intent_normalized", "price_shown",
+  "payment_started", "execution_succeeded", "result_returned", "repeat_customer",
+  "provider_failed", "provider_succeeded",
   "request_received",
   "operation_resolved",
   "discovery",
@@ -175,8 +182,8 @@ function json(body, status = 200, extra = {}) {
 async function jsonBody(request, maxBytes = MAX_TOOL_REQUEST_BYTES) {
   const declared = Number(request.headers.get("content-length") || 0);
   if (declared > maxBytes) return { error: "payload_too_large" };
-  const text = await request.text();
-  if (textEncoder.encode(text).byteLength > maxBytes) return { error: "payload_too_large" };
+  let text;
+  try { text = textDecoder.decode(await readBoundedBody(request.body, maxBytes)); } catch { return { error: "payload_too_large" }; }
   try { return { value: JSON.parse(text) }; } catch { return { error: "invalid_json" }; }
 }
 
@@ -227,17 +234,18 @@ function positiveAtomic(value) {
   return /^[1-9][0-9]{0,8}$/.test(String(value || ""));
 }
 
-function gatewayConfig(env, testnet = false) {
+export function gatewayConfig(env, testnet = false, outcomeInput = null) {
   env ||= {};
   const network = testnet ? TESTNET : MAINNET;
   const asset = testnet ? TESTNET_USDC : MAINNET_USDC;
   const environment = testnet ? PAYMENT_ENVIRONMENTS.TEST : String(env.XGUARD_PAYMENT_ENVIRONMENT || PAYMENT_ENVIRONMENTS.PRODUCTION).toLowerCase();
   const payTo = String(testnet ? env.XGUARD_TESTNET_PAY_TO || "" : env.XGUARD_TREASURY_USDC_ADDRESS || "");
-  const amount = String(testnet ? env.XGUARD_TESTNET_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC : env.XGUARD_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC);
+  const amount = outcomeInput ? outcomeAmount(env, outcomeInput.capability) : String(testnet ? env.XGUARD_TESTNET_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC : env.XGUARD_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC);
   const facilitator = String(testnet ? env.XGUARD_TESTNET_FACILITATOR || "" : env.XGUARD_PAID_FACILITATOR || env.X402_BASE_PRIMARY || "").replace(/\/+$/, "");
-  const marginMicros = Number(testnet ? env.XGUARD_TESTNET_MARGIN_USD_MICROS || amount : env.XGUARD_MARGIN_USD_MICROS || amount);
+  const marginMicros = outcomeInput ? Number(amount) : Number(testnet ? env.XGUARD_TESTNET_MARGIN_USD_MICROS || amount : env.XGUARD_MARGIN_USD_MICROS || amount);
   const railValidation = validatePaymentRailConfig({ environment, network, asset, payTo, amount, facilitator });
-  const economics = pricingEconomics(env, Number(amount));
+  const budgetEnv = outcomeInput ? { ...env, XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: String(Number(env.XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS) * 6) } : env;
+  const economics = pricingEconomics(budgetEnv, Number(amount));
   const economicsValid = Number.isSafeInteger(marginMicros) && marginMicros >= 0 && marginMicros === Number(amount) && economics.available;
   const configured = railValidation.configured && economicsValid;
   const configurationError = !railValidation.environment_configured ? "payment_environment_invalid"
@@ -270,7 +278,7 @@ function gatewayConfig(env, testnet = false) {
     upstreamCostMaxUsdMicros: 0,
     marginUsdMicros: marginMicros,
     customerPriceUsdMicros: Number(amount),
-    resource: `${API}/v1/tools/web.fetch${testnet ? "/testnet" : ""}`,
+    resource: outcomeInput ? `${API}/v1/execute` : `${API}/v1/tools/web.fetch${testnet ? "/testnet" : ""}`,
   };
 }
 
@@ -784,11 +792,13 @@ function quoteNextStep(config, quoteToken, quote) {
   };
 }
 
-export async function issueQuote(env, raw, id, observation = {}) {
-  const normalized = normalizeQuoteRequest(raw);
+export async function issueQuote(env, raw, id, observation = {}, outcomeInput = null) {
+  const normalized = outcomeInput ? { ok: true, input: outcomeInput, testnet: raw.testnet === true, shape: "execution_intent" } : normalizeQuoteRequest(raw);
   if (!normalized.ok) return quoteRejection(env, normalized.code, id, normalized.issues, observation);
   const input = normalized.input;
-  const targetCheck = await publicDns(new URL(input.url).hostname);
+  // Outcome quotes only plan work. DNS is checked immediately before each paid source
+  // access by performWebFetch, including backups; no source is contacted for preview.
+  const targetCheck = outcomeInput ? { ok: true } : await publicDns(new URL(input.url).hostname);
   if (!targetCheck.ok) {
     const resolverUnavailable = targetCheck.code === "dns_unavailable";
     return quoteRejection(env, targetCheck.code, id, [{
@@ -799,7 +809,7 @@ export async function issueQuote(env, raw, id, observation = {}) {
         : "The hostname has no public A or AAAA address, or a private address was returned.",
     }], observation, resolverUnavailable ? 503 : targetCheck.code === "dns_unresolved" ? 422 : 403, resolverUnavailable);
   }
-  const config = gatewayConfig(env, normalized.testnet);
+  const config = gatewayConfig(env, normalized.testnet, outcomeInput);
   if (!config.configured || !env.PROOF_AUTHORITY || !env.PAID_GATEWAY) return quoteRejection(env, "payment_not_configured", id, [{ path: "$", code: "payment_not_configured", message: "The selected network cannot safely issue paid execution quotes right now." }], observation, 503, true);
   const now = Math.floor(Date.now() / 1000);
   const inputDigest = await sha256(canonicalize(input));
@@ -812,7 +822,7 @@ export async function issueQuote(env, raw, id, observation = {}) {
     aud: config.resource,
     quote_id: quoteId,
     payment_identifier: paymentIdentifier,
-    tool: TOOL,
+    tool: outcomeInput ? `xguard.${outcomeInput.capability}` : TOOL,
     input,
     input_digest: inputDigest,
     scheme: "exact",
@@ -834,7 +844,7 @@ export async function issueQuote(env, raw, id, observation = {}) {
   await observeStage(env, "quote_success", id, {
     traffic_class: observation.trafficClass,
     transport: observation.transport,
-    tool: TOOL,
+    tool: payload.tool,
     network: config.network,
     request_shape: normalized.shape,
     environment: config.environment,
@@ -874,21 +884,23 @@ async function readBounded(response, maxBytes) {
   return output;
 }
 
-async function performWebFetch(input) {
+export async function performWebFetch(input) {
   const cacheKeyHash = await sha256(canonicalize(input));
   const cacheKey = new Request(`${API}/__cache/web-fetch/${cacheKeyHash}`, { method: "GET" });
   const cache = globalThis.caches?.default;
-  if (cache && input.method === "GET") {
+  const maxAge = input.outcome ? input.max_age_seconds || 0 : 60;
+  if (cache && input.method === "GET" && maxAge > 0) {
     const hit = await cache.match(cacheKey);
     if (hit) {
       const cached = await hit.json();
-      return { ...cached, cache: "hit", served_at: new Date().toISOString() };
+      if (Date.now() - Date.parse(cached.source?.retrieved_at || "") <= maxAge * 1000) return { ...cached, cache: "hit", served_at: new Date().toISOString() };
     }
   }
 
   let current = new URL(input.url);
   const redirects = [];
   const started = performance.now();
+  const deadline = AbortSignal.timeout(input.timeout_ms);
   let response;
   for (let hop = 0; hop <= 3; hop += 1) {
     const resolved = await publicDns(current.hostname);
@@ -898,7 +910,7 @@ async function performWebFetch(input) {
         method: input.method,
         headers: { accept: "application/json,text/plain,text/html,application/xml,text/xml;q=0.9,*/*;q=0.1", "user-agent": `XGuard-Web-Fetch/${VERSION}` },
         redirect: "manual",
-        signal: AbortSignal.timeout(input.timeout_ms),
+        signal: deadline,
       });
     } catch (cause) {
       const code = cause?.name === "TimeoutError" || cause?.name === "AbortError" ? "upstream_timeout" : "upstream_failed";
@@ -908,7 +920,8 @@ async function performWebFetch(input) {
     const location = response.headers.get("location");
     if (!location || hop === 3) throw Object.assign(new Error("unsafe_redirect"), { code: "upstream_failed" });
     const next = new URL(location, current);
-    if (next.protocol !== "https:" || next.username || next.password || !hostnameAllowed(next.hostname)) throw Object.assign(new Error("unsafe_redirect"), { code: "target_not_public" });
+    await response.body?.cancel().catch(() => {});
+    if (next.protocol !== "https:" || next.port && next.port !== "443" || next.username || next.password || next.hash || !hostnameAllowed(next.hostname) || input.outcome && next.hostname.split(".").some(x => x.startsWith("xn--"))) throw Object.assign(new Error("unsafe_redirect"), { code: "target_not_public" });
     redirects.push({ from: current.origin + current.pathname, to: next.origin + next.pathname, status: response.status });
     current = next;
   }
@@ -939,8 +952,11 @@ async function performWebFetch(input) {
     source: { url: current.toString(), retrieved_at: retrievedAt, transport: "https", dns_public_address_checked: true },
     trust: "untrusted_external_content",
   };
-  if (cache && input.method === "GET" && response.ok) {
-    const stored = new Response(JSON.stringify(result), { headers: { "content-type": "application/json", "cache-control": "public, max-age=60" } });
+  const cacheControl = response.headers.get("cache-control") || "";
+  const originMaxAge = Number(cacheControl.match(/(?:s-maxage|max-age)=(\d+)/i)?.[1] || 0);
+  const cacheAllowed = !/\b(private|no-store|no-cache)\b/i.test(cacheControl) && !response.headers.has("set-cookie") && !response.headers.has("vary") && originMaxAge > 0;
+  if (cache && input.method === "GET" && response.ok && maxAge > 0 && cacheAllowed) {
+    const stored = new Response(JSON.stringify(result), { headers: { "content-type": "application/json", "cache-control": `public, max-age=${Math.min(maxAge, originMaxAge)}` } });
     await cache.put(cacheKey, stored).catch(() => {});
   }
   return result;
@@ -987,7 +1003,7 @@ async function syncCommerce(state, env, record) {
   try {
     await state.storage.put("commerce_pending", true);
     const financials = executionEconomics(record);
-    const response = await postStub(gatewayIndex(env), "/index/commerce", { operation_hash: record.authorization_fingerprint, payer_hash: await sha256(`${record.network}:${String(record.payer || "").toLowerCase()}`), financials, status: record.credit_redeemed ? "succeeded" : record.status });
+    const response = await postStub(gatewayIndex(env), "/index/commerce", { operation_hash: record.authorization_fingerprint, capability: record.input?.capability, payer_hash: await sha256(`${record.network}:${String(record.payer || "").toLowerCase()}`), financials, status: record.credit_redeemed ? "succeeded" : record.status });
     if (!response.ok) throw new Error("commerce_sync_failed");
     await state.storage.delete("commerce_pending");
     await state.storage.delete("commerce_sync_attempts");
@@ -1011,6 +1027,22 @@ export class PaidGatewayState {
     if (request.method !== "POST") return doJson({ error: "method_not_allowed" }, 405);
     let body;
     try { body = await request.json(); } catch { return doJson({ error: "invalid_json" }, 400); }
+
+    if (path === "/index/provider-get" || path === "/index/provider-record") {
+      if (!/^[a-f0-9]{64}$/.test(body.key || "")) return doJson({ error: "invalid_provider_key" }, 400);
+      const key = `provider:${body.key}`;
+      if (path.endsWith("get")) return doJson({ record: await this.state.storage.get(key) || null });
+      await this.state.storage.transaction(async txn => {
+        const row = await txn.get(key) || { attempts: 0, successes: 0, consecutive_failures: 0, latency_ms: 0, circuit_until: 0 };
+        row.attempts++; row.successes += body.success === true ? 1 : 0;
+        row.consecutive_failures = body.success === true ? 0 : row.consecutive_failures + 1;
+        row.latency_ms = Math.round(row.latency_ms * 0.7 + Math.max(0, Math.min(60000, Number(body.latency_ms) || 0)) * 0.3);
+        row.circuit_until = row.consecutive_failures >= 3 ? Date.now() + 60000 : 0;
+        row.updated_at = new Date().toISOString();
+        await txn.put(key, row);
+      });
+      return doJson({ ok: true });
+    }
 
     if (path === "/index/commerce") {
       if (!/^[a-f0-9]{64}$/.test(body.operation_hash || "") || !/^[a-f0-9]{64}$/.test(body.payer_hash || "") || !["settled", "credited", "succeeded"].includes(body.status)) return doJson({ error: "invalid_commerce_record" }, 400);
@@ -1036,6 +1068,7 @@ export class PaidGatewayState {
           await txn.put(walletKey, wallet);
         }
         aggregate.updated_at = new Date().toISOString();
+        await applyOutcomeCommerce(txn, body, previous, snapshot);
         aggregate.revenue_per_successful_execution_usd_micros = aggregate.successful_paid_executions ? aggregate.recognized_revenue_usd_micros / aggregate.successful_paid_executions : null;
         aggregate.observed_revenue_per_paying_wallet_usd_micros = aggregate.paying_wallets ? aggregate.recognized_revenue_usd_micros / aggregate.paying_wallets : null;
         await txn.put(key, snapshot);
@@ -1116,6 +1149,7 @@ export class PaidGatewayState {
         current.latency_samples += 1;
       }
       current.updated_at = new Date().toISOString();
+      applyOutcomeMetric(current, body);
       await this.state.storage.put("metrics:v1", current);
       return doJson({ ok: true });
     }
@@ -1124,6 +1158,7 @@ export class PaidGatewayState {
       const current = await this.state.storage.get("metrics:v1") || { started_at: new Date().toISOString(), events: {}, outcomes: {}, test_volume_usd_micros: 0, real_revenue_usd_micros: 0, qualified_external_executions: 0, latency_ms_total: 0, latency_samples: 0 };
       return doJson({
         ...current,
+        product: await outcomeMetrics(this.state.storage, current),
         economics: await this.state.storage.get("commerce:v1") || emptyCommerce(),
         test_volume_usd_micros: Number(current.test_volume_usd_micros || 0),
         real_revenue_usd_micros: Number(current.real_revenue_usd_micros || 0),
@@ -1236,7 +1271,9 @@ export class PaidGatewayState {
         }
       } else {
         if (existing.credit_attempt_request_id !== body.request_id) return doJson({ error: "credit_attempt_mismatch" }, 409);
-        const record = { ...existing, credit_redeemed: true, credit_liability_usd_micros: 0, credit_fulfillment: { request_id: body.request_id, input_digest: body.input_digest, body_sha256: body.body_sha256, delivered_at: new Date().toISOString() }, net_profit_usd_micros: null };
+        const record = { ...existing, credit_redeemed: true, credit_liability_usd_micros: 0,
+          ...(existing.input?.capability ? { result: body.result, receipt: body.receipt, proof: body.proof, payment_response: body.payment_response } : {}),
+          credit_fulfillment: { request_id: body.request_id, input_digest: body.input_digest, body_sha256: body.body_sha256, delivered_at: new Date().toISOString() }, net_profit_usd_micros: null };
         await this.state.storage.put("operation", record);
         await syncCommerce(this.state, this.env, record);
       }
@@ -1321,7 +1358,12 @@ async function observeStage(env, event, id, details = {}) {
     if (details.drop_reason) metric.drop_reason = safeReason(details.drop_reason, "unknown");
     metric.traffic_class = traffic;
     if (details.environment) metric.environment = safeLabel(details.environment);
+    if (details.tool) metric.tool = details.tool;
     await recordMetric(env, event, metric);
+    if (outcomeDefinition(String(details.tool || "").replace(/^xguard\./, ""))) {
+      const alias = { quote_success: "price_shown", payment_attempt: "payment_started", execution_success: "execution_succeeded" }[event];
+      if (alias) await recordMetric(env, alias, metric);
+    }
   }
 }
 
@@ -1376,11 +1418,17 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
     offerValiditySeconds: Math.max(1, quote.expires_at - Math.floor(Date.now() / 1000)),
   }, await signerFor(env));
   const challenge = {
+    ...(quote.input?.capability ? { status: "payment_required", capability: quote.input.capability,
+      price: { amount_atomic: config.amount, amount: (Number(config.amount) / 1e6).toFixed(6), currency: "USDC", exact: true },
+      will_return: outcomeDefinition(quote.input.capability)?.delivery,
+      expires_at: new Date(quote.expires_at * 1000).toISOString(), target_contacted: false,
+      retry: { method: "POST", url: config.resource, preserve_body: true, preserve_headers: ["X-XGuard-Quote"], payment_header: "Payment-Signature" },
+    } : {}),
     x402Version: 2,
     error: reason,
     resource: {
       url: config.resource,
-      description: "Fetch one bounded public HTTPS resource through XGuard with SSRF protection, source evidence, idempotent settlement and a signed receipt.",
+      description: quote.input?.capability ? outcomeDefinition(quote.input.capability)?.delivery : "Fetch one bounded public HTTPS resource through XGuard with SSRF protection, source evidence, idempotent settlement and a signed receipt.",
       mimeType: "application/json",
       serviceName: "XGuard Universal Paid AI Agent Gateway",
       tags: ["ai-agent", "web-fetch", "x402", "secretless"],
@@ -1417,7 +1465,7 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
   await observeStage(env, "payment_required", id, {
     traffic_class: observation.trafficClass,
     transport: observation.transport,
-    tool: TOOL,
+    tool: quote.tool,
     network: config.network,
     amount_atomic: config.amount,
     environment: config.environment,
@@ -1426,7 +1474,7 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
   await observeStage(env, "response_sent", id, {
     traffic_class: observation.trafficClass,
     transport: observation.transport,
-    tool: TOOL,
+    tool: quote.tool,
     network: config.network,
     environment: config.environment,
     payment_state: "pending",
@@ -1507,7 +1555,7 @@ async function deliveryArtifacts(env, record, settlement, result) {
     request_id: record.request_id,
     payment_identifier: record.payment_identifier,
     quote_id: record.quote_id,
-    tool: TOOL,
+    tool: record.tool || TOOL,
     input_digest: record.request_digest,
     network: settlement.network,
     transaction: settlement.transaction,
@@ -1533,7 +1581,8 @@ async function issueExecutionCredit(env, record, causeCode) {
     typ: "xguard-execution-credit",
     iss: API,
     credit_id: creditId,
-    tool: TOOL,
+    tool: record.tool || TOOL,
+    input_digest: record.input?.capability ? record.request_digest : null,
     payer: record.payer,
     amount: record.amount,
     network: record.network,
@@ -1550,6 +1599,13 @@ async function issueExecutionCredit(env, record, causeCode) {
 
 function successfulResponse(record, replay = false) {
   return json({
+    ...(record.input?.capability ? {
+      ok: true, intent: { capability: record.input.capability, sources: record.input.sources, limit: record.input.limit, max_age_seconds: record.input.max_age_seconds },
+      capability: record.input.capability,
+      verification: { ...record.result.verification, result_sha256: record.result.body_sha256, signed_proof: record.proof?.proof || null },
+      cost: { amount_atomic: record.amount, amount: (Number(record.amount) / 1e6).toFixed(6), currency: "USDC", new_charge: !replay && !record.credit_redeemed },
+      ...(record.credit_redeemed ? { used_execution_credit: true, original_payment_identifier: record.payment_identifier } : {}),
+    } : {}),
     request_id: record.request_id,
     payment_identifier: record.payment_identifier,
     status: "succeeded",
@@ -1557,7 +1613,7 @@ function successfulResponse(record, replay = false) {
     environment: record.environment,
     payment_rail: record.payment_rail,
     revenue: record.gross_revenue_usd_micros > 0,
-    result: record.result,
+    result: record.input?.capability ? record.result.data : record.result,
     settlement: record.settlement,
     receipt: record.receipt,
     proofrail: record.proof,
@@ -1582,16 +1638,17 @@ function successfulResponse(record, replay = false) {
 }
 
 async function executeSettledOperation({ stub, env, record, settlement, observation = {}, resumed = false }) {
+  const tool = record.tool || TOOL;
   const claim = await postStub(stub, "/operation/claim-execution", {});
   if (!claim.ok) {
     return error("settlement_ambiguous", 409, record.request_id, { retryable: true, details: { state: claim.body?.status || "execution_in_progress", status_url: `${API}/v1/operations/${record.payment_identifier}` } });
   }
   if (claim.body.replay) return successfulResponse(claim.body.record, true);
   record = claim.body.record;
-  await observeStage(env, "execution_started", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool: TOOL, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled" });
+  await observeStage(env, "execution_started", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled" });
   let result;
   try {
-    result = await performWebFetch(record.input);
+    result = record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
   } catch (cause) {
     const code = cause?.code || "upstream_failed";
@@ -1600,22 +1657,23 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, status: "credited" });
     await recordMetric(env, "upstream_failed", { traffic_class: record.traffic_class, environment: record.environment });
     await recordMetric(env, "credited", { traffic_class: record.traffic_class, environment: record.environment });
-    await observeStage(env, "execution_failed", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool: TOOL, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "credited", outcome: code });
+    await observeStage(env, "execution_failed", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "credited", outcome: code });
     await logFinancialEvent("paid_gateway_execution_credited", record.request_id, record.payment_identifier, { reason: code, network: record.network, amount_atomic: record.amount, transaction: settlement.transaction });
     return error("upstream_failed", code === "upstream_timeout" ? 504 : 502, record.request_id, { retryable: true, details: { execution_credit: credit.token, credit_id: credit.payload.credit_id, original_transaction: settlement.transaction } });
   }
-  await observeStage(env, "execution_completed", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool: TOOL, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled", outcome: "succeeded" });
+  await observeStage(env, "execution_completed", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled", outcome: "succeeded" });
   const artifacts = await deliveryArtifacts(env, record, settlement, result);
-  await observeStage(env, "receipt_created", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool: TOOL, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled", outcome: artifacts.proof ? "signed" : "proof_unavailable" });
+  await observeStage(env, "receipt_created", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled", outcome: artifacts.proof ? "signed" : "proof_unavailable" });
   const completed = await postStub(stub, "/operation/complete", { claim_token: claim.body.claim_token, result, settlement, receipt: artifacts.receipt, proof: artifacts.proof, payment_response: artifacts.paymentResponseHeader });
   if (!completed.ok) return error("settlement_ambiguous", 409, record.request_id, { retryable: true, details: { status_url: `${API}/v1/operations/${record.payment_identifier}` } });
   await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, status: "succeeded" });
   const finalRecord = completed.body.record;
   await recordMetric(env, "succeeded", { latency_ms: result.latency_ms, traffic_class: finalRecord.traffic_class, environment: finalRecord.environment });
-  await observeStage(env, "usage_recorded", finalRecord.request_id, { traffic_class: observation.trafficClass || finalRecord.traffic_class, transport: observation.transport || finalRecord.transport || "reconcile", tool: TOOL, network: finalRecord.network, amount_atomic: finalRecord.amount, environment: finalRecord.environment, payment_state: "settled", outcome: "succeeded" });
-  await observeStage(env, "execution_success", finalRecord.request_id, { traffic_class: observation.trafficClass || finalRecord.traffic_class, transport: observation.transport || finalRecord.transport || "reconcile", tool: TOOL, network: finalRecord.network, amount_atomic: finalRecord.amount, environment: finalRecord.environment, payment_state: "settled", outcome: "succeeded" });
-  console.log(JSON.stringify({ event: "paid_gateway_succeeded", request_id: finalRecord.request_id, payment_identifier_hash: await sha256(finalRecord.payment_identifier), tool: TOOL, target_host: new URL(finalRecord.input.url).hostname, network: finalRecord.network, environment: finalRecord.environment, amount_atomic: finalRecord.amount, transaction: settlement.transaction, latency_ms: result.latency_ms, revenue_usd_micros: finalRecord.gross_revenue_usd_micros, upstream_cost_usd_micros: finalRecord.actual_upstream_cost_usd_micros, net_profit_usd_micros: finalRecord.net_profit_usd_micros, resumed }));
-  await observeStage(env, "response_sent", finalRecord.request_id, { traffic_class: observation.trafficClass || finalRecord.traffic_class, transport: observation.transport || finalRecord.transport || "reconcile", tool: TOOL, network: finalRecord.network, amount_atomic: finalRecord.amount, environment: finalRecord.environment, payment_state: "settled", outcome: "succeeded" });
+  await observeStage(env, "usage_recorded", finalRecord.request_id, { traffic_class: observation.trafficClass || finalRecord.traffic_class, transport: observation.transport || finalRecord.transport || "reconcile", tool, network: finalRecord.network, amount_atomic: finalRecord.amount, environment: finalRecord.environment, payment_state: "settled", outcome: "succeeded" });
+  await observeStage(env, "execution_success", finalRecord.request_id, { traffic_class: observation.trafficClass || finalRecord.traffic_class, transport: observation.transport || finalRecord.transport || "reconcile", tool, network: finalRecord.network, amount_atomic: finalRecord.amount, environment: finalRecord.environment, payment_state: "settled", outcome: "succeeded" });
+  console.log(JSON.stringify({ event: "paid_gateway_succeeded", request_id: finalRecord.request_id, payment_identifier_hash: await sha256(finalRecord.payment_identifier), tool, target_host: finalRecord.input.url ? new URL(finalRecord.input.url).hostname : "multiple_public_sources", network: finalRecord.network, environment: finalRecord.environment, amount_atomic: finalRecord.amount, transaction: settlement.transaction, latency_ms: result.latency_ms, revenue_usd_micros: finalRecord.gross_revenue_usd_micros, upstream_cost_usd_micros: finalRecord.actual_upstream_cost_usd_micros, net_profit_usd_micros: finalRecord.net_profit_usd_micros, resumed }));
+  await observeStage(env, "response_sent", finalRecord.request_id, { traffic_class: observation.trafficClass || finalRecord.traffic_class, transport: observation.transport || finalRecord.transport || "reconcile", tool, network: finalRecord.network, amount_atomic: finalRecord.amount, environment: finalRecord.environment, payment_state: "settled", outcome: "succeeded" });
+  if (finalRecord.input?.capability) await observeStage(env, "result_returned", finalRecord.request_id, { traffic_class: finalRecord.traffic_class, environment: finalRecord.environment, tool, metric: { first_result_ms: Math.max(0, Date.now() - Number(finalRecord.quote_issued_at || Date.now() / 1000) * 1000) } });
   return successfulResponse(finalRecord, false);
 }
 
@@ -1687,28 +1745,50 @@ async function reconcileStoredOperation(state, env) {
 }
 
 async function useExecutionCredit(request, env, quote, config, input, id) {
+  const tool = input.capability ? `xguard.${input.capability}` : TOOL;
   const token = request.headers.get("x-xguard-credit");
   if (!token) return null;
   const payload = await verifyJws(env, token);
   const now = Math.floor(Date.now() / 1000);
-  if (!payload || payload.typ !== "xguard-execution-credit" || payload.iss !== API || payload.tool !== TOOL || payload.amount !== config.amount || payload.network !== config.network || !payload.credit_id || payload.expires_at <= now) return error("credit_invalid", 409, id);
-  const reserve = await postStub(gatewayIndex(env), "/index/credit-consume", { credit_id: payload.credit_id, tool: TOOL, amount: config.amount, request_id: id });
+  if (!payload || payload.typ !== "xguard-execution-credit" || payload.iss !== API || payload.tool !== tool || payload.input_digest && payload.input_digest !== quote.input_digest || payload.amount !== config.amount || payload.network !== config.network || !payload.credit_id || payload.expires_at <= now) return error("credit_invalid", 409, id);
+  // An already delivered outcome is recoverable even when its credit was consumed.
+  // Recovery never issues a new authorization or performs another source request.
+  if (input.capability) {
+    const lookup = await postStub(gatewayIndex(env), "/index/lookup", { payment_identifier: payload.original_payment_identifier });
+    if (lookup.ok) {
+      const stored = await postStub(operationStub(env, lookup.body.record.authorization_fingerprint), "/operation/get", {});
+      const record = stored.body?.record;
+      if (record?.credit_id === payload.credit_id && record.credit_redeemed && record.result && record.request_digest === quote.input_digest) return successfulResponse(record, true);
+    }
+  }
+  const reserve = await postStub(gatewayIndex(env), "/index/credit-consume", { credit_id: payload.credit_id, tool, amount: config.amount, request_id: id });
   if (!reserve.ok) return error("credit_invalid", 409, id);
   try {
     const original = await postStub(gatewayIndex(env), "/index/lookup", { payment_identifier: payload.original_payment_identifier });
     if (!original.ok) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
     const originalStub = operationStub(env, original.body.record.authorization_fingerprint);
+    const stored = await postStub(originalStub, "/operation/get", {});
+    const originalRecord = stored.body?.record;
+    if (!originalRecord || (input.capability && originalRecord.request_digest !== quote.input_digest)) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
     const attempt = await postStub(originalStub, "/operation/credit-attempt", { credit_id: payload.credit_id, request_id: id });
     if (!attempt.ok || attempt.body.delivered) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
-    const result = await performWebFetch(input);
+    const result = input.capability ? await executeOutcome(input, env, performWebFetch) : await performWebFetch(input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
     const proof = await signProof(env, {
-      v: 1, typ: "xguard-credited-execution", iss: API, request_id: id, credit_id: payload.credit_id, tool: TOOL,
+      v: 1, typ: "xguard-credited-execution", iss: API, request_id: id, credit_id: payload.credit_id, tool,
       input_digest: quote.input_digest, original_transaction: payload.original_transaction, body_sha256: result.body_sha256, executed_at: new Date().toISOString(),
     });
-    const delivered = await postStub(originalStub, "/operation/credit-delivered", { credit_id: payload.credit_id, request_id: id, input_digest: quote.input_digest, body_sha256: result.body_sha256 });
+    const artifacts = input.capability ? await deliveryArtifacts(env, originalRecord, originalRecord.settlement || { success: true, transaction: originalRecord.transaction, network: originalRecord.network, payer: originalRecord.payer }, result) : null;
+    const delivered = await postStub(originalStub, "/operation/credit-delivered", { credit_id: payload.credit_id, request_id: id, input_digest: quote.input_digest, body_sha256: result.body_sha256,
+      ...(artifacts ? { result, receipt: artifacts.receipt, proof: artifacts.proof, payment_response: artifacts.paymentResponseHeader } : {}) });
     if (!delivered.ok) throw Object.assign(new Error("credit_accounting_unavailable"), { code: "credit_accounting_unavailable" });
     await postStub(gatewayIndex(env), "/index/credit-finalize", { credit_id: payload.credit_id, request_id: id, success: true });
+    if (input.capability) {
+      await observeStage(env, "execution_success", id, { traffic_class: originalRecord.traffic_class, environment: originalRecord.environment, tool, outcome: "credit_fulfilled" });
+      await observeStage(env, "result_returned", id, { traffic_class: originalRecord.traffic_class, environment: originalRecord.environment, tool, metric: { first_result_ms: Math.max(0, Date.now() - Number(originalRecord.quote_issued_at || Date.now() / 1000) * 1000) } });
+      const final = await postStub(originalStub, "/operation/get", {});
+      return successfulResponse(final.body.record, false);
+    }
     return json({ request_id: id, status: "succeeded", used_execution_credit: true, original_payment_identifier: payload.original_payment_identifier, result, proofrail: proof, accounting: { new_cash_usd_micros: 0, gross_revenue_usd_micros: 0, actual_upstream_cost_usd_micros: 0, net_profit_usd_micros: null, revenue_source: "original_settlement_fulfillment", original_liability_released: true } }, 200, {
       "x-xguard-request-id": id,
       "x-xguard-proof": proof?.proof || "",
@@ -1719,22 +1799,27 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
   }
 }
 
-export async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = false, transport = "http") {
+export async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = false, transport = "http", outcomeInput = null) {
+  const tool = outcomeInput ? `xguard.${outcomeInput.capability}` : TOOL;
   const observation = { trafficClass: trafficClass(request), transport };
-  await observeStage(env, "request_received", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, environment: forceTestnet ? "test" : "production" });
+  await observeStage(env, "request_received", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production" });
   if (!env.PROOF_AUTHORITY || !env.PAID_GATEWAY) return error("payment_not_configured", 503, id);
   const rate = await rateLimit(request, env, "paid-execution", 30);
   if (!rate.allowed) return error("rate_limited", 429, id, { retryable: true, details: { retry_after_seconds: rate.retry_after_seconds } });
-  const normalizedInput = normalizeFetchInputDetailed(rawInput);
+  const normalizedInput = outcomeInput ? { ok: true, input: outcomeInput } : normalizeFetchInputDetailed(rawInput);
   if (!normalizedInput.ok) return validationError("invalid_input", id, normalizedInput.issues);
   const input = normalizedInput.input;
-  await observeStage(env, "operation_resolved", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, environment: forceTestnet ? "test" : "production", outcome: "normalized" });
-  await observeStage(env, "tool_call_valid", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, environment: forceTestnet ? "test" : "production" });
+  await observeStage(env, "operation_resolved", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production", outcome: "normalized" });
+  await observeStage(env, "tool_call_valid", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production" });
   const envelope = inputEnvelope(rawInput);
   let quoteToken = request.headers.get("x-xguard-quote") || rawInput?.quote || envelope.source?.quote;
+  if (!quoteToken && request.headers.has("payment-signature")) {
+    try { quoteToken = decodePaymentSignatureHeader(request.headers.get("payment-signature"))?.extensions?.xguard?.quote; } catch { return error("payment_payload_invalid", 400, id); }
+    if (!quoteToken) return error("quote_required", 400, id, { details: { retry: { canonical_shape: rawInput, instruction: "Preserve X-XGuard-Quote from the initial 402 response when retrying." } } });
+  }
   let quote;
   if (!quoteToken) {
-    await observeStage(env, "quote_attempt", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, environment: forceTestnet ? "test" : "production" });
+    await observeStage(env, "quote_attempt", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production" });
     const requestedTestnet = rawInput?.testnet;
     if (requestedTestnet !== undefined && typeof requestedTestnet !== "boolean") {
       return validationError("invalid_input", id, [{ path: "testnet", code: "boolean_required", message: "testnet must be true or false." }]);
@@ -1749,53 +1834,59 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
       }]);
     }
     const quoteInput = { ...rawInput, testnet: forceTestnet };
-    const issued = await issueQuote(env, quoteInput, id, observation);
+    const issued = await issueQuote(env, quoteInput, id, observation, outcomeInput);
     if (!issued.payload) return issued.response;
     quoteToken = issued.quote;
     quote = issued.payload;
-    const autoConfig = gatewayConfig(env, forceTestnet);
+    const autoConfig = gatewayConfig(env, forceTestnet, outcomeInput);
     return paymentRequired(env, autoConfig, quoteToken, quote, id, "payment_required", observation);
   }
   quote = await verifyJws(env, quoteToken);
-  if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || quote.tool !== TOOL) return error("quote_invalid", 400, id);
+  if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || quote.tool !== tool) return error("quote_invalid", 400, id);
   if (quote.expires_at <= Math.floor(Date.now() / 1000)) return error("quote_expired", 400, id);
-  const config = gatewayConfig(env, quote.network === TESTNET);
+  const config = gatewayConfig(env, quote.network === TESTNET, outcomeInput);
   const requestPath = new URL(request.url).pathname;
   const directRouteMismatch = (requestPath === "/v1/tools/web.fetch/testnet" && quote.network !== TESTNET)
     || (requestPath === "/v1/tools/web.fetch" && quote.network === TESTNET);
-  if (!config.configured || (forceTestnet && quote.network !== TESTNET) || directRouteMismatch) return error("quote_invalid", 400, id);
+  if (!config.configured || (forceTestnet && quote.network !== TESTNET) || (outcomeInput && (quote.network === TESTNET) !== forceTestnet) || directRouteMismatch) return error("quote_invalid", 400, id);
   const digest = await sha256(canonicalize(input));
   if (quote.aud !== config.resource || quote.input_digest !== digest || quote.network !== config.network || quote.payment_environment !== config.environment || quote.payment_rail !== config.rail.id || quote.asset.toLowerCase() !== config.asset.toLowerCase() || quote.pay_to.toLowerCase() !== config.payTo.toLowerCase() || quote.amount !== config.amount || quote.customer_price_usd_micros !== config.customerPriceUsdMicros || quote.upstream_cost_max_usd_micros !== 0 || quote.xguard_margin_usd_micros !== config.marginUsdMicros || quote.payment_identifier == null) return error("quote_invalid", 400, id);
 
-  const firstTarget = await publicDns(new URL(input.url).hostname);
+  const firstTarget = outcomeInput ? { ok: true } : await publicDns(new URL(input.url).hostname);
   if (!firstTarget.ok) return error(firstTarget.code, firstTarget.code === "dns_unresolved" ? 422 : 403, id);
   const credited = await useExecutionCredit(request, env, quote, config, input, id);
   if (credited) return credited;
 
   const signatureHeader = request.headers.get("payment-signature");
   if (!signatureHeader) return paymentRequired(env, config, quoteToken, quote, id, "payment_required", observation);
-  await observeStage(env, "payment_attempt", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
-  await observeStage(env, "payment_proof_received", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
-  await observeStage(env, "payment_payload_received", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
+  await observeStage(env, "payment_attempt", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
+  await observeStage(env, "payment_proof_received", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
+  await observeStage(env, "payment_payload_received", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
   let paymentPayload;
   try { paymentPayload = decodePaymentSignatureHeader(signatureHeader); } catch {
-    await observeStage(env, "payment_parse_failed", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "pending", outcome: "malformed_payment_signature" });
-    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: "malformed_payment_signature" });
+    await observeStage(env, "payment_parse_failed", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, environment: config.environment, payment_state: "pending", outcome: "malformed_payment_signature" });
+    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, environment: config.environment, payment_state: "failed", outcome: "malformed_payment_signature" });
     return error("payment_payload_invalid", 400, id);
   }
   const requirements = paymentRequirements(config, quote);
   const paymentIdentifier = extractPaymentIdentifier(paymentPayload, true);
   const identity = authIdentity(paymentPayload);
-  if (paymentPayload?.x402Version !== 2 || !requirementsMatch(paymentPayload?.accepted, requirements) || (paymentPayload.resource?.url && paymentPayload.resource.url !== config.resource) || paymentIdentifier !== quote.payment_identifier || !identity) {
-    await observeStage(env, "payment_parse_failed", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "pending", outcome: "payment_binding_mismatch" });
-    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: "payment_binding_mismatch" });
+  const authorization = paymentPayload?.payload?.authorization;
+  const authorizationMismatch = outcomeInput && authorization && (
+    String(authorization.to).toLowerCase() !== config.payTo.toLowerCase()
+    || String(authorization.value) !== config.amount
+    || !/^\d+$/.test(String(authorization.validBefore)) || Number(authorization.validBefore) <= Date.now() / 1000
+    || !/^\d+$/.test(String(authorization.validAfter)) || Number(authorization.validAfter) > Date.now() / 1000);
+  if (paymentPayload?.x402Version !== 2 || !requirementsMatch(paymentPayload?.accepted, requirements) || authorizationMismatch || (paymentPayload.resource?.url && paymentPayload.resource.url !== config.resource) || paymentIdentifier !== quote.payment_identifier || !identity) {
+    await observeStage(env, "payment_parse_failed", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, environment: config.environment, payment_state: "pending", outcome: "payment_binding_mismatch" });
+    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, environment: config.environment, payment_state: "failed", outcome: "payment_binding_mismatch" });
     return error("payment_payload_invalid", 400, id);
   }
-  await observeStage(env, "payment_authorization_received", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
+  await observeStage(env, "payment_authorization_received", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
   const authorizationFingerprint = await sha256(`${config.network}|${config.asset.toLowerCase()}|${identity.from}|${identity.nonce}`);
   const reserve = await postStub(gatewayIndex(env), "/index/reserve", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, request_digest: digest, request_id: id });
   if (!reserve.ok) {
-    await observeStage(env, "replay_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: "payment_identifier_conflict" });
+    await observeStage(env, "replay_rejected", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, environment: config.environment, payment_state: "failed", outcome: "payment_identifier_conflict" });
     return error("payment_identifier_conflict", 409, id, { details: reserve.body.record || null });
   }
   const stub = operationStub(env, authorizationFingerprint);
@@ -1805,8 +1896,9 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     authorization_fingerprint: authorizationFingerprint,
     request_digest: digest,
     quote_id: quote.quote_id,
+    quote_issued_at: quote.issued_at,
     resource: config.resource,
-    tool: TOOL,
+    tool,
     input,
     payer: identity.from,
     pay_to: config.payTo,
@@ -1827,12 +1919,12 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   });
   if (!begin.ok) {
     await postStub(gatewayIndex(env), "/index/release", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint });
-    await observeStage(env, "replay_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: "authorization_conflict" });
+    await observeStage(env, "replay_rejected", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, environment: config.environment, payment_state: "failed", outcome: "authorization_conflict" });
     return error("payment_identifier_conflict", 409, id, { details: begin.body.record || null });
   }
   if (begin.body.replay) {
     const record = begin.body.record;
-    if (record.status === "succeeded") {
+    if (record.status === "succeeded" || record.input?.capability && record.credit_redeemed && record.result) {
       await recordMetric(env, "replay");
       return successfulResponse(record, true);
     }
@@ -1843,15 +1935,15 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     return error("settlement_ambiguous", 409, record.request_id, { retryable: true });
   }
 
-  await observeStage(env, "authorization_created", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending", outcome: "scoped" });
+  await observeStage(env, "authorization_created", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending", outcome: "scoped" });
   const facilitator = new HTTPFacilitatorClient({ url: config.facilitator, timeoutMs: 10000 });
   let verification;
-  await observeStage(env, "payment_verification_started", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
+  await observeStage(env, "payment_verification_started", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
   try { verification = await facilitator.verify(paymentPayload, requirements); } catch (cause) {
     await postStub(stub, "/operation/transition", { status: "failed", patch: { failure_stage: "verify", failure_reason: "facilitator_verify_unavailable" } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "failed" });
     await recordMetric(env, "verification_failed");
-    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: "facilitator_unavailable" });
+    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, environment: config.environment, payment_state: "failed", outcome: "facilitator_unavailable" });
     await logFinancialEvent("paid_gateway_verification_failed", id, paymentIdentifier, { reason: "facilitator_unavailable" });
     return error("payment_verification_failed", 402, id, { retryable: true, details: { reason: cause?.invalidReason || "facilitator_unavailable" } });
   }
@@ -1859,22 +1951,22 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     await postStub(stub, "/operation/transition", { status: "failed", patch: { failure_stage: "verify", failure_reason: verification?.invalidReason || "invalid_payment" } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "failed" });
     await recordMetric(env, "verification_failed");
-    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, environment: config.environment, payment_state: "failed", outcome: verification?.invalidReason || "invalid_payment" });
+    await observeStage(env, "payment_rejected", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, environment: config.environment, payment_state: "failed", outcome: verification?.invalidReason || "invalid_payment" });
     await logFinancialEvent("paid_gateway_verification_failed", id, paymentIdentifier, { reason: safeReason(verification?.invalidReason, "invalid_payment") });
     return paymentRequired(env, config, quoteToken, quote, id, verification?.invalidReason || "payment_verification_failed", observation);
   }
   await postStub(stub, "/operation/transition", { status: "verified", patch: { verified_at: new Date().toISOString(), payer: verification.payer || identity.from } });
-  await observeStage(env, "payment_verified", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "verified" });
+  await observeStage(env, "payment_verified", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "verified" });
 
   let settlement;
-  await observeStage(env, "settlement_started", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "verified" });
+  await observeStage(env, "settlement_started", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "verified" });
   try { settlement = await facilitator.settle(paymentPayload, requirements); } catch (cause) {
     const classified = classifyFacilitatorError(cause);
     const status = classified.ambiguous ? "ambiguous" : "failed";
     await postStub(stub, "/operation/transition", { status, patch: { failure_stage: "settle", failure_reason: classified.reason } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status });
     if (classified.ambiguous) await recordMetric(env, "settlement_ambiguous");
-    await observeStage(env, "settlement_failed", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, outcome: classified.ambiguous ? "ambiguous" : "failed" });
+    await observeStage(env, "settlement_failed", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, outcome: classified.ambiguous ? "ambiguous" : "failed" });
     await logFinancialEvent(classified.ambiguous ? "paid_gateway_settlement_ambiguous" : "paid_gateway_settlement_failed", id, paymentIdentifier, { reason: classified.reason, network: config.network, amount_atomic: config.amount });
     return classified.ambiguous
       ? error("settlement_ambiguous", 503, id, { retryable: true, details: { status_url: `${API}/v1/operations/${paymentIdentifier}` } })
@@ -1886,17 +1978,17 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     await postStub(stub, "/operation/transition", { status, patch: { failure_stage: "settle", failure_reason: settlement?.errorReason || "invalid_settlement_response", observed_transaction: settlement?.transaction || null } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status });
     if (ambiguous) await recordMetric(env, "settlement_ambiguous");
-    await observeStage(env, "settlement_failed", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, outcome: ambiguous ? "ambiguous" : "failed" });
+    await observeStage(env, "settlement_failed", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, outcome: ambiguous ? "ambiguous" : "failed" });
     await logFinancialEvent(ambiguous ? "paid_gateway_settlement_ambiguous" : "paid_gateway_settlement_failed", id, paymentIdentifier, { reason: safeReason(settlement?.errorReason, "invalid_settlement_response"), network: config.network, amount_atomic: config.amount });
     return error(ambiguous ? "settlement_ambiguous" : "settlement_failed", ambiguous ? 503 : 402, id, { retryable: true });
   }
   const settled = await postStub(stub, "/operation/transition", { status: "settled", patch: { transaction: settlement.transaction, network: settlement.network, payer: settlement.payer || identity.from, settlement } });
   await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "settled" });
-  await observeStage(env, "settlement_created", id, { traffic_class: observation.trafficClass, transport, tool: TOOL, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "settled", outcome: "confirmed" });
+  await observeStage(env, "settlement_created", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "settled", outcome: "confirmed" });
   await observeStage(env, "settlement_success", id, {
     traffic_class: observation.trafficClass,
     transport,
-    tool: TOOL,
+    tool,
     network: config.network,
     amount_atomic: config.amount,
     environment: config.environment,
@@ -2347,6 +2439,23 @@ async function readiness(env) {
     checked_at: new Date().toISOString(),
   };
 }
+
+export async function recoverOutcome(env, paymentIdentifier, quoteToken, id) {
+  if (!env.PAID_GATEWAY || !env.PROOF_AUTHORITY || !isValidPaymentId(paymentIdentifier)) return error("not_found", 404, id);
+  const quote = await verifyJws(env, quoteToken);
+  if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || quote.aud !== `${API}/v1/execute` || quote.payment_identifier !== paymentIdentifier) return error("quote_invalid", 403, id);
+  const lookup = await postStub(gatewayIndex(env), "/index/lookup", { payment_identifier: paymentIdentifier });
+  if (!lookup.ok) return error("not_found", 404, id);
+  const operation = await postStub(operationStub(env, lookup.body.record.authorization_fingerprint), "/operation/get", {});
+  const record = operation.body?.record;
+  if (!record || record.request_digest !== quote.input_digest || record.tool !== quote.tool) return error("not_found", 404, id);
+  if (record.status === "succeeded" || record.input?.capability && record.credit_redeemed && record.result) return successfulResponse(record, true);
+  return json({ ok: false, status: record.status, payment_identifier: paymentIdentifier,
+    ...(record.credit_token ? { execution_credit: record.credit_token } : {}),
+    next: { action: record.status === "credited" ? "retry_same_intent_with_execution_credit" : "retry_status", retry_after_seconds: 5 } }, 202);
+}
+
+export { jsonBody, rateLimit, validateMcpRequest, mcpTransportResponse };
 
 async function operationStatus(env, paymentIdentifier, id) {
   if (!isValidPaymentId(paymentIdentifier) || !env.PAID_GATEWAY) return error("not_found", 404, id);

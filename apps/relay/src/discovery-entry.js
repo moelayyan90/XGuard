@@ -9,7 +9,7 @@ const A2A_CARD = `${API}/.well-known/agent-card.json`;
 const A2A_ENDPOINT = `${API}/a2a`;
 const REPO = "https://github.com/moelayyan90/XGuard";
 const INDEXNOW_KEY = "f3fd1a3fde659a05a8dddfa614b408ac";
-const REGISTRY_DESCRIPTION = "Signed prices and no-account x402 USDC tools with secretless egress and verifiable receipts.";
+const REGISTRY_DESCRIPTION = "Page extraction, product offers and feed digests. Free preview, signed prices, x402 USDC.";
 const DESCRIPTION = "XGuard is a universal paid AI-agent and secretless gateway: signed prices, no-account x402 USDC payment, controlled execution, replay-safe retries, signed receipts and ProofRail evidence.";
 const QUOTE_SCHEMA = quoteRequestSchema();
 
@@ -19,7 +19,7 @@ const registryManifest = {
   title: "XGuard Universal Paid AI Agent + Secretless Gateway",
   description: REGISTRY_DESCRIPTION,
   repository: { url: REPO, source: "github" },
-  version: VERSION,
+  version: "5.1.1",
   remotes: [{ type: "streamable-http", url: MCP }],
 };
 

@@ -1,4 +1,5 @@
 import app from "./a2a-entry.js";
+import { handleOutcomeRoute, decorateOutcomeResponse } from "./outcome-entry.js";
 export * from "./a2a-entry.js";
 
 const VERSION = "5.1.0";
@@ -419,6 +420,8 @@ export default {
     if (redirect) return redirect;
 
     const url = new URL(request.url);
+    const outcome = await handleOutcomeRoute(request, env, ctx);
+    if (outcome) return normalizeResponse(request, outcome, env);
     if (request.method === "GET" || request.method === "HEAD") {
       if (url.pathname === "/developers") return developersPage(request);
       const install = developerInstall(request, url.pathname);
@@ -454,7 +457,7 @@ export default {
     }
 
     if (url.hostname === "api.xguardgate.com" && url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
-      return apiRoot(request);
+      return normalizeResponse(request, await decorateOutcomeResponse(request, apiRoot(request), env), env);
     }
 
     if (url.hostname === "xguardgate.com" && url.pathname === "/connect" && (request.method === "GET" || request.method === "HEAD")) {
@@ -462,7 +465,7 @@ export default {
     }
     if (url.hostname === "xguardgate.com" && url.pathname === "/try" && (request.method === "GET" || request.method === "HEAD")) return tryPage(request);
 
-    if (url.hostname === "xguardgate.com" && url.pathname === "/pricing" && (request.method === "GET" || request.method === "HEAD")) return pricingPage(request);
+    if (url.hostname === "xguardgate.com" && ["/pricing", "/pricing/operator"].includes(url.pathname) && (request.method === "GET" || request.method === "HEAD")) return pricingPage(request);
     if (url.hostname === "xguardgate.com" && (request.method === "GET" || request.method === "HEAD")) {
       const page = contentPage(request, url.pathname);
       if (page) return page;
@@ -479,7 +482,7 @@ export default {
     }
 
     const response = await app.fetch(request, env, ctx);
-    return normalizeResponse(request, response, env);
+    return decorateOutcomeResponse(request, await normalizeResponse(request, response, env), env);
   },
 
   async scheduled(controller, env, ctx) {
