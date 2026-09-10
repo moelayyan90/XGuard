@@ -36,8 +36,7 @@ jobs:
               .supportedInterfaces[0].url == "https://api.xguardgate.com/a2a" and
               .supportedInterfaces[0].protocolBinding == "JSONRPC" and
               .supportedInterfaces[0].protocolVersion == "1.0.0" and
-              (.skills | length >= 5) and
-              ([.skills[].id] | index("web-extraction") != null)
+              ([.skills[].id] | sort) == ["extract-preview", "feed-digest", "product-offers", "web-extraction"]
             ' >/dev/null 2>&1 && [[ "$alias" == "$card" ]]; then
               echo 'XGuard A2A Agent Card is live and the legacy discovery alias matches it.'
               exit 0
