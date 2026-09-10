@@ -13,9 +13,11 @@ export function createXGuardOutcomeClient({ payer, maxAmountAtomic = "0", networ
   if (!/^\d+$/.test(String(maxAmountAtomic))) throw new Error("maxAmountAtomic must be an integer string");
   const assets = { "eip155:8453": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", "eip155:84532": "0x036cbd53842c5426634e7929541ec2318f3dcf7e" };
   if (!assets[network]) throw new Error("Select a supported USDC network");
-  const executeUrl = `${baseUrl.replace(/\/+$/, "")}/v1/execute`;
-  const checked = new URL(executeUrl);
-  if (checked.protocol !== "https:" && !["127.0.0.1", "localhost"].includes(checked.hostname)) throw new Error("HTTPS is required");
+  if (typeof baseUrl !== "string" || baseUrl.length > 2048) throw new Error("Supply a bounded API origin");
+  const checked = new URL(baseUrl);
+  const localHttp = checked.protocol === "http:" && ["127.0.0.1", "localhost"].includes(checked.hostname);
+  if (checked.protocol !== "https:" && !localHttp || checked.username || checked.password || checked.search || checked.hash || checked.pathname !== "/") throw new Error("Supply an HTTPS API origin without credentials, a path or a query");
+  const executeUrl = new URL("/v1/execute", checked).href;
   const parse = async response => {
     const data = await response.json();
     if (!response.ok) { const error = new Error(data.message || data.error?.message || data.error_code || `HTTP ${response.status}`); Object.assign(error, { status: response.status, data }); throw error; }
@@ -47,7 +49,7 @@ export function createXGuardOutcomeClient({ payer, maxAmountAtomic = "0", networ
     },
     async getResult({ payment_identifier, quote }) {
       if (!/^pay_[a-zA-Z0-9_-]+$/.test(payment_identifier || "") || typeof quote !== "string") throw new Error("Supply the payment identifier and its original signed quote");
-      return parse(await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/v1/results/${encodeURIComponent(payment_identifier)}`, { headers: { ...headers, "x-xguard-quote": quote }, redirect: "manual" }));
+      return parse(await fetchImpl(new URL(`/v1/results/${encodeURIComponent(payment_identifier)}`, checked).href, { headers: { ...headers, "x-xguard-quote": quote }, redirect: "manual" }));
     },
   };
 }
