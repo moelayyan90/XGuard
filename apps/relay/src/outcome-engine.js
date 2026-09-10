@@ -77,7 +77,8 @@ export function extractOffers(structured, source) {
 }
 
 export function extractFeed(xml, source) {
-  const declarations = String(xml).replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "").replace(/<!--[\s\S]*?-->/g, "");
+  // Spaces prevent removed regions from joining into new declaration delimiters.
+  const declarations = String(xml).replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, " ").replace(/<!--[\s\S]*?-->/g, " ");
   if (/<!DOCTYPE|<!ENTITY/i.test(declarations)) throw failure("feed_entities_not_allowed");
   const document = new DOMParser().parseFromString(String(xml), "application/xml");
   const all = [...document.querySelectorAll("*")];
