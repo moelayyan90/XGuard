@@ -93,20 +93,26 @@ jobs:
           echo "Published version was not observable through the registry search API."
           exit 1
 
-      - name: Wait for matching XGuard discovery release
+      - name: Wait for matching live registry manifest
         shell: bash
         run: |
           set -euo pipefail
+          # Registry metadata versions are immutable and independent of the
+          # legacy runtime identity. Compare the same artifact on both sides.
+          name="$(node -p 'require("./server.json").name')"
           version="$(node -p 'require("./server.json").version')"
           for i in {1..24}; do
-            live="$(curl --silent --show-error --max-time 8 https://xguardgate.com/identity || true)"
-            if printf '%s' "$live" | jq -e --arg version "$version" '.version == $version' >/dev/null 2>&1; then
-              echo "Live discovery surface is ${version}."
+            live="$(curl --fail --silent --show-error --max-time 8 \
+              -H 'cache-control: no-cache' -H 'x-xguard-traffic-class: synthetic' \
+              "https://xguardgate.com/server.json?registry_version=${version}" || true)"
+            if printf '%s' "$live" | jq -e --arg name "$name" --arg version "$version" \
+              '.name == $name and .version == $version and any(.remotes[]?; .type == "streamable-http" and .url == "https://api.xguardgate.com/mcp")' >/dev/null 2>&1; then
+              echo "Live registry manifest is ${name} ${version}."
               exit 0
             fi
             sleep 5
           done
-          echo "Live discovery surface did not reach ${version}."
+          echo "Live registry manifest did not reach ${name} ${version}."
           exit 1
 
       - name: Reindex XGuard in Not Human Search
