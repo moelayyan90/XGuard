@@ -127,12 +127,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.130.0 dev --local --ip 127.0.0.1 --port 8787 --config apps/relay/wrangler.jsonc > /tmp/xguard-worker.log 2>&1 &
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/xguard-local.key -out /tmp/xguard-local.crt -days 1 -subj /CN=localhost -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
+          npx --yes wrangler@4.130.0 dev --local --local-protocol https --https-key-path /tmp/xguard-local.key --https-cert-path /tmp/xguard-local.crt --ip 127.0.0.1 --port 8787 --config apps/relay/wrangler.jsonc > /tmp/xguard-worker.log 2>&1 &
           worker_pid=$!
           trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
           ready=0
           for attempt in {1..25}; do
-            if curl --fail --silent --max-time 3 http://127.0.0.1:8787/v1/execute -H 'content-type: application/json' --data '{"intent":"demo"}' -o /tmp/xguard-free.json; then ready=1; break; fi
+            if curl --fail --silent --max-time 3 --cacert /tmp/xguard-local.crt https://127.0.0.1:8787/v1/execute -H 'content-type: application/json' --data '{"intent":"demo"}' -o /tmp/xguard-free.json; then ready=1; break; fi
             sleep 2
           done
           if [[ "$ready" != '1' ]]; then cat /tmp/xguard-worker.log; exit 1; fi
