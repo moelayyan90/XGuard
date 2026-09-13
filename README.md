@@ -121,3 +121,22 @@ The [metrics endpoint](https://api.xguardgate.com/v1/metrics) distinguishes exte
 production settlement, recognized delivery, liabilities and synthetic tests. Event ratios
 are not user cohorts; actual infrastructure costs and gross margin remain unknown.
 Working outcomes and successful deployment do not establish customer demand or adoption.
+
+## Self-serve purchasing
+
+[Try your own HTML](https://xguardgate.com/try), compare the
+[live prices](https://xguardgate.com/pricing), then follow the
+[paid developer quickstart](https://xguardgate.com/developers#paid-execution).
+The customer script is `sdk/examples/outcome-buy.mjs`; run it with `--help` first.
+It requires explicit `--pay`, a budget cap and a caller-owned funded Base USDC signer.
+It saves a private recovery file before submitting a payment authorization. A storage
+failure stops the purchase. `--recover` only retrieves an outcome; it never pays again.
+Private failure details retain any execution credit for the documented credit flow.
+Recovery/response files contain bearer material and are excluded from this repository.
+Use `--synthetic` for operator tests. The older `outcome-paid.mjs` remains a synthetic
+verification example, not the customer purchase command.
+
+SDK callers can provide `onPaymentPrepared: async recovery => { /* save privately */ }`.
+The SDK awaits this callback before submitting the paid request. Keep a copy of the
+original request for credit redemption if all sources fail. Public-source outcomes
+still use x402; operator card credits remain a separate product.

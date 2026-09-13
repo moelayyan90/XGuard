@@ -113,6 +113,8 @@ if (!tryPage.ok || !tryText.includes("Run free extraction") || !tryText.includes
 const developers = await fetch(freshDiscoveryUrl(`${SITE}/developers`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const developersText = await developers.text();
 if (!developers.ok || !developersText.includes("/install/vscode.json") || !developersText.includes("YOUR FIRST RESULT")) fail("Developer quickstart is missing or incomplete");
+if (!developersText.includes("outcome-buy.mjs --pay") || !developersText.includes('id="paid-execution"')) fail("Developer page does not lead to a real customer purchase");
+if (!tryText.includes('id="preview-html"')) fail("Own-HTML trial is missing");
 for (const [file, root, type] of [["cursor.json", "mcpServers", undefined], ["vscode.json", "servers", "http"], ["claude-code.json", "mcpServers", "http"]]) {
   const config = await getJson(`${SITE}/install/${file}`);
   if (config.body[root]?.xguard?.url !== `${API}/mcp` || config.body[root]?.xguard?.type !== type) fail(`Invalid editor configuration: ${file}`);

@@ -9,7 +9,7 @@ function encodePaymentSignatureHeader(value) {
  * Payment payloads and recovery quotes are never logged or persisted by this SDK.
  */
 export function createXGuardOutcomeClient({ payer, maxAmountAtomic = "0", network = "eip155:8453",
-  baseUrl = "https://api.xguardgate.com", fetchImpl = globalThis.fetch, headers = {} } = {}) {
+  baseUrl = "https://api.xguardgate.com", fetchImpl = globalThis.fetch, headers = {}, onPaymentPrepared } = {}) {
   if (!/^\d+$/.test(String(maxAmountAtomic))) throw new Error("maxAmountAtomic must be an integer string");
   const assets = { "eip155:8453": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", "eip155:84532": "0x036cbd53842c5426634e7929541ec2318f3dcf7e" };
   if (!assets[network]) throw new Error("Select a supported USDC network");
@@ -37,6 +37,9 @@ export function createXGuardOutcomeClient({ payer, maxAmountAtomic = "0", networ
       const payload = await payer.createPaymentPayload(challenge);
       const paidHeaders = { ...requestHeaders, "x-xguard-quote": quote, "payment-signature": encodePaymentSignatureHeader(payload) };
       const recovery = { payment_identifier: challenge.extensions?.["payment-identifier"]?.info?.id, quote };
+      // Let a caller durably save recovery before the authorization is submitted.
+      // A persistence failure must stop here, before any paid HTTP request.
+      if (onPaymentPrepared) await onPaymentPrepared({ ...recovery });
       // A transient transport failure retries exactly the same authorization. Never
       // create a second payment just because delivery of the first response is unknown.
       try {
