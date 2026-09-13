@@ -155,8 +155,8 @@ jobs:
           const names = file => (JSON.parse(fs.readFileSync(file, 'utf8')).result?.tools || []).map(x => x.name).sort();
           const api = names('/tmp/api-tools.json');
           const site = names('/tmp/site-tools.json');
-          for (const required of ['xguard_facilitator','xguard_route','xguard_discovery_search','xguard_health','xguard_supported']) if (!api.includes(required)) process.exit(1);
-          if (api.length < 10 || JSON.stringify(api) !== JSON.stringify(site)) process.exit(1);
+          for (const required of ['xguard_discover','xguard_execute','xguard_get_result']) if (!api.includes(required)) process.exit(1);
+          if (api.length !== 3 || JSON.stringify(api) !== JSON.stringify(site)) process.exit(1);
           console.log(JSON.stringify({canonical_mcp_tools: api.length, aliases_identical: true}));
           NODE
 
@@ -169,7 +169,8 @@ jobs:
           done
 
           page="$(curl --fail --silent --show-error --max-time 8 'https://xguardgate.com/?facilitator-component=5.1.0')"
-          printf '%s' "$page" | grep -q 'Secretless'
+          printf '%s' "$page" | grep -q 'Three sources.'
+          printf '%s' "$page" | grep -q 'Run free extraction'
           printf '%s' "$page" | grep -q 'rel="canonical"'
           printf '%s' "$page" | grep -q 'application/ld+json'
           printf '%s' "$page" | grep -qi 'x402'
