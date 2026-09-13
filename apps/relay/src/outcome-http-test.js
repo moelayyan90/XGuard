@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { runInNewContext } from "node:vm";
+import { parseHTML } from "linkedom";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
 import { canonicalize } from "@x402/extensions/offer-receipt";
 import app, { PaidGatewayState, ProofAuthority } from "./canonical-entry.js";
@@ -212,6 +214,66 @@ test("the payment helper never signs beyond its budget and private DNS blocks eg
   await assert.rejects(client.execute({ intent: "Extract page", url: "https://source.example.org/" }), /budget/); assert.equal(signed, 0);
   const result = await h.buy({ intent: "Extract page", url: "https://source.example.org/" }); assert.equal(result.response.status, 502);
   assert.ok((await result.response.json()).error.details.execution_credit); assert.equal(h.counts.upstream, 0);
+});
+
+test("self-serve pages expose an own-HTML trial and a priced customer purchase instead of duplicate homepages", async t => {
+  const h = await harness(t);
+  const page = async path => (await h.request(path, undefined, { "x-test-site": "site" })).text();
+  const trial = await page("/try");
+  assert.match(trial, /id="preview-html"/);
+  assert.match(trial, /Extract my HTML free/);
+  assert.match(trial, /TextEncoder/);
+  const pricing = await page("/pricing");
+  assert.match(pricing, /<table>/);
+  assert.match(pricing, /0\.006000 USDC/);
+  assert.match(pricing, /\/developers\?capability=product-offers#paid-execution/);
+  const developer = await page("/developers?capability=product-offers");
+  assert.match(developer, /outcome-buy\.mjs --pay --max-amount-atomic 6000/);
+  assert.match(developer, /XGUARD_PAYER_PRIVATE_KEY/);
+  assert.match(developer, /YOUR FIRST RESULT/);
+  assert.doesNotMatch(developer, /outcome-paid\.mjs/);
+  const preview = await (await h.request("/v1/execute", { intent: "demo", html: "<main><h1>Customer document</h1><p>Actual supplied text.</p></main>" })).json();
+  assert.equal(preview.ok, true);
+  assert.match(JSON.stringify(preview.result), /Actual supplied text/);
+  assert.equal(h.counts.settle, 0); assert.equal(h.counts.upstream, 0);
+  const { document } = parseHTML(trial);
+  let submitted;
+  let calls = 0;
+  const browserScript = trial.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1];
+  runInNewContext(browserScript, { document, TextEncoder, fetch: async (_url, init) => {
+    calls++; submitted = JSON.parse(init.body);
+    return { ok: true, json: async () => ({ ok: true, result: { text: "<script>untrusted()</script>" } }) };
+  } });
+  document.getElementById("preview-html").value = "<main>Customer content</main>";
+  document.getElementById("preview-own").click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(submitted, { intent: "demo", html: "<main>Customer content</main>" });
+  assert.equal(document.getElementById("next-step").hidden, false);
+  assert.equal(document.getElementById("result").querySelector("script"), null);
+  document.getElementById("preview-html").value = "ع".repeat(7000);
+  document.getElementById("preview-own").click();
+  assert.equal(calls, 1);
+  assert.match(document.getElementById("status").textContent, /12 KiB/);
+});
+
+test("recovery persistence completes before paid submission and a persistence failure cannot charge", async t => {
+  const h = await harness(t);
+  let recovery;
+  const options = { baseUrl: h.base, maxAmountAtomic: "3000", payer: { createPaymentPayload: async c => h.payload(c) } };
+  const body = { intent: "Extract page", url: "https://source.example.org/" };
+  const blocked = createXGuardOutcomeClient({ ...options, onPaymentPrepared: async () => { throw new Error("disk unavailable"); } });
+  await assert.rejects(blocked.execute(body), /disk unavailable/);
+  assert.equal(h.counts.settle, 0); assert.equal(h.counts.upstream, 0);
+  const client = createXGuardOutcomeClient({ ...options, onPaymentPrepared: async value => {
+    assert.equal(h.counts.settle, 0);
+    recovery = structuredClone(value);
+    assert.match(recovery.payment_identifier, /^pay_/);
+    assert.ok(recovery.quote);
+  } });
+  const delivered = await client.execute(body);
+  assert.equal(delivered.ok, true);
+  assert.deepEqual((await client.getResult(recovery)).result, delivered.result);
+  assert.equal(h.counts.settle, 1); assert.equal(h.counts.upstream, 1);
 });
 
 test("failed paid outcomes redeem once and retain a canonical signed result for credit replay and read-only recovery", async t => {
