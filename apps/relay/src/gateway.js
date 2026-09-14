@@ -1,4 +1,5 @@
 import relay from "./index.js";
+import { paymentContextDigest } from "./core/payment-context.js";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { base } from "viem/chains";
 
@@ -108,6 +109,7 @@ function successResponse(record, replayed = false) {
     "x-xguard-receipt-id": record.receipt_id,
     "x-xguard-recovered": record.recovered ? "1" : "0",
     "x-xguard-resolution": record.resolution || "confirmed",
+    "x-xguard-payment-context": replayed ? "durable_receipt" : "verified_per_request",
     ...(replayed ? { "x-xguard-idempotent-replay": "1" } : {})
   });
 }
@@ -117,9 +119,19 @@ async function handleSettle(request, env) {
   try { body = JSON.parse(await request.clone().text()); } catch { return relay.fetch(request, env); }
   const identity = paymentIdentity(body);
   const id = await receiptId(identity);
+  const requestDigest = await paymentContextDigest(body);
   if (id) {
     const prior = await getReceipt(env, id);
-    if (prior?.status === "confirmed" && String(prior.pay_to || "").toLowerCase() === String(identity.payTo || "").toLowerCase()) return successResponse(prior, true);
+    if (prior?.status === "confirmed") {
+      const same = prior.network === identity.network
+        && String(prior.pay_to || "").toLowerCase() === String(identity.payTo || "").toLowerCase()
+        && String(prior.asset || "").toLowerCase() === String(identity.asset || "").toLowerCase()
+        && String(prior.payer || "").toLowerCase() === String(identity.from || "").toLowerCase()
+        && String(prior.amount) === String(identity.amount)
+        && (!prior.request_digest || prior.request_digest === requestDigest);
+      if (!same) return json({ success: false, errorReason: "settlement_context_conflict" }, 409);
+      return successResponse(prior, true);
+    }
   }
 
   const response = await relay.fetch(request, env);
@@ -128,7 +140,7 @@ async function handleSettle(request, env) {
   const success = response.ok && (data?.success === true || data?.settled === true);
   if (success && id) {
     const record = {
-      receipt_id: id, status: "confirmed", transaction: txHashFrom(data, text), network: identity.network,
+      receipt_id: id, request_digest: requestDigest, status: "confirmed", transaction: txHashFrom(data, text), network: identity.network,
       payer: identity.from, pay_to: identity.payTo, asset: identity.asset, amount: identity.amount,
       recovered: response.headers.get("x-xguard-recovered") === "1", resolution: response.headers.get("x-xguard-recovered") === "1" ? "authorization_recovered" : "upstream",
       upstream: response.headers.get("x-xguard-upstream") || "", created_at: new Date().toISOString()
@@ -138,13 +150,13 @@ async function handleSettle(request, env) {
     return new Response(response.body, { status: response.status, headers });
   }
 
-  if (response.status >= 500 && id) {
+  if (response.status >= 500 && id && response.headers.get("x-xguard-payment-context") === "verified_per_request") {
     const late = await recoverLateBase(env, identity, data, text);
     if (late?.transaction) {
       const key = bearer(request);
       if (key) await consumeRecoveredCredit(env, key, id); else await confirmRecoveredFree(env, identity.payTo, identity.nonce);
       const record = {
-        receipt_id: id, status: "confirmed", transaction: late.transaction, network: identity.network,
+        receipt_id: id, request_digest: requestDigest, status: "confirmed", transaction: late.transaction, network: identity.network,
         payer: identity.from, pay_to: identity.payTo, asset: identity.asset, amount: identity.amount,
         recovered: true, resolution: late.resolution, upstream: response.headers.get("x-xguard-upstream") || "direct-base-poll",
         created_at: new Date().toISOString()

@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - "apps/relay/src/index.js"
+      - "apps/relay/src/control-plane.js"
+      - "apps/relay/src/core/payment-context.js"
+      - "apps/relay/src/gateway.js"
+      - "apps/relay/test/payment-context*.mjs"
       - "apps/relay/src/x402-market.js"
       - "apps/relay/src/rail-entry.js"
       - "apps/relay/src/secure-entry.js"
@@ -19,6 +23,10 @@ on:
     branches: [main]
     paths:
       - "apps/relay/src/index.js"
+      - "apps/relay/src/control-plane.js"
+      - "apps/relay/src/core/payment-context.js"
+      - "apps/relay/src/gateway.js"
+      - "apps/relay/test/payment-context*.mjs"
       - "apps/relay/src/x402-market.js"
       - "apps/relay/src/rail-entry.js"
       - "apps/relay/src/secure-entry.js"
@@ -59,7 +67,9 @@ jobs:
           node --check apps/relay/src/site-egress.js
           node --check apps/relay/test/settlement-safety.mjs
       - name: Settlement safety behavior
-        run: node apps/relay/test/settlement-safety.mjs
+        run: |
+          node apps/relay/test/settlement-safety.mjs
+          node --test apps/relay/test/payment-context.mjs
       - name: Secretless Egress unit behavior
         run: node --test apps/relay/src/egress-vault-test.js
       - name: Contract assertions

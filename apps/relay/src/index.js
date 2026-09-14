@@ -1,5 +1,6 @@
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { base } from "viem/chains";
+import { inspectPayment, createTrustedVerifiedPaymentContext } from "./core/payment-context.js";
 
 const VERSION = "2.5.0";
 const BASE_CAIP = "eip155:8453";
@@ -244,8 +245,27 @@ async function doVerify(request, env) {
 }
 
 async function doSettle(request, env) {
-  const { parsed, raw } = await bodyJson(request);
-  const identity = paymentIdentity(parsed);
+  const { parsed } = await bodyJson(request);
+  const inspection = inspectPayment(parsed);
+  if (!inspection.ok) return json({ success: false, errorReason: inspection.reason, detail: inspection.detail }, 400);
+  const raw = JSON.stringify(inspection.body);
+  const identity = paymentIdentity(inspection.body);
+  // /settle may land in a different isolate from /verify. Verify the full signed
+  // payment again here, before quota admission, billing or a settlement subrequest.
+  const verifyUrl = new URL(request.url); verifyUrl.pathname = "/verify";
+  const verifiedResponse = await doVerify(new Request(verifyUrl, {
+    method: "POST", headers: { "content-type": "application/json" }, body: raw,
+  }), env);
+  const verification = await verifiedResponse.json().catch(() => null);
+  if (!verifiedResponse.ok || verification?.isValid !== true) {
+    const reason = String(verification?.invalidReason || "payment_verification_failed");
+    return json({ success: false, errorReason: /^[a-zA-Z0-9_.:-]{1,120}$/.test(reason) ? reason : "payment_verification_failed", network: identity.network },
+      verifiedResponse.status >= 500 ? 503 : 400, { "x-xguard-payment-context": "verification_failed" });
+  }
+  let context;
+  try { context = await createTrustedVerifiedPaymentContext(inspection.body, verification, verifiedResponse.headers.get("x-xguard-upstream")); }
+  catch { return json({ success: false, errorReason: "verified_payment_context_mismatch", network: identity.network }, 400, { "x-xguard-payment-context": "verification_failed" }); }
+
   const billingIdempotency = await digestHex(raw);
   if (!identity.payTo) return json({ error: "missing_pay_to" }, 400);
   const key = bearer(request);
@@ -272,7 +292,7 @@ async function doSettle(request, env) {
     const route = routes[i];
     chosen = route;
     attempts += 1;
-    const result = await callUpstream(route, "settle", raw, 10000);
+    const result = await callUpstream(route, "settle", JSON.stringify(context.body), 10000);
     final = result;
     if (!result.retryable) break;
 
@@ -328,12 +348,16 @@ async function doSettle(request, env) {
     } else if (freeAdmission) {
       await quota(env, identity.payTo, "commit", identity.nonce || freeAdmission.data.nonce || "");
     }
-    console.log(JSON.stringify({ event: "settlement_success", network: identity.network, upstream: chosen, attempts, recovered, settlement_safety: settlementSafety, billed_credits: key ? feeUnits : 0, free: !key }));
+    console.log(JSON.stringify({ event: "settlement_success", payment_context: context.kind, payment_context_digest: context.request_digest, network: identity.network, upstream: chosen, attempts, recovered, settlement_safety: settlementSafety, billed_credits: key ? feeUnits : 0, free: !key }));
   } else if (!key && freeAdmission) {
     await quota(env, identity.payTo, "release", identity.nonce || freeAdmission.data.nonce || "");
   }
 
-  return relayResponse(final || { status: 503, error: "settlement_unavailable" }, chosen, recovered, { attempts: Math.max(1, attempts), safety: settlementSafety });
+  const response = relayResponse(final || { status: 503, error: "settlement_unavailable" }, chosen, recovered, { attempts: Math.max(1, attempts), safety: settlementSafety });
+  const headers = new Headers(response.headers);
+  headers.set("x-xguard-payment-context", "verified_per_request");
+  headers.set("x-xguard-payment-context-digest", context.request_digest);
+  return new Response(response.body, { status: response.status, headers });
 }
 
 async function proxySupported(env) {
