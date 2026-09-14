@@ -4,6 +4,13 @@ import { createServer } from "node:http";
 import { runInNewContext } from "node:vm";
 import { parseHTML } from "linkedom";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
+import { x402Client } from "@x402/core/client";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { wrapMCPClientWithPayment } from "@x402/mcp";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { validateDiscoveryExtension, isValidServiceName } from "@x402/extensions/bazaar";
 import { canonicalize } from "@x402/extensions/offer-receipt";
 import app, { PaidGatewayState, ProofAuthority } from "./canonical-entry.js";
 import { normalizeOutcome } from "./outcome-catalog.js";
@@ -59,9 +66,10 @@ async function harness(t, options = {}) {
     if (["one.one.one.one", "cloudflare-dns.com", "dns.google"].includes(url.hostname)) return new Response(JSON.stringify({ Status: 0, Answer: url.searchParams.get("type") === "A" ? [{ type: 1, data: options.privateDns ? "127.0.0.1" : "93.184.216.34" }] : [] }), { headers: JSON_HEADERS });
     if (url.hostname === "facilitator.test") {
       const body = JSON.parse(init.body);
-      if (url.pathname === "/verify") { counts.verify++; return new Response(JSON.stringify({ isValid: !options.rejectPayment, payer: PAYER }), { headers: JSON_HEADERS }); }
+      const payer = body.paymentPayload?.payload?.authorization?.from || PAYER;
+      if (url.pathname === "/verify") { counts.verify++; return new Response(JSON.stringify({ isValid: !options.rejectPayment, payer }), { headers: JSON_HEADERS }); }
       counts.settle++;
-      return new Response(JSON.stringify({ success: true, payer: PAYER, transaction: `0x${"2".repeat(64)}`, network: body.paymentRequirements.network }), { headers: JSON_HEADERS });
+      return new Response(JSON.stringify({ success: true, payer, transaction: `0x${"2".repeat(64)}`, network: body.paymentRequirements.network }), { headers: JSON_HEADERS });
     }
     counts.upstream++; assert.ok(counts.settle > 0, "No paid source access before a verified settlement");
     if (options.source) return options.source(url, init);
@@ -98,6 +106,81 @@ async function harness(t, options = {}) {
   };
   return { env, counts, request, payload, buy, base, logs };
 }
+
+test("Official funded MCP client can authorize, receive a result, and replay without XGuard-specific transport code", async t => {
+  const h = await harness(t);
+  const account = privateKeyToAccount(generatePrivateKey());
+  const payer = new x402Client().register("eip155:8453", new ExactEvmScheme(account));
+  let prepared, approvals = 0;
+  const client = wrapMCPClientWithPayment(new Client({ name: "xguard-compatibility-test", version: "1.0.0" }), payer, {
+    onPaymentRequested: ({ paymentRequired }) => {
+      approvals++;
+      assert.equal(h.counts.settle, 0); assert.equal(h.counts.upstream, 0);
+      return paymentRequired.accepts.length === 1 && paymentRequired.accepts[0].amount === "3000"
+        && paymentRequired.accepts[0].network === "eip155:8453" && paymentRequired.accepts[0].payTo === PAYEE;
+    },
+  });
+  client.onAfterPayment(({ paymentPayload }) => { prepared = paymentPayload; });
+  await client.connect(new StreamableHTTPClientTransport(new URL(`${h.base}/mcp`), {
+    requestInit: { headers: { "x-xguard-traffic-class": "synthetic" } },
+  }));
+  try {
+    await client.listTools();
+    const input = { intent: "Extract page", url: "https://source.example.org/item" };
+    const paid = await client.callTool("xguard_execute", input);
+    assert.equal(paid.isError, false); assert.equal(paid.paymentMade, true); assert.equal(approvals, 1);
+    assert.equal(paid.paymentResponse.success, true);
+    assert.equal(paid.paymentResponse.payer.toLowerCase(), account.address.toLowerCase());
+    assert.equal(JSON.parse(paid.content[0].text).result.documents[0].title, "Field notebook");
+    assert.equal(h.counts.settle, 1); assert.equal(h.counts.upstream, 1);
+    const replay = await client.callToolWithPayment("xguard_execute", input, prepared);
+    assert.equal(JSON.parse(replay.content[0].text).replay, true);
+    assert.equal(h.counts.settle, 1); assert.equal(h.counts.upstream, 1);
+    const altered = await client.callToolWithPayment("xguard_execute", { ...input, url: "https://backup.example.org/item" }, prepared);
+    assert.equal(altered.isError, true);
+    assert.equal(h.counts.settle, 1); assert.equal(h.counts.upstream, 1);
+  } finally { await client.close(); }
+});
+
+test("Paid HTTP discovery has a valid Bazaar declaration using public examples only", async t => {
+  const h = await harness(t);
+  for (const capability of ["web-extraction", "product-offers", "feed-digest"]) {
+    const response = await h.request("/v1/execute", { capability, urls: ["https://source.example.org/private-customer-query"] });
+    assert.equal(response.status, 402);
+    const challenge = await response.json();
+    assert.ok(challenge.extensions.bazaar);
+    const validation = validateDiscoveryExtension(challenge.extensions.bazaar);
+    assert.equal(validation.valid, true, JSON.stringify(validation));
+    assert.equal(challenge.extensions.bazaar.info.input.method, "POST");
+    assert.equal(isValidServiceName(challenge.resource.serviceName), true);
+    assert.equal(JSON.stringify(challenge.extensions.bazaar).includes("private-customer-query"), false);
+    assert.equal(JSON.stringify(challenge.extensions.bazaar).includes(challenge.extensions.xguard.quote), false);
+  }
+  assert.equal(h.counts.settle, 0); assert.equal(h.counts.upstream, 0);
+});
+
+test("Native MCP requires approval and rejects malformed or conflicting payment transports", async t => {
+  const h = await harness(t);
+  const payer = new x402Client().register("eip155:8453", new ExactEvmScheme(privateKeyToAccount(generatePrivateKey())));
+  let asked = false;
+  const client = wrapMCPClientWithPayment(new Client({ name: "xguard-denied-payment-test", version: "1.0.0" }), payer,
+    { onPaymentRequested: () => { asked = true; return false; } });
+  await client.connect(new StreamableHTTPClientTransport(new URL(`${h.base}/mcp`), { requestInit: { headers: { "x-xguard-traffic-class": "synthetic" } } }));
+  try {
+    await client.listTools();
+    await assert.rejects(client.callTool("xguard_execute", { intent: "Get a technology news digest" }), /Payment request denied/);
+    assert.equal(asked, true);
+  } finally { await client.close(); }
+  for (const [payment, headers] of [[null, {}], ["invalid", {}], [[], {}], [{}, { "payment-signature": "conflicting" }]]) {
+    const response = await h.request("/mcp", { jsonrpc: "2.0", id: 19, method: "tools/call", params: {
+      name: "xguard_execute", arguments: { intent: "Get a technology news digest" }, _meta: { "x402/payment": payment },
+    } }, headers);
+    assert.equal(response.status, 200);
+    const value = await response.json();
+    assert.equal(value.result.isError, true); assert.equal(value.result.structuredContent.error_code, "payment_payload_invalid");
+  }
+  assert.equal(h.counts.verify, 0); assert.equal(h.counts.settle, 0); assert.equal(h.counts.upstream, 0);
+});
 
 test("FLOW 1 and 7: anonymous root discovery reaches a free useful extraction in two HTTP requests", async t => {
   const h = await harness(t);

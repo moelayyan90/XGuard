@@ -15,7 +15,7 @@ export function onboardingPage(path, items, requested) {
   if (path === "/developers" || path === "/connect") return {
     title: "XGuard developer quickstart — Free preview to paid execution", heading: "Get a result.<br>Then connect your agent.",
     description: "Try the parser free, choose a live outcome and run a budget-capped x402 purchase with the official payment client.",
-    content: paidSteps,
+    content: (selected ? `<section><h2>Already have a funded x402 agent?</h2><p>Connect your payment-capable MCP client to <code>https://api.xguardgate.com/mcp</code> and call <code>xguard_execute</code> with:</p><pre>${escape(JSON.stringify(selected.example, null, 2))}</pre><p>Your client receives the exact price and requests authorization through the standard x402 MCP payment flow. Configure its spending limit before enabling payment. A plain MCP installation does not include a wallet.</p><p><a href="https://docs.cdp.coinbase.com/x402/buyer/mcp-payments">Official x402 MCP client setup</a> · <a href="https://github.com/moelayyan90/XGuard#javascript-python-mcp-and-a2a">XGuard payment and recovery contract</a></p></section>` : "") + paidSteps,
   };
   if (path === "/try") return {
     title: "Try XGuard — Extract your HTML for free", heading: "Try your own HTML.<br>See the result free.",

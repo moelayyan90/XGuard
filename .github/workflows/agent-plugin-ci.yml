@@ -12,6 +12,8 @@ on:
       - "CONNECT.md"
       - "apps/relay/src/product-entry.js"
       - "apps/relay/src/paid-agent-entry.js"
+      - "apps/relay/src/outcome-entry.js"
+      - "scripts/expected-mcp-tools.json"
       - "apps/relay/src/egress-entry.js"
       - ".github/workflows/agent-plugin-ci.yml"
   push:
@@ -26,6 +28,8 @@ on:
       - "CONNECT.md"
       - "apps/relay/src/product-entry.js"
       - "apps/relay/src/paid-agent-entry.js"
+      - "apps/relay/src/outcome-entry.js"
+      - "scripts/expected-mcp-tools.json"
       - "apps/relay/src/egress-entry.js"
       - ".github/workflows/agent-plugin-ci.yml"
   workflow_dispatch:
@@ -67,7 +71,7 @@ jobs:
           for (const expected of ['XGuard Universal Paid AI Agent + Secretless Gateway','claude mcp add xguard --transport http https://api.xguardgate.com/mcp','xguard.web.fetch','xguard_egress_fetch','signed prices']) if (!connect.includes(expected)) throw new Error(`CONNECT.md missing ${expected}`);
           NODE
 
-      - name: Verify current live MCP remains backward compatible before deploy
+      - name: Verify current live outcome catalog and legacy egress guard
         shell: bash
         run: |
           set -euo pipefail
@@ -76,7 +80,12 @@ jobs:
           init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-agent-plugin-ci","version":"1.0.0"}}}')"
           printf '%s' "$init" | jq -e '.result.serverInfo as $s | (["xguard-secretless-agent-gateway","xguard-universal-paid-secretless-gateway"] | index($s.name)) != null and (["5.0.2","5.1.0"] | index($s.version)) != null' >/dev/null
           tools="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
-          printf '%s' "$tools" | jq -e '.result.tools | length >= 10' >/dev/null
-          for tool in xguard_secretless_egress xguard_egress_fetch xguard_proofrail xguard_verify_proof xguard_action_rail xguard_facilitator xguard_route; do
-            printf '%s' "$tools" | jq -e --arg tool "$tool" '.result.tools | any(.name == $tool)' >/dev/null
-          done
+          printf '%s' "$tools" | jq -e --slurpfile expected scripts/expected-mcp-tools.json '([.result.tools[].name] | sort) == ($expected[0] | sort)' >/dev/null
+          demo="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"xguard_execute","arguments":{"intent":"demo"}}}')"
+          printf '%s' "$demo" | jq -e '.result.structuredContent | .ok == true and .cost.amount_atomic == "0" and .result.network_calls == 0' >/dev/null
+          # Compatibility tools stay callable without polluting the primary catalog.
+          legacy="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"xguard_secretless_egress","arguments":{}}}')"
+          printf '%s' "$legacy" | jq -e '.result.structuredContent.name == "XGuard Secretless Egress"' >/dev/null
+          status="$(curl --silent --show-error --max-time 15 -o /tmp/xguard-unauthorized-egress.json -w '%{http_code}' -X POST https://api.xguardgate.com/v1/egress/fetch -H 'content-type: application/json' --data '{"target":"https://example.com/"}')"
+          test "$status" = "401"
+          jq -e '.error == "valid_xguard_capability_required"' /tmp/xguard-unauthorized-egress.json >/dev/null
