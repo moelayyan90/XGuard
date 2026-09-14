@@ -79,6 +79,12 @@ if (first.body.ok !== true || first.body.cost.amount_atomic !== "0" || !first.bo
 const outcome402 = await fetch(`${API}/v1/execute`, { method: "POST", headers: { "content-type": "application/json", "x-xguard-traffic-class": "synthetic" }, body: JSON.stringify({ intent: "Get a technology news digest" }), signal: AbortSignal.timeout(12000) });
 const challenge = await outcome402.json();
 if (outcome402.status !== 402 || challenge.accepts?.[0]?.amount !== "2000" || !outcome402.headers.get("x-xguard-quote") || !challenge.will_return) fail("The paid intent has no exact actionable price");
+if (challenge.extensions?.bazaar?.info?.input?.method !== "POST" || challenge.resource?.serviceName !== "XGuard" || challenge.accepts[0].extra?.paymentFlow !== "upfront") fail("The paid intent is missing current discovery or upfront-payment metadata");
+const mcpPrice = await getJson(`${API}/mcp`, { method: "POST", headers: { "content-type": "application/json" },
+  body: JSON.stringify({ jsonrpc: "2.0", id: 71, method: "tools/call", params: { name: "xguard_execute", arguments: { intent: "Get a technology news digest" } } }) });
+const mcpChallenge = mcpPrice.body.result?.structuredContent;
+if (mcpPrice.body.id !== 71 || mcpPrice.body.result?.isError !== true || mcpChallenge?.x402Version !== 2 || mcpChallenge.accepts?.[0]?.amount !== "2000"
+  || JSON.stringify(mcpChallenge) !== mcpPrice.body.result.content?.[0]?.text || !mcpChallenge.extensions?.xguard?.quote) fail("An ordinary paid MCP client cannot recognize the payment challenge");
 
 const preflight = await getJson(`${API}/v1/preflight`);
 if (preflight.body.name !== "xguard.preflight" || preflight.body.target_contacted !== false || preflight.body.response?.next?.execution_url !== `${API}/v1/tools/web.fetch` || preflight.body.response?.next?.expected_first_status !== 402) fail("Preflight discovery is stale or missing the direct execution step");
@@ -126,4 +132,4 @@ if (!codex.ok || !codexText.includes("[mcp_servers.xguard]") || !codexText.inclu
 const www = await fetch("https://www.xguardgate.com/connect?verification=1", { headers: syntheticHeaders, redirect: "manual", signal: AbortSignal.timeout(12_000) });
 if (www.status !== 308 || www.headers.get("location") !== `${SITE}/connect?verification=1`) fail("www canonical redirect is not active");
 
-console.log(JSON.stringify({ ok: true, name: NAME, version: VERSION, mcp_tools: names.size, developer_quickstart: true, free_result: true, paid_intent_402: true, real_payment_performed: false, editor_configs: 4, www_redirect: 308 }));
+console.log(JSON.stringify({ ok: true, name: NAME, version: VERSION, mcp_tools: names.size, developer_quickstart: true, free_result: true, paid_intent_402: true, native_mcp_payment_challenge: true, bazaar_metadata: true, real_payment_performed: false, editor_configs: 4, www_redirect: 308 }));

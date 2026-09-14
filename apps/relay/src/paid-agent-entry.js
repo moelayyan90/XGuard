@@ -1,7 +1,7 @@
 import { isPrivateIpv4, isPrivateIpv6, hostnameAllowed, publicDns } from "./core/network-policy.js";
 import { pricingEconomics, executionEconomics } from "./core/unit-economics.js";
 import { secretlessCapability } from "./egress-entry.js";
-import { outcomeAmount, outcomeDefinition } from "./outcome-catalog.js";
+import { outcomeAmount, outcomeDefinition, EXECUTE_SCHEMA, RESULT_SCHEMA } from "./outcome-catalog.js";
 import { executeOutcome } from "./outcome-engine.js";
 import { applyOutcomeMetric, applyOutcomeCommerce, outcomeMetrics } from "./outcome-metrics.js";
 import { readBoundedBody } from "./core/execution-contract.js";
@@ -9,6 +9,7 @@ import app from "./product-entry.js";
 export * from "./product-entry.js";
 
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import {
   decodePaymentSignatureHeader,
   encodePaymentRequiredHeader,
@@ -822,6 +823,7 @@ export async function issueQuote(env, raw, id, observation = {}, outcomeInput = 
     aud: config.resource,
     quote_id: quoteId,
     payment_identifier: paymentIdentifier,
+    payment_flow: "upfront",
     tool: outcomeInput ? `xguard.${outcomeInput.capability}` : TOOL,
     input,
     input_digest: inputDigest,
@@ -1400,12 +1402,27 @@ function paymentRequirements(config, quote) {
       version: "2",
       quoteId: quote.quote_id,
       inputDigest: quote.input_digest,
+      // Keep outstanding pre-release quotes valid while explicitly declaring the
+      // settlement-before-execution flow on newly issued authorizations.
+      ...(quote.payment_flow ? { paymentFlow: quote.payment_flow } : {}),
     },
   };
 }
 
 async function paymentRequired(env, config, quoteToken, quote, id, reason = "payment_required", observation = {}) {
   const requirements = paymentRequirements(config, quote);
+  const outcome = outcomeDefinition(quote.input?.capability);
+  // Discovery must contain public examples, never the caller's URLs or quote.
+  // The payable resource is HTTP /v1/execute even when called through MCP.
+  const discovery = outcome ? declareDiscoveryExtension({
+    method: "POST", bodyType: "json", input: { ...outcome.example, capability: outcome.id },
+    inputSchema: { ...EXECUTE_SCHEMA, required: ["capability"], properties: { ...EXECUTE_SCHEMA.properties, capability: { const: outcome.id } } },
+    output: { schema: RESULT_SCHEMA, example: {
+      ok: true, intent: { capability: outcome.id }, capability: outcome.id,
+      result: { example_only: true }, verification: { content_truth_verified: false },
+      cost: { amount_atomic: config.amount, currency: "USDC" }, receipt: null,
+    } },
+  }) : {};
   const paymentIdentifierExtension = declarePaymentIdentifierExtension(true);
   paymentIdentifierExtension.info.id = quote.payment_identifier;
   const offer = await createOfferJWS(config.resource, {
@@ -1430,11 +1447,12 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
       url: config.resource,
       description: quote.input?.capability ? outcomeDefinition(quote.input.capability)?.delivery : "Fetch one bounded public HTTPS resource through XGuard with SSRF protection, source evidence, idempotent settlement and a signed receipt.",
       mimeType: "application/json",
-      serviceName: "XGuard Universal Paid AI Agent Gateway",
-      tags: ["ai-agent", "web-fetch", "x402", "secretless"],
+      serviceName: "XGuard",
+      tags: outcome ? [outcome.id, "public-sources", "x402"] : ["ai-agent", "web-fetch", "x402", "secretless"],
     },
     accepts: [requirements],
     extensions: {
+      ...discovery,
       "payment-identifier": paymentIdentifierExtension,
       "offer-receipt": {
         info: { offers: [offer] },

@@ -203,6 +203,10 @@ jobs:
           XGUARD_OPERATOR_KEY: ${{ secrets.XGUARD_OPERATOR_KEY }}
         run: node scripts/inspect-commercial.mjs
 
+      - name: Observe buyer marketplace discovery without making a payment
+        continue-on-error: true
+        run: node scripts/inspect-buyer-discovery.mjs
+
       - name: Roll back compatible code-only deployment after failed verification
         if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true'
         env:

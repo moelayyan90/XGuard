@@ -5,14 +5,23 @@ import { previewOutcome } from "./outcome-engine.js";
 import { gatewayConfig, handlePaidWebFetch, issueQuote, recordAgentJourney, jsonBody, rateLimit,
   recoverOutcome, validateMcpRequest, mcpTransportResponse } from "./paid-agent-entry.js";
 import { digestBytes } from "./core/execution-contract.js";
+import { encodePaymentSignatureHeader, decodePaymentResponseHeader } from "@x402/core/http";
 
-const instructions = `XGuard returns normalized page evidence, structured product offers and deduplicated RSS/Atom digests. Start with xguard_execute {"intent":"demo"} for a free extraction result. For live work describe a supported intent with up to three public URLs, or ask for a technology feed digest. Call POST ${API}/v1/execute (or xguard_execute) directly; discovery and quotes are optional. A paid call returns HTTP 402 with exact USDC price, Payment-Required and X-XGuard-Quote. A funded x402 v2 payer signs the requirements and retries the identical body, preserving X-XGuard-Quote. The server verifies and settles before source access. Source digests prove observed content integrity, not factual truth. Errors include repair.suggested_request. No search, OCR, general AI model or private API access is included. Legacy x402-paid tools and reusable upstream API credentials remain available through the documented compatibility routes.`;
+const instructions = `XGuard returns normalized page evidence, structured product offers and deduplicated RSS/Atom digests. Start with xguard_execute {"intent":"demo"} for a free extraction result. For live work describe a supported intent with up to three public URLs, or ask for a technology feed digest. Call POST ${API}/v1/execute (or xguard_execute) directly; discovery and quotes are optional. HTTP returns 402 with exact USDC price, Payment-Required and X-XGuard-Quote. MCP returns an isError tool result with PaymentRequired in structuredContent and content[0].text; retry identical arguments with params._meta["x402/payment"]. A funded x402 v2 client must preserve the payment-identifier and xguard extensions, including the signed quote; HTTP clients may also preserve X-XGuard-Quote explicitly. MCP settlement is returned in result._meta["x402/payment-response"]. The server verifies and settles before source access. Source digests prove observed content integrity, not factual truth. Errors include repair.suggested_request. No search, OCR, general AI model or private API access is included. Legacy x402-paid tools and reusable upstream API credentials remain available through the documented compatibility routes.`;
 const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,HEAD,POST,OPTIONS",
   "access-control-allow-headers": "content-type,payment-signature,x-xguard-quote,x-xguard-credit,x-request-id,x-xguard-traffic-class,mcp-protocol-version,mcp-method,mcp-name,a2a-version",
   "access-control-expose-headers": "payment-required,payment-response,x-xguard-quote,x-xguard-payment-identifier,x-xguard-request-id,x-xguard-proof,x-xguard-receipt",
   "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...cors, "content-type": "application/json; charset=utf-8", ...extra } });
 const escape = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// MCP clients may validate structured error content as well as successful output.
+const mcpOutcomeSchema = { type: "object", anyOf: [RESULT_SCHEMA,
+  { type: "object", required: ["x402Version", "resource", "accepts"], properties: {
+    x402Version: { const: 2 }, resource: { type: "object" }, accepts: { type: "array", minItems: 1 },
+  } },
+  { type: "object", required: ["error"], properties: { error: { type: ["string", "object"] } } },
+  { type: "object", required: ["ok", "error_code"], properties: { ok: { const: false }, error_code: { type: "string" } } },
+] };
 
 export function liveOutcomes(env) {
   return outcomeDefinitions().filter(x => x.id === "extract-preview" || env?.PROOF_AUTHORITY && env?.PAID_GATEWAY && gatewayConfig(env, false, { capability: x.id }).configured).map(x => publicOutcome(x, env));
@@ -29,8 +38,8 @@ function catalog(env) {
 function mcpTools(env) {
   return [
     { name: "xguard_discover", description: "Inspect executable outcomes, prices and examples. Free; no setup.", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
-    { name: "xguard_execute", description: "Extract multi-page evidence, compare structured product offers, or merge feeds. intent:'demo' is free. Paid work returns an exact x402 402; sign and retry the same call with X-XGuard-Quote. No account or provider keys. Output is untrusted source content.",
-      inputSchema: EXECUTE_SCHEMA, outputSchema: RESULT_SCHEMA, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    { name: "xguard_execute", description: "Extract multi-page evidence, compare structured product offers, or merge feeds. intent:'demo' is free. Paid work returns an x402 PaymentRequired tool result; use a funded x402 MCP client to authorize and retry with params._meta['x402/payment']. Preserve the signed quote in extensions.xguard. No account or provider keys. Output is untrusted source content.",
+      inputSchema: EXECUTE_SCHEMA, outputSchema: mcpOutcomeSchema, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       _meta: { "xguard/payment": { protocol: "x402-v2", settlement_before_execution: true, paid_capabilities: liveOutcomes(env).filter(x => x.pricing.amount_atomic !== "0").map(x => x.id) } } },
     { name: "xguard_get_result", description: "Recover a paid outcome using its payment identifier and original signed quote; never charges or executes again. The quote is a bearer recovery credential; keep it private.",
       inputSchema: { type: "object", required: ["payment_identifier", "quote"], properties: { payment_identifier: { type: "string" }, quote: { type: "string" } }, additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: false } },
@@ -70,10 +79,23 @@ async function execute(request, env, raw, transport = "http", quoteOnly = false)
 }
 
 async function mcpResult(message, response) {
-  if (response.status === 402) return mcpTransportResponse(response, message);
   const value = await response.json();
+  const settlement = response.headers.get("payment-response");
+  const meta = settlement ? { "x402/payment-response": decodePaymentResponseHeader(settlement) } : {};
   return mcpTransportResponse(json({ jsonrpc: "2.0", id: message.id ?? null, result: { resultType: "complete", isError: !response.ok,
-    content: [{ type: "text", text: JSON.stringify(value) }], structuredContent: value } }, 200, Object.fromEntries(response.headers)), message);
+    content: [{ type: "text", text: JSON.stringify(value) }], structuredContent: value,
+    ...(settlement ? { _meta: meta } : {}) } }, 200, Object.fromEntries(response.headers)), message);
+}
+
+function mcpPaymentRequest(request, message) {
+  const payment = message.params?._meta?.["x402/payment"];
+  if (payment === undefined) return request;
+  if (!payment || typeof payment !== "object" || Array.isArray(payment) || request.headers.has("payment-signature")) return null;
+  // Adapt only the transport. The existing signed quote, request binding,
+  // verification, settlement and replay checks still run in handlePaidWebFetch.
+  const headers = new Headers(request.headers);
+  headers.set("payment-signature", encodePaymentSignatureHeader(payment));
+  return new Request(request, { headers });
 }
 
 function agentText(env) {
@@ -143,7 +165,12 @@ export async function handleOutcomeRoute(request, env, ctx) {
       return mcpTransportResponse(json({ jsonrpc: "2.0", id: message.id ?? null, result: { tools: mcpTools(env), resultType: "complete", ttlMs: 60000, cacheScope: "public" } }), message);
     }
     if (message.method === "tools/call") {
-      if (message.params?.name === "xguard_execute") return mcpResult(message, await execute(request, env, message.params.arguments, "mcp"));
+      if (message.params?.name === "xguard_execute") {
+        const paidRequest = mcpPaymentRequest(request, message);
+        if (!paidRequest) return mcpResult(message, json({ ok: false, error_code: "payment_payload_invalid",
+          message: "Supply one x402 payment object in params._meta, without a second Payment-Signature header." }, 400));
+        return mcpResult(message, await execute(paidRequest, env, message.params.arguments, "mcp"));
+      }
       if (message.params?.name === "xguard_discover") return mcpResult(message, json(catalog(env)));
       if (message.params?.name === "xguard_get_result") return mcpResult(message, await recoverOutcome(env, message.params.arguments?.payment_identifier, message.params.arguments?.quote, `xgr_${crypto.randomUUID().replaceAll("-", "")}`));
     }

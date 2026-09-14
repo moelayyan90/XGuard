@@ -80,6 +80,20 @@ The [MCP endpoint](https://api.xguardgate.com/mcp) lists only `xguard_discover`,
 `xguard_execute` and `xguard_get_result`. Call `xguard_execute` with `{"intent":"demo"}`.
 [Editor configurations](https://xguardgate.com/developers) are ready to copy.
 
+Funded agents can use the official `@x402/mcp` client directly. A paid MCP call returns
+an HTTP 200 JSON-RPC tool result with `isError: true` and the payment requirements in
+both `structuredContent` and `content[0].text`. The client retries identical arguments
+with `params._meta["x402/payment"]`. Preserve the challenge extensions: they carry the
+payment identifier and signed, input-bound XGuard quote. Successful settlement is
+returned in `result._meta["x402/payment-response"]`. The tool output schema covers
+successful results, price challenges and errors so standard MCP validation succeeds.
+Installing a plain MCP client still does not supply payment capability or funds.
+
+HTTP execution retains its 402/header flow. New quotes explicitly declare
+`extra.paymentFlow: "upfront"`; outstanding older quotes retain their original terms.
+The existing bounded payer/recovery example remains the easiest complete runnable
+purchase. No payment is necessary to inspect the price or try supplied HTML.
+
 For [A2A](https://api.xguardgate.com/.well-known/agent-card.json), use `SendMessage`
 with one user part: `{"text":"demo"}` or `{"data":{"intent":"demo"}}`.
 The same four executable outcomes are the advertised skills.
