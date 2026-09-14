@@ -220,6 +220,24 @@ export async function decorateOutcomeResponse(request, response, env) {
     body.tags = [{ name: "Outcomes", description: "Primary intent execution" }, ...(body.tags || []).filter(x => x.name !== "Outcomes")];
     const responses = { "200": { description: "Normalized outcome with integrity metadata and receipt", content: { "application/json": { schema: RESULT_SCHEMA } } }, "402": { description: "Exact x402 payment requirement; preserve X-XGuard-Quote and retry identical input with Payment-Signature", headers: { "Payment-Required": { schema: { type: "string" } }, "X-XGuard-Quote": { schema: { type: "string" } } } }, "403": { description: "Unsafe target or recovery credential" }, "422": { description: "Self-describing repair.suggested_request" }, "429": { description: "Rate limit" }, "502": { description: "No usable source; execution credit retained" }, "503": { description: "Payment unavailable or settlement awaiting reconciliation" } };
     body.paths = { "/v1/execute": { post: { operationId: "xguardExecute", tags: ["Outcomes"], summary: "Execute a public-source outcome", security: [], requestBody: { required: true, content: { "application/json": { schema: EXECUTE_SCHEMA, example: { intent: "demo" } } } }, parameters: ["X-XGuard-Quote", "Payment-Signature", "X-XGuard-Credit"].map(name => ({ name, in: "header", required: false, schema: { type: "string" } })), responses } }, ...body.paths };
+    const available = liveOutcomes(env);
+    const paid = available.filter(item => item.pricing.amount_atomic !== "0");
+    const operation = body.paths["/v1/execute"].post;
+    const sample = (paid.find(item => item.id === "feed-digest") || paid[0] || available[0]).example;
+    operation.requestBody.content["application/json"].example = sample;
+    operation.requestBody.content["application/json"].schema = { ...EXECUTE_SCHEMA, examples: [sample],
+      properties: { ...EXECUTE_SCHEMA.properties, intent: { ...EXECUTE_SCHEMA.properties.intent, example: sample.intent } },
+      anyOf: ["intent", "capability", "html", "action", "desired_action", "command", "input", "arguments", "operation", "http", "task"].map(key => ({ required: [key] })),
+    };
+    operation.description = "Live public-source work requires x402 payment at the exact quoted price. The supplied-HTML preview (intent:demo) is free. An unsigned request only returns a price; it does not fetch sources or settle payment.";
+    if (paid.length) {
+      // A shared free/paid endpoint must advertise both behaviors. Without this
+      // extension, marketplaces classify security:[] as a wholly free API.
+      operation["x-payment-info"] = { protocols: [{ x402: {} }], price: {
+        mode: "dynamic", currency: "USD", min: "0",
+        max: (Math.max(...paid.map(item => Number(item.pricing.amount_atomic))) / 1e6).toFixed(6),
+      } };
+    }
     body.paths["/v1/capabilities"] = { get: { tags: ["Outcomes"], summary: "List executable outcomes and exact pricing", responses: { "200": { description: "Capabilities with input/output schemas and examples" } } } };
     body.paths["/v1/capabilities/{id}"] = { get: { tags: ["Outcomes"], parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }], responses: { "200": { description: "Executable capability" }, "404": { description: "Unavailable with alternatives" } } } };
     body.paths["/v1/results/{payment_identifier}"] = { get: { tags: ["Outcomes"], parameters: [{ in: "path", name: "payment_identifier", required: true, schema: { type: "string" } }, { in: "header", name: "X-XGuard-Quote", required: true, schema: { type: "string" } }], responses: { "200": responses["200"], "202": { description: "Pending or credited operation; no reexecution" }, "403": responses["403"], "404": { description: "Unknown operation" } } } };
