@@ -35,6 +35,10 @@ for (const path of ["/v1/execute", "/v1/capabilities/{id}", "/v1/results/{paymen
 if (!openapi.body.paths["/v1/preflight"]?.post) fail("OpenAPI is missing the guarded preflight path");
 if (!Array.isArray(openapi.body.paths["/v1/pricing/quote"].post?.requestBody?.content?.["application/json"]?.schema?.anyOf)) fail("OpenAPI is missing tolerant quote request envelopes");
 if (openapi.body.paths["/v1/tools/web.fetch"].post?.["x-xguard-payment-flow"]?.payment_required !== true) fail("OpenAPI does not make paid execution mandatory");
+const outcomeOperation = openapi.body.paths["/v1/execute"].post;
+if (!outcomeOperation["x-payment-info"]?.protocols?.some(protocol => protocol.x402)
+  || outcomeOperation["x-payment-info"].price?.mode !== "dynamic"
+  || !outcomeOperation.requestBody.content["application/json"].schema?.anyOf?.length) fail("OpenAPI does not expose paid outcome discovery and required intent examples");
 
 const plugin = await getJson(`${API}/.well-known/ai-plugin.json`);
 if (plugin.body.name_for_human !== NAME || plugin.body.xguard?.product_version !== VERSION || plugin.body.xguard?.primary_product !== "Universal Paid AI Agent + Secretless Gateway") fail("AI plugin has stale product taxonomy");

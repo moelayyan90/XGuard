@@ -38,6 +38,40 @@ Primary sources:
 - https://docs.cdp.coinbase.com/x402/buyer/mcp-payments
 - https://github.com/x402-foundation/x402/blob/main/specs/transports-v2/mcp.md
 
+## X402SCAN BUYER LISTING (2026-09-14)
+
+The public registration form accepted `/v1/execute` and `/v1/tools/web.fetch`.
+The resulting buyer page is live:
+https://www.x402scan.com/server/594cf7cc-9e89-4c89-9895-7a0895d7ac7d
+
+Its first view showed zero transactions, volume and buyers. Registration is not a
+sale. The mainnet fetch resource was priced, but the mixed free/paid outcome
+resource was initially classified as Public because its OpenAPI operation omitted
+`x-payment-info`. The OpenAPI declaration now supplies x402 pricing bounds, explains
+the free preview, and provides a valid paid-intent example for marketplace probes.
+No source is fetched and no payment settles when an unsigned probe requests a price.
+Runtime input validation, quoted prices and payment authorization remain enforced.
+
+The testnet fetch endpoint was not registered because the marketplace supports Base
+mainnet and Solana, not Base Sepolia. Forty other endpoints were skipped as
+unprotected; these are not forty broken paid products.
+
+Production release evidence:
+https://github.com/moelayyan90/XGuard/actions/runs/34839979890
+At 2026-09-14T11:48:20Z, Coinbase search returned no matching records with
+`partialResults:true`; its empty-POST validator reached our API and received 422.
+This is not evidence of a Coinbase listing or an exhaustive absence from its index.
+
+The xpay Tools monetization product is a separate payment proxy requiring publisher
+sign-in and receiving-wallet setup. Its documentation does not establish passthrough
+compatibility with XGuard's existing native paid challenge. No proxy was published
+and no second payment layer was added.
+
+Primary references:
+- https://github.com/Merit-Systems/x402scan/blob/main/docs/DISCOVERY.md
+- https://docs.xpay.sh/en/tools/publish/register-server
+- https://docs.xpay.sh/en/tools/publish/pricing-your-tools
+
 ## REQUIRES OWNER ACCOUNT ACTION
 
 - A wallet with usable USDC and signing authority for an external paid settlement test

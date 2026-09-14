@@ -273,6 +273,15 @@ test("FLOW 6: public capability pages, OpenAPI, MCP and A2A are linked to the sa
   for (const item of catalog.capabilities) { const page = await h.request(new URL(item.url).pathname, undefined, { "x-test-site": "site" }); assert.equal(page.status, 200); const text = await page.text(); assert.match(text, /rel="canonical"/); assert.ok(text.includes(item.id)); }
   const text = await (await h.request("/agent.txt")).text(); assert.match(text, /X-XGuard-Quote/);
   const openapi = await (await h.request("/openapi.json")).json(); assert.equal(openapi.paths["/v1/execute"].post.operationId, "xguardExecute");
+  const operation = openapi.paths["/v1/execute"].post;
+  assert.deepEqual(operation["x-payment-info"], { protocols: [{ x402: {} }], price: { mode: "dynamic", currency: "USD", min: "0", max: "0.006000" } });
+  const marketplaceProbe = await h.request("/v1/execute", operation.requestBody.content["application/json"].example);
+  assert.equal(marketplaceProbe.status, 402);
+  assert.equal((await marketplaceProbe.json()).capability, "feed-digest");
+  const samplerSchema = operation.requestBody.content["application/json"].schema;
+  const sampled = Object.fromEntries(samplerSchema.anyOf[0].required.map(key => [key, samplerSchema.properties[key].example]));
+  assert.equal((await h.request("/v1/execute", sampled)).status, 402);
+  assert.equal(h.counts.settle, 0); assert.equal(h.counts.upstream, 0);
   const listed = await (await h.request("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" })).json();
   assert.deepEqual(listed.result.tools.map(x => x.name), ["xguard_discover", "xguard_execute", "xguard_get_result"]);
   const mcp = await (await h.request("/mcp", { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "xguard_execute", arguments: { intent: "demo" } } })).json(); assert.equal(mcp.result.structuredContent.ok, true);
