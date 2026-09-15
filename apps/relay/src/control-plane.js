@@ -1,4 +1,5 @@
 import gateway from "./gateway.js";
+import { inspectPayment } from "./core/payment-context.js";
 
 const VERSION = "3.0.0";
 const BASE = "eip155:8453";
@@ -16,70 +17,7 @@ const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(b
     ...headers
   }
 });
-const isAddress = x => /^0x[0-9a-fA-F]{40}$/.test(String(x || ""));
-const isNonce = x => /^0x[0-9a-fA-F]{64}$/.test(String(x || ""));
-const lower = x => String(x ?? "").toLowerCase();
-const amount = x => {
-  const s = String(x ?? "");
-  if (/^[0-9]+$/.test(s)) { try { return BigInt(s).toString(); } catch {} }
-  return s;
-};
-const sameAddress = (a, b) => isAddress(a) && isAddress(b) ? lower(a) === lower(b) : String(a ?? "") === String(b ?? "");
-
-function extract(body) {
-  const requirements = body?.paymentRequirements || body?.requirements || body?.payment?.paymentRequirements || null;
-  const paymentPayload = body?.paymentPayload || body?.payment || body?.payload || null;
-  const accepted = paymentPayload?.accepted || body?.accepted || null;
-  const authorization = paymentPayload?.payload?.authorization || paymentPayload?.authorization || body?.authorization || null;
-  return { requirements, paymentPayload, accepted, authorization };
-}
-
-function block(reason, detail = {}) {
-  return { ok: false, reason, detail };
-}
-
-function inspectPayment(body) {
-  const { requirements: r, paymentPayload: p, accepted: a, authorization: z } = extract(body);
-  const versions = [body?.x402Version, p?.x402Version].filter(v => v !== undefined && v !== null && v !== "");
-  if (versions.some(v => Number(v) !== 2)) return block("unsupported_x402_version", { observed: versions });
-  if (!r || !p || !a) return block("missing_payment_context");
-
-  const required = ["scheme", "network", "asset", "payTo", "amount"];
-  for (const field of required) if (r[field] === undefined || r[field] === null || r[field] === "") return block(`missing_requirement_${field}`);
-  for (const field of required) if (a[field] === undefined || a[field] === null || a[field] === "") return block(`missing_accepted_${field}`);
-
-  if (String(r.scheme) !== String(a.scheme)) return block("scheme_binding_mismatch");
-  if (String(r.network) !== String(a.network)) return block("network_binding_mismatch");
-  if (!sameAddress(r.asset, a.asset)) return block("asset_binding_mismatch");
-  if (!sameAddress(r.payTo, a.payTo)) return block("recipient_binding_mismatch");
-  if (amount(r.amount) !== amount(a.amount)) return block("amount_binding_mismatch");
-
-  const baseExact = String(r.network) === BASE && String(r.scheme) === "exact";
-  const baseUsdc = baseExact && lower(r.asset) === lower(BASE_USDC);
-  if (baseUsdc) {
-    if (!z) return block("missing_eip3009_authorization");
-    if (!isAddress(z.from)) return block("invalid_authorizer");
-    if (!isAddress(z.to)) return block("invalid_authorization_recipient");
-    if (!isNonce(z.nonce)) return block("invalid_authorization_nonce");
-    if (!sameAddress(z.to, r.payTo)) return block("authorization_recipient_mismatch");
-    if (amount(z.value) !== amount(r.amount)) return block("authorization_amount_mismatch");
-
-    const now = Math.floor(Date.now() / 1000);
-    const before = Number(z.validBefore);
-    const after = Number(z.validAfter);
-    if (!Number.isFinite(before) || before <= now - 10) return block("authorization_expired");
-    if (!Number.isFinite(after) || after > now + 120) return block("authorization_not_yet_valid");
-  }
-
-  return {
-    ok: true,
-    mode: baseUsdc ? "base_usdc_strict" : "context_binding",
-    network: String(r.network),
-    scheme: String(r.scheme),
-    payTo: String(r.payTo),
-    amount: String(r.amount)
-  };
-}
+function block(reason, detail = {}) { return { ok: false, reason, detail }; }
 
 async function inspectRequest(request) {
   try {
@@ -104,10 +42,19 @@ function withPassHeaders(response, inspection) {
 async function protectedFlow(request, env, ctx) {
   const inspection = await inspectRequest(request);
   if (!inspection.ok) {
-    console.warn(JSON.stringify({ event: "firewall_block", path: new URL(request.url).pathname, reason: inspection.reason, detail: inspection.detail || null }));
+    console.warn(JSON.stringify({ event: "firewall_block", path: new URL(request.url).pathname, reason: inspection.reason, detail: inspection.detail || null,
+      caller: (request.headers.get("user-agent") || "unknown").replace(/[^\x20-\x7e]/g, "_").slice(0, 120),
+      cf_ray: (request.headers.get("cf-ray") || "").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64) || null,
+      traffic_class: request.headers.get("x-xguard-traffic-class") === "synthetic" ? "synthetic" : "unclassified" }));
     return json({ error: "xguard_firewall_block", reason: inspection.reason, detail: inspection.detail || undefined }, 400, { "x-xguard-firewall": "block", "x-xguard-firewall-reason": inspection.reason });
   }
-  const response = await gateway.fetch(request, env, ctx);
+  // Forward the same canonical envelope that passed binding validation.
+  // The full payment travels with every request; no prior /verify state is required.
+  const headers = new Headers(request.headers);
+  headers.delete("content-length");
+  headers.set("content-type", "application/json");
+  const normalized = new Request(request, { headers, body: JSON.stringify(inspection.body) });
+  const response = await gateway.fetch(normalized, env, ctx);
   return withPassHeaders(response, inspection);
 }
 
@@ -152,6 +99,7 @@ function docs(env) {
     },
     firewall: {
       x402_v2_validation: true,
+      payment_context: { required_in_each_request: ["paymentPayload", "paymentRequirements"], prior_verify_request_required: false, verification: "fresh configured-upstream verification before settlement", replay: "durable receipt bound to payment context", client_claimed_verification_trusted: false },
       requirement_to_accepted_binding: ["scheme", "network", "asset", "payTo", "amount"],
       base_usdc_eip3009_binding: ["from", "to", "value", "nonce", "validAfter", "validBefore"],
       recipient_binding: true,
@@ -177,6 +125,15 @@ function docs(env) {
 }
 
 function openapi(env) {
+  const paymentRequestBody = { required: true, content: { "application/json": { schema: {
+    type: "object", required: ["paymentPayload", "paymentRequirements"],
+    properties: {
+      x402Version: { const: 2 },
+      paymentPayload: { type: "object", required: ["x402Version", "accepted", "payload"], properties: { x402Version: { const: 2 }, accepted: { type: "object" }, payload: { type: "object" } } },
+      paymentRequirements: { type: "object", required: ["scheme", "network", "asset", "payTo", "amount"] },
+    },
+  } } } };
+
   return {
     openapi: "3.1.0",
     info: {
@@ -187,8 +144,8 @@ function openapi(env) {
     servers: [{ url: API }],
     paths: {
       "/supported": { get: { summary: "Return x402 payment kinds supported by healthy upstream facilitators", responses: { "200": { description: "Supported payment kinds" } } } },
-      "/verify": { post: { summary: "Firewall-check and verify an x402 payment payload", responses: { "200": { description: "Verification result" }, "400": { description: "Blocked by XGuard payment firewall" } } } },
-      "/settle": { post: { summary: "Firewall-check, route and settle an x402 payment with replay protection and reconciliation", responses: { "200": { description: "Settlement result" }, "400": { description: "Blocked by XGuard payment firewall" }, "402": { description: "XGuard usage credits required after free allowance" } } } },
+      "/verify": { post: { requestBody: paymentRequestBody, summary: "Firewall-check and verify an x402 payment payload", responses: { "200": { description: "Verification result" }, "400": { description: "Blocked by XGuard payment firewall" } } } },
+      "/settle": { post: { requestBody: paymentRequestBody, summary: "Firewall-check, route and settle an x402 payment with replay protection and reconciliation", responses: { "200": { description: "Settlement result" }, "400": { description: "Blocked by XGuard payment firewall" }, "402": { description: "XGuard usage credits required after free allowance" } } } },
       "/healthz": { get: { summary: "Control-plane and upstream health", responses: { "200": { description: "Health" } } } },
       "/v1/receipts/{receipt_id}": { get: { summary: "Read a durable XGuard settlement receipt", parameters: [{ name: "receipt_id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Receipt" }, "404": { description: "Not found" } } } }
     }

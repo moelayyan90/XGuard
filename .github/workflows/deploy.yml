@@ -194,6 +194,9 @@ jobs:
         id: identity_contract
         run: node scripts/verify-production-identity.mjs
 
+      - name: Verify stateless settlement context without a valid payment authorization
+        run: node scripts/verify-settlement-context.mjs
+
       - name: Verify outside-in MCP contract parity
         run: node scripts/verify-outside-in.mjs
 

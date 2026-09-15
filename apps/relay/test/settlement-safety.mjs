@@ -78,6 +78,7 @@ async function callSettle() {
   globalThis.fetch = async input => {
     const url = String(input);
     if (url.endsWith("/supported")) return supported();
+    if (url.endsWith("/verify")) return Response.json({ isValid: true, payer: "payer-test" });
     if (url.endsWith("/settle")) {
       settleCalls += 1;
       return new Response(JSON.stringify({ error: "upstream_internal_after_submission" }), {
@@ -103,6 +104,7 @@ async function callSettle() {
   globalThis.fetch = async input => {
     const url = String(input);
     if (url.endsWith("/supported")) return supported();
+    if (url.endsWith("/verify")) return Response.json({ isValid: true, payer: "payer-test" });
     if (url.endsWith("/settle")) {
       settleCalls += 1;
       if (settleCalls === 1) {
