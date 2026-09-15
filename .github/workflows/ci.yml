@@ -122,6 +122,7 @@ jobs:
         run: |
           node --check sdk/index.js
           node --check sdk/outcomes.js
+          node --test sdk/outcomes-test.mjs
           npm pack --dry-run --ignore-scripts
       - name: Wrangler dry run
         run: npx --yes wrangler@4.130.0 deploy --dry-run --config apps/relay/wrangler.jsonc

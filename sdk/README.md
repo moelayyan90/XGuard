@@ -1,5 +1,29 @@
 # XGuard SDK
 
+## Public-source outcomes
+
+`createXGuardOutcomeClient` from `xguard-x402-control-plane/outcomes` calls
+`/v1/execute`. Free previews work without a payer. Paid calls require a caller-owned
+x402 payer and an explicit `maxAmountAtomic` budget; the default budget is zero.
+See [the paid outcome example](examples/outcome-paid.mjs).
+
+Each HTTP attempt has a 30-second deadline, including reading its JSON body. Set
+`timeoutMs` to an integer from 1 to 300000 to change it. The deadline applies to
+free/quote requests, paid submissions and `getResult`; wallet approval and the
+`onPaymentPrepared` persistence callback are outside that network deadline.
+Custom `fetchImpl` implementations receive an `AbortSignal` and should honor it
+to release transport resources when the deadline expires.
+
+A paid transport failure or timeout retries once with the identical signed
+authorization, input and quote. The client never signs a second payment to resolve
+an uncertain response. Save the `onPaymentPrepared` recovery value durably before
+submission; a persistence failure stops the paid request. If both attempts fail,
+the error includes `recovery` for a later read-only `getResult(error.recovery)` call.
+Timeout errors have code `XGUARD_REQUEST_TIMEOUT`. A timeout does not prove whether
+the server settled or completed the job; do not start a new purchase to recover it.
+HTTP errors are not automatically retried, and their response data (including any
+execution credit) is preserved on `error.data`.
+
 ## Delegated API actions
 
 An operator provisions the vendor credential, prepays gateway credits and grants a scoped capability. An agent uses only that capability:
