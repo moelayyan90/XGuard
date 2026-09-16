@@ -1,6 +1,8 @@
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { base } from "viem/chains";
 import { inspectPayment, createTrustedVerifiedPaymentContext } from "./core/payment-context.js";
+import { settlementReceiptId, receiptOperation, putSettlementReceipt, settlementPendingResponse, settlementSuccessResponse } from "./core/settlement-receipt.js";
+import { receiptConfirmsAuthorization } from "./core/settlement-proof.js";
 
 const VERSION = "2.5.0";
 const BASE_CAIP = "eip155:8453";
@@ -23,11 +25,6 @@ const isNonce = value => /^0x[0-9a-fA-F]{64}$/.test(String(value || ""));
 const isBase = network => network === BASE_CAIP || network === BASE_LEGACY;
 const isSolana = network => String(network || "").startsWith("solana:") || network === "solana" || network === "solana-devnet";
 const now = () => Date.now();
-
-async function digestHex(value) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
-}
 
 function bearer(request) {
   const auth = (request.headers.get("authorization") || "").trim();
@@ -216,7 +213,7 @@ async function quota(env, payTo, action, nonce = "") {
 }
 
 async function recoverBase(env, identity) {
-  if (!isAddress(identity.from) || !isNonce(identity.nonce)) return null;
+  if (String(identity.asset).toLowerCase() !== BASE_USDC.toLowerCase() || !isAddress(identity.from) || !isNonce(identity.nonce)) return null;
   const client = createPublicClient({ chain: base, transport: http(env.BASE_RPC_URL || "https://mainnet.base.org", { timeout: 5000, retryCount: 1 }) });
   try {
     const used = await client.readContract({ address: BASE_USDC, abi: AUTH_STATE, functionName: "authorizationState", args: [identity.from, identity.nonce] });
@@ -225,7 +222,9 @@ async function recoverBase(env, identity) {
     const fromBlock = latest > 1500n ? latest - 1500n : 0n;
     const logs = await client.getLogs({ address: BASE_USDC, event: AUTH_USED, args: { authorizer: identity.from, nonce: identity.nonce }, fromBlock, toBlock: latest });
     if (!logs.length) return { used: true, ambiguous: true };
-    return { used: true, transaction: logs[logs.length - 1].transactionHash };
+    const transaction = logs[logs.length - 1].transactionHash;
+    const receipt = await client.getTransactionReceipt({ hash: transaction });
+    return receiptConfirmsAuthorization(receipt, identity) ? { used: true, transaction } : { used: true, ambiguous: true };
   } catch { return null; }
 }
 
@@ -266,98 +265,131 @@ async function doSettle(request, env) {
   try { context = await createTrustedVerifiedPaymentContext(inspection.body, verification, verifiedResponse.headers.get("x-xguard-upstream")); }
   catch { return json({ success: false, errorReason: "verified_payment_context_mismatch", network: identity.network }, 400, { "x-xguard-payment-context": "verification_failed" }); }
 
-  const billingIdempotency = await digestHex(raw);
-  if (!identity.payTo) return json({ error: "missing_pay_to" }, 400);
-  const key = bearer(request);
-  const feeUnits = Math.max(1, Number(env.SETTLEMENT_CREDITS || 2));
-  let freeAdmission = null;
-
-  if (key) {
-    const balance = await billingBalance(env, key);
-    if (!balance.ok) return json({ error: balance.status === 404 ? "unknown_xguard_license" : "billing_unavailable", checkout_url: env.XGUARD_CHECKOUT_URL || CHECKOUT_FALLBACK }, balance.status === 404 ? 401 : 503);
-    if (balance.credits < feeUnits) return json({ error: "insufficient_xguard_credits", credits: balance.credits, required: feeUnits, checkout_url: env.XGUARD_CHECKOUT_URL || CHECKOUT_FALLBACK }, 402);
-  } else {
-    freeAdmission = await quota(env, identity.payTo, "admit", identity.nonce || crypto.randomUUID());
-    if (freeAdmission.status !== 200) return json({ error: "xguard_credits_required", free_settlements_used: freeAdmission.data.success || Number(env.FREE_SETTLEMENTS || 25), checkout_url: env.XGUARD_CHECKOUT_URL || CHECKOUT_FALLBACK, authentication: "Authorization: Bearer <Lemon Squeezy license key>" }, 402);
+  const receiptId = await settlementReceiptId(identity);
+  let reservation = null;
+  let submitted = false;
+  if (receiptId) {
+    reservation = { receipt_id: receiptId, request_digest: context.request_digest,
+      reservation_token: crypto.randomUUID(), network: identity.network, payer: identity.from,
+      pay_to: identity.payTo, asset: identity.asset, amount: identity.amount };
+    const reserved = await receiptOperation(env, receiptId, "/reserve", reservation);
+    if (reserved.status === 409) return json({ success: false, errorReason: "settlement_context_conflict" }, 409);
+    if (!reserved.value.acquired) {
+      if (!reserved.value.record) return json({ success: false, errorReason: "settlement_state_unavailable" }, 503);
+      return reserved.value.record.status === "confirmed" ? settlementSuccessResponse(reserved.value.record, true) : settlementPendingResponse(reserved.value.record);
+    }
   }
+  try {
+    const billingIdempotency = context.request_digest;
+    if (!identity.payTo) return json({ error: "missing_pay_to" }, 400);
+    const key = bearer(request);
+    const feeUnits = Math.max(1, Number(env.SETTLEMENT_CREDITS || 2));
+    let freeAdmission = null;
 
-  const routes = await upstreams(env, identity);
-  let final = null;
-  let recovered = false;
-  let chosen = routes[0] || allUpstreams(env)[0];
-  let attempts = 0;
-  let settlementSafety = "direct";
+    if (key) {
+      const balance = await billingBalance(env, key);
+      if (!balance.ok) return json({ error: balance.status === 404 ? "unknown_xguard_license" : "billing_unavailable", checkout_url: env.XGUARD_CHECKOUT_URL || CHECKOUT_FALLBACK }, balance.status === 404 ? 401 : 503);
+      if (balance.credits < feeUnits) return json({ error: "insufficient_xguard_credits", credits: balance.credits, required: feeUnits, checkout_url: env.XGUARD_CHECKOUT_URL || CHECKOUT_FALLBACK }, 402);
+    } else {
+      freeAdmission = await quota(env, identity.payTo, "admit", identity.nonce || crypto.randomUUID());
+      if (freeAdmission.status !== 200) return json({ error: "xguard_credits_required", free_settlements_used: freeAdmission.data.success || Number(env.FREE_SETTLEMENTS || 25), checkout_url: env.XGUARD_CHECKOUT_URL || CHECKOUT_FALLBACK, authentication: "Authorization: Bearer <Lemon Squeezy license key>" }, 402);
+    }
 
-  for (let i = 0; i < routes.length; i++) {
-    const route = routes[i];
-    chosen = route;
-    attempts += 1;
-    const result = await callUpstream(route, "settle", JSON.stringify(context.body), 10000);
-    final = result;
-    if (!result.retryable) break;
+    const routes = await upstreams(env, identity);
+    let final = null;
+    let recovered = false;
+    let chosen = routes[0] || allUpstreams(env)[0];
+    let attempts = 0;
+    let settlementSafety = "direct";
 
-    if (isBase(identity.network)) {
-      const recovery = await recoverBase(env, identity);
-      if (recovery?.transaction) {
-        final = { status: 200, text: JSON.stringify({ success: true, payer: identity.from, transaction: recovery.transaction, network: identity.network || BASE_CAIP }), data: { success: true, payer: identity.from, transaction: recovery.transaction, network: identity.network || BASE_CAIP }, latencyMs: result.latencyMs, retryable: false };
-        recovered = true;
-        settlementSafety = "reconciled";
-        break;
-      }
-      if (recovery?.used) {
-        final = { status: 503, text: JSON.stringify({ success: false, errorReason: "settlement_state_ambiguous_nonce_used", network: identity.network || BASE_CAIP }), data: null, latencyMs: result.latencyMs, retryable: false };
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i];
+      chosen = route;
+      attempts += 1;
+      submitted = true;
+      const result = await callUpstream(route, "settle", JSON.stringify(context.body), 10000);
+      final = result;
+      if (!result.retryable) break;
+
+      if (isBase(identity.network)) {
+        const recovery = await recoverBase(env, identity);
+        if (recovery?.transaction) {
+          final = { status: 200, text: JSON.stringify({ success: true, payer: identity.from, transaction: recovery.transaction, network: identity.network || BASE_CAIP }), data: { success: true, payer: identity.from, transaction: recovery.transaction, network: identity.network || BASE_CAIP }, latencyMs: result.latencyMs, retryable: false };
+          recovered = true;
+          settlementSafety = "reconciled";
+          break;
+        }
+        if (recovery?.used) {
+          final = { status: 503, text: JSON.stringify({ success: false, errorReason: "settlement_state_ambiguous_nonce_used", network: identity.network || BASE_CAIP }), data: null, latencyMs: result.latencyMs, retryable: false };
+          settlementSafety = "fail-closed-ambiguous";
+          break;
+        }
+        if (recovery && recovery.used === false) {
+          settlementSafety = "reconciled-safe-retry";
+          continue;
+        }
+        final = { status: 503, text: JSON.stringify({ success: false, errorReason: "settlement_state_ambiguous_reconciliation_unavailable", network: identity.network || BASE_CAIP }), data: null, latencyMs: result.latencyMs, retryable: false };
         settlementSafety = "fail-closed-ambiguous";
         break;
       }
-      if (recovery && recovery.used === false) {
-        settlementSafety = "reconciled-safe-retry";
+
+      if (result.status === 429 && !result.transportError) {
+        settlementSafety = "rate-limit-safe-retry";
         continue;
       }
-      final = { status: 503, text: JSON.stringify({ success: false, errorReason: "settlement_state_ambiguous_reconciliation_unavailable", network: identity.network || BASE_CAIP }), data: null, latencyMs: result.latencyMs, retryable: false };
+
+      final = {
+        status: 503,
+        text: JSON.stringify({
+          success: false,
+          errorReason: "settlement_state_ambiguous_no_reconciliation",
+          network: identity.network || null,
+          upstream: new URL(route).hostname,
+          instruction: "XGuard did not send this signed settlement to another facilitator because the first outcome is ambiguous. Retry only after network-specific reconciliation proves the payment was not consumed."
+        }),
+        data: null,
+        latencyMs: result.latencyMs,
+        retryable: false,
+        transportError: result.transportError
+      };
       settlementSafety = "fail-closed-ambiguous";
       break;
     }
 
-    if (result.status === 429 && !result.transportError) {
-      settlementSafety = "rate-limit-safe-retry";
-      continue;
+    if (settleSucceeded(final)) {
+      // Persist confirmed payment evidence before accounting or response delivery.
+      if (receiptId) await putSettlementReceipt(env, receiptId, {
+        receipt_id: receiptId, request_digest: context.request_digest, status: "confirmed",
+        transaction: final.data?.transaction || final.data?.transactionHash || final.data?.txHash || "",
+        network: identity.network, payer: identity.from, pay_to: identity.payTo,
+        asset: identity.asset, amount: identity.amount, recovered,
+        resolution: recovered ? "authorization_recovered" : "upstream", upstream: chosen,
+        created_at: new Date().toISOString(),
+      });
+      try {
+        if (key) {
+          const consumed = await billingConsume(env, key, feeUnits, `xguard-settlement:${billingIdempotency}`);
+          if (!consumed.ok) console.error(JSON.stringify({ event: "billing_post_settlement_failure", status: consumed.status, payTo: identity.payTo, upstream: chosen }));
+        } else if (freeAdmission) {
+          await quota(env, identity.payTo, "commit", identity.nonce || freeAdmission.data.nonce || "");
+        }
+      } catch { console.error(JSON.stringify({ event: "billing_post_settlement_failure", receipt_id: receiptId })); }
+      console.log(JSON.stringify({ event: "settlement_success", payment_context: context.kind, payment_context_digest: context.request_digest, network: identity.network, upstream: chosen, attempts, recovered, settlement_safety: settlementSafety, billed_credits: key ? feeUnits : 0, free: !key }));
+    } else if (!key && freeAdmission) {
+      await quota(env, identity.payTo, "release", identity.nonce || freeAdmission.data.nonce || "");
     }
 
-    final = {
-      status: 503,
-      text: JSON.stringify({
-        success: false,
-        errorReason: "settlement_state_ambiguous_no_reconciliation",
-        network: identity.network || null,
-        upstream: new URL(route).hostname,
-        instruction: "XGuard did not send this signed settlement to another facilitator because the first outcome is ambiguous. Retry only after network-specific reconciliation proves the payment was not consumed."
-      }),
-      data: null,
-      latencyMs: result.latencyMs,
-      retryable: false,
-      transportError: result.transportError
-    };
-    settlementSafety = "fail-closed-ambiguous";
-    break;
+    const response = relayResponse(final || { status: 503, error: "settlement_unavailable" }, chosen, recovered, { attempts: Math.max(1, attempts), safety: settlementSafety });
+    const headers = new Headers(response.headers);
+    headers.set("x-xguard-payment-context", "verified_per_request");
+    headers.set("x-xguard-payment-context-digest", context.request_digest);
+    if (receiptId) headers.set("x-xguard-receipt-id", receiptId);
+    return new Response(response.body, { status: response.status, headers });
+  } finally {
+    // A pre-submission admission failure is safe to retry. An unconfirmed
+    // submitted authorization is never released merely because time elapsed.
+    if (reservation && !submitted) await receiptOperation(env, receiptId, "/release", reservation);
   }
-
-  if (settleSucceeded(final)) {
-    if (key) {
-      const consumed = await billingConsume(env, key, feeUnits, `xguard-settlement:${billingIdempotency}`);
-      if (!consumed.ok) console.error(JSON.stringify({ event: "billing_post_settlement_failure", status: consumed.status, payTo: identity.payTo, upstream: chosen }));
-    } else if (freeAdmission) {
-      await quota(env, identity.payTo, "commit", identity.nonce || freeAdmission.data.nonce || "");
-    }
-    console.log(JSON.stringify({ event: "settlement_success", payment_context: context.kind, payment_context_digest: context.request_digest, network: identity.network, upstream: chosen, attempts, recovered, settlement_safety: settlementSafety, billed_credits: key ? feeUnits : 0, free: !key }));
-  } else if (!key && freeAdmission) {
-    await quota(env, identity.payTo, "release", identity.nonce || freeAdmission.data.nonce || "");
-  }
-
-  const response = relayResponse(final || { status: 503, error: "settlement_unavailable" }, chosen, recovered, { attempts: Math.max(1, attempts), safety: settlementSafety });
-  const headers = new Headers(response.headers);
-  headers.set("x-xguard-payment-context", "verified_per_request");
-  headers.set("x-xguard-payment-context-digest", context.request_digest);
-  return new Response(response.body, { status: response.status, headers });
 }
 
 async function proxySupported(env) {

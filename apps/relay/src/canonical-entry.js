@@ -1,4 +1,6 @@
 import app from "./a2a-entry.js";
+import { finalizePublicResponse } from "./core/public-contract.js";
+import { gatewayConfig } from "./paid-agent-entry.js";
 import { handleOutcomeRoute, decorateOutcomeResponse } from "./outcome-entry.js";
 export * from "./a2a-entry.js";
 
@@ -229,8 +231,9 @@ function developersPage(request) {
 
 function randomNonce() { return crypto.randomUUID().replaceAll("-", ""); }
 
-function pricingPage(request) {
-  const content = `<p class="muted">The public paid-tool path uses x402 v2 USDC per request: no XGuard account, subscription, or mandatory SDK.</p><section class="card"><div class="price">$0.001 USDC</div><h2>xguard.web.fetch</h2><p class="muted">Public fetch has no external API fee. The $0.001 price is revenue before infrastructure and other costs, not measured profit. The exact atomic amount, receiving address, network, asset, input digest, and execution limits are bound into a five-minute signed quote before payment. Base Mainnet is the production network; Base Sepolia is available for safe integration tests.</p><p><a class="btn" href="/try">Generate a live payment request</a> <a href="${API}/v1/pricing">Machine pricing</a></p></section><p class="muted">On successful settlement, XGuard executes once and returns an x402 receipt plus ProofRail evidence. An exact retry returns the stored outcome without settling again. If execution fails after settlement, XGuard issues a signed reusable execution credit tied to the original payment.</p><section class="card"><div class="price">JOD 3.550</div><h2>5,000 operator Usage Credits</h2><p class="muted">Optional one-time credits for operator-managed Secretless Egress. This is separate from the no-account x402 paid-tool path and is not a subscription.</p><button class="btn" id="checkout">Create secure checkout</button><div id="result" aria-live="polite"></div></section><p class="muted">Do not place an operator key in an AI prompt. A checkout redirect is not proof of payment; credits become available only after a valid Lemon Squeezy webhook is processed.</p>`;
+function pricingPage(request, env) {
+  const price = Number(gatewayConfig(env, false).amount) / 1e6;
+  const content = `<p class="muted">The public paid-tool path uses x402 v2 USDC per request: no XGuard account, subscription, or mandatory SDK.</p><section class="card"><div class="price">$${price} USDC</div><h2>xguard.web.fetch</h2><p class="muted">Public fetch has no external API fee. The $${price} price is revenue before infrastructure and other costs, not measured profit. The exact atomic amount, receiving address, network, asset, input digest, and execution limits are bound into a five-minute signed quote before payment. Base Mainnet is the production network; Base Sepolia is available for safe integration tests.</p><p><a class="btn" href="/try">Generate a live payment request</a> <a href="${API}/v1/pricing">Machine pricing</a></p></section><p class="muted">On successful settlement, XGuard executes once and returns an x402 receipt plus ProofRail evidence. An exact retry returns the stored outcome without settling again. If execution fails after settlement, XGuard issues a signed reusable execution credit tied to the original payment.</p><section class="card"><div class="price">JOD 3.550</div><h2>5,000 operator Usage Credits</h2><p class="muted">Optional one-time credits for operator-managed Secretless Egress. This is separate from the no-account x402 paid-tool path and is not a subscription.</p><button class="btn" id="checkout">Create secure checkout</button><div id="result" aria-live="polite"></div></section><p class="muted">Do not place an operator key in an AI prompt. A checkout redirect is not proof of payment; credits become available only after a valid Lemon Squeezy webhook is processed.</p>`;
   const script = `const button=document.getElementById('checkout'),result=document.getElementById('result');button.addEventListener('click',async()=>{button.disabled=true;result.innerHTML='<p class="muted">Creating checkout…</p>';try{const response=await fetch('https://hooks.xguardgate.com/v1/checkout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});const data=await response.json();if(!response.ok)throw new Error(data.error||'checkout_unavailable');result.innerHTML='<h3>Save your operator key before paying</h3><p class="key"></p><p><a class="btn" rel="noopener" href="'+data.checkout_url+'">Continue to Lemon Squeezy</a></p>';result.querySelector('.key').textContent=data.operator_key;}catch(error){result.innerHTML='<p class="muted">Checkout is not ready: '+String(error.message)+'</p>';button.disabled=false;}});`;
   return publicPage(request, "/pricing", "XGuard Pricing — x402 USDC per request", "One signed price. One settled request.", content, script);
 }
@@ -414,7 +417,7 @@ async function normalizeResponse(request, response, env) {
   return new Response(JSON.stringify(body), { status: response.status, statusText: response.statusText, headers });
 }
 
-export default {
+const canonicalApp = {
   async fetch(request, env, ctx) {
     const redirect = canonicalizeUrl(request);
     if (redirect) return redirect;
@@ -465,7 +468,7 @@ export default {
     }
     if (url.hostname === "xguardgate.com" && url.pathname === "/try" && (request.method === "GET" || request.method === "HEAD")) return tryPage(request);
 
-    if (url.hostname === "xguardgate.com" && ["/pricing", "/pricing/operator"].includes(url.pathname) && (request.method === "GET" || request.method === "HEAD")) return pricingPage(request);
+    if (url.hostname === "xguardgate.com" && ["/pricing", "/pricing/operator"].includes(url.pathname) && (request.method === "GET" || request.method === "HEAD")) return pricingPage(request, env);
     if (url.hostname === "xguardgate.com" && (request.method === "GET" || request.method === "HEAD")) {
       const page = contentPage(request, url.pathname);
       if (page) return page;
@@ -488,4 +491,31 @@ export default {
   async scheduled(controller, env, ctx) {
     if (typeof app.scheduled === "function") return app.scheduled(controller, env, ctx);
   },
+};
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const aliases = { "/agent-card.json": "/.well-known/agent-card.json", "/openapi.yaml": "/openapi.json" };
+    let path = url.pathname;
+    if (path.startsWith("/api/")) path = path.slice(4);
+    path = aliases[path] || path;
+    if (path === "/pricing" && url.hostname === "api.xguardgate.com") path = "/v1/pricing";
+    if (path !== url.pathname) {
+      url.pathname = path;
+      if (["GET", "HEAD"].includes(request.method)) return permanentRedirect(url.href);
+      request = new Request(url, request);
+    }
+    let response;
+    try { response = await canonicalApp.fetch(request, env, ctx); }
+    catch {
+      console.error(JSON.stringify({ event: "public_request_failed", path: url.pathname, code: "internal_error" }));
+      response = Response.json(path === "/mcp" || path === "/a2a"
+        ? { jsonrpc: "2.0", id: null, error: { code: -32603, message: "Internal error" } }
+        : { error_code: "internal_error", message: "The request could not be completed. Check stored payment results before submitting another paid request." },
+      { status: 500, headers: { "cache-control": "no-store", "access-control-allow-origin": "*" } });
+    }
+    return finalizePublicResponse(request, response);
+  },
+  scheduled: (...args) => canonicalApp.scheduled(...args),
 };

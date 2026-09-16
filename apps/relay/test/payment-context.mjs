@@ -4,6 +4,7 @@ import { Worker } from "node:worker_threads";
 import { randomBytes } from "node:crypto";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { settlementIdentity, settlementReceiptId } from "../src/core/settlement-receipt.js";
 
 const types = { TransferWithAuthorization: [
   { name: "from", type: "address" }, { name: "to", type: "address" },
@@ -68,10 +69,96 @@ test("direct settlement rebuilds trust with no earlier verification request", as
   assert.equal(result.status, 200); assert.equal(result.counts.verify, 1); assert.equal(result.counts.settle, 1);
 });
 
+test("simultaneous verified settlements admit one broadcast and return the same durable receipt on retry", async () => {
+  const body = await payment();
+  const result = await isolated(body, { concurrent: 2 });
+  assert.equal(result.counts.verify, 2);
+  assert.equal(result.counts.settle, 1);
+  assert.deepEqual(result.responses.map(x => x.status).sort(), [200, 409]);
+  const pending = result.responses.find(x => x.status === 409);
+  assert.equal(pending.body.error.code, "settlement_in_progress");
+  assert.equal(pending.body.error.retryable, false);
+  assert.equal(pending.body.next.path, "/v1/receipts/" + pending.body.receiptId);
+  const replay = await isolated(body, { storage: result.storage });
+  assert.equal(replay.status, 200); assert.equal(replay.counts.settle, 0);
+  assert.equal(replay.body.receiptId, pending.body.receiptId);
+  assert.equal(JSON.stringify(replay.body).includes("reservation_token"), false);
+});
+
+test("a lost confirmation write preserves the reservation across isolates instead of resubmitting", async () => {
+  const body = await payment();
+  const first = await isolated(body, { receiptWriteUnavailable: true });
+  assert.equal(first.status, 500); assert.equal(first.counts.settle, 1);
+  const replay = await isolated(body, { storage: first.storage });
+  assert.equal(replay.status, 409); assert.equal(replay.body.error.code, "settlement_in_progress");
+  assert.equal(replay.counts.verify, 0); assert.equal(replay.counts.settle, 0);
+  const changed = structuredClone(body);
+  changed.paymentPayload.resource = { url: "https://different.example" };
+  const conflict = await isolated(changed, { storage: first.storage });
+  assert.equal(conflict.status, 409); assert.equal(conflict.body.error.code, "settlement_context_conflict");
+  assert.equal(conflict.counts.settle, 0);
+});
+
+test("an admission failure before submission releases the reservation safely", async () => {
+  const body = await payment();
+  const first = await isolated(body, { quotaDenied: true });
+  assert.equal(first.status, 402); assert.equal(first.counts.settle, 0);
+  const retry = await isolated(body, { storage: first.storage });
+  assert.equal(retry.status, 200); assert.equal(retry.counts.settle, 1);
+});
+
+test("EVM asset casing cannot bypass reservation and legacy receipt identifiers still replay", async () => {
+  const body = await payment();
+  const first = await isolated(body);
+  const changed = structuredClone(body);
+  changed.paymentRequirements.asset = changed.paymentRequirements.asset.toLowerCase();
+  changed.paymentPayload.accepted.asset = changed.paymentPayload.accepted.asset.toLowerCase();
+  const conflict = await isolated(changed, { storage: first.storage });
+  assert.equal(conflict.status, 409); assert.equal(conflict.counts.settle, 0);
+  const identity = settlementIdentity(body), id = await settlementReceiptId(identity), legacyId = await settlementReceiptId(identity, true);
+  const storage = structuredClone(first.storage);
+  storage["receipt:" + legacyId] = storage["receipt:" + id];
+  storage["receipt:" + legacyId].record.receipt_id = legacyId;
+  delete storage["receipt:" + id];
+  const legacy = await isolated(body, { storage });
+  assert.equal(legacy.status, 200); assert.equal(legacy.body.receiptId, legacyId);
+  assert.equal(legacy.counts.verify, 0); assert.equal(legacy.counts.settle, 0);
+});
+
 test("supported envelope aliases are normalized before reaching the configured facilitator", async () => {
   const body = await payment();
   const result = await isolated({ payment: body.paymentPayload, requirements: body.paymentRequirements });
   assert.equal(result.status, 200); assert.equal(result.counts.verify, 1); assert.equal(result.counts.settle, 1);
+});
+
+test("snake case and encoded payload aliases preserve the original signed authorization", async () => {
+  const body = await payment();
+  for (const value of [
+    { payment_payload: body.paymentPayload, payment_requirements: body.paymentRequirements },
+    { payment: Buffer.from(JSON.stringify(body.paymentPayload)).toString("base64"), requirements: body.paymentRequirements },
+  ]) {
+    const result = await isolated(value, { headers: { "content-type": "text/plain" } });
+    assert.equal(result.status, 200); assert.equal(result.counts.verify, 1); assert.equal(result.counts.settle, 1);
+  }
+  const conflict = await isolated({ ...body, payment_payload: { ...body.paymentPayload, resource: { url: "https://other.example" } } });
+  assert.equal(conflict.status, 400); assert.equal(conflict.body.error.code, "conflicting_payment_context");
+  assert.equal(conflict.counts.verify, 0); assert.equal(conflict.counts.settle, 0);
+});
+
+test("empty, malformed, duplicate and oversized JSON get bounded repair errors before verification", async () => {
+  for (const [rawBody, code, status] of [
+    ["", "empty_body", 400], ["{\"payment\":", "invalid_json", 400],
+    ['{"payment":{},"payment":{}}', "duplicate_json_key", 400],
+    ['{"payment":{},"paym\\u0065nt":{}}', "duplicate_json_key", 400],
+    [" ".repeat(131073), "payload_too_large", 413],
+  ]) {
+    const result = await isolated({}, { path: "/verify", rawBody });
+    assert.equal(result.status, status); assert.equal(result.body.ok, false);
+    assert.equal(result.body.error.code, code); assert.equal(result.body.next.path, "/verify");
+    assert.equal(typeof result.body.error.example.paymentPayload.accepted, "object");
+    assert.equal(result.body.request_id, result.headers["x-xguard-request-id"]);
+    assert.equal(result.counts.verify, 0); assert.equal(result.counts.settle, 0);
+  }
 });
 
 test("missing or conflicting context is rejected before any upstream call", async () => {

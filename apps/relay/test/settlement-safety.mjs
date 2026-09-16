@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import worker from "../src/index.js";
+import { SettlementReceipt } from "../src/gateway.js";
 
 const NETWORK = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 
@@ -47,8 +48,21 @@ function quotaBinding() {
   };
 }
 
+function receiptBinding() {
+  const instances = new Map();
+  return { idFromName: id => id, get(id) {
+    if (!instances.has(id)) {
+      const data = new Map();
+      const storage = { async get(key) { return data.get(key); }, async put(key, value) { data.set(key, value); }, async delete(key) { data.delete(key); }, async transaction(fn) { return fn(storage); } };
+      instances.set(id, new SettlementReceipt({ storage }));
+    }
+    return { fetch(input, init) { return instances.get(id).fetch(new Request(input, init)); } };
+  } };
+}
+
 const env = {
   QUOTAS: quotaBinding(),
+  RECEIPTS: receiptBinding(),
   FREE_SETTLEMENTS: "25",
   SETTLEMENT_CREDITS: "2",
   X402_GLOBAL_PRIMARY: "https://one.example",
@@ -100,6 +114,7 @@ async function callSettle() {
 
 // Explicit rate limiting is safe to route around because the upstream refused admission.
 {
+  env.RECEIPTS = receiptBinding();
   let settleCalls = 0;
   globalThis.fetch = async input => {
     const url = String(input);

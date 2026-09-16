@@ -47,6 +47,8 @@ jobs:
           if (!String(p.peerDependencies?.['@x402/core'] || '').includes('<3')) throw new Error('x402 v2 peer range missing');
           NODE
           node --check sdk/index.js
+          node --check sdk/outcomes.js
+          node --test sdk/outcomes-test.mjs
           for f in sdk/examples/*.mjs; do node --check "$f"; done
           python -m py_compile integrations/python/fastapi_xguard.py
           test -z "$(gofmt -d integrations/go/gin_xguard.go)"

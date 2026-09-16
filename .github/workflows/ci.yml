@@ -117,11 +117,13 @@ jobs:
           node --test apps/relay/src/product-entry-test.js
           node --test apps/relay/src/paid-agent-entry-test.js
           node --test apps/relay/src/core/payment-rail-test.js
+          node --test apps/relay/src/core/settlement-proof-test.js
           node --test apps/relay/src/outcome-http-test.js
       - name: SDK syntax and package check
         run: |
           node --check sdk/index.js
           node --check sdk/outcomes.js
+          node --test sdk/outcomes-test.mjs
           npm pack --dry-run --ignore-scripts
       - name: Wrangler dry run
         run: npx --yes wrangler@4.130.0 deploy --dry-run --config apps/relay/wrangler.jsonc

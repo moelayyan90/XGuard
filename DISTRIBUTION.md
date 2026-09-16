@@ -52,6 +52,14 @@ the free preview, and provides a valid paid-intent example for marketplace probe
 No source is fetched and no payment settles when an unsigned probe requests a price.
 Runtime input validation, quoted prices and payment authorization remain enforced.
 
+On 2026-09-15 the public form successfully refreshed both mainnet resources. The
+buyer page now labels `/v1/execute` as x402 v2 with **Up to < $0.01**, replacing
+the earlier Public classification; `/v1/tools/web.fetch` remains priced at < $0.01.
+The outcome description displays the sampled feed-digest capability. At that check,
+the same page still showed 0 transactions, $0.00 volume and 0 buyers. The application
+commercial observer at 09:14:13Z also reported zero settled cash, recognized revenue
+and successful paid executions. Neither check is an independent audit of all rails.
+
 The testnet fetch endpoint was not registered because the marketplace supports Base
 mainnet and Solana, not Base Sepolia. Forty other endpoints were skipped as
 unprotected; these are not forty broken paid products.

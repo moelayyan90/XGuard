@@ -1,4 +1,5 @@
 import { hostnameAllowed } from "./core/network-policy.js";
+import { parsePublicJson } from "./core/public-contract.js";
 
 export const OUTCOME_API = "https://api.xguardgate.com";
 export const OUTCOME_SITE = "https://xguardgate.com";
@@ -47,7 +48,12 @@ export const EXECUTE_SCHEMA = {
     html: { type: "string", maxLength: 12288 }, limit: { type: "integer", minimum: 1, maximum: 30 },
     max_age_seconds: { type: "integer", minimum: 0, maximum: 60, default: 0 },
     query: { type: "string", maxLength: 200 }, testnet: { type: "boolean", default: false },
-    input: { type: "object" }, arguments: { type: "object" }, name: { type: "string" }, tool: { type: "string" },
+    input: { type: "object" }, arguments: { oneOf: [{ type: "object" }, { type: "string", description: "JSON-encoded object, as used by tool calls" }] }, name: { type: "string" }, tool: { type: "string" },
+    tool_id: { type: "string" }, toolId: { type: "string" },
+    function: { type: "object", required: ["name", "arguments"], properties: { name: { type: "string" }, arguments: { type: ["string", "object"] } }, additionalProperties: false },
+    type: { const: "function" },
+    quantity: { const: 1 }, units: { const: 1 }, requests: { const: 1 }, calls: { const: 1 },
+    network: { type: "string", enum: ["eip155:8453", "eip155:84532", "base", "base-sepolia"] },
     operation: { type: "object", description: "Resolved read-only OpenAPI operation with URL, method and desired action; no remote spec fetching." },
     http: { type: "object" }, command: { type: "string" }, task: { type: "object" },
   }, additionalProperties: false,
@@ -93,25 +99,80 @@ function publicUrl(value) {
     return u.toString();
   } catch { return null; }
 }
-function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+function ordered(value) {
+  if (Array.isArray(value)) return value.map(ordered);
+  if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map(key => [key, ordered(value[key])]));
+  return value;
+}
+function same(a, b) { return JSON.stringify(ordered(a)) === JSON.stringify(ordered(b)); }
+
+export function outcomeRequest(input, testnet = false) {
+  if (input.capability === "extract-preview") return { capability: input.capability, ...(input.html !== null ? { html: input.html } : {}) };
+  return { capability: input.capability, sources: input.sources, max_age_seconds: input.max_age_seconds,
+    ...(input.capability === "feed-digest" ? { limit: input.limit, query: input.query } : {}), testnet };
+}
+
+// Dispatch by explicit semantics before selecting the legacy web.fetch handler.
+export function isOutcomeRequest(raw, depth = 0) {
+  if (depth > 4 || raw == null) return false;
+  if (typeof raw === "string") { try { return isOutcomeRequest(JSON.parse(raw), depth + 1); } catch { return true; } }
+  if (typeof raw !== "object" || Array.isArray(raw)) return false;
+  if (raw.intent !== undefined || raw.capability !== undefined && !["xguard.web.fetch", "web.fetch", "fetch", "xguard_web_fetch"].includes(raw.capability)) return true;
+  if ([raw.tool, raw.tool_id, raw.toolId, raw.name, raw.function?.name].some(x => ["execute", "xguard_execute", "xguardExecute"].includes(x) || outcomeDefinition(String(x).replace(/^xguard\./, "")))) return true;
+  return [raw.input, raw.arguments, raw.function?.arguments].some(x => x !== undefined && isOutcomeRequest(x, depth + 1));
+}
 
 export function normalizeOutcome(raw, depth = 0) {
   if (depth > 4) return invalid("invalid_intent", "Too many nested request envelopes.");
   if (typeof raw === "string") raw = { intent: raw };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return invalid("invalid_intent", "Send an object containing intent, or a supported intent string.", ["intent"]);
+  raw = { ...raw };
+  const quantity = ["quantity", "units", "requests", "calls"].filter(key => Object.hasOwn(raw, key));
+  if (quantity.some(key => raw[key] !== raw[quantity[0]])) return invalid("ambiguous_intent", "Quantity aliases conflict; one request is one bounded execution.", quantity);
+  if (quantity.some(key => raw[key] !== 1)) return invalid("unsupported_quantity", "Only quantity:1 is supported. The published price includes one bounded execution.", quantity);
+  for (const key of quantity) delete raw[key];
+  if (raw.network !== undefined) {
+    const networks = { "eip155:8453": false, "base": false, "eip155:84532": true, "base-sepolia": true };
+    if (typeof raw.network !== "string" || !Object.hasOwn(networks, raw.network)) return invalid("invalid_intent", "Select the documented Base or Base Sepolia network.", ["network"]);
+    if (raw.testnet !== undefined && raw.testnet !== networks[raw.network]) return invalid("ambiguous_intent", "network and testnet must select the same network.", ["network", "testnet"]);
+    raw.testnet = networks[raw.network]; delete raw.network;
+  }
+  if (raw.function !== undefined) {
+    if (!raw.function || typeof raw.function !== "object" || Array.isArray(raw.function) || !Object.hasOwn(raw.function, "name") || !Object.hasOwn(raw.function, "arguments") || Object.keys(raw.function).some(key => !["name", "arguments"].includes(key))) return invalid("invalid_intent", "function must contain name and arguments only.");
+    if (raw.name !== undefined && raw.name !== raw.function.name) return invalid("ambiguous_intent", "Conflicting tool names.");
+    if (raw.arguments !== undefined && !same(raw.arguments, raw.function.arguments)) return invalid("ambiguous_intent", "Conflicting function arguments.");
+    raw.name = raw.function.name; raw.arguments = raw.function.arguments; delete raw.function;
+  }
+  if (raw.type !== undefined && raw.type !== "function") return invalid("unsupported_operation", "Only the function tool-call type is supported.");
+  delete raw.type;
+  const selectors = ["tool", "tool_id", "toolId", "name"].filter(key => Object.hasOwn(raw, key));
+  const selected = selectors.map(key => ["execute", "xguard_execute", "xguardExecute"].includes(raw[key]) ? "xguard_execute" : String(raw[key]).replace(/^xguard\./, ""));
+  if (selected.some(x => x !== selected[0])) return invalid("ambiguous_intent", "Tool aliases contain different values.", selectors);
+  if (selected.length && selected[0] !== "xguard_execute") {
+    if (!outcomeDefinition(selected[0])) return invalid("unsupported_operation", "Select an available capability or xguard_execute.", selectors);
+    if (raw.capability !== undefined && raw.capability !== selected[0]) return invalid("ambiguous_intent", "tool and capability select different outcomes.", ["tool", "capability"]);
+    raw.capability = selected[0];
+  }
+  for (const key of selectors) delete raw[key];
+  if (typeof raw.arguments === "string") {
+    const parsed = parsePublicJson(raw.arguments);
+    if (parsed.error) return invalid(parsed.error, "arguments must contain a complete JSON object with no duplicate properties.", ["arguments"]);
+    raw.arguments = parsed.value;
+  }
   if (raw.desired_action !== undefined) {
     if (raw.action !== undefined && raw.action !== raw.desired_action) return invalid("ambiguous_intent", "Conflicting desired actions.");
     raw = { ...raw, action: raw.desired_action }; delete raw.desired_action;
   }
-  if ([raw.name, raw.tool].some(x => x !== undefined && !["xguard_execute", "xguardExecute"].includes(x))) return invalid("unsupported_operation", "Wrap supported jobs with the xguard_execute tool.");
   const supportedKeys = new Set([...Object.keys(EXECUTE_SCHEMA.properties), "method", "headers", "body", "body_json", "body_text", "body_base64", "operationId"]);
   const unknown = Object.keys(raw).filter(key => !supportedKeys.has(key));
   if (unknown.length) return invalid("unsupported_operation", "This outcome does not support every supplied field; inspect its input schema before retrying.", unknown);
   if (raw.operationId && !["xguardExecute", "xguard_execute", ...definitions.map(x => x.id)].includes(raw.operationId)) return invalid("unsupported_operation", "Provide a supported operation with a resolved public URL and extraction action.");
   if (raw.testnet !== undefined && typeof raw.testnet !== "boolean") return invalid("invalid_intent", "testnet must be true or false.");
   const envelopes = [raw.input, raw.arguments, raw.operation, raw.http, typeof raw.intent === "object" ? raw.intent : null].filter(x => x !== undefined && x !== null);
+  if (raw.headers && Object.keys(raw.headers).length || ["body", "body_json", "body_text", "body_base64"].some(x => raw[x] !== undefined) || raw.method && (typeof raw.method !== "string" || raw.method.toUpperCase() !== "GET")) return invalid("unsupported_operation", "These outcomes read public sources without credentials. Use the scoped egress contract for authorized requests.");
   if (envelopes.length > 1) return invalid("ambiguous_intent", "Use one request envelope, not several conflicting shapes.");
   if (envelopes.length) {
+    if (raw.command !== undefined || raw.task !== undefined) return invalid("ambiguous_intent", "Use one request envelope without a separate command or task.");
     const inside = envelopes[0];
     if (!inside || typeof inside !== "object" || Array.isArray(inside)) return invalid("invalid_intent", "The request envelope must contain an object.");
     const merged = { ...inside };
@@ -119,11 +180,15 @@ export function normalizeOutcome(raw, depth = 0) {
       if (raw[key] !== undefined && inside[key] !== undefined && !same(raw[key], inside[key])) return invalid("ambiguous_intent", `Conflicting ${key} values.`);
       if (raw[key] !== undefined) merged[key] = raw[key];
     }
-    if (typeof raw.intent === "string") merged.intent = raw.intent;
+    if (typeof raw.intent === "string") {
+      if (inside.intent !== undefined && inside.intent !== raw.intent) return invalid("ambiguous_intent", "Conflicting intent values.", ["intent"]);
+      merged.intent = raw.intent;
+    }
     if (raw.operation?.operationId && !["xguardExecute", "xguard_execute", ...definitions.map(x => x.id)].includes(raw.operation.operationId)) return invalid("unsupported_operation", "Resolve the OpenAPI operation to a public GET URL and desired extraction action, or use xguardExecute.");
     return normalizeOutcome(merged, depth + 1);
   }
   if (raw.task) {
+    if (Object.keys(raw).some(key => key !== "task")) return invalid("ambiguous_intent", "Send a task envelope without additional instructions.");
     const message = raw.task.message || raw.task;
     const parts = message.parts;
     if (!Array.isArray(parts) || parts.length !== 1) return invalid("invalid_intent", "Send one A2A data or text part.");
@@ -132,6 +197,7 @@ export function normalizeOutcome(raw, depth = 0) {
   if (raw.headers && Object.keys(raw.headers).length || ["body", "body_json", "body_text", "body_base64"].some(x => raw[x] !== undefined) || raw.method && (typeof raw.method !== "string" || raw.method.toUpperCase() !== "GET")) return invalid("unsupported_operation", "These outcomes read public sources without credentials. Credential-backed writes use the existing scoped /v1/egress/fetch contract.");
   const command = raw.command || (typeof raw.intent === "string" && raw.intent.trim().startsWith("curl ") ? raw.intent : null);
   if (command) {
+    if (Object.keys(raw).some(key => !["command", "intent", "testnet"].includes(key)) || raw.command && raw.intent !== undefined && raw.intent !== raw.command) return invalid("ambiguous_intent", "A curl envelope must not override other supplied instructions.");
     const match = String(command).trim().match(/^curl\s+(?:(?:-X|--request)\s+GET\s+)?['"]?(https:\/\/[^\s'"`$]+)['"]?\s*$/);
     if (!match) return invalid("unsupported_operation", "Only a single credential-free GET curl URL is supported. Commands are never executed.");
     return normalizeOutcome({ intent: "extract page", url: match[1], testnet: raw.testnet ?? false }, depth + 1);

@@ -1,3 +1,4 @@
+import { decodePaymentSignatureHeader } from "@x402/core/http";
 // Payment trust is rebuilt from this request, never from a prior Worker isolate.
 const BASE = "eip155:8453";
 const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -12,8 +13,8 @@ const amount = x => {
 const sameAddress = (a, b) => isAddress(a) && isAddress(b) ? lower(a) === lower(b) : String(a ?? "") === String(b ?? "");
 
 function extract(body) {
-  const requirements = body?.paymentRequirements || body?.requirements || body?.payment?.paymentRequirements || null;
-  const paymentPayload = body?.paymentPayload || body?.payment || body?.payload || null;
+  const requirements = body?.paymentRequirements ?? body?.payment_requirements ?? body?.requirements ?? null;
+  const paymentPayload = body?.paymentPayload ?? body?.payment_payload ?? body?.payment ?? body?.payload ?? null;
   const accepted = paymentPayload?.accepted || body?.accepted || null;
   const authorization = paymentPayload?.payload?.authorization || paymentPayload?.authorization || body?.authorization || null;
   return { requirements, paymentPayload, accepted, authorization };
@@ -24,6 +25,16 @@ function block(reason, detail = {}) {
 }
 
 export function inspectPayment(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return block("missing_payment_context", { missing_fields: ["paymentPayload", "paymentRequirements"] });
+  body = { ...body };
+  const normalizations = [];
+  for (const key of ["paymentPayload", "payment_payload", "payment", "payload"]) {
+    if (typeof body[key] !== "string") continue;
+    try { body[key] = decodePaymentSignatureHeader(body[key]); }
+    catch { return block("invalid_payment_payload", { field: key, expected: "full payment object or base64-encoded x402 Payment-Signature payload" }); }
+    normalizations.push("encoded_payment_envelope");
+  }
+  if (["payment_payload", "payment", "payload", "payment_requirements", "requirements"].some(key => Object.hasOwn(body, key))) normalizations.push("payment_field_alias");
   const { requirements: r, paymentPayload: p, accepted: a, authorization: z } = extract(body);
   const versions = [body?.x402Version, p?.x402Version].filter(v => v !== undefined && v !== null && v !== "");
   if (versions.some(v => Number(v) !== 2)) return block("unsupported_x402_version", { observed: versions });
@@ -37,8 +48,8 @@ export function inspectPayment(body) {
   if (Number(p.x402Version) !== 2) return block("unsupported_x402_version");
   // Conflicting aliases must never be inspected as one payment and forwarded as another.
   for (const [field, values] of [
-    ["paymentRequirements", [body.paymentRequirements, body.requirements, body.payment?.paymentRequirements]],
-    ["paymentPayload", [body.paymentPayload, body.payment, body.payload]],
+    ["paymentRequirements", [body.paymentRequirements, body.payment_requirements, body.requirements]],
+    ["paymentPayload", [body.paymentPayload, body.payment_payload, body.payment, body.payload]],
     ["accepted", [p.accepted, body.accepted]],
     ["authorization", [p.payload?.authorization, p.authorization, body.authorization]],
   ]) {
@@ -80,6 +91,7 @@ export function inspectPayment(body) {
     scheme: String(r.scheme),
     payTo: String(r.payTo),
     amount: String(r.amount),
+    normalizations,
     body: {
       x402Version: 2,
       paymentPayload: { ...p, accepted: a, ...(z && !p.payload?.authorization ? { payload: { ...(p.payload || {}), authorization: z } } : {}) },
