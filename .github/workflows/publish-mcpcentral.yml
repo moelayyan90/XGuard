@@ -1,85 +1,36 @@
-name: Publish XGuard to MCPCentral
+name: Verify XGuard MCPCentral Discovery
 
 on:
   workflow_run:
-    workflows: ["Deploy XGuard Relay"]
+    workflows: ["Publish XGuard to Official MCP Registry"]
     branches: [main]
     types: [completed]
+  pull_request:
+    paths:
+      - ".github/workflows/publish-mcpcentral.yml"
+      - "scripts/verify-mcpcentral.mjs"
+  schedule:
+    - cron: "23 7 * * *"
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
-  publish:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+  verify:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
-
-      - name: Install official MCP publisher
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --location --silent --show-error \
-            "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
-            | tar xz mcp-publisher
-          chmod +x ./mcp-publisher
-
-      - name: Validate manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            ./mcp-publisher validate server.json && exit 0
-            echo "MCP validation attempt $attempt failed; retrying."
-            sleep $((attempt * 10))
-          done
-          exit 1
-
-      - name: Check MCPCentral for this exact version
-        id: existing
-        shell: bash
-        run: |
-          set -euo pipefail
-          name="$(node -p 'require("./server.json").name')"
-          version="$(node -p 'require("./server.json").version')"
-          encoded="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")"
-          body="$(curl --fail --silent --show-error "https://registry.mcpcentral.io/v0.1/servers?search=${encoded}&limit=100" || true)"
-          if printf '%s' "$body" | jq -e --arg name "$name" --arg version "$version" 'any(.servers[]?; .server.name == $name and .server.version == $version and any(.server.remotes[]?; .url == "https://api.xguardgate.com/mcp"))' >/dev/null; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "MCPCentral already contains ${name} ${version}."
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Authenticate with MCPCentral using GitHub OIDC
-        if: steps.existing.outputs.exists != 'true'
-        run: ./mcp-publisher login github-oidc --registry https://registry.mcpcentral.io
-
-      - name: Publish XGuard to MCPCentral
-        if: steps.existing.outputs.exists != 'true'
-        run: ./mcp-publisher publish
-
-      - name: Verify external listing
-        shell: bash
-        run: |
-          set -euo pipefail
-          name="$(node -p 'require("./server.json").name')"
-          version="$(node -p 'require("./server.json").version')"
-          encoded="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")"
-          for i in {1..12}; do
-            body="$(curl --fail --silent --show-error "https://registry.mcpcentral.io/v0.1/servers?search=${encoded}&limit=100" || true)"
-            if printf '%s' "$body" | jq -e --arg name "$name" --arg version "$version" 'any(.servers[]?; .server.name == $name and .server.version == $version and any(.server.remotes[]?; .url == "https://api.xguardgate.com/mcp"))' >/dev/null; then
-              echo "Verified ${name} ${version} in MCPCentral."
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "XGuard was not observable in MCPCentral after publication."
-          exit 1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify upstream publication and actual MCPCentral mirror
+        # MCPCentral mirrors the official registry daily. Its public API is
+        # read-only: https://mcpcentral.io/docs/submit-a-server
+        # A missing/stale mirror remains a failed check until the next sync.
+        run: node scripts/verify-mcpcentral.mjs
