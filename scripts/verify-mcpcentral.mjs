@@ -10,7 +10,10 @@ const report = { observed_at: new Date().toISOString(), name: manifest.name, exp
 
 async function get(url) {
   const response = await fetch(url, { headers: { accept: "application/json", "user-agent": "XGuard-MCPCentral-Discovery/1.0" }, signal: AbortSignal.timeout(20000) });
-  if (!response.ok) throw new Error(`HTTP ${response.status} at ${new URL(url).origin}${new URL(url).pathname}`);
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 400);
+    throw new Error(`HTTP ${response.status} at ${new URL(url).origin}${new URL(url).pathname}: ${detail}`);
+  }
   return response.json();
 }
 
@@ -20,8 +23,8 @@ try {
     && row.server.remotes?.some(remote => remote.type === "streamable-http" && remote.url === endpoint)) === true;
   if (!report.upstream_published) throw new Error("Exact manifest version and endpoint are missing from the official registry");
 
-  // The documented server identifier contains a namespace/name slash.
-  const mirror = await get(`https://mcpcentral.io/api/servers/${manifest.name.split("/").map(encodeURIComponent).join("/")}`);
+  // Treat namespace/name as one path parameter, including its slash.
+  const mirror = await get(`https://mcpcentral.io/api/servers/${encodeURIComponent(manifest.name)}`);
   const server = mirror.server ?? mirror.data?.server ?? mirror.data ?? mirror;
   report.response_fields = Object.keys(server);
   const registered = server.raw ?? server;
@@ -32,6 +35,18 @@ try {
   if (!report.mirror_verified) throw new Error("MCPCentral has not exposed the exact manifest version and endpoint; daily synchronization may still be pending");
 } catch (error) {
   report.error = String(error.message);
+  // Keep bounded public contract evidence when the external catalog rejects
+  // an identifier, without credentials or hidden/internal API inspection.
+  if (report.error.includes("HTTP 404 at https://mcpcentral.io")) {
+    try {
+      const response = await fetch("https://mcpcentral.io/openapi.yaml", { signal: AbortSignal.timeout(15000) });
+      if (response.ok) {
+        const spec = await response.text();
+        const at = spec.indexOf("/api/servers/{id}");
+        report.catalog_contract = at >= 0 ? spec.slice(at, at + 4500) : "Documented server path not found";
+      }
+    } catch { /* preserve the original discovery failure */ }
+  }
   process.exitCode = 1;
 }
 
