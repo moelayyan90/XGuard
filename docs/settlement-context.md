@@ -37,8 +37,28 @@ cache, client-supplied trust header or previous `/verify` request is used.
 Confirmed retries use Durable Object receipts. New receipts bind the canonical
 payment envelope digest, and changed context returns 409. Receipts predating this
 change retain their existing replay contract, now checked against network, asset,
-payer, recipient and amount. This does not introduce a new guarantee for concurrent
-unconfirmed requests or extend the existing authorization validity window.
+payer, recipient and amount. New authorizations with a network, payer and nonce
+also acquire a transactional reservation in the existing SettlementReceipt Durable
+Object after fresh verification and before quota admission or submission. Concurrent
+requests cannot both submit that authorization. EVM asset/address casing shares
+one reservation; legacy receipt IDs remain readable.
+
+Pre-submission admission failures release their own reservation. Once submission
+starts, an unconfirmed reservation does not expire into permission to broadcast
+again. An identical retry gets 409 `settlement_in_progress` and a receipt lookup;
+changed context gets 409 `settlement_context_conflict`. After two minutes, identical
+Base USDC retries run read-only reconciliation and can recover a confirmed receipt.
+They never resubmit the authorization. Other unconfirmed networks require external
+reconciliation. This does not extend the authorization validity window or provide
+nonce-based reservations for payment schemes without an authorization nonce.
+
+Confirmed evidence is persisted before billing or response delivery. A failure to
+persist confirmation leaves the reservation blocking another broadcast. Normal and
+recovered credit accounting share the same canonical payment digest idempotency key.
+Reservation tokens and payment signatures are never returned in public receipts.
+Direct Base reconciliation requires both the matching AuthorizationUsed event and
+the exact token transfer (payer, merchant, amount) in the same successful transaction
+receipt. A used nonce or an unrelated successful transaction is insufficient.
 
 ## Caller inventory
 
@@ -82,3 +102,6 @@ is a paying customer or real payment.
 
 Primary SDK envelope source:
 https://github.com/x402-foundation/x402/blob/main/typescript/packages/core/src/http/httpFacilitatorClient.ts
+
+Durable storage concurrency reference:
+https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/

@@ -1,5 +1,7 @@
 import relay from "./index.js";
 import { paymentContextDigest } from "./core/payment-context.js";
+import { settlementIdentity as paymentIdentity, settlementReceiptId as receiptId, getSettlementReceipt as getReceipt, putSettlementReceipt as putReceipt, settlementSuccessResponse as successResponse, settlementPendingResponse } from "./core/settlement-receipt.js";
+import { receiptConfirmsAuthorization } from "./core/settlement-proof.js";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { base } from "viem/chains";
 
@@ -17,41 +19,6 @@ const isNonce = x => /^0x[0-9a-fA-F]{64}$/.test(String(x || ""));
 const isHash = x => /^0x[0-9a-fA-F]{64}$/.test(String(x || ""));
 const bearer = request => ((request.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i)?.[1] || request.headers.get("x-xguard-key") || "").trim();
 
-function paymentIdentity(body) {
-  const requirements = body?.paymentRequirements || body?.requirements || body?.payment?.paymentRequirements || null;
-  const payload = body?.paymentPayload || body?.payment || body?.payload || null;
-  const accepted = payload?.accepted || requirements || null;
-  const authorization = payload?.payload?.authorization || payload?.authorization || null;
-  return {
-    network: requirements?.network || accepted?.network || "",
-    asset: requirements?.asset || accepted?.asset || "",
-    payTo: requirements?.payTo || accepted?.payTo || "",
-    amount: requirements?.amount || requirements?.maxAmountRequired || accepted?.amount || accepted?.maxAmountRequired || "",
-    from: authorization?.from || "",
-    nonce: authorization?.nonce || ""
-  };
-}
-
-async function hashText(value) {
-  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
-  return [...new Uint8Array(d)].map(x => x.toString(16).padStart(2, "0")).join("");
-}
-async function receiptId(identity) {
-  if (!identity.network || !identity.from || !identity.nonce) return "";
-  return `xgr_${(await hashText(`${identity.network}|${identity.asset}|${identity.from.toLowerCase()}|${identity.nonce.toLowerCase()}`)).slice(0, 40)}`;
-}
-function receiptStub(env, id) { return env.RECEIPTS.get(env.RECEIPTS.idFromName(id)); }
-async function getReceipt(env, id) {
-  if (!id) return null;
-  const r = await receiptStub(env, id).fetch("https://receipt/get");
-  return r.ok ? r.json() : null;
-}
-async function putReceipt(env, id, record) {
-  if (!id) return null;
-  const r = await receiptStub(env, id).fetch("https://receipt/record", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(record) });
-  return r.ok ? r.json() : null;
-}
-
 function txHashFrom(data, text = "") {
   const candidates = [data?.transaction, data?.transactionHash, data?.txHash, data?.details?.transaction, data?.result?.transaction];
   for (const x of candidates) if (isHash(x)) return x;
@@ -68,7 +35,7 @@ async function recoverLateBase(env, identity, responseData, responseText) {
     if (tx) {
       try {
         const receipt = await client.getTransactionReceipt({ hash: tx });
-        if (receipt?.status === "success") return { transaction: tx, resolution: "confirmed_late" };
+        if (receiptConfirmsAuthorization(receipt, identity)) return { transaction: tx, resolution: "confirmed_late" };
         if (receipt?.status === "reverted") return null;
       } catch {}
     }
@@ -78,7 +45,11 @@ async function recoverLateBase(env, identity, responseData, responseText) {
         const latest = await client.getBlockNumber();
         const fromBlock = latest > 3000n ? latest - 3000n : 0n;
         const logs = await client.getLogs({ address: BASE_USDC, event: AUTH_USED, args: { authorizer: identity.from, nonce: identity.nonce }, fromBlock, toBlock: latest });
-        if (logs.length) return { transaction: logs[logs.length - 1].transactionHash, resolution: "confirmed_late" };
+        if (logs.length) {
+          const transaction = logs[logs.length - 1].transactionHash;
+          const receipt = await client.getTransactionReceipt({ hash: transaction });
+          if (receiptConfirmsAuthorization(receipt, identity)) return { transaction, resolution: "confirmed_late" };
+        }
         return { transaction: "", resolution: "nonce_used_ambiguous" };
       }
     } catch {}
@@ -88,11 +59,11 @@ async function recoverLateBase(env, identity, responseData, responseText) {
   return null;
 }
 
-async function consumeRecoveredCredit(env, key, receiptId) {
+async function consumeRecoveredCredit(env, key, requestDigest) {
   if (!key) return;
   try {
     await fetch(`${String(env.XGUARD_BILLING_URL || "https://hooks.xguardgate.com").replace(/\/$/, "")}/v1/consume`, {
-      method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "idempotency-key": `xguard-recovered:${receiptId}` }, body: JSON.stringify({ units: Number(env.SETTLEMENT_CREDITS || 2) })
+      method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "idempotency-key": `xguard-settlement:${requestDigest}` }, body: JSON.stringify({ units: Number(env.SETTLEMENT_CREDITS || 2) })
     });
   } catch {}
 }
@@ -104,16 +75,6 @@ async function confirmRecoveredFree(env, payTo, nonce) {
   } catch {}
 }
 
-function successResponse(record, replayed = false) {
-  return json({ success: true, payer: record.payer, transaction: record.transaction, network: record.network, receiptId: record.receipt_id, idempotent: replayed }, 200, {
-    "x-xguard-receipt-id": record.receipt_id,
-    "x-xguard-recovered": record.recovered ? "1" : "0",
-    "x-xguard-resolution": record.resolution || "confirmed",
-    "x-xguard-payment-context": replayed ? "durable_receipt" : "verified_per_request",
-    ...(replayed ? { "x-xguard-idempotent-replay": "1" } : {})
-  });
-}
-
 async function handleSettle(request, env) {
   let body = null;
   try { body = JSON.parse(await request.clone().text()); } catch { return relay.fetch(request, env); }
@@ -121,8 +82,9 @@ async function handleSettle(request, env) {
   const id = await receiptId(identity);
   const requestDigest = await paymentContextDigest(body);
   if (id) {
-    const prior = await getReceipt(env, id);
-    if (prior?.status === "confirmed") {
+    const legacyId = await receiptId(identity, true);
+    const prior = await getReceipt(env, id) || (legacyId !== id ? await getReceipt(env, legacyId) : null);
+    if (prior) {
       const same = prior.network === identity.network
         && String(prior.pay_to || "").toLowerCase() === String(identity.payTo || "").toLowerCase()
         && String(prior.asset || "").toLowerCase() === String(identity.asset || "").toLowerCase()
@@ -130,7 +92,19 @@ async function handleSettle(request, env) {
         && String(prior.amount) === String(identity.amount)
         && (!prior.request_digest || prior.request_digest === requestDigest);
       if (!same) return json({ success: false, errorReason: "settlement_context_conflict" }, 409);
-      return successResponse(prior, true);
+      if (prior.status === "confirmed") return successResponse(prior, true);
+      // No expiry-based lock release: a late confirmation could still arrive.
+      if (Date.now() - Date.parse(prior.created_at) >= 120000) {
+        const late = await recoverLateBase(env, identity, null, "");
+        if (late?.transaction) {
+          const record = { ...prior, status: "confirmed", transaction: late.transaction, recovered: true, resolution: late.resolution };
+          await putReceipt(env, id, record);
+          const key = bearer(request);
+          if (key) await consumeRecoveredCredit(env, key, requestDigest); else await confirmRecoveredFree(env, identity.payTo, identity.nonce);
+          return successResponse(record, true);
+        }
+      }
+      return settlementPendingResponse(prior);
     }
   }
 
@@ -138,6 +112,11 @@ async function handleSettle(request, env) {
   const text = await response.clone().text();
   let data = null; try { data = JSON.parse(text); } catch {}
   const success = response.ok && (data?.success === true || data?.settled === true);
+  // Another request can confirm between our initial lookup and verification.
+  if (!success && id) {
+    const current = await getReceipt(env, id);
+    if (current?.status === "confirmed" && current.request_digest === requestDigest) return successResponse(current, true);
+  }
   if (success && id) {
     const record = {
       receipt_id: id, request_digest: requestDigest, status: "confirmed", transaction: txHashFrom(data, text), network: identity.network,
@@ -154,7 +133,7 @@ async function handleSettle(request, env) {
     const late = await recoverLateBase(env, identity, data, text);
     if (late?.transaction) {
       const key = bearer(request);
-      if (key) await consumeRecoveredCredit(env, key, id); else await confirmRecoveredFree(env, identity.payTo, identity.nonce);
+      if (key) await consumeRecoveredCredit(env, key, requestDigest); else await confirmRecoveredFree(env, identity.payTo, identity.nonce);
       const record = {
         receipt_id: id, request_digest: requestDigest, status: "confirmed", transaction: late.transaction, network: identity.network,
         payer: identity.from, pay_to: identity.payTo, asset: identity.asset, amount: identity.amount,
@@ -214,9 +193,44 @@ export class SettlementReceipt {
   constructor(ctx) { this.ctx = ctx; }
   async fetch(request) {
     const path = new URL(request.url).pathname;
-    if (path === "/get" && request.method === "GET") { const record = await this.ctx.storage.get("record"); return record ? json(record) : json({ error: "receipt_not_found" }, 404); }
-    if (path === "/record" && request.method === "POST") { const incoming = await request.json().catch(() => null); if (!incoming?.receipt_id || incoming.status !== "confirmed") return json({ error: "invalid_receipt" }, 400); const existing = await this.ctx.storage.get("record"); if (existing?.status === "confirmed") return json(existing); await this.ctx.storage.put("record", incoming); return json(incoming, 201); }
-    return json({ error: "not_found" }, 404);
+    if (path === "/get" && request.method === "GET") {
+      const record = await this.ctx.storage.get("record") || await this.ctx.storage.get("reservation");
+      if (!record) return json({ error: "receipt_not_found" }, 404);
+      const { reservation_token, ...publicRecord } = record;
+      return json(publicRecord);
+    }
+    if (request.method !== "POST") return json({ error: "not_found" }, 404);
+    const incoming = await request.json().catch(() => null);
+    if (!incoming?.receipt_id || !/^[a-f0-9]{64}$/.test(incoming.request_digest || "")) return json({ error: "invalid_receipt" }, 400);
+    return this.ctx.storage.transaction(async storage => {
+      const existing = await storage.get("record");
+      const pending = await storage.get("reservation");
+      const prior = existing || pending;
+      if (prior?.request_digest && prior.request_digest !== incoming.request_digest) return json({ errorReason: "settlement_context_conflict" }, 409);
+      if (path === "/reserve") {
+        if (prior) {
+          const { reservation_token, ...record } = prior;
+          return json({ acquired: false, record });
+        }
+        if (typeof incoming.reservation_token !== "string" || incoming.reservation_token.length < 16) return json({ error: "invalid_reservation" }, 400);
+        const record = { ...incoming, status: "pending", created_at: new Date().toISOString() };
+        await storage.put("reservation", record);
+        return json({ acquired: true }, 201);
+      }
+      if (path === "/release") {
+        if (!existing && pending?.reservation_token === incoming.reservation_token) await storage.delete("reservation");
+        return json({ ok: true });
+      }
+      if (path === "/record") {
+        if (incoming.status !== "confirmed") return json({ error: "invalid_receipt" }, 400);
+        if (existing?.status === "confirmed") return json(existing);
+        const { reservation_token, ...record } = incoming;
+        await storage.put("record", record);
+        await storage.delete("reservation");
+        return json(record, 201);
+      }
+      return json({ error: "not_found" }, 404);
+    });
   }
 }
 

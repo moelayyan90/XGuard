@@ -1,7 +1,8 @@
 import { isPrivateIpv4, isPrivateIpv6, hostnameAllowed, publicDns } from "./core/network-policy.js";
 import { pricingEconomics, executionEconomics } from "./core/unit-economics.js";
 import { secretlessCapability } from "./egress-entry.js";
-import { outcomeAmount, outcomeDefinition, EXECUTE_SCHEMA, RESULT_SCHEMA } from "./outcome-catalog.js";
+import { outcomeAmount, outcomeDefinition, outcomeRequest, EXECUTE_SCHEMA, RESULT_SCHEMA } from "./outcome-catalog.js";
+import { readPublicJson, parsePublicJson } from "./core/public-contract.js";
 import { executeOutcome } from "./outcome-engine.js";
 import { applyOutcomeMetric, applyOutcomeCommerce, outcomeMetrics } from "./outcome-metrics.js";
 import { readBoundedBody } from "./core/execution-contract.js";
@@ -181,11 +182,7 @@ function json(body, status = 200, extra = {}) {
 }
 
 async function jsonBody(request, maxBytes = MAX_TOOL_REQUEST_BYTES) {
-  const declared = Number(request.headers.get("content-length") || 0);
-  if (declared > maxBytes) return { error: "payload_too_large" };
-  let text;
-  try { text = textDecoder.decode(await readBoundedBody(request.body, maxBytes)); } catch { return { error: "payload_too_large" }; }
-  try { return { value: JSON.parse(text) }; } catch { return { error: "invalid_json" }; }
+  return readPublicJson(request, maxBytes);
 }
 
 function error(code, status, id, details = {}) {
@@ -639,8 +636,8 @@ function parseArguments(value) {
   if (isRecord(value)) return value;
   if (typeof value !== "string" || value.length > MAX_TOOL_REQUEST_BYTES) return null;
   try {
-    const parsed = JSON.parse(value);
-    return isRecord(parsed) ? parsed : null;
+    const parsed = parsePublicJson(value);
+    return !parsed.error && isRecord(parsed.value) ? parsed.value : null;
   } catch {
     return null;
   }
@@ -696,8 +693,15 @@ function inputEnvelope(raw) {
 function normalizeFetchInputDetailed(raw) {
   const envelope = inputEnvelope(raw);
   if (!envelope.source) return { ok: false, issues: envelope.issues, shape: envelope.shape };
-  const source = envelope.source;
+  const source = { ...envelope.source };
   const issues = [];
+  if (envelope.source !== raw) {
+    for (const key of ["url", "target_url", "targetUrl", "uri", "target", "resource", "endpoint", "href", "method", "http_method", "httpMethod", "timeout_ms", "timeoutMs", "max_bytes", "maxBytes", "mode"]) {
+      if (!Object.hasOwn(raw, key)) continue;
+      if (Object.hasOwn(source, key) && source[key] !== raw[key]) issues.push({ path: key, code: "conflicting_values", message: `The outer ${key} conflicts with its input envelope.` });
+      else source[key] = raw[key];
+    }
+  }
   const urlValue = readAliased(source, ["url", "target_url", "targetUrl", "uri", "target", "resource", "endpoint", "href"]);
   if (urlValue.conflict) issues.push({ path: "url", code: "conflicting_aliases", message: `Provide only one URL value; conflicting fields: ${urlValue.conflict.join(", ")}.` });
   if (urlValue.value === undefined) issues.push({ path: "url", code: "required", message: "Provide url as a public HTTPS URL." });
@@ -763,6 +767,9 @@ function normalizeNetwork(raw, source) {
 function normalizeQuoteRequest(raw) {
   const envelope = inputEnvelope(raw);
   if (!envelope.source) return { ok: false, code: envelope.shape === "conflicting" ? "ambiguous_input" : "invalid_input", issues: envelope.issues };
+  for (const source of [raw, envelope.source]) {
+    for (const key of ["quantity", "units", "requests", "calls"]) if (source[key] !== undefined && source[key] !== 1) return { ok: false, code: "invalid_input", issues: [{ path: key, code: "unsupported_quantity", message: "One request purchases one bounded execution. Only quantity:1 is supported." }] };
+  }
   const tool = normalizeTool(raw, envelope.functionCall);
   if (tool.conflict) return { ok: false, code: "ambiguous_input", issues: [{ path: "tool", code: "conflicting_values", message: `Conflicting tool names were supplied: ${tool.conflict.join(", ")}.` }] };
   if (tool.value !== TOOL) return { ok: false, code: "unsupported_tool", issues: [{ path: "tool", code: "unsupported_value", message: `Only ${TOOL} can currently receive a paid execution quote.` }] };
@@ -777,7 +784,7 @@ function quoteNextStep(config, quoteToken, quote) {
   return {
     execution_url: config.resource,
     method: "POST",
-    body: quote.input,
+    body: quote.input.capability ? outcomeRequest(quote.input, config.network === TESTNET) : quote.input,
     quote: { header: "X-XGuard-Quote", value: quoteToken },
     expected_first_status: 402,
     payment: {
@@ -854,7 +861,7 @@ export async function issueQuote(env, raw, id, observation = {}, outcomeInput = 
   return {
     payload,
     quote,
-    response: json({ quote, ...payload, request_shape: normalized.shape, next: quoteNextStep(config, quote, payload) }, 200, { "x-xguard-request-id": id }),
+    response: json({ quote, ...payload, request_id: id, price: { amount_atomic: config.amount, amount: (Number(config.amount) / 1e6).toFixed(6), currency: "USDC", unit: "bounded execution" }, request_shape: normalized.shape, next: quoteNextStep(config, quote, payload) }, 200, { "x-xguard-request-id": id }),
   };
 }
 
@@ -2297,6 +2304,10 @@ function mcpToolsForEnv(env) {
   const mainnet = gatewayConfig(env, false);
   const testnet = gatewayConfig(env, true);
   return PAID_MCP_TOOLS.map(tool => {
+    tool = structuredClone(tool);
+    tool.description = tool.description.replaceAll("0.001 USDC", `${Number(mainnet.amount) / 1e6} USDC`);
+    if (tool._meta?.["xguard/pricing"]) tool._meta["xguard/pricing"].amount_atomic = mainnet.amount;
+    if (tool._meta?.["xguard/payment"]) tool._meta["xguard/payment"].price_atomic = mainnet.amount;
     if (tool.name === "xguard.pricing.quote") return { ...tool, _meta: { ...(tool._meta || {}), "xguard/pricing": { ...(tool._meta?.["xguard/pricing"] || {}), payment_readiness: `${API}/v1/payment/readiness`, production: { environment: mainnet.environment, network: mainnet.network, asset: mainnet.asset, amount_atomic: mainnet.amount, configured: mainnet.configured }, test: { environment: testnet.environment, network: testnet.network, asset: testnet.asset, amount_atomic: testnet.amount, configured: testnet.configured, revenue: false } } } };
     if (tool.name !== TOOL) return tool;
     return { ...tool, available: mainnet.configured, _meta: { ...(tool._meta || {}), "xguard/payment": { ...(tool._meta?.["xguard/payment"] || {}), payment_readiness: `${API}/v1/payment/readiness`, production: { environment: mainnet.environment, rail: mainnet.rail.id, network: mainnet.network, asset: mainnet.asset, amount_atomic: mainnet.amount, configured: mainnet.configured }, test: { environment: testnet.environment, rail: testnet.rail.id, network: testnet.network, asset: testnet.asset, amount_atomic: testnet.amount, configured: testnet.configured, revenue: false } } } };
@@ -2503,7 +2514,7 @@ async function operationStatus(env, paymentIdentifier, id) {
   }, 200, { "x-xguard-request-id": id });
 }
 
-function paidOpenApiPaths() {
+function paidOpenApiPaths(env) {
   const standard = { "application/json": { schema: { type: "object" } } };
   const quoteContent = {
     "application/json": {
@@ -2512,7 +2523,7 @@ function paidOpenApiPaths() {
     },
   };
   const paidFlow = {
-    price: { amount_atomic: DEFAULT_PRICE_ATOMIC, currency: "USDC", decimals: 6 },
+    price: { amount_atomic: gatewayConfig(env, false).amount, currency: "USDC", decimals: 6 },
     steps: [
       `POST ${API}/v1/tools/web.fetch with {url: \"https://example.com/\"}`,
       "Read Payment-Required and X-XGuard-Quote from HTTP 402",
@@ -2572,7 +2583,7 @@ function paidOpenApiPaths() {
   };
 }
 
-async function improveOpenApi(response) {
+async function improveOpenApi(response, env) {
   if (!(response instanceof Response) || !response.ok) return response;
   const body = await response.clone().json().catch(() => null);
   if (!body || typeof body !== "object") return response;
@@ -2582,7 +2593,8 @@ async function improveOpenApi(response) {
     version: VERSION,
     description: "No-account x402 v2 USDC gateway for controlled agent tools, plus secretless upstream credential execution. Prices are signed before payment; successful execution returns a signed receipt and ProofRail evidence.",
   };
-  body.paths = { ...(body.paths || {}), ...paidOpenApiPaths() };
+  body.paths = { ...(body.paths || {}), ...paidOpenApiPaths(env) };
+  body.paths["/v1/tools/web.fetch/testnet"].post["x-xguard-payment-flow"].price = { amount_atomic: gatewayConfig(env, true).amount, currency: "USDC", decimals: 6 };
   body.servers = [{ url: API }];
   body.x_xguard = { product: "XGUARD = UNIVERSAL PAID AI AGENT + SECRETLESS GATEWAY", when_to_use: "Use XGuard when an agent needs a paid bounded tool or credential-backed API access without receiving a reusable upstream secret.", actual_capabilities: `${API}/v1/capabilities`, pricing: `${API}/v1/pricing`, quote_request: quoteRequestGuidance(), payment_manifest: `${API}/.well-known/payment-manifest`, payment_readiness: `${API}/v1/payment/readiness`, paid_operations_require_x402: true, testnet_is_revenue: false };
   const next = new Headers(response.headers);
@@ -2676,7 +2688,7 @@ export default {
       return augmentMcpTools(paid?.message, response, env);
     }
     let response = await app.fetch(request, env, ctx);
-    if (request.method === "GET" && url.pathname === "/openapi.json") response = await improveOpenApi(response);
+    if (request.method === "GET" && url.pathname === "/openapi.json") response = await improveOpenApi(response, env);
     if (request.method === "GET" && url.pathname === "/llms.txt") response = await improveLlms(response);
     if (request.method === "GET" && DISCOVERY_PATHS.has(url.pathname)) {
       await observeStage(env, "discovery", id, { traffic_class: observation.trafficClass, transport: "http", surface: url.pathname.replaceAll("/", "_") || "root" });

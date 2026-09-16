@@ -1,5 +1,6 @@
 import gateway from "./gateway.js";
 import { inspectPayment } from "./core/payment-context.js";
+import { readPublicJson, logNormalization } from "./core/public-contract.js";
 
 const VERSION = "3.0.0";
 const BASE = "eip155:8453";
@@ -20,15 +21,8 @@ const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(b
 function block(reason, detail = {}) { return { ok: false, reason, detail }; }
 
 async function inspectRequest(request) {
-  try {
-    const length = Number(request.headers.get("content-length") || 0);
-    if (length > 131072) return block("body_too_large");
-    const text = await request.clone().text();
-    if (text.length > 131072) return block("body_too_large");
-    return inspectPayment(JSON.parse(text));
-  } catch {
-    return block("invalid_json");
-  }
+  const parsed = await readPublicJson(request.clone(), 131072);
+  return parsed.error ? block(parsed.error) : inspectPayment(parsed.value);
 }
 
 function withPassHeaders(response, inspection) {
@@ -46,10 +40,11 @@ async function protectedFlow(request, env, ctx) {
       caller: (request.headers.get("user-agent") || "unknown").replace(/[^\x20-\x7e]/g, "_").slice(0, 120),
       cf_ray: (request.headers.get("cf-ray") || "").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64) || null,
       traffic_class: request.headers.get("x-xguard-traffic-class") === "synthetic" ? "synthetic" : "unclassified" }));
-    return json({ error: "xguard_firewall_block", reason: inspection.reason, detail: inspection.detail || undefined }, 400, { "x-xguard-firewall": "block", "x-xguard-firewall-reason": inspection.reason });
+    return json({ error: "xguard_firewall_block", reason: inspection.reason, detail: inspection.detail || undefined }, inspection.reason === "payload_too_large" ? 413 : 400, { "x-xguard-firewall": "block", "x-xguard-firewall-reason": inspection.reason });
   }
   // Forward the same canonical envelope that passed binding validation.
   // The full payment travels with every request; no prior /verify state is required.
+  logNormalization(request, inspection.normalizations);
   const headers = new Headers(request.headers);
   headers.delete("content-length");
   headers.set("content-type", "application/json");

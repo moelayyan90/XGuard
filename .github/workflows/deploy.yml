@@ -197,6 +197,9 @@ jobs:
       - name: Verify stateless settlement context without a valid payment authorization
         run: node scripts/verify-settlement-context.mjs
 
+      - name: Verify public errors and follow signed quotes to payment requirements
+        run: node scripts/verify-public-contract.mjs
+
       - name: Verify outside-in MCP contract parity
         run: node scripts/verify-outside-in.mjs
 

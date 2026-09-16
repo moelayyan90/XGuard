@@ -107,6 +107,86 @@ async function harness(t, options = {}) {
   return { env, counts, request, payload, buy, base, logs };
 }
 
+test("Outcome quote aliases return a directly executable next request on both payment networks", async t => {
+  const h = await harness(t);
+  for (const body of [
+    { tool: "feed-digest" }, { tool_id: "xguard.feed-digest", quantity: 1 },
+    { toolId: "feed-digest", units: 1 }, { name: "xguard_execute", arguments: { capability: "feed-digest" } },
+    { type: "function", function: { name: "xguard_execute", arguments: JSON.stringify({ capability: "feed-digest", testnet: true }) } },
+    { capability: "web-extraction", sources: ["https://source.example.org/item"] },
+    { capability: "product-offers", sources: ["https://source.example.org/item"], network: "base-sepolia" },
+  ]) {
+    const response = await h.request("/v1/pricing/quote", body);
+    assert.equal(response.status, 200);
+    const quote = await response.json();
+    const challengeResponse = await h.request(new URL(quote.next.execution_url).pathname, quote.next.body, { [quote.next.quote.header]: quote.next.quote.value });
+    assert.equal(challengeResponse.status, 402, JSON.stringify(await challengeResponse.clone().json()));
+    const challenge = await challengeResponse.json();
+    assert.equal(challenge.accepts[0].amount, quote.amount);
+    assert.equal(challenge.accepts[0].network, quote.network);
+    assert.equal(challengeResponse.headers.get("x-xguard-quote"), quote.quote);
+    assert.equal(quote.price.amount_atomic, quote.amount);
+    assert.equal(quote.request_id, response.headers.get("x-xguard-request-id"));
+  }
+  assert.equal(h.counts.verify, 0); assert.equal(h.counts.settle, 0); assert.equal(h.counts.upstream, 0);
+});
+
+test("Following only quote next instructions buys once and safely replays the same paid outcome", async t => {
+  const h = await harness(t);
+  const quote = await (await h.request("/v1/pricing/quote", { tool: "web-extraction", input: { url: "https://source.example.org/item" } })).json();
+  const headers = { [quote.next.quote.header]: quote.next.quote.value };
+  const path = new URL(quote.next.execution_url).pathname;
+  const challenge = await (await h.request(path, quote.next.body, headers)).json();
+  headers[quote.next.payment.retry_header] = encodePaymentSignatureHeader(h.payload(challenge));
+  const paid = await h.request(path, quote.next.body, headers);
+  assert.equal(paid.status, 200);
+  const result = await paid.json(); assert.ok(result.receipt.signature);
+  const replay = await (await h.request(path, quote.next.body, headers)).json();
+  assert.equal(replay.replay, true); assert.deepEqual(replay.result, result.result);
+  assert.equal(h.counts.settle, 1); assert.equal(h.counts.upstream, 1);
+});
+
+test("Conflicting public instructions never become a quote, payment, or source request", async t => {
+  const h = await harness(t);
+  for (const body of [
+    { tool: "feed-digest", tool_id: "web-extraction" },
+    { tool: "feed-digest", capability: "web-extraction" },
+    { intent: "demo", input: { intent: "Read https://source.example.org/item" } },
+    { capability: "feed-digest", network: "base", testnet: true },
+    { capability: "feed-digest", quantity: 1, calls: 2 },
+    { capability: "feed-digest", quantity: 2 },
+    { name: "xguard_execute", arguments: '{"capability":"feed-digest","capability":"web-extraction"}' },
+    { capability: "feed-digest", headers: { authorization: "fixture-secret-not-sent" }, input: {} },
+    { command: "curl https://source.example.org/item", capability: "product-offers" },
+    { tool: "xguard.web.fetch", url: "https://first.example.org/", input: { url: "https://other.example.org/" } },
+  ]) {
+    const response = await h.request("/v1/pricing/quote", body);
+    assert.ok([400, 422].includes(response.status));
+    const problem = await response.json();
+    assert.equal(problem.ok, false); assert.equal(typeof problem.error.code, "string");
+    assert.ok(problem.error.message); assert.ok(problem.next);
+    assert.equal(problem.request_id, response.headers.get("x-xguard-request-id"));
+  }
+  assert.equal(h.counts.verify, 0); assert.equal(h.counts.settle, 0); assert.equal(h.counts.upstream, 0);
+});
+
+test("Pricing discovery follows runtime prices and aliases route to the current outcome handler", async t => {
+  const h = await harness(t); h.env.XGUARD_FEED_DIGEST_PRICE_ATOMIC = "4000";
+  const prices = await (await h.request("/v1/pricing")).json();
+  const price = prices.capabilities.find(x => x.id === "feed-digest");
+  assert.equal(price.amount_atomic, "4000"); assert.equal(price.network, "eip155:8453"); assert.equal(price.pay_to, PAYEE);
+  const quote = await (await h.request("/api/v1/pricing/quote", { tool_id: "feed-digest" })).json();
+  assert.equal(quote.amount, price.amount_atomic);
+  const demo = await (await h.request("/api/v1/execute", { intent: "demo" })).json(); assert.equal(demo.ok, true);
+  const manifest = await (await h.request("/.well-known/payment-manifest")).json();
+  assert.equal(manifest.outcome_execution.capabilities.find(x => x.id === "feed-digest").amount_atomic, "4000");
+  const directory = await (await h.request("/.well-known/agent-directory.json")).json();
+  assert.equal(directory.agents[0].card, "https://api.xguardgate.com/.well-known/agent-card.json");
+  const spec = await (await h.request("/openapi.json")).json(); assert.ok(spec.components.schemas.PublicError);
+  assert.equal(spec.paths["/v1/execute"].post.responses["400"].content["application/json"].schema.$ref, "#/components/schemas/PublicError");
+  assert.equal(h.counts.settle, 0); assert.equal(h.counts.upstream, 0);
+});
+
 test("Official funded MCP client can authorize, receive a result, and replay without XGuard-specific transport code", async t => {
   const h = await harness(t);
   const account = privateKeyToAccount(generatePrivateKey());

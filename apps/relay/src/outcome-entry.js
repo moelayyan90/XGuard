@@ -1,6 +1,7 @@
 import { onboardingPage, htmlPreviewInput, previewClientScript } from "./outcome-onboarding.js";
 import { OUTCOME_API as API, OUTCOME_SITE as SITE, EXECUTE_SCHEMA, RESULT_SCHEMA,
-  outcomeDefinitions, outcomeDefinition, publicOutcome, normalizeOutcome } from "./outcome-catalog.js";
+  outcomeDefinitions, outcomeDefinition, publicOutcome, normalizeOutcome, isOutcomeRequest } from "./outcome-catalog.js";
+import { logNormalization, publicError, publicRequestId } from "./core/public-contract.js";
 import { previewOutcome } from "./outcome-engine.js";
 import { gatewayConfig, handlePaidWebFetch, issueQuote, recordAgentJourney, jsonBody, rateLimit,
   recoverOutcome, validateMcpRequest, mcpTransportResponse } from "./paid-agent-entry.js";
@@ -24,7 +25,12 @@ const mcpOutcomeSchema = { type: "object", anyOf: [RESULT_SCHEMA,
 ] };
 
 export function liveOutcomes(env) {
-  return outcomeDefinitions().filter(x => x.id === "extract-preview" || env?.PROOF_AUTHORITY && env?.PAID_GATEWAY && gatewayConfig(env, false, { capability: x.id }).configured).map(x => publicOutcome(x, env));
+  return outcomeDefinitions().filter(x => x.id === "extract-preview" || env?.PROOF_AUTHORITY && env?.PAID_GATEWAY && gatewayConfig(env, false, { capability: x.id }).configured).map(x => {
+    const item = publicOutcome(x, env), paid = x.id !== "extract-preview", config = gatewayConfig(env, false, { capability: x.id });
+    item.pricing = { ...item.pricing, network: paid ? config.network : null, asset: paid ? config.asset : null,
+      pay_to: paid ? config.payTo : null, minimum_quantity: 1, maximum_quantity: 1 };
+    return item;
+  });
 }
 function catalog(env) {
   const items = liveOutcomes(env);
@@ -49,6 +55,8 @@ function mcpTools(env) {
 async function execute(request, env, raw, transport = "http", quoteOnly = false) {
   const started = Date.now();
   const normalized = normalizeOutcome(raw);
+  if (normalized.ok && raw && typeof raw === "object") logNormalization(request,
+    Object.keys(raw).filter(key => ["tool", "tool_id", "toolId", "name", "input", "arguments", "function", "network", "quantity", "units", "requests", "calls"].includes(key)).map(key => `outcome_${key}`));
   const tool = normalized.ok ? `xguard.${normalized.input.capability}` : "unknown";
   const id = await recordAgentJourney(request, env, "execute_attempted", { transport, tool });
   if (!normalized.ok) return json({ ...normalized, request_id: id }, normalized.error === "target_not_public" ? 403 : 422);
@@ -79,7 +87,11 @@ async function execute(request, env, raw, transport = "http", quoteOnly = false)
 }
 
 async function mcpResult(message, response) {
-  const value = await response.json();
+  let value = await response.json();
+  if (!response.ok && response.status !== 402) {
+    const request = new Request(`${API}${message.params?.name === "xguard_execute" ? "/v1/execute" : "/mcp"}`);
+    value = publicError(value, request, response.status, publicRequestId(request, response, value));
+  }
   const settlement = response.headers.get("payment-response");
   const meta = settlement ? { "x402/payment-response": decodePaymentResponseHeader(settlement) } : {};
   return mcpTransportResponse(json({ jsonrpc: "2.0", id: message.id ?? null, result: { resultType: "complete", isError: !response.ok,
@@ -140,13 +152,14 @@ export async function handleOutcomeRoute(request, env, ctx) {
   if (read && ["/agent.txt", "/llms.txt", "/skill.md"].includes(url.pathname)) return new Response(agentText(env), { headers: { ...cors, "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=60" } });
   if (read && url.pathname === "/sitemap.xml") return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${["/", "/try", "/pricing", "/developers", "/connect", "/agent.txt", "/.well-known/mcp/server-card.json", ...liveOutcomes(env).map(x => `/capabilities/${x.id}`)].map(x => `<url><loc>${SITE}${x}</loc></url>`).join("")}</urlset>`, { headers: { ...cors, "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=60" } });
   if (read && url.pathname === "/v1/pricing") return json({ version: "5.1.0", capabilities: liveOutcomes(env).map(x => ({ id: x.id, ...x.pricing })), execution_url: `${API}/v1/execute`, quote_optional: `${API}/v1/pricing/quote`, payment: "x402-v2", first_result: { intent: "demo" } });
+  if (read && url.pathname === "/.well-known/agent-directory.json") return json({ name: "XGuard", agents: [{ name: "XGuard", card: `${API}/.well-known/agent-card.json`, mcp: `${API}/mcp`, capabilities: `${API}/v1/capabilities`, pricing: `${API}/v1/pricing`, openapi: `${API}/openapi.json` }] });
   if (read && url.hostname !== "api.xguardgate.com" && ["/", "/try", "/pricing", "/developers", "/connect"].includes(url.pathname)) {
     await recordAgentJourney(request, env, "discovery_seen", { surface: "public_page" }); return page(request, env);
   }
   if (request.method === "POST" && ["/v1/execute", "/v1/pricing/quote"].includes(url.pathname)) {
     const parsed = await jsonBody(request.clone());
     if (parsed.error) return json({ ok: false, error: parsed.error, message: "Send bounded valid JSON.", repair: { suggested_request: { intent: "demo" } } }, parsed.error === "payload_too_large" ? 413 : 400);
-    if (url.pathname === "/v1/pricing/quote" && !parsed.value?.intent && !parsed.value?.capability) return null;
+    if (url.pathname === "/v1/pricing/quote" && !isOutcomeRequest(parsed.value)) return null;
     return execute(request, env, parsed.value, "http", url.pathname.endsWith("quote"));
   }
   const resultMatch = url.pathname.match(/^\/v1\/results\/([^/]+)$/);
@@ -157,7 +170,7 @@ export async function handleOutcomeRoute(request, env, ctx) {
     endpoint: `${API}/mcp`, transport: "streamable-http", tools: mcpTools(env), instructions, resources: [], prompts: [], capabilities: liveOutcomes(env) });
   if (request.method === "POST" && url.pathname === "/mcp") {
     const parsed = await jsonBody(request.clone(), 32768);
-    if (parsed.error) return json({ jsonrpc: "2.0", id: null, error: { code: parsed.error === "invalid_json" ? -32700 : -32600, message: parsed.error } }, 400);
+    if (parsed.error) return json({ jsonrpc: "2.0", id: null, error: { code: parsed.error === "payload_too_large" ? -32600 : -32700, message: parsed.error } }, parsed.error === "payload_too_large" ? 413 : 400);
     const message = parsed.value;
     const invalid = validateMcpRequest(request, message); if (invalid) return invalid;
     if (message.method === "tools/list") {
@@ -195,11 +208,16 @@ export async function handleOutcomeRoute(request, env, ctx) {
 
 export async function decorateOutcomeResponse(request, response, env) {
   const path = new URL(request.url).pathname;
-  if (!response.ok || request.method === "HEAD" || !["/", "/openapi.json", "/.well-known/agent-card.json", "/.well-known/agent.json", "/a2a", "/mcp", "/.well-known/ai-plugin.json", "/.well-known/payment-manifest"].includes(path) || !(response.headers.get("content-type") || "").includes("json")) return response;
+  if (!response.ok || request.method === "HEAD" || !["/", "/openapi.json", "/.well-known/agent-card.json", "/.well-known/agent.json", "/a2a", "/mcp", "/.well-known/ai-plugin.json", "/.well-known/payment-manifest", "/.well-known/payment-manifest.json", "/.well-known/x402", "/.well-known/x402.json"].includes(path) || !(response.headers.get("content-type") || "").includes("json")) return response;
   const body = await response.json();
+  if (["/.well-known/x402", "/.well-known/x402.json", "/.well-known/payment-manifest", "/.well-known/payment-manifest.json"].includes(path)) body.outcome_execution = {
+    endpoint: `${API}/v1/execute`, pricing: `${API}/v1/pricing`, quote: `${API}/v1/pricing/quote`, payment_scheme: "x402-v2 exact",
+    settlement_before_execution: true, capabilities: liveOutcomes(env).map(x => ({ id: x.id, ...x.pricing })),
+    flow: ["call", "inspect_402", "authorize", "retry_identical_input", "receive_result_receipt_proof"],
+  };
   if (path === "/" && body.discovery) { body.description = "Normalized page evidence, product offers and feed digests from public sources, in one intent call."; Object.assign(body, { first_result: catalog(env).first_result, execution_url: `${API}/v1/execute` }); Object.assign(body.discovery, { agent_instructions: `${API}/agent.txt`, capabilities: `${API}/v1/capabilities` }); }
   if (path === "/mcp" && body.result) body.result.instructions = instructions;
-  if (path === "/.well-known/payment-manifest") {
+  if (["/.well-known/payment-manifest", "/.well-known/payment-manifest.json"].includes(path)) {
     body.primary_execution = `${API}/v1/execute`;
     body.resources = [...liveOutcomes(env).filter(x => x.pricing.amount_atomic !== "0").map(x => ({
       tool: `xguard.${x.id}`, capability: x.id, resource: `${API}/v1/execute`, method: "POST", price_atomic: x.pricing.amount_atomic,
@@ -227,7 +245,7 @@ export async function decorateOutcomeResponse(request, response, env) {
     operation.requestBody.content["application/json"].example = sample;
     operation.requestBody.content["application/json"].schema = { ...EXECUTE_SCHEMA, examples: [sample],
       properties: { ...EXECUTE_SCHEMA.properties, intent: { ...EXECUTE_SCHEMA.properties.intent, example: sample.intent } },
-      anyOf: ["intent", "capability", "html", "action", "desired_action", "command", "input", "arguments", "operation", "http", "task"].map(key => ({ required: [key] })),
+      anyOf: ["intent", "capability", "tool", "tool_id", "toolId", "name", "function", "html", "action", "desired_action", "command", "input", "arguments", "operation", "http", "task"].map(key => ({ required: [key] })),
     };
     operation.description = "Live public-source work requires x402 payment at the exact quoted price. The supplied-HTML preview (intent:demo) is free. An unsigned request only returns a price; it does not fetch sources or settle payment.";
     if (paid.length) {

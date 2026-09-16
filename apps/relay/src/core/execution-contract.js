@@ -36,7 +36,9 @@ export async function readBoundedBody(stream, maxBytes) {
       if (done) break;
       length += value.byteLength;
       if (length > maxBytes) {
-        await reader.cancel().catch(() => {});
+        // A cloned Request tees its stream. Waiting for cancellation also waits
+        // for the other branch, which may never be consumed on an error path.
+        void reader.cancel().catch(() => {});
         throw new Error("response_too_large");
       }
       parts.push(value);
