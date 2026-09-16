@@ -2,6 +2,7 @@
 // https://mcpcentral.io/docs/submit-a-server
 // https://mcpcentral.io/docs/consume-the-registry
 import { readFile, appendFile } from "node:fs/promises";
+import { inspectMirror } from "./mcpcentral-contract.mjs";
 
 const manifest = JSON.parse(await readFile(new URL("../server.json", import.meta.url), "utf8"));
 const endpoint = manifest.remotes.find(remote => remote.type === "streamable-http").url;
@@ -25,28 +26,10 @@ try {
 
   // Treat namespace/name as one path parameter, including its slash.
   const mirror = await get(`https://mcpcentral.io/api/servers/${encodeURIComponent(manifest.name)}`);
-  const server = mirror.server ?? mirror.data?.server ?? mirror.data ?? mirror;
-  report.response_fields = Object.keys(server);
-  const registered = server.raw ?? server;
-  report.observed_version = registered.version ?? server.version ?? null;
-  report.mirror_verified = [server.id, server.name, registered.name].includes(manifest.name)
-    && report.observed_version === manifest.version
-    && (registered.remotes ?? server.remotes)?.some(remote => remote.type === "streamable-http" && remote.url === endpoint) === true;
+  Object.assign(report, inspectMirror(manifest, mirror));
   if (!report.mirror_verified) throw new Error("MCPCentral has not exposed the exact manifest version and endpoint; daily synchronization may still be pending");
 } catch (error) {
   report.error = String(error.message);
-  // Keep bounded public contract evidence when the external catalog rejects
-  // an identifier, without credentials or hidden/internal API inspection.
-  if (report.error.includes("HTTP 404 at https://mcpcentral.io")) {
-    try {
-      const response = await fetch("https://mcpcentral.io/openapi.yaml", { signal: AbortSignal.timeout(15000) });
-      if (response.ok) {
-        const spec = await response.text();
-        const at = spec.indexOf("/api/servers/{id}");
-        report.catalog_contract = at >= 0 ? spec.slice(at, at + 4500) : "Documented server path not found";
-      }
-    } catch { /* preserve the original discovery failure */ }
-  }
   process.exitCode = 1;
 }
 

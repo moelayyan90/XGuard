@@ -9,6 +9,7 @@ on:
     paths:
       - ".github/workflows/publish-mcpcentral.yml"
       - "scripts/verify-mcpcentral.mjs"
+      - "scripts/mcpcentral-contract*.mjs"
   schedule:
     - cron: "23 7 * * *"
   workflow_dispatch:
@@ -17,8 +18,25 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  contract:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Validate exact-version discovery checks
+        run: |
+          node --check scripts/verify-mcpcentral.mjs
+          node --test scripts/mcpcentral-contract-test.mjs
+  observe:
+    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    needs: contract
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
