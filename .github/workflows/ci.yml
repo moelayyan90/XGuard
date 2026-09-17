@@ -44,6 +44,10 @@ jobs:
           node --check apps/relay/src/webmcp-entry.js
           node --check apps/relay/src/a2a-entry.js
           node --check apps/relay/src/canonical-entry.js
+          node --check apps/relay/src/agent-token-usage.js
+          node --check apps/relay/src/core/agent-usage.js
+          node --check apps/relay/src/agent-token-usage-openapi.js
+          node --check scripts/verify-agent-token-usage.mjs
           node --check apps/relay/src/a2a-entry-test.js
           node --check apps/relay/src/canonical-entry-test.js
           node --check apps/relay/src/product-entry-test.js
@@ -110,6 +114,7 @@ jobs:
           node --test apps/relay/src/entry-test.js
           node --test apps/relay/src/a2a-entry-test.js
           node --test apps/relay/src/canonical-entry-test.js
+          node --test apps/relay/src/agent-token-usage-test.js scripts/verify-agent-token-usage-test.mjs
           node --test apps/relay/src/action-rail-test.js
           node --test apps/relay/src/egress-vault-test.js
           node --test apps/relay/src/egress-execution-test.js

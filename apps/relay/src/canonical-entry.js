@@ -2,6 +2,8 @@ import app from "./a2a-entry.js";
 import { finalizePublicResponse } from "./core/public-contract.js";
 import { gatewayConfig } from "./paid-agent-entry.js";
 import { handleOutcomeRoute, decorateOutcomeResponse } from "./outcome-entry.js";
+import { handleAgentUsageRoute } from "./agent-token-usage.js";
+import { describeAgentUsage } from "./agent-token-usage-openapi.js";
 export * from "./a2a-entry.js";
 
 const VERSION = "5.1.0";
@@ -149,6 +151,7 @@ function apiRoot(request) {
       payment_readiness: `${API}/v1/payment/readiness`,
       payment_manifest: `${API}/.well-known/payment-manifest`,
       secretless_egress: `${API}/v1/egress`,
+      agent_token_usage: `${API}/v1/agent-token-usage/summary`,
       egress_manifest: `${API}/.well-known/xguard-egress.json`,
       proofrail: `${API}/v1/proof`,
       openapi: `${API}/openapi.json`,
@@ -334,6 +337,11 @@ function normalizePublicBody(pathname, body) {
   }
 
   if (pathname === "/openapi.json") {
+    // OpenAPI permits custom top-level metadata only as x- extensions.
+    for (const [legacy, extension] of Object.entries({ primary_product: "x-primary-product", primary_role: "x-primary-role", secretless_egress: "x-secretless-egress", x_xguard: "x-xguard", canonical_identity: "x-canonical-identity" })) {
+      if (Object.hasOwn(body, legacy)) { body[extension] = body[legacy]; delete body[legacy]; }
+    }
+    describeAgentUsage(body);
     body.info = {
       ...(body.info || {}),
       title: NAME,
@@ -423,6 +431,8 @@ const canonicalApp = {
     if (redirect) return redirect;
 
     const url = new URL(request.url);
+    const usage = await handleAgentUsageRoute(request, env);
+    if (usage) return normalizeResponse(request, usage, env);
     const outcome = await handleOutcomeRoute(request, env, ctx);
     if (outcome) return normalizeResponse(request, outcome, env);
     if (request.method === "GET" || request.method === "HEAD") {

@@ -1,5 +1,6 @@
 import { digestBytes, executionKey, requestDigest, readBoundedBody, responseHeaders as safeResponseHeaders, credentialVariants, MAX_RESULT_BYTES, MAX_STORED_RESULT_BYTES } from "./core/execution-contract.js";
 import { publicDns } from "./core/network-policy.js";
+import { admitUsage, recordUsage, UsageError } from "./core/agent-usage.js";
 
 const VERSION = "1.0.0";
 const API = "https://api.xguardgate.com";
@@ -838,6 +839,18 @@ export class EgressMeter {
   constructor(state) { this.state = state; }
   async fetch(request) {
     const path = new URL(request.url).pathname;
+    if (request.method === "POST" && ["/agent-usage/admit", "/agent-usage/record"].includes(path)) {
+      try {
+        if (path === "/agent-usage/admit") {
+          const admission = await admitUsage(this.state.storage);
+          return json(admission, admission.allowed ? 200 : 429);
+        }
+        return json(await recordUsage(this.state.storage, await request.json()));
+      } catch (cause) {
+        const error = cause instanceof UsageError ? cause : new UsageError("usage_store_unavailable", 503, "Usage storage could not commit the event.", true);
+        return json({ error: { code: error.code, message: error.message, retryable: error.retryable } }, error.status);
+      }
+    }
     if (path === "/record" && request.method === "POST") {
       const body = await request.json();
       let output;

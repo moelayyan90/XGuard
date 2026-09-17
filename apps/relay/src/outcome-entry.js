@@ -38,7 +38,8 @@ function catalog(env) {
     tools: items.map(x => ({ ...x, available: true, paid: x.pricing.amount_atomic !== "0", endpoint: x.execute_url })),
     execute_url: `${API}/v1/execute`, first_result: { method: "POST", url: `${API}/v1/execute`, body: { intent: "demo" }, expected_status: 200, price: "free" },
     discovery: { capabilities: `${API}/v1/capabilities`, agent_instructions: `${API}/agent.txt`, mcp: `${API}/mcp`, a2a: `${API}/a2a`, openapi: `${API}/openapi.json`, interactive_try: `${SITE}/try` },
-    compatibility: { paid_web_fetch: `${API}/v1/tools/web.fetch`, scoped_vendor_actions: `${API}/v1/egress`, operator_pricing: `${SITE}/pricing/operator` },
+    compatibility: { paid_web_fetch: `${API}/v1/tools/web.fetch`, scoped_vendor_actions: `${API}/v1/egress`, operator_pricing: `${SITE}/pricing/operator`,
+      agent_token_usage: { endpoint: `${API}/v1/agent-token-usage/summary`, method: "POST", contract_version: "1.0.0", authentication: "provisioned_operator_key", payment_required: false, role: "self_reported_usage_ingestion" } },
     no_account: true, payment_requires_funded_payer: true };
 }
 function mcpTools(env) {
@@ -111,7 +112,7 @@ function mcpPaymentRequest(request, message) {
 }
 
 function agentText(env) {
-  return `# XGuard\n\n${instructions}\n\n## Available outcomes\n${liveOutcomes(env).map(x => `- ${x.id}: ${x.description} Price: ${x.pricing.amount} USDC. ${x.schema_url}`).join("\n")}\n\n## First result\nPOST ${API}/v1/execute\nContent-Type: application/json\n{\"intent\":\"demo\"}\n\n## Recovery\nGET ${API}/v1/results/{payment_identifier} with the original X-XGuard-Quote. This quote grants access to the stored public-source result; do not publish it.\n\nOpenAPI: ${API}/openapi.json\nMCP: ${API}/mcp\nA2A: ${API}/a2a\n`;
+  return `# XGuard\n\n${instructions}\n\n## Available outcomes\n${liveOutcomes(env).map(x => `- ${x.id}: ${x.description} Price: ${x.pricing.amount} USDC. ${x.schema_url}`).join("\n")}\n\n## First result\nPOST ${API}/v1/execute\nContent-Type: application/json\n{\"intent\":\"demo\"}\n\n## Authenticated usage ingestion\nPOST ${API}/v1/agent-token-usage/summary records self-reported token counts using a provisioned operator key and a stable event identifier. Tenant IDs must match a trusted server-side binding. No x402 payment or credit deduction; this does not execute a tool. See OpenAPI for aliases, limits and retry semantics.\n\n## Recovery\nGET ${API}/v1/results/{payment_identifier} with the original X-XGuard-Quote. This quote grants access to the stored public-source result; do not publish it.\n\nOpenAPI: ${API}/openapi.json\nMCP: ${API}/mcp\nA2A: ${API}/a2a\n`;
 }
 
 function page(request, env, item = null) {
