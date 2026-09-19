@@ -286,6 +286,10 @@ test("FLOW 2: automatic price/payment/retry produces a signed aggregate; exact r
   assert.ok(result.receipt.signature); assert.ok(result.verification.signed_proof);
   const verified = await (await h.request("/v1/proofs/verify", { proof: result.verification.signed_proof })).json();
   assert.equal(verified.valid, true);
+  const receiptVerified = await (await h.request("/v1/receipts/verify", { proof: result.verification.signed_proof, result_sha256: result.verification.result_sha256, receipt: result.receipt })).json();
+  assert.equal(receiptVerified.valid, true, JSON.stringify(receiptVerified));
+  assert.equal(receiptVerified.receipt_verified, true);
+  assert.equal((await h.request("/v1/receipts/verify", { proof: result.verification.signed_proof, receipt: { ...result.receipt, signature: result.receipt.signature.slice(0, -8) + "tampered" } })).status, 422);
   const recovered = await client.getResult(result.recovery);
   assert.equal(recovered.replay, true); assert.deepEqual(recovered.result, result.result);
   assert.equal(h.counts.settle, 1); assert.equal(h.counts.upstream, 2);
@@ -348,7 +352,7 @@ test("FLOW 5: wrong amount/network/asset/recipient/intent and replayed authoriza
 test("FLOW 6: public capability pages, OpenAPI, MCP and A2A are linked to the same live outcomes", async t => {
   const h = await harness(t);
   const home = await h.request("/", undefined, { "x-test-site": "site" }); const html = await home.text();
-  assert.match(html, /Three sources/); assert.match(html, /\/v1\/execute/);
+  assert.match(html, /Give agents capabilities/); assert.match(html, /\/demo\/secretless/);
   const catalog = await (await h.request("/v1/capabilities")).json();
   for (const item of catalog.capabilities) { const page = await h.request(new URL(item.url).pathname, undefined, { "x-test-site": "site" }); assert.equal(page.status, 200); const text = await page.text(); assert.match(text, /rel="canonical"/); assert.ok(text.includes(item.id)); }
   const text = await (await h.request("/agent.txt")).text(); assert.match(text, /X-XGuard-Quote/);
@@ -363,10 +367,10 @@ test("FLOW 6: public capability pages, OpenAPI, MCP and A2A are linked to the sa
   assert.equal((await h.request("/v1/execute", sampled)).status, 402);
   assert.equal(h.counts.settle, 0); assert.equal(h.counts.upstream, 0);
   const listed = await (await h.request("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/list" })).json();
-  assert.deepEqual(listed.result.tools.map(x => x.name), ["xguard_discover", "xguard_execute", "xguard_get_result"]);
+  assert.deepEqual(listed.result.tools.map(x => x.name), ["xguard_execute", "xguard_secretless_call", "xguard_preflight", "xguard_quote", "xguard_verify_receipt", "xguard_discover", "xguard_status", "xguard_get_result"]);
   const mcp = await (await h.request("/mcp", { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "xguard_execute", arguments: { intent: "demo" } } })).json(); assert.equal(mcp.result.structuredContent.ok, true);
   const a2a = await (await h.request("/a2a", { jsonrpc: "2.0", id: 3, method: "SendMessage", params: { message: { messageId: "a2a-1", role: "ROLE_USER", parts: [{ text: "demo" }] } } })).json(); assert.equal(a2a.result.message.parts[0].data.ok, true);
-  const card = await (await h.request("/.well-known/agent-card.json")).json(); assert.deepEqual(card.skills.map(x => x.id), catalog.capabilities.map(x => x.id));
+  const card = await (await h.request("/.well-known/agent-card.json")).json(); assert.deepEqual(card.skills.map(x => x.id), ["xguard-secretless-execution", ...catalog.capabilities.map(x => x.id)]);
   const sitemap = await (await h.request("/sitemap.xml")).text(); for (const item of catalog.capabilities) assert.ok(sitemap.includes(item.url));
 });
 
@@ -402,7 +406,7 @@ test("self-serve pages expose an own-HTML trial and a priced customer purchase i
   const developer = await page("/developers?capability=product-offers");
   assert.match(developer, /outcome-buy\.mjs --pay --max-amount-atomic 6000/);
   assert.match(developer, /XGUARD_PAYER_PRIVATE_KEY/);
-  assert.match(developer, /YOUR FIRST RESULT/);
+  assert.match(developer, /Free public preview/);
   assert.doesNotMatch(developer, /outcome-paid\.mjs/);
   const preview = await (await h.request("/v1/execute", { intent: "demo", html: "<main><h1>Customer document</h1><p>Actual supplied text.</p></main>" })).json();
   assert.equal(preview.ok, true);

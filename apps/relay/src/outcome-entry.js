@@ -34,7 +34,7 @@ export function liveOutcomes(env) {
 }
 function catalog(env) {
   const items = liveOutcomes(env);
-  return { name: "XGuard", version: "5.1.0", product: "Public-source outcomes for agents", capabilities: items,
+  return { name: "XGuard", version: "5.2.0", product: "Public-source outcomes for agents", capabilities: items,
     tools: items.map(x => ({ ...x, available: true, paid: x.pricing.amount_atomic !== "0", endpoint: x.execute_url })),
     execute_url: `${API}/v1/execute`, first_result: { method: "POST", url: `${API}/v1/execute`, body: { intent: "demo" }, expected_status: 200, price: "free" },
     discovery: { capabilities: `${API}/v1/capabilities`, agent_instructions: `${API}/agent.txt`, mcp: `${API}/mcp`, a2a: `${API}/a2a`, openapi: `${API}/openapi.json`, interactive_try: `${SITE}/try` },
@@ -152,7 +152,7 @@ export async function handleOutcomeRoute(request, env, ctx) {
   }
   if (read && ["/agent.txt", "/llms.txt", "/skill.md"].includes(url.pathname)) return new Response(agentText(env), { headers: { ...cors, "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=60" } });
   if (read && url.pathname === "/sitemap.xml") return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${["/", "/try", "/pricing", "/developers", "/connect", "/agent.txt", "/.well-known/mcp/server-card.json", ...liveOutcomes(env).map(x => `/capabilities/${x.id}`)].map(x => `<url><loc>${SITE}${x}</loc></url>`).join("")}</urlset>`, { headers: { ...cors, "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=60" } });
-  if (read && url.pathname === "/v1/pricing") return json({ version: "5.1.0", capabilities: liveOutcomes(env).map(x => ({ id: x.id, ...x.pricing })), execution_url: `${API}/v1/execute`, quote_optional: `${API}/v1/pricing/quote`, payment: "x402-v2", first_result: { intent: "demo" } });
+  if (read && url.pathname === "/v1/pricing") return json({ version: "5.2.0", capabilities: liveOutcomes(env).map(x => ({ id: x.id, ...x.pricing })), execution_url: `${API}/v1/execute`, quote_optional: `${API}/v1/pricing/quote`, payment: "x402-v2", first_result: { intent: "demo" } });
   if (read && url.pathname === "/.well-known/agent-directory.json") return json({ name: "XGuard", agents: [{ name: "XGuard", card: `${API}/.well-known/agent-card.json`, mcp: `${API}/mcp`, capabilities: `${API}/v1/capabilities`, pricing: `${API}/v1/pricing`, openapi: `${API}/openapi.json` }] });
   if (read && url.hostname !== "api.xguardgate.com" && ["/", "/try", "/pricing", "/developers", "/connect"].includes(url.pathname)) {
     await recordAgentJourney(request, env, "discovery_seen", { surface: "public_page" }); return page(request, env);
@@ -165,8 +165,8 @@ export async function handleOutcomeRoute(request, env, ctx) {
   }
   const resultMatch = url.pathname.match(/^\/v1\/results\/([^/]+)$/);
   if (read && resultMatch) return recoverOutcome(env, resultMatch[1], request.headers.get("x-xguard-quote"), `xgr_${crypto.randomUUID().replaceAll("-", "")}`);
-  if (read && ["/mcp", "/.well-known/mcp/server-card.json", "/.well-known/xguard-tools.json"].includes(url.pathname)) return json({ name: "XGuard Universal Paid AI Agent + Secretless Gateway", version: "5.1.0",
-    serverInfo: { name: "XGuard Universal Paid AI Agent + Secretless Gateway", version: "5.1.0" }, authentication: { required: false, schemes: [] },
+  if (read && ["/mcp", "/.well-known/mcp/server-card.json", "/.well-known/xguard-tools.json"].includes(url.pathname)) return json({ name: "XGuard — Agent Execution Gateway", version: "5.2.0",
+    serverInfo: { name: "XGuard — Agent Execution Gateway", version: "5.2.0" }, authentication: { required: false, schemes: [] },
     execution_chokepoint: { tool: "xguard_execute", url: `${API}/v1/execute`, settlement_before_execution: true, free_preview: "extract-preview" },
     endpoint: `${API}/mcp`, transport: "streamable-http", tools: mcpTools(env), instructions, resources: [], prompts: [], capabilities: liveOutcomes(env) });
   if (request.method === "POST" && url.pathname === "/mcp") {

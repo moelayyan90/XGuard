@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "xguard",
-  "version": "5.1.0",
-  "description": "XGuard exposes signed prices and no-account x402 USDC paid tools, plus controlled secretless egress with signed receipts and ProofRail evidence.",
+  "version": "5.2.0",
+  "description": "Agent Execution Gateway: scoped capabilities, server-side credentials, policy, budgets and signed execution evidence.",
   "author": {
     "name": "XGuard",
     "url": "https://github.com/moelayyan90/XGuard"

@@ -1,8 +1,25 @@
-# Connect XGuard 5.1.0
+# Connect XGuard 5.2.0
 
-XGuard turns public pages, product offers and RSS/Atom feeds into normalized results. Start with `xguard_execute {"intent":"demo"}` for a free extraction. The default MCP list contains `xguard_discover`, `xguard_execute` and `xguard_get_result`. Paid work returns signed prices and requires your funded payer. HTTP uses a 402 response; native MCP uses an `isError` tool result with PaymentRequired in both content forms. An official x402 MCP client retries the same arguments with `params._meta["x402/payment"]`, preserving the challenge extensions. A plain MCP installation does not supply a wallet.
+XGuard — Agent Execution Gateway. Give agents capabilities, not reusable credentials.
 
-The compatibility identity remains XGuard Universal Paid AI Agent + Secretless Gateway; existing scoped credential APIs remain supported.
+Discovery is public and stateless. The primary tools are `xguard_execute`,
+`xguard_secretless_call`, `xguard_preflight`, `xguard_quote`,
+`xguard_verify_receipt`, `xguard_discover`, `xguard_status` and `xguard_get_result`.
+
+An operator stores a provider credential and issues a scoped capability. An agent
+calls `xguard_secretless_call` with that capability, an explicit operation, input
+and stable idempotency key. See [the execution guide](docs/execution-gateway.md).
+Operator and provider keys must never appear in MCP arguments.
+
+Start without credentials using `xguard_execute {"intent":"demo"}` for a free
+public extraction. The separate `/demo/secretless` page runs a real authenticated
+internal service using a freshly issued, restricted capability.
+
+Paid public outcomes retain signed prices and require a funded payer. HTTP uses
+402; native MCP returns `isError` with PaymentRequired in both content forms.
+An official x402 MCP client retries the same arguments with
+`params._meta["x402/payment"]`, preserving challenge extensions. An MCP installation
+does not supply a wallet. This branch is a candidate until deployment is verified.
 
 Canonical remote MCP endpoint:
 

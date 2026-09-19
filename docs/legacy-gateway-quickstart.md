@@ -4,7 +4,7 @@ Compatibility reference. The primary product and default MCP tool list are now d
 
 > **Developer quickstart:** [Connect your editor](https://xguardgate.com/developers) · [Try the live 402 flow](https://xguardgate.com/try) · [Hosted MCP](https://api.xguardgate.com/mcp). Discovery is free; execution requires the authorization described in the quickstart.
 
-# XGuard — Universal Paid AI Agent + Secretless Gateway
+# XGuard — Agent Execution Gateway
 
 **Canonical production API**
 
@@ -12,7 +12,7 @@ Compatibility reference. The primary product and default MCP tool list are now d
 https://api.xguardgate.com
 ```
 
-> **Canonical identity — v5.1.0:** XGuard Universal Paid AI Agent + Secretless Gateway. Agents discover real tools, get a signed price, pay per request through x402 v2 USDC, and receive a signed receipt plus ProofRail evidence. Secretless Egress keeps reusable upstream credentials outside agent context. See [`CANONICAL_IDENTITY.md`](./CANONICAL_IDENTITY.md).
+> **Canonical identity — v5.2.0:** XGuard — Agent Execution Gateway. Agents discover real tools, get a signed price, pay per request through x402 v2 USDC, and receive a signed receipt plus ProofRail evidence. Secretless Egress keeps reusable upstream credentials outside agent context. See [`CANONICAL_IDENTITY.md`](./CANONICAL_IDENTITY.md).
 
 The primary no-account path is:
 

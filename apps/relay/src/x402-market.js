@@ -1,5 +1,5 @@
 const API = "https://api.xguardgate.com";
-const VERSION = "5.1.0";
+const VERSION = "5.2.0";
 const RECONCILE = "https://reconcile.xguardgate.com";
 
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {

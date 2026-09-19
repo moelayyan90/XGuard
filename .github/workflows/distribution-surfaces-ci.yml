@@ -53,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q '^# Install XGuard MCP' llms-install.md
-          grep -q 'XGuard Universal Paid AI Agent + Secretless Gateway' llms-install.md
+          grep -q 'XGuard — Agent Execution Gateway' llms-install.md
           grep -q 'https://api.xguardgate.com/mcp' llms-install.md
           grep -q 'xguard_secretless_egress' llms-install.md
           grep -q 'xguard_egress_fetch' llms-install.md
@@ -78,10 +78,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-distribution-smoke/5.1.0' "$@"; }
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-distribution-smoke/5.2.0' "$@"; }
           endpoint='https://api.xguardgate.com/mcp'
           init="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"xguard-distribution-ci","version":"1.0.0"}}}')"
-          printf '%s' "$init" | jq -e '.result.serverInfo as $s | (["xguard-secretless-agent-gateway","xguard-universal-paid-secretless-gateway"] | index($s.name)) != null and (["5.0.2","5.1.0"] | index($s.version)) != null' >/dev/null
+          printf '%s' "$init" | jq -e '.result.serverInfo as $s | $s.name == "xguard-agent-execution-gateway" and $s.version == "5.2.0"' >/dev/null
           tools="$(curl --fail --silent --show-error --max-time 15 -X POST "$endpoint" -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')"
           printf '%s' "$tools" | jq -e '[.result.tools[].name] as $n | ["xguard_discover","xguard_execute","xguard_get_result"] | all(. as $x | $n | index($x) != null)' >/dev/null
 
@@ -90,7 +90,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-distribution-smoke/5.1.0' "$@"; }
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-distribution-smoke/5.2.0' "$@"; }
           ready=0
           for i in {1..60}; do
             worker_headers="$(mktemp)"
@@ -101,9 +101,9 @@ jobs:
             llms="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/llms.txt' || true)"
             sitemap="$(curl --silent --show-error --max-time 10 'https://xguardgate.com/sitemap.xml' || true)"
             if grep -qi "^x-xguard-worker-version-tag: git-${DEPLOY_SHA:0:12}" "$worker_headers" && \
-               printf '%s' "$connect" | grep -q 'Bring your agent' && \
-               printf '%s' "$card" | jq -e '.serverInfo.name == "XGuard Universal Paid AI Agent + Secretless Gateway" and .serverInfo.version == "5.1.0" and ([.tools[].name] | index("xguard_discover") != null) and ([.tools[].name] | index("xguard_execute") != null) and ([.tools[].name] | index("xguard_get_result") != null)' >/dev/null 2>&1 && \
-               printf '%s' "$identity" | jq -e '.name == "XGuard Universal Paid AI Agent + Secretless Gateway" and .version == "5.1.0" and .discovery.smithery_server_card != null' >/dev/null 2>&1 && \
+               printf '%s' "$connect" | grep -q 'Connect. Delegate.' && \
+               printf '%s' "$card" | jq -e '.serverInfo.name == "xguard-agent-execution-gateway" and .serverInfo.version == "5.2.0" and ([.tools[].name] | index("xguard_discover") != null) and ([.tools[].name] | index("xguard_execute") != null) and ([.tools[].name] | index("xguard_get_result") != null)' >/dev/null 2>&1 && \
+               printf '%s' "$identity" | jq -e '.name == "XGuard — Agent Execution Gateway" and .version == "5.2.0" and .discovery.smithery_server_card != null' >/dev/null 2>&1 && \
                printf '%s' "$llms" | grep -q '/v1/execute' && \
                printf '%s' "$sitemap" | grep -q '<loc>https://xguardgate.com/.well-known/mcp/server-card.json</loc>'; then
               ready=1

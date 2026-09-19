@@ -1,8 +1,45 @@
-# XGuard: public sources into usable results
+# XGuard — Agent Execution Gateway
 
-Give an agent pages, product URLs or feeds. XGuard fetches bounded public sources,
-selects working alternatives, parses and normalizes the output, removes duplicates,
-and returns source evidence in one result.
+**Give agents capabilities, not reusable credentials.**
+
+Store a provider credential on the server, issue a scoped capability, and let an
+agent execute one authorized operation. XGuard enforces policy, expiration,
+revocation, budgets and idempotency before injecting the credential. Every
+completed execution returns a durable result and signed ProofRail evidence.
+
+This branch contains the **5.2.0 release candidate**. Its deployment is tracked in
+[the release audit](docs/execution-release-audit.md); the production version is
+reported by [identity](https://xguardgate.com/identity).
+
+- [Operator setup](docs/execution-gateway.md#operator-setup): keep operator/provider keys out of agent context.
+- [Agent contract](docs/execution-gateway.md#agent-contract): MCP, REST, JavaScript and Python examples.
+- [Connect MCP](CONNECT.md): `https://api.xguardgate.com/mcp`.
+- [Payment and recovery contract](docs/execution-gateway.md#payments-and-recovery).
+
+```js
+import { createExecutionClient } from './sdk/execution.js';
+const agent = createExecutionClient({ capability: process.env.XGUARD_CAPABILITY });
+const request = {
+  operation: 'github.repository.read',
+  input: { owner: 'moelayyan90', repo: 'XGuard' },
+  idempotencyKey: 'read-xguard-repository-001'
+};
+await agent.preflight(request);
+const output = await agent.execute(request);
+// Retain the same key and exact input for recovery; never retry an uncertain write with a new key.
+await agent.verify({ proof: output.proof, resultSha256: output.receipt.result_sha256 });
+```
+
+Sixteen explicit adapters cover bounded GitHub, Cloudflare, Slack, Notion,
+OpenAI, Anthropic, Gemini and Stripe operations. Provider permissions and fees
+remain operator-specific. Cloudflare deploys and Stripe money movement are not
+advertised. The free controlled Secretless demo proves authentication, scope denial,
+once-only execution and signature verification without an external provider or payment.
+
+## Public outcome examples
+
+Public page extraction, product offers and feed digests remain secondary examples
+with their original prices and payment contracts.
 
 Get your first result without an account, key, wallet or installation:
 
@@ -24,8 +61,8 @@ up to 12 KiB of your own document for free. The preview makes no external reques
 
 Prices are per bounded execution, including fallback. Read the live
 [capability index](https://api.xguardgate.com/v1/capabilities) for current availability,
-exact prices, limits, schemas and examples. There is no web-wide search, browser
-rendering, OCR or general AI model. Supplied merchant data is not independently verified.
+exact prices, limits, schemas and examples. These public outcome adapters do not provide web-wide search, browser
+rendering or OCR. Supplied merchant data is not independently verified.
 
 ## One paid call from an agent
 

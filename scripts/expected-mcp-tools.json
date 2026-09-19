@@ -1,5 +1,10 @@
 [
-  "xguard_discover",
   "xguard_execute",
+  "xguard_secretless_call",
+  "xguard_preflight",
+  "xguard_quote",
+  "xguard_verify_receipt",
+  "xguard_discover",
+  "xguard_status",
   "xguard_get_result"
 ]
