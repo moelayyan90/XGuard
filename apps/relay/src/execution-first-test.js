@@ -122,7 +122,10 @@ test("canonical payment lifecycle prevents execution without settlement and a se
 
 test("durable health circuit and observed latency are based on real samples and expire", async () => {
   const storage = new Storage(), now = Date.now();
-  for (let i = 0; i < 3; i++) await recordPaymentHealth(storage, { url: "https://facilitator.test", network: "eip155:8453", phase: "settle", ok: false, transport_failure: true, ambiguous: true, latency_ms: 5000 }, now + i);
+  for (let i = 0; i < 3; i++) {
+    await recordPaymentHealth(storage, { url: "https://facilitator.test", network: "eip155:8453", phase: "verify", ok: true, latency_ms: 10 }, now + i);
+    await recordPaymentHealth(storage, { url: "https://facilitator.test", network: "eip155:8453", phase: "settle", ok: false, transport_failure: true, ambiguous: true, latency_ms: 5000 }, now + i);
+  }
   let snapshot = await paymentHealthSnapshot(storage, now + 3); assert.equal(snapshot.facilitators[0].circuit, "open"); assert.equal(snapshot.facilitators[0].settle.ambiguous_attempts, 3);
   snapshot = await paymentHealthSnapshot(storage, now + 3700000); assert.equal(snapshot.facilitators[0].settle.success_rate, null);
   assert.deepEqual((await telemetrySnapshot(storage)).groups, {});

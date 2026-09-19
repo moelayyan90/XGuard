@@ -13,8 +13,16 @@ export async function recordPaymentHealth(storage, body, now = Date.now()) {
     const event = { at: now, phase: body.phase, ok: body.ok === true, transport_failure: body.transport_failure === true, invalid_response: body.invalid_response === true,
       ambiguous: body.ambiguous === true, latency_ms: Math.max(0, Math.min(120000, Number(body.latency_ms) || 0)) };
     row.observations = row.observations.filter(x => x.at >= now - 3600000).slice(-255); row.observations.push(event);
-    if (event.ok) { row.last_success = now; row.consecutive_transport_failures = 0; row.circuit_until = 0; }
-    else if (event.transport_failure || event.invalid_response) { row.consecutive_transport_failures++; if (row.consecutive_transport_failures >= 3) row.circuit_until = now + 60000; }
+    row.phase_failures ||= { verify: 0, settle: 0 };
+    if (event.ok) {
+      row.last_success = now; row.phase_failures[event.phase] = 0;
+      if (Object.values(row.phase_failures).every(count => count < 3)) row.circuit_until = 0;
+    } else if (event.transport_failure || event.invalid_response) {
+      row.phase_failures[event.phase]++;
+      if (row.phase_failures[event.phase] >= 3) row.circuit_until = now + 60000;
+    }
+    // A successful verification cannot hide repeated settlement transport failures.
+    row.consecutive_transport_failures = Math.max(...Object.values(row.phase_failures));
     state[key] = true;
     await tx.put(`facilitator-health:rail:${key}`, row);
     await tx.put("facilitator-health:v1", state);
