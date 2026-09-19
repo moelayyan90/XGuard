@@ -66,3 +66,7 @@ Sources: [MCPCentral record](https://mcpcentral.io/api/servers/io.github.moelayy
 4. Run any real paid or provider acceptance only with an explicitly authorized scope and spending limit. Record actual settlement and receipt evidence; a self-funded canary is not revenue.
 5. Refresh existing registry entries from the deployed endpoints. Preserve strict exact-version checks and report stale mirrors without fabricating success.
 6. For rollback, inspect outstanding `lifecycle_version:1` operations first. Do not blindly roll back to an older executable that can resubmit an ambiguous settlement or reclaim a held execution. Keep the read-only reconciliation and no-repeat guards, disable new candidate traffic if necessary, and retain the ledger until unresolved operations are accounted for.
+
+## Review-branch CI follow-up
+
+At commit `68e318f`, Relay, Agent Plugin, Billing, Edge Gate, Universal Gate, SDK, public metadata, distribution contracts, index verification and facilitator CI passed. The WordPress PHP checks passed, but its subsequent probe compared the undeployed candidate version with old production. The follow-up keeps candidate metadata validation on pull requests and runs the strict production-version check only after a successful deployment or explicit manual verification. No production check was weakened to accept a stale release.
