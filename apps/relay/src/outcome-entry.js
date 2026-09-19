@@ -34,11 +34,12 @@ export function liveOutcomes(env) {
 }
 function catalog(env) {
   const items = liveOutcomes(env);
-  return { name: "XGuard", version: "5.1.0", product: "Public-source outcomes for agents", capabilities: items,
+  return { name: "XGuard", version: "5.2.0", product: "Public-source outcomes for agents", capabilities: items,
     tools: items.map(x => ({ ...x, available: true, paid: x.pricing.amount_atomic !== "0", endpoint: x.execute_url })),
     execute_url: `${API}/v1/execute`, first_result: { method: "POST", url: `${API}/v1/execute`, body: { intent: "demo" }, expected_status: 200, price: "free" },
     discovery: { capabilities: `${API}/v1/capabilities`, agent_instructions: `${API}/agent.txt`, mcp: `${API}/mcp`, a2a: `${API}/a2a`, openapi: `${API}/openapi.json`, interactive_try: `${SITE}/try` },
-    compatibility: { paid_web_fetch: `${API}/v1/tools/web.fetch`, scoped_vendor_actions: `${API}/v1/egress`, operator_pricing: `${SITE}/pricing/operator` },
+    compatibility: { paid_web_fetch: `${API}/v1/tools/web.fetch`, scoped_vendor_actions: `${API}/v1/egress`, operator_pricing: `${SITE}/pricing/operator`,
+      agent_token_usage: { endpoint: `${API}/v1/agent-token-usage/summary`, method: "POST", contract_version: "1.0.0", authentication: "provisioned_operator_key", payment_required: false, role: "self_reported_usage_ingestion" } },
     no_account: true, payment_requires_funded_payer: true };
 }
 function mcpTools(env) {
@@ -111,7 +112,7 @@ function mcpPaymentRequest(request, message) {
 }
 
 function agentText(env) {
-  return `# XGuard\n\n${instructions}\n\n## Available outcomes\n${liveOutcomes(env).map(x => `- ${x.id}: ${x.description} Price: ${x.pricing.amount} USDC. ${x.schema_url}`).join("\n")}\n\n## First result\nPOST ${API}/v1/execute\nContent-Type: application/json\n{\"intent\":\"demo\"}\n\n## Recovery\nGET ${API}/v1/results/{payment_identifier} with the original X-XGuard-Quote. This quote grants access to the stored public-source result; do not publish it.\n\nOpenAPI: ${API}/openapi.json\nMCP: ${API}/mcp\nA2A: ${API}/a2a\n`;
+  return `# XGuard\n\n${instructions}\n\n## Available outcomes\n${liveOutcomes(env).map(x => `- ${x.id}: ${x.description} Price: ${x.pricing.amount} USDC. ${x.schema_url}`).join("\n")}\n\n## First result\nPOST ${API}/v1/execute\nContent-Type: application/json\n{\"intent\":\"demo\"}\n\n## Authenticated usage ingestion\nPOST ${API}/v1/agent-token-usage/summary records self-reported token counts using a provisioned operator key and a stable event identifier. Tenant IDs must match a trusted server-side binding. No x402 payment or credit deduction; this does not execute a tool. See OpenAPI for aliases, limits and retry semantics.\n\n## Recovery\nGET ${API}/v1/results/{payment_identifier} with the original X-XGuard-Quote. This quote grants access to the stored public-source result; do not publish it.\n\nOpenAPI: ${API}/openapi.json\nMCP: ${API}/mcp\nA2A: ${API}/a2a\n`;
 }
 
 function page(request, env, item = null) {
@@ -151,7 +152,7 @@ export async function handleOutcomeRoute(request, env, ctx) {
   }
   if (read && ["/agent.txt", "/llms.txt", "/skill.md"].includes(url.pathname)) return new Response(agentText(env), { headers: { ...cors, "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=60" } });
   if (read && url.pathname === "/sitemap.xml") return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${["/", "/try", "/pricing", "/developers", "/connect", "/agent.txt", "/.well-known/mcp/server-card.json", ...liveOutcomes(env).map(x => `/capabilities/${x.id}`)].map(x => `<url><loc>${SITE}${x}</loc></url>`).join("")}</urlset>`, { headers: { ...cors, "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=60" } });
-  if (read && url.pathname === "/v1/pricing") return json({ version: "5.1.0", capabilities: liveOutcomes(env).map(x => ({ id: x.id, ...x.pricing })), execution_url: `${API}/v1/execute`, quote_optional: `${API}/v1/pricing/quote`, payment: "x402-v2", first_result: { intent: "demo" } });
+  if (read && url.pathname === "/v1/pricing") return json({ version: "5.2.0", capabilities: liveOutcomes(env).map(x => ({ id: x.id, ...x.pricing })), execution_url: `${API}/v1/execute`, quote_optional: `${API}/v1/pricing/quote`, payment: "x402-v2", first_result: { intent: "demo" } });
   if (read && url.pathname === "/.well-known/agent-directory.json") return json({ name: "XGuard", agents: [{ name: "XGuard", card: `${API}/.well-known/agent-card.json`, mcp: `${API}/mcp`, capabilities: `${API}/v1/capabilities`, pricing: `${API}/v1/pricing`, openapi: `${API}/openapi.json` }] });
   if (read && url.hostname !== "api.xguardgate.com" && ["/", "/try", "/pricing", "/developers", "/connect"].includes(url.pathname)) {
     await recordAgentJourney(request, env, "discovery_seen", { surface: "public_page" }); return page(request, env);
@@ -164,8 +165,8 @@ export async function handleOutcomeRoute(request, env, ctx) {
   }
   const resultMatch = url.pathname.match(/^\/v1\/results\/([^/]+)$/);
   if (read && resultMatch) return recoverOutcome(env, resultMatch[1], request.headers.get("x-xguard-quote"), `xgr_${crypto.randomUUID().replaceAll("-", "")}`);
-  if (read && ["/mcp", "/.well-known/mcp/server-card.json", "/.well-known/xguard-tools.json"].includes(url.pathname)) return json({ name: "XGuard Universal Paid AI Agent + Secretless Gateway", version: "5.1.0",
-    serverInfo: { name: "XGuard Universal Paid AI Agent + Secretless Gateway", version: "5.1.0" }, authentication: { required: false, schemes: [] },
+  if (read && ["/mcp", "/.well-known/mcp/server-card.json", "/.well-known/xguard-tools.json"].includes(url.pathname)) return json({ name: "XGuard — Agent Execution Gateway", version: "5.2.0",
+    serverInfo: { name: "XGuard — Agent Execution Gateway", version: "5.2.0" }, authentication: { required: false, schemes: [] },
     execution_chokepoint: { tool: "xguard_execute", url: `${API}/v1/execute`, settlement_before_execution: true, free_preview: "extract-preview" },
     endpoint: `${API}/mcp`, transport: "streamable-http", tools: mcpTools(env), instructions, resources: [], prompts: [], capabilities: liveOutcomes(env) });
   if (request.method === "POST" && url.pathname === "/mcp") {

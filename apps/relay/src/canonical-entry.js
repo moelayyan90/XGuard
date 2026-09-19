@@ -2,16 +2,17 @@ import app from "./a2a-entry.js";
 import { finalizePublicResponse } from "./core/public-contract.js";
 import { gatewayConfig } from "./paid-agent-entry.js";
 import { handleOutcomeRoute, decorateOutcomeResponse } from "./outcome-entry.js";
+import { handleAgentUsageRoute } from "./agent-token-usage.js";
+import { describeAgentUsage } from "./agent-token-usage-openapi.js";
+import { handleExecutionRoute, decorateExecutionResponse } from "./execution-entry.js";
+import { VERSION, NAME, DESCRIPTION } from "./core/identity.js";
 export * from "./a2a-entry.js";
 
-const VERSION = "5.1.0";
 const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const MCP = `${API}/mcp`;
-const NAME = "XGuard Universal Paid AI Agent + Secretless Gateway";
-const PRIMARY_PRODUCT = "Universal Paid AI Agent + Secretless Gateway";
-const PRIMARY_ROLE = "paid tool and credential broker with controlled egress for AI agents";
-const DESCRIPTION = "Discover real tools and signed prices, pay per request through x402 USDC without an account, and execute through a controlled gateway that keeps reusable upstream credentials outside agent context and returns signed receipts plus ProofRail evidence.";
+const PRIMARY_PRODUCT = "Agent Execution Gateway";
+const PRIMARY_ROLE = "scoped agent execution with server-side credential custody, policy, budget, billing and durable evidence";
 
 const PUBLIC_JSON = new Set([
   "/identity",
@@ -88,8 +89,8 @@ function baseHeaders(headers = new Headers()) {
   const next = new Headers(headers);
   next.set("x-xguard-version", VERSION);
   next.set("x-xguard-control-plane", VERSION);
-  next.set("x-xguard-canonical-name", NAME);
-  next.set("x-xguard-primary-product", "universal-paid-agent-secretless-gateway");
+  next.set("x-xguard-canonical-name", NAME.replace("—", "-"));
+  next.set("x-xguard-primary-product", "agent-execution-gateway");
   next.set("x-xguard-canonical-site", SITE);
   next.set("x-xguard-canonical-api", API);
   next.set("x-xguard-canonical-mcp", MCP);
@@ -149,6 +150,7 @@ function apiRoot(request) {
       payment_readiness: `${API}/v1/payment/readiness`,
       payment_manifest: `${API}/.well-known/payment-manifest`,
       secretless_egress: `${API}/v1/egress`,
+      agent_token_usage: `${API}/v1/agent-token-usage/summary`,
       egress_manifest: `${API}/.well-known/xguard-egress.json`,
       proofrail: `${API}/v1/proof`,
       openapi: `${API}/openapi.json`,
@@ -186,7 +188,7 @@ const PAGE_STYLE = `body{margin:0;background:#0b0b0b;color:#f7f7f3;font-family:A
 
 function publicPage(request, pathname, title, heading, content, script = "") {
   const nonce = script ? randomNonce() : "";
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><meta name="description" content="XGuard Universal Paid AI Agent + Secretless Gateway"><link rel="canonical" href="${SITE}${pathname}"><style>${PAGE_STYLE}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · Paid + Secretless Gateway</span><h1>${heading}</h1>${content}<p class="foot"><a href="/">Home</a> · <a href="/connect">Connect</a> · <a href="/developers">Developers</a> · <a href="/pricing">Pricing</a> · <a href="/security">Security</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/refund-policy">Refunds</a></p></main>${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><meta name="description" content="XGuard — Agent Execution Gateway"><link rel="canonical" href="${SITE}${pathname}"><style>${PAGE_STYLE}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · Paid + Secretless Gateway</span><h1>${heading}</h1>${content}<p class="foot"><a href="/">Home</a> · <a href="/connect">Connect</a> · <a href="/developers">Developers</a> · <a href="/pricing">Pricing</a> · <a href="/security">Security</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/refund-policy">Refunds</a></p></main>${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
   return new Response(request.method === "HEAD" ? null : html, { status: 200, headers: htmlHeaders(pathname, nonce) });
 }
 
@@ -257,13 +259,13 @@ function contentPage(request, pathname) {
 }
 
 function robots(request) {
-  const rules = `Allow: /\nDisallow: /v1/egress/credentials\nDisallow: /v1/egress/capabilities\nDisallow: /v1/balance\nDisallow: /v1/ledger\nDisallow: /v1/receipt/\nDisallow: /admin\nDisallow: /debug`;
+  const rules = `Allow: /\nDisallow: /v1/egress/credentials\nDisallow: /v1/egress/capabilities\nDisallow: /v1/balance\nDisallow: /v1/ledger\nDisallow: /v1/receipt/\nDisallow: /v1/operator/\nDisallow: /admin\nDisallow: /debug`;
   const text = `User-agent: *\n${rules}\n\nUser-agent: GPTBot\n${rules}\n\nUser-agent: ClaudeBot\n${rules}\n\nSitemap: ${SITE}/sitemap.xml\n`;
   return new Response(request.method === "HEAD" ? null : text, { headers: baseHeaders(new Headers({ "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" })) });
 }
 
 function sitemap(request) {
-  const paths = ["/", "/developers", "/try", "/connect", "/pricing", "/security", "/terms", "/privacy", "/refund-policy", "/identity", "/llms.txt", "/skill.md", "/.well-known/mcp/server-card.json"];
+  const paths = ["/", "/developers", "/try", "/demo/secretless", "/operators", "/status", "/threat-model", "/payment-lifecycle", "/proofs", "/incidents", "/connect", "/pricing", "/security", "/terms", "/privacy", "/refund-policy", "/identity", "/llms.txt", "/skill.md", "/.well-known/mcp/server-card.json"];
   const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map(path => `<url><loc>${SITE}${path}</loc></url>`).join("")}</urlset>`;
   return new Response(request.method === "HEAD" ? null : xml, { headers: baseHeaders(new Headers({ "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" })) });
 }
@@ -334,6 +336,11 @@ function normalizePublicBody(pathname, body) {
   }
 
   if (pathname === "/openapi.json") {
+    // OpenAPI permits custom top-level metadata only as x- extensions.
+    for (const [legacy, extension] of Object.entries({ primary_product: "x-primary-product", primary_role: "x-primary-role", secretless_egress: "x-secretless-egress", x_xguard: "x-xguard", canonical_identity: "x-canonical-identity" })) {
+      if (Object.hasOwn(body, legacy)) { body[extension] = body[legacy]; delete body[legacy]; }
+    }
+    describeAgentUsage(body);
     body.info = {
       ...(body.info || {}),
       title: NAME,
@@ -423,6 +430,10 @@ const canonicalApp = {
     if (redirect) return redirect;
 
     const url = new URL(request.url);
+    const usage = await handleAgentUsageRoute(request, env);
+    if (usage) return normalizeResponse(request, usage, env);
+    const execution = await handleExecutionRoute(request, env, ctx);
+    if (execution) return normalizeResponse(request, execution, env);
     const outcome = await handleOutcomeRoute(request, env, ctx);
     if (outcome) return normalizeResponse(request, outcome, env);
     if (request.method === "GET" || request.method === "HEAD") {
@@ -514,6 +525,14 @@ export default {
         ? { jsonrpc: "2.0", id: null, error: { code: -32603, message: "Internal error" } }
         : { error_code: "internal_error", message: "The request could not be completed. Check stored payment results before submitting another paid request." },
       { status: 500, headers: { "cache-control": "no-store", "access-control-allow-origin": "*" } });
+    }
+    response = await decorateExecutionResponse(request, response, env);
+    if ([SITE, API].includes(request.headers.get("origin"))) {
+      const headers = new Headers(response.headers);
+      headers.set("access-control-allow-origin", request.headers.get("origin"));
+      headers.set("vary", "Origin");
+      headers.set("access-control-expose-headers", "payment-required,payment-response,x-xguard-quote,x-xguard-request-id,x-xguard-proof,x-xguard-execution-id,x-xguard-replay");
+      response = new Response(response.body, { status: response.status, headers });
     }
     return finalizePublicResponse(request, response);
   },

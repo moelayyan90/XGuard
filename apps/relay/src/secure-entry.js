@@ -4,7 +4,7 @@ import market from "./x402-market.js";
 export { MerchantQuota, SettlementReceipt, AgentAuthority } from "./entry.js";
 
 const API = "https://api.xguardgate.com";
-const VERSION = "5.1.0";
+const VERSION = "5.2.0";
 const HSTS = "max-age=31536000; includeSubDomains";
 
 const OUTPUT_SCHEMA = {

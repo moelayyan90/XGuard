@@ -1,7 +1,7 @@
 import app, { paidFetchSchema, quoteRequestSchema, recordAgentJourney } from "./paid-agent-entry.js";
 export * from "./paid-agent-entry.js";
 
-const VERSION = "5.1.0";
+const VERSION = "5.2.0";
 const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const MCP = `${API}/mcp`;
@@ -9,22 +9,22 @@ const A2A_CARD = `${API}/.well-known/agent-card.json`;
 const A2A_ENDPOINT = `${API}/a2a`;
 const REPO = "https://github.com/moelayyan90/XGuard";
 const INDEXNOW_KEY = "f3fd1a3fde659a05a8dddfa614b408ac";
-const REGISTRY_DESCRIPTION = "Page extraction, product offers and feed digests. Free preview, signed prices, x402 USDC.";
+const REGISTRY_DESCRIPTION = "Scoped agent execution. Server-side credentials, policy, budgets and verifiable receipts.";
 const DESCRIPTION = "XGuard is a universal paid AI-agent and secretless gateway: signed prices, no-account x402 USDC payment, controlled execution, replay-safe retries, signed receipts and ProofRail evidence.";
 const QUOTE_SCHEMA = quoteRequestSchema();
 
 const registryManifest = {
   $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   name: "io.github.moelayyan90/xguard-control-plane",
-  title: "XGuard Universal Paid AI Agent + Secretless Gateway",
+  title: "XGuard — Agent Execution Gateway",
   description: REGISTRY_DESCRIPTION,
   repository: { url: REPO, source: "github" },
-  version: "5.1.1",
+  version: "5.2.0",
   remotes: [{ type: "streamable-http", url: MCP }],
 };
 
 const serverCard = {
-  serverInfo: { name: "XGuard Universal Paid AI Agent + Secretless Gateway", version: VERSION },
+  serverInfo: { name: "XGuard — Agent Execution Gateway", version: VERSION },
   authentication: { required: false, schemes: [] },
   tools: [
     { name: "xguard.capabilities", description: "Discover actual enabled and disabled XGuard tools. Free.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
@@ -44,7 +44,7 @@ const serverCard = {
 };
 
 const identity = {
-  name: "XGuard Universal Paid AI Agent + Secretless Gateway",
+  name: "XGuard — Agent Execution Gateway",
   short_name: "XGuard",
   registry_name: "io.github.moelayyan90/xguard-control-plane",
   version: VERSION,
@@ -55,7 +55,7 @@ const identity = {
   canonical_a2a_endpoint: A2A_ENDPOINT,
   repository: REPO,
   category: "Paid AI agent tools and secretless API credential infrastructure",
-  primary_product: "Universal Paid AI Agent + Secretless Gateway",
+  primary_product: "Agent Execution Gateway",
   proof_layer: "ProofRail",
   providers: ["OpenAI", "Anthropic", "GitHub", "Stripe", "generic HTTPS APIs"],
   problems_solved: ["API key exposure inside agent context", "over-broad reusable credentials", "unverifiable credential-backed execution", "unmetered agent API egress"],
@@ -103,7 +103,7 @@ function text(body, status = 200, extra = {}) {
 }
 
 function llmsTxt() {
-  return `# XGuard Universal Paid AI Agent + Secretless Gateway
+  return `# XGuard — Agent Execution Gateway
 
 > Discover actual tools, obtain signed prices, pay per request with x402 v2 USDC, and receive controlled execution with signed receipts and ProofRail evidence—without an account or exposing reusable upstream credentials.
 
@@ -197,7 +197,7 @@ Agent Card: ${A2A_CARD}
 JSON-RPC endpoint: ${A2A_ENDPOINT}
 Role: discovery plus a direct execution bridge that returns signed quote + mandatory x402 PaymentRequired and resumes paid xguard.web.fetch after payment.
 
-Do not advertise search, inference, routing or data-query tools unless ${API}/v1/capabilities marks them available. The canonical product identity is XGuard Universal Paid AI Agent + Secretless Gateway.
+Do not advertise search, inference, routing or data-query tools unless ${API}/v1/capabilities marks them available. The canonical product identity is XGuard — Agent Execution Gateway.
 `;
 }
 

@@ -1,10 +1,10 @@
 # XGuard canonical product identity
 
-**Current canonical identity:** XGuard Universal Paid AI Agent + Secretless Gateway
+**Current canonical identity:** XGuard — Agent Execution Gateway
 
-**Current version:** 5.1.0
+**Candidate version:** 5.2.0 (verify the deployed identity before claiming it is live)
 
-**Primary product:** Universal Paid AI Agent + Secretless Gateway
+**Primary product:** Agent Execution Gateway
 
 **Canonical website:** https://xguardgate.com
 
@@ -15,15 +15,22 @@
 
 ## What XGuard is now
 
-XGuard is paid-tool and credential infrastructure for AI agents. Any agent can discover actual capabilities, obtain a signed input-bound price, pay per request using x402 v2 USDC, and receive controlled execution with a signed receipt and ProofRail evidence. No XGuard account or subscription is required for this path. Payment-Identifier and durable replay state make an exact retry return the original outcome without another settlement.
+Give agents capabilities, not reusable credentials.
 
-For credential-backed APIs, an operator can also keep reusable upstream credentials in XGuard and give an agent a short-lived scoped capability instead of the reusable secret. XGuard injects that credential only at controlled egress and never returns it to the agent.
+XGuard is an execution gateway. An operator keeps reusable provider credentials
+server-side and delegates short-lived capabilities for explicit operations and
+resources. The gateway enforces policy and budgets, reserves idempotency, commits
+billing, injects credentials at egress and returns durable signed evidence.
+
+Public paid outcomes are working secondary examples. They preserve signed prices,
+x402 USDC settlement before execution and durable recovery. Demo, canary, testnet,
+probe and self-payment activity must not be represented as customer revenue.
 
 ProofRail is the signed execution-evidence layer for successful settled paid tools and authorized Secretless Egress outcomes.
 
 ## Supported execution rails
 
-The x402 paid-tool path and Secretless Egress are the canonical product. Action Rail, facilitator relay/routing endpoints, and the operator Usage Credit path remain supported secondary surfaces.
+Capability-backed Secretless execution is the primary path. The x402 paid-tool path remains supported. Action Rail, facilitator relay/routing endpoints, and the operator Usage Credit path remain supported secondary surfaces.
 
 ## Historical descriptions that are not current
 

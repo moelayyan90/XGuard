@@ -8,7 +8,7 @@ const REPO = "https://github.com/moelayyan90/XGuard";
 
 function webMcpBootstrap() {
   const discovery = JSON.stringify({
-    name: "XGuard Universal Paid AI Agent + Secretless Gateway",
+    name: "XGuard — Agent Execution Gateway",
     site: SITE,
     api: API,
     mcp: MCP,
@@ -34,7 +34,7 @@ function webMcpBootstrap() {
   }).replace(/</g, "\\u003c");
 
   const purpose = JSON.stringify({
-    primary_product: "Universal Paid AI Agent + Secretless Gateway",
+    primary_product: "Agent Execution Gateway",
     summary: "Discover real tools, obtain signed prices, pay per request with x402 USDC, and receive signed receipts. Secretless connectors keep reusable upstream credentials outside AI-agent context.",
     proof_layer: "ProofRail",
     supported_examples: ["OpenAI", "Anthropic", "GitHub", "Stripe", "generic public HTTPS APIs"],

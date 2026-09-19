@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-const expected = JSON.parse(readFileSync(new URL('./expected-mcp-tools.json', import.meta.url)));
+const expected = JSON.parse(readFileSync(new URL('./expected-mcp-tools.json', import.meta.url))).sort();
 const origins = ['https://xguardgate.com', 'https://api.xguardgate.com'];
 const clients = [{ name: 'external-mcp-evaluator', protocol: '2025-06-18', accept: 'application/json' }, { name: 'external-agent-runtime', protocol: '2026-07-28', accept: 'application/json, text/event-stream' }];
 const rows = [];

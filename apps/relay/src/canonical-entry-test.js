@@ -13,9 +13,9 @@ test("A2A plus-json response receives canonical product taxonomy", async () => {
   const response = await app.fetch(new Request("https://api.xguardgate.com/.well-known/agent-card.json"), {}, {});
   assert.match(response.headers.get("content-type") || "", /application\/a2a\+json/);
   const body = await response.json();
-  assert.equal(body.name, "XGuard Universal Paid AI Agent + Secretless Gateway");
-  assert.equal(body.version, "5.1.0");
-  assert.equal(body.canonical_identity.primary_product, "Universal Paid AI Agent + Secretless Gateway");
+  assert.equal(body.name, "XGuard — Agent Execution Gateway");
+  assert.equal(body.version, "5.2.0");
+  assert.equal(body.canonical_identity.primary_product, "Agent Execution Gateway");
   assert.ok(body.skills.some(skill => skill.id === "extract-preview"));
   assert.ok(body.skills.every(skill => !skill.id.startsWith("explain-")));
 });
@@ -46,10 +46,10 @@ test("homepage and live try page expose a free delivered result and the paid con
 test("identity is the complete machine-readable source of product taxonomy", async () => {
   const response = await app.fetch(new Request("https://xguardgate.com/identity"), {}, {});
   const body = await response.json();
-  assert.equal(body.name, "XGuard Universal Paid AI Agent + Secretless Gateway");
-  assert.equal(body.version, "5.1.0");
-  assert.equal(body.primary_product, "Universal Paid AI Agent + Secretless Gateway");
-  assert.match(body.primary_role, /paid tool and credential broker/);
+  assert.equal(body.name, "XGuard — Agent Execution Gateway");
+  assert.equal(body.version, "5.2.0");
+  assert.equal(body.primary_product, "Agent Execution Gateway");
+  assert.match(body.primary_role, /scoped agent execution with server-side credential custody/);
   assert.equal(body.proofrail.discovery, "https://api.xguardgate.com/v1/proof");
   assert.equal(body.compatibility_rails.x402, "https://api.xguardgate.com/facilitator");
 });
@@ -144,7 +144,7 @@ test("developer onboarding serves client-specific public configurations without 
   assert.match(await toml.text(), /\[mcp_servers\.xguard\]/);
   const page = await app.fetch(new Request("https://xguardgate.com/developers"), {}, {});
   const html = await page.text();
-  assert.match(html, /YOUR FIRST RESULT · FREE/);
+  assert.match(html, /Preflight the policy, execute with a capability/);
   assert.match(html, /does not supply a funded wallet/);
   for (const client of ["cursor.json", "vscode.json", "claude-code.json", "codex.toml"]) assert.ok(html.includes(`/install/${client}`));
   const head = await app.fetch(new Request("https://xguardgate.com/developers", { method: "HEAD" }), {}, {});

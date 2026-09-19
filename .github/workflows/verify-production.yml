@@ -22,15 +22,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-production-security/5.1.0' "$@"; }
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-production-security/5.2.0' "$@"; }
           ready=0
           for i in {1..35}; do
             version_headers="$(mktemp)"
             init="$(curl --silent --show-error --max-time 8 -D "$version_headers" -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-security","version":"1.0.0"}}}' || true)"
             tools="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' || true)"
             if grep -qi "^x-xguard-worker-version-tag: git-${DEPLOY_SHA:0:12}" "$version_headers" && \
-               printf '%s' "$init" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-universal-paid-secretless-gateway"&&x.result?.serverInfo?.version==="5.1.0"&&x.result?.capabilities?.tools?.listChanged===false&&x.result?.protocolVersion==="2026-07-28")process.exit(0)}catch{}process.exit(1)})' && \
-               printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const t=JSON.parse(s).result?.tools||[];const n=t.map(v=>v.name);const required=["xguard_discover","xguard_execute","xguard_get_result"];if(t.length===3&&required.every(v=>n.includes(v))&&t.find(v=>v.name==="xguard_discover")?.annotations?.readOnlyHint===true&&t.find(v=>v.name==="xguard_execute")?._meta?.["xguard/payment"]?.settlement_before_execution===true&&t.find(v=>v.name==="xguard_get_result")?.annotations?.readOnlyHint===true)process.exit(0)}catch{}process.exit(1)})'; then ready=1; break; fi
+               printf '%s' "$init" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-agent-execution-gateway"&&x.result?.serverInfo?.version==="5.2.0"&&x.result?.capabilities?.tools?.listChanged===false&&x.result?.protocolVersion==="2026-07-28")process.exit(0)}catch{}process.exit(1)})' && \
+               printf '%s' "$tools" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const t=JSON.parse(s).result?.tools||[];const n=t.map(v=>v.name);const required=["xguard_discover","xguard_execute","xguard_get_result"];if(t.length===8&&required.every(v=>n.includes(v))&&t.find(v=>v.name==="xguard_discover")?.annotations?.readOnlyHint===true&&t.find(v=>v.name==="xguard_execute")?._meta?.["xguard/payment"]?.settlement_before_execution===true&&t.find(v=>v.name==="xguard_get_result")?.annotations?.readOnlyHint===true)process.exit(0)}catch{}process.exit(1)})'; then ready=1; break; fi
             sleep 4
           done
           test "$ready" = "1"
@@ -39,11 +39,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-production-security/5.1.0' "$@"; }
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-production-security/5.2.0' "$@"; }
           for host in api.xguardgate.com xguardgate.com; do
             curl --fail --silent --show-error --max-time 8 -I "https://$host/mcp" >"/tmp/$host.headers"
             grep -qi '^strict-transport-security: .*max-age=31536000' "/tmp/$host.headers"
-            grep -Eqi '^x-xguard-(control-plane|version): 5.1.0' "/tmp/$host.headers"
+            grep -Eqi '^x-xguard-(control-plane|version): 5.2.0' "/tmp/$host.headers"
             code="$(curl --silent --show-error --max-time 8 --max-redirs 0 -o /dev/null -w '%{http_code}' "http://$host/mcp")"
             test "$code" = "301" -o "$code" = "308"
           done
@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-production-security/5.1.0' "$@"; }
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-production-security/5.2.0' "$@"; }
           init_payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"production-security","version":"1.0.0"}}}'
           tools_payload='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
           for host in api.xguardgate.com xguardgate.com; do
@@ -64,10 +64,10 @@ jobs:
           const hosts=['api.xguardgate.com','xguardgate.com'];
           for(const host of hosts){
             const x=JSON.parse(fs.readFileSync(`/tmp/${host}.init.json`,'utf8'));
-            if(x.result?.serverInfo?.name!=='xguard-universal-paid-secretless-gateway'||x.result?.serverInfo?.version!=='5.1.0'||x.result?.protocolVersion!=='2026-07-28')process.exit(1);
+            if(x.result?.serverInfo?.name!=='xguard-agent-execution-gateway'||x.result?.serverInfo?.version!=='5.2.0'||x.result?.protocolVersion!=='2026-07-28')process.exit(1);
           }
           const names=host=>(JSON.parse(fs.readFileSync(`/tmp/${host}.tools.json`,'utf8')).result?.tools||[]).map(x=>x.name).sort();
           const a=names(hosts[0]),b=names(hosts[1]);
-          if(a.length!==3||JSON.stringify(a)!==JSON.stringify(b)||!['xguard_discover','xguard_execute','xguard_get_result'].every(n=>a.includes(n)))process.exit(1);
-          console.log(JSON.stringify({version:'5.1.0',tools:a.length,aliases_identical:true,outcome_execution:true,paid_recovery:true}));
+          if(a.length!==8||JSON.stringify(a)!==JSON.stringify(b)||!['xguard_discover','xguard_execute','xguard_get_result'].every(n=>a.includes(n)))process.exit(1);
+          console.log(JSON.stringify({version:'5.2.0',tools:a.length,aliases_identical:true,outcome_execution:true,paid_recovery:true}));
           NODE

@@ -65,7 +65,7 @@ test("paid discovery advertises only the real enabled connector", async () => {
   const response = await app.fetch(new Request("https://api.xguardgate.com/v1/capabilities"), env, {});
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.equal(body.version, "5.1.0");
+  assert.equal(body.version, "5.2.0");
   assert.equal(body.tools.find(tool => tool.id === "xguard.web.fetch")?.available, true);
   assert.equal(body.tools.find(tool => tool.id === "xguard.web.search")?.available, false);
   assert.equal(body.tools.find(tool => tool.id === "xguard.ai.generate")?.unavailable_reason?.code, "connector_not_configured");
@@ -92,7 +92,7 @@ test("modern MCP discovery, routing headers, caching metadata, and JSON-RPC vali
   const discovered = await discover.json();
   assert.deepEqual(discovered.result.supportedVersions, ["2026-07-28", "2025-11-25"]);
   assert.equal(discovered.result.cacheScope, "public");
-  assert.equal(discovered.result._meta["io.modelcontextprotocol/serverInfo"].version, "5.1.0");
+  assert.equal(discovered.result._meta["io.modelcontextprotocol/serverInfo"].version, "5.2.0");
   assert.equal(discovered.result.capabilities.resources.subscribe, false);
   assert.equal(discovered.result.capabilities.prompts.listChanged, false);
 
@@ -104,7 +104,7 @@ test("modern MCP discovery, routing headers, caching metadata, and JSON-RPC vali
   const initializedBody = await initialized.json();
   assert.equal(initialized.status, 200);
   assert.equal(initializedBody.result.protocolVersion, "2026-07-28");
-  assert.equal(initializedBody.result.serverInfo.name, "xguard-universal-paid-secretless-gateway");
+  assert.equal(initializedBody.result.serverInfo.name, "xguard-agent-execution-gateway");
   assert.equal(initializedBody.result.capabilities.resources.subscribe, false);
 
   for (const [method, field] of [["resources/list", "resources"], ["resources/templates/list", "resourceTemplates"], ["prompts/list", "prompts"]]) {
@@ -178,7 +178,7 @@ test("MCP, A2A, pricing, and OpenAPI publish the same canonical quote and mandat
   assert.equal(extension.params.settlement_before_execution, true);
   assert.ok(card.skills.some(skill => skill.id === "web-extraction"));
   const serverCard = await (await canonicalApp.fetch(new Request("https://xguardgate.com/.well-known/mcp/server-card.json"), env, {})).json();
-  assert.deepEqual(serverCard.tools.map(tool => tool.name), ["xguard_discover", "xguard_execute", "xguard_get_result"]);
+  assert.deepEqual(serverCard.tools.map(tool => tool.name), ["xguard_execute", "xguard_secretless_call", "xguard_preflight", "xguard_quote", "xguard_verify_receipt", "xguard_discover", "xguard_status", "xguard_get_result"]);
 
   const openapi = await (await canonicalApp.fetch(new Request("https://api.xguardgate.com/openapi.json"), env, {})).json();
   const quote = openapi.paths["/v1/pricing/quote"].post;
@@ -598,7 +598,7 @@ test("settlement precedes execution and an exact retry does not settle twice", a
   assert.equal(observed.settled_usd_micros, 0, "testnet settlement is never revenue");
 });
 
-test("synthetic production probes are labeled in logs and excluded from journey metrics", async t => {
+test("synthetic and canary probes are labeled and excluded from customer journey metrics", async t => {
   const env = environment();
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async input => {
@@ -609,11 +609,13 @@ test("synthetic production probes are labeled in logs and excluded from journey 
     throw new Error(`unexpected fetch ${url}`);
   };
   t.after(() => { globalThis.fetch = originalFetch; });
-  const headers = { "content-type": "application/json", "x-xguard-traffic-class": "synthetic" };
+  for (const traffic of ["synthetic", "canary", "demo", "self_test", "testnet", "internal"]) {
+  const headers = { "content-type": "application/json", "x-xguard-traffic-class": traffic };
   const quoteResponse = await app.fetch(new Request("https://api.xguardgate.com/v1/pricing/quote", { method: "POST", headers, body: JSON.stringify({ url: target, testnet: true }) }), env, {});
   const quote = await quoteResponse.json();
   const challenge = await app.fetch(new Request("https://api.xguardgate.com/v1/tools/web.fetch/testnet", { method: "POST", headers: { ...headers, "x-xguard-quote": quote.quote }, body: JSON.stringify({ url: target }) }), env, {});
   assert.equal(challenge.status, 402);
+  }
   const metrics = await app.fetch(new Request("https://api.xguardgate.com/v1/metrics"), env, {});
   const body = await metrics.json();
   assert.deepEqual(body.events, {});

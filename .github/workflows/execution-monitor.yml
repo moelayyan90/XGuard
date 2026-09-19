@@ -1,0 +1,78 @@
+name: XGuard Execution Production Monitor
+on:
+  workflow_run:
+    workflows: ["Deploy XGuard Relay"]
+    branches: [main]
+    types: [completed]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: execution-production-monitor
+  cancel-in-progress: false
+jobs:
+  observe:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Three MCP rounds and authenticated free capability execution
+        id: probe
+        continue-on-error: true
+        run: node scripts/verify-execution-production.mjs > execution-monitor.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: execution-monitor
+          path: execution-monitor.json
+          retention-days: 30
+      - name: Maintain one incident and one current production milestone
+        if: always()
+        uses: actions/github-script@v8
+        env:
+          PROBE_OUTCOME: ${{ steps.probe.outcome }}
+        with:
+          script: |
+            const repo = context.repo;
+            const marker = '<!-- xguard-monitor:execution-v1 -->';
+            const labels = [
+              ['production-incident', 'b60205', 'Observed current production failure'],
+              ['production-release', '0e8a16', 'Current Agent Execution Gateway release'],
+              ['distribution', '1d76db', 'Registry metadata and discovery'],
+              ['legacy-identity', 'ededed', 'Historical product identity; retained as evidence'],
+              ['design-partner', '5319e7', 'Small scoped integration proposal; not adoption']
+            ];
+            for (const [name, color, description] of labels) {
+              try { await github.rest.issues.createLabel({ ...repo, name, color, description }); }
+              catch (error) { if (error.status !== 422) throw error; }
+            }
+            const title = 'Agent Execution Gateway 5.2 production acceptance';
+            const milestones = await github.paginate(github.rest.issues.listMilestones, { ...repo, state: 'all', per_page: 100 });
+            let milestone = milestones.find(x => x.title === title);
+            if (!milestone) milestone = (await github.rest.issues.createMilestone({ ...repo, title, description: 'Actual deployment, secure execution, settlement recovery, truthful observability and external acceptance. Passing synthetic probes alone does not establish paid or vendor acceptance.' })).data;
+            const issues = await github.paginate(github.rest.issues.listForRepo, { ...repo, state: 'open', per_page: 100 });
+            const incidents = issues.filter(x => !x.pull_request && x.body?.includes(marker)).sort((a,b) => a.number-b.number);
+            const url = `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}`;
+            const good = process.env.PROBE_OUTCOME === 'success';
+            if (!good) {
+              const body = `${marker}\n\nThe current release failed the MCP/capability probe. No payment or external provider call was performed.\n\nLatest evidence: ${url}\n\nRetain this incident until all three MCP rounds, scoped authenticated execution, replay and proof verification pass. This incident does not represent registry synchronization delays.`;
+              if (incidents.length) await github.rest.issues.update({ ...repo, issue_number: incidents[0].number, body, milestone: milestone.number });
+              else await github.rest.issues.create({ ...repo, title: '[monitor] Agent execution acceptance failed', body, labels: ['production-incident'], milestone: milestone.number });
+            }
+            for (const issue of good ? incidents : incidents.slice(1)) {
+              const evidence = good ? `Recovery confirmed by three MCP rounds plus the authenticated capability demo: ${url}. This closes this probe incident only; it is not evidence of real customer payments.` : `Duplicate incident. Track #${incidents[0].number}. Evidence retained below.`;
+              await github.rest.issues.update({ ...repo, issue_number: issue.number, state: 'closed', state_reason: good ? 'completed' : 'not_planned', body: issue.body + '\n\n' + evidence });
+            }
+      - name: Preserve failed probe status
+        if: steps.probe.outcome != 'success'
+        run: exit 1

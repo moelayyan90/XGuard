@@ -1,14 +1,15 @@
 {
   "name": "xguard-x402-control-plane",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "private": false,
   "type": "module",
-  "description": "Public-source outcomes: page extraction, product offers and feed digests with bounded x402 execution.",
+  "description": "Agent Execution Gateway: scoped capabilities, server-side credentials, policy, budgets and verifiable receipts.",
   "main": "./sdk/index.js",
   "exports": {
     ".": "./sdk/index.js",
     "./outcomes": "./sdk/outcomes.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./execution": "./sdk/execution.js"
   },
   "files": [
     "sdk/index.js",
@@ -16,7 +17,8 @@
     "sdk/README.md",
     "sdk/examples",
     "integrations",
-    "LICENSE"
+    "LICENSE",
+    "sdk/execution.js"
   ],
   "sideEffects": false,
   "peerDependencies": {

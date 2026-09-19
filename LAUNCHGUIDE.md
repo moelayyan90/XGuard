@@ -1,9 +1,9 @@
-# XGuard — Universal Paid AI Agent + Secretless Gateway
+# XGuard — Agent Execution Gateway
 
 ## Listing identity
 
-- **Name:** XGuard — Universal Paid AI Agent + Secretless Gateway
-- **Version:** 5.1.0
+- **Name:** XGuard — Agent Execution Gateway
+- **Version:** 5.2.0
 - **Category:** Security
 - **Secondary categories:** Developer Tools, AI & ML, Cloud & DevOps
 - **Pricing:** A direct paid-tool call returns its signed quote and x402 payment requirement automatically. Public discovery, preflight, and standalone signed quotes remain free; no account or subscription is required. Operator-provisioned Secretless Egress remains a separate management surface.

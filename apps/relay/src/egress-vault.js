@@ -1,5 +1,8 @@
 import { digestBytes, executionKey, requestDigest, readBoundedBody, responseHeaders as safeResponseHeaders, credentialVariants, MAX_RESULT_BYTES, MAX_STORED_RESULT_BYTES } from "./core/execution-contract.js";
 import { publicDns } from "./core/network-policy.js";
+import { admitUsage, recordUsage, UsageError } from "./core/agent-usage.js";
+import { compileOperation, validateOperationPolicy, operationPolicyAllows, normalizedProviderResult } from "./core/provider-operations.js";
+import { recordTelemetry, telemetrySnapshot } from "./core/execution-telemetry.js";
 
 const VERSION = "1.0.0";
 const API = "https://api.xguardgate.com";
@@ -8,6 +11,8 @@ const MAX_SECRET_BYTES = 16 * 1024;
 const MAX_BODY_BYTES = 1024 * 1024;
 const BILLING_TIMEOUT_MS = 10_000;
 const EGRESS_TIMEOUT_MS = 30_000;
+const DEMO_TARGET = "https://demo.xguardgate.com/v1/fixture";
+const demoTarget = value => value === DEMO_TARGET ? new URL(DEMO_TARGET) : null;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -123,10 +128,11 @@ async function billingBalance(env, key) {
   try {
     const response = await fetch(`${billingUrl(env)}/v1/balance`, {
       headers: { authorization: `Bearer ${key}`, accept: "application/json" },
+      redirect: "manual",
       signal: AbortSignal.timeout(BILLING_TIMEOUT_MS),
     });
     const data = await response.json().catch(() => ({}));
-    return { ok: response.ok, status: response.status, credits: Number(data?.credits ?? data?.balance ?? 0) };
+    return { ok: response.ok && !data?.restricted, status: data?.restricted ? 403 : response.status, credits: Number(data?.credits ?? data?.balance ?? 0) };
   } catch {
     return { ok: false, status: 503, credits: 0 };
   }
@@ -138,6 +144,7 @@ async function consumeCredits(env, key, units, idempotencyKey) {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "idempotency-key": idempotencyKey },
       body: JSON.stringify({ units }),
+      redirect: "manual",
       signal: AbortSignal.timeout(BILLING_TIMEOUT_MS),
     });
     return { ok: response.ok, status: response.status };
@@ -256,6 +263,7 @@ function tenantStub(env, ownerHash) {
 function meterStub(env) {
   return env.EGRESS_METER.get(env.EGRESS_METER.idFromName("meter-v1"));
 }
+function registryStub(env) { return env.EGRESS_METER.get(env.EGRESS_METER.idFromName("operator-capability-registry-v1")); }
 
 async function encryptSecret(env, plaintext) {
   const response = await keyStub(env).fetch("https://egress-key/encrypt", {
@@ -344,7 +352,7 @@ async function createCredential(request, env) {
   if (!balance.ok) return json({ error: balance.status === 404 ? "unknown_xguard_license" : "billing_unavailable" }, balance.status === 404 ? 401 : 503);
 
   let body;
-  try { body = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
+  try { body = JSON.parse(dec.decode(await readBoundedBody(request.body, 32768))); } catch { return json({ error: "invalid_or_oversized_json" }, 400); }
   const provider = low(body?.provider || "custom");
   const policy = providerPolicy(provider, body);
   if (!policy?.allowed_hosts || !policy.allowed_paths || !policy.allowed_methods) return json({ error: "invalid_credential_policy" }, 400);
@@ -418,7 +426,7 @@ async function issueCapability(request, env) {
   if (!balance.ok) return json({ error: balance.status === 404 ? "unknown_xguard_license" : "billing_unavailable" }, balance.status === 404 ? 401 : 503);
 
   let body;
-  try { body = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
+  try { body = JSON.parse(dec.decode(await readBoundedBody(request.body, 32768))); } catch { return json({ error: "invalid_or_oversized_json" }, 400); }
   const credentialId = String(body?.credential_id || "");
   if (!/^xcred_[a-f0-9]{32}$/i.test(credentialId)) return json({ error: "invalid_credential_id" }, 400);
   const ownerHash = await sha256(key);
@@ -445,6 +453,9 @@ async function issueCapability(request, env) {
   const units = egressCredits(env);
   const maxPerCall = Number(body?.max_credits_per_call ?? units);
   const maxTotal = Number(body?.max_total_credits ?? maxCalls * units);
+  let operationPolicy;
+  try { operationPolicy = validateOperationPolicy(body.allowed_operations, body.operation_limits, credential.provider); }
+  catch (cause) { return json({ error: cause.message }, 400); }
   if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 30 || ttlSeconds > 3600 || !Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > 1000) return json({ error: "invalid_capability_limits" }, 400);
   if (!units) return json({ error: "egress_price_invalid" }, 503);
   if (!Number.isSafeInteger(maxPerCall) || maxPerCall < units || maxPerCall > 1000000 || !Number.isSafeInteger(maxTotal) || maxTotal < units || maxTotal > 1000000000) return json({ error: "invalid_credit_budget" }, 400);
@@ -465,6 +476,7 @@ async function issueCapability(request, env) {
     used_calls: 0,
     max_credits_per_call: maxPerCall,
     max_total_credits: maxTotal,
+    ...(operationPolicy || {}),
     reserved_credits: 0,
     billing_envelope: billingEnvelope,
     created_at: new Date().toISOString(),
@@ -477,6 +489,11 @@ async function issueCapability(request, env) {
     body: JSON.stringify(record),
   });
   if (!stored.ok) return json({ error: "capability_store_unavailable" }, 503);
+  const indexed = await registryStub(env).fetch("https://meter/operator/issued", { method: "POST", body: JSON.stringify({ id: capId, owner_hash: ownerHash, expires_at: record.expires_at }) }).catch(() => null);
+  if (!indexed?.ok) {
+    await capabilityStub(env, capId).fetch("https://capability/revoke", { method: "POST", body: JSON.stringify({ owner_hash: ownerHash }) }).catch(() => {});
+    return json({ error: "capability_index_unavailable", message: "No capability was issued to the client; retry provisioning." }, 503);
+  }
   return json({
     capability: token,
     capability_id: capId,
@@ -484,6 +501,7 @@ async function issueCapability(request, env) {
     target_origin: record.target_origin,
     path_prefix: record.path_prefix,
     allowed_methods: record.allowed_methods,
+    ...(operationPolicy || {}),
     max_calls: maxCalls,
     max_credits_per_call: maxPerCall,
     max_total_credits: maxTotal,
@@ -496,6 +514,39 @@ async function issueCapability(request, env) {
 function parseCapabilityToken(token) {
   const match = String(token || "").match(/^xgc_([a-f0-9]{32})\.([A-Za-z0-9_-]{20,})$/i);
   return match ? { id: match[1].toLowerCase(), token: String(token) } : null;
+}
+
+export async function preflightCapability(env, token, plan) {
+  const parsed = parseCapabilityToken(token);
+  if (!parsed) return json({ error: "valid_xguard_capability_required" }, 401);
+  if (!env.EGRESS_CAPABILITIES || !egressCredits(env)) return json({ error: "execution_configuration_unavailable" }, 503);
+  return capabilityStub(env, parsed.id).fetch("https://capability/preflight", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token, target: plan.target, method: plan.method, operation: plan.operation, operation_context: plan.context, units: egressCredits(env) }) });
+}
+
+export async function createControlledDemo(request, env) {
+  if (!["EGRESS_KEYS", "EGRESS_CREDENTIALS", "EGRESS_CAPABILITIES", "EGRESS_METER", "PROOF_AUTHORITY"].every(k => env[k])) return json({ error: "demo_not_configured" }, 503);
+  const subject = await sha256(request.headers.get("cf-connecting-ip") || "local-demo");
+  for (const name of [`demo-admission:${subject}`, "demo-admission:global"]) {
+    const admission = await env.EGRESS_METER.get(env.EGRESS_METER.idFromName(name)).fetch("https://meter/demo/admit", { method: "POST" });
+    if (!admission.ok) return json({ error: "demo_rate_limited" }, 429, { "retry-after": "60" });
+  }
+  const id = randomHex(), credentialId = `xcred_${randomHex()}`, secret = `demo_${b64url(crypto.getRandomValues(new Uint8Array(32)))}`;
+  const token = `xgc_${id}.${b64url(crypto.getRandomValues(new Uint8Array(32)))}`;
+  const ownerHash = await sha256(`controlled-demo:${id}`), expiresAt = new Date(Date.now() + 120000).toISOString();
+  const credential = { id: credentialId, owner_hash: ownerHash, provider: "xguard-controlled-demo", demo: true, demo_id: id,
+    injection: { header: "authorization", prefix: "Bearer " }, allowed_hosts: ["demo.xguardgate.com"], allowed_paths: ["/v1/fixture"], allowed_methods: ["GET"],
+    envelope: await encryptSecret(env, secret), active: true, expires_at: expiresAt, created_at: new Date().toISOString() };
+  const put = (stub, path, body) => stub.fetch(path, { method: "POST", body: JSON.stringify(body) });
+  const configured = await put(env.EGRESS_METER.get(env.EGRESS_METER.idFromName(`controlled-demo:${id}`)), "https://meter/demo/configure", { secret_hash: await sha256(`Bearer ${secret}`), expires_at: expiresAt });
+  if (!configured.ok || !(await put(credentialStub(env, credentialId), "https://credential/create", credential)).ok) return json({ error: "demo_setup_failed" }, 503);
+  const record = { id, token_hash: await sha256(token), owner_hash: ownerHash, credential_id: credentialId, target_origin: "https://demo.xguardgate.com", path_prefix: "/v1/fixture", allowed_methods: ["GET"],
+    max_calls: 1, used_calls: 0, max_credits_per_call: 0, max_total_credits: 0, reserved_credits: 0, billing_envelope: null, demo: true, demo_id: id,
+    created_at: new Date().toISOString(), expires_at: expiresAt, revoked: false };
+  if (!(await put(capabilityStub(env, id), "https://capability/create", record)).ok) return json({ error: "demo_setup_failed" }, 503);
+  return json({ capability: token, capability_id: id, target: DEMO_TARGET, method: "GET", idempotency_key: `demo-${id}`, expires_at: expiresAt,
+    cost: { usage_credits: 0, provider_cost: 0 }, mode: "controlled_authenticated_service", network_egress: false,
+    description: "A real random server-side credential authenticates an internal read-only fixture. The capability uses the normal encryption, scope, reservation, redaction, durable-result and ProofRail path. No external provider or paid settlement is simulated as revenue." }, 201);
 }
 
 function serializeBody(body) {
@@ -511,9 +562,20 @@ async function egressFetch(request, env) {
   let body;
   try { body = JSON.parse(dec.decode(await readBoundedBody(request.body, MAX_BODY_BYTES * 2))); } catch (cause) { return json({ error: cause.message === "response_too_large" ? "request_body_too_large" : "invalid_json" }, cause.message === "response_too_large" ? 413 : 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "invalid_json" }, 400);
+  let operationContext;
+  if (body.operation) {
+    try {
+      const plan = compileOperation(body.operation, body.input);
+      if (body.target !== plan.target || String(body.method || "GET").toUpperCase() !== plan.method
+        || JSON.stringify(body.body_json) !== JSON.stringify(plan.body_json)
+        || body.body_text !== undefined || body.body_base64 !== undefined) return json({ error: "operation_request_mismatch" }, 400);
+      body.headers = plan.headers;
+      operationContext = plan.context;
+    } catch (cause) { return json({ error: cause.message }, 422); }
+  }
   const parsed = parseCapabilityToken(body?.capability || request.headers.get("x-xguard-capability"));
   if (!parsed) return json({ error: "valid_xguard_capability_required" }, 401);
-  const target = safeTarget(body?.target);
+  const target = demoTarget(body?.target) || safeTarget(body?.target);
   if (!target) return json({ error: "public_https_target_required" }, 400);
   const method = String(body?.method || "GET").toUpperCase();
   if (!methods.has(method)) return json({ error: "unsupported_method" }, 400);
@@ -523,7 +585,7 @@ async function egressFetch(request, env) {
   if (size > MAX_BODY_BYTES) return json({ error: "request_body_too_large", max_bytes: MAX_BODY_BYTES }, 413);
   if (["GET", "HEAD"].includes(method) && serialized.data !== null) return json({ error: "body_not_allowed_for_method" }, 400);
   if (["body_json", "body_text", "body_base64"].filter(key => Object.hasOwn(body, key)).length > 1) return json({ error: "ambiguous_body" }, 400);
-  const units = egressCredits(env);
+  let units = egressCredits(env);
   if (!units || !env.PROOF_AUTHORITY) return json({ error: "execution_configuration_unavailable" }, 503);
   let key, outgoing;
   try {
@@ -537,10 +599,11 @@ async function egressFetch(request, env) {
   const begun = await capabilityStub(env, parsed.id).fetch("https://capability/begin", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: parsed.token, target: target.toString(), method, key_hash: keyHash, request_digest: digest, units }),
+    body: JSON.stringify({ token: parsed.token, target: target.toString(), method, key_hash: keyHash, request_digest: digest, units, operation: body.operation, operation_context: operationContext }),
   });
   const cap = await begun.json().catch(() => ({}));
   if (!begun.ok) return json(cap, begun.status);
+  if (cap.demo === true) units = 0;
   if (cap.replay) {
     try {
       const stored = JSON.parse(await decryptSecret(env, cap.response_envelope));
@@ -556,12 +619,13 @@ async function egressFetch(request, env) {
       headers.set("x-xguard-execution-id", cap.execution_id);
       headers.set("x-xguard-egress-capability", parsed.id);
       headers.set("x-xguard-egress-state", state);
+      headers.set("x-xguard-demo", String(cap.demo === true));
       headers.set("x-xguard-replay", "false");
       headers.set("x-xguard-request-digest", digest);
       if (billedCredits !== null) headers.set("x-xguard-billed-credits", String(billedCredits));
       const proofResponse = await env.PROOF_AUTHORITY.get(env.PROOF_AUTHORITY.idFromName("proofrail-root-v1")).fetch("https://proofrail/sign", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ payload: { v: 1, typ: "xguard-proofrail-egress", iss: API, execution_id: cap.execution_id, capability_id: parsed.id, request_digest: digest, body_sha256: await digestBytes(bytes), target_origin: target.origin, target_path: target.pathname, method, outcome: state, upstream_status: headers.has("x-xguard-upstream-status") ? Number(headers.get("x-xguard-upstream-status")) : null, billed_credits: billedCredits, issued_at: new Date().toISOString() } }),
+        body: JSON.stringify({ payload: { v: 1, typ: "xguard-proofrail-egress", iss: API, execution_id: cap.execution_id, capability_id: parsed.id, request_digest: digest, body_sha256: await digestBytes(bytes), target_origin: target.origin, target_path: target.pathname, method, outcome: state, upstream_status: headers.has("x-xguard-upstream-status") ? Number(headers.get("x-xguard-upstream-status")) : null, billed_credits: billedCredits, ...(cap.demo ? { demo: true, revenue: false } : {}), issued_at: new Date().toISOString() } }),
       });
       const signed = await proofResponse.json();
       if (!proofResponse.ok || !signed.proof) throw new Error("proof_unavailable");
@@ -577,7 +641,7 @@ async function egressFetch(request, env) {
       return json({ error: "execution_result_unavailable", execution_id: cap.execution_id, may_have_executed: true, message: "The reserved operation will not be repeated. Retry only the identical request with the same key to retrieve a committed result." }, 503);
     }
   };
-  const dns = await publicDns(target.hostname);
+  const dns = cap.demo === true && demoTarget(target.href) ? { ok: true } : await publicDns(target.hostname);
   if (!dns.ok) return finish(json({ error: dns.code }, dns.code === "target_not_public" ? 403 : 503), "failed_before_execution");
 
   const credentialResponse = await credentialStub(env, cap.credential_id).fetch("https://credential/use", {
@@ -589,11 +653,11 @@ async function egressFetch(request, env) {
   if (!credentialResponse.ok) return finish(json({ error: credential.error || "credential_access_denied" }, credentialResponse.status), "failed_before_execution");
 
   let billingKey;
-  try { billingKey = await decryptSecret(env, cap.billing_envelope); } catch { return finish(json({ error: "billing_key_unavailable" }, 503), "failed_before_execution"); }
-  const balance = await billingBalance(env, billingKey);
+  try { billingKey = cap.demo ? null : await decryptSecret(env, cap.billing_envelope); } catch { return finish(json({ error: "billing_key_unavailable" }, 503), "failed_before_execution"); }
+  const balance = cap.demo ? { ok: true, credits: 0 } : await billingBalance(env, billingKey);
   if (!balance.ok) return finish(json({ error: balance.status === 404 ? "unknown_xguard_license" : "billing_unavailable" }, balance.status === 404 ? 401 : 503), "failed_before_execution");
   if (!Number.isFinite(balance.credits) || balance.credits < units) return finish(json({ error: "insufficient_xguard_credits", required: units, checkout_url: env.XGUARD_CHECKOUT_URL || null }, 402), "failed_before_execution");
-  const billed = await consumeCredits(env, billingKey, units, `xguard-egress:${cap.execution_id}`);
+  const billed = cap.demo ? { ok: true } : await consumeCredits(env, billingKey, units, `xguard-egress:${cap.execution_id}`);
   if (!billed.ok) return finish(json({ error: billed.status === 402 ? "insufficient_xguard_credits" : "billing_commit_failed", checkout_url: env.XGUARD_CHECKOUT_URL || null }, billed.status === 402 ? 402 : 503), billed.status === 402 ? "failed_before_execution" : "billing_ambiguous", billed.status === 402 ? 0 : null);
 
   let secret;
@@ -606,30 +670,32 @@ async function egressFetch(request, env) {
 
   const started = Date.now();
   try {
-    const upstream = await fetch(target.toString(), {
+    const fetchTarget = cap.demo ? (targetUrl, options) => env.EGRESS_METER.get(env.EGRESS_METER.idFromName(`controlled-demo:${cap.demo_id}`)).fetch("https://meter/demo/provider", options) : fetch;
+    const upstream = await fetchTarget(target.toString(), {
       method,
       headers,
       body: ["GET", "HEAD"].includes(method) ? undefined : serialized.data,
       redirect: "manual",
       signal: AbortSignal.timeout(EGRESS_TIMEOUT_MS),
     });
-    const bytes = await readBoundedBody(upstream.body, MAX_RESULT_BYTES);
+    let bytes = await readBoundedBody(upstream.body, MAX_RESULT_BYTES);
     const decoded = dec.decode(bytes);
     if (credentialVariants(secret).some(value => decoded.includes(value))) throw new Error("credential_reflected_by_upstream");
+    if (body.operation === "cloudflare.worker.metadata") bytes = enc.encode(JSON.stringify(normalizedProviderResult(body.operation, JSON.parse(decoded))));
     const responseHeaders = safeResponseHeaders(upstream.headers, secret, credential.injection.header);
     responseHeaders.set("x-xguard-egress", VERSION);
     responseHeaders.set("x-xguard-egress-capability", parsed.id);
     responseHeaders.set("x-xguard-billed-credits", String(units));
     responseHeaders.set("x-xguard-upstream-status", String(upstream.status));
     responseHeaders.set("cache-control", "no-store");
-    await meterStub(env).fetch("https://meter/record", {
+    if (!cap.demo) await meterStub(env).fetch("https://meter/record", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ billed_credits: units, upstream_status: upstream.status, latency_ms: Date.now() - started, ambiguous: false }),
     }).catch(() => null);
     return finish(new Response([204, 205, 304].includes(upstream.status) || method === "HEAD" ? null : bytes, { status: upstream.status, headers: responseHeaders }), "completed", units);
   } catch (error) {
-    await meterStub(env).fetch("https://meter/record", {
+    if (!cap.demo) await meterStub(env).fetch("https://meter/record", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ billed_credits: units, latency_ms: Date.now() - started, ambiguous: true }),
@@ -695,12 +761,14 @@ export class EgressKeyAuthority {
 
 export class EgressCredentialState {
   constructor(state) { this.state = state; }
+  async alarm() { if ((await this.state.storage.get("record"))?.demo) await this.state.storage.deleteAll(); }
   async fetch(request) {
     const path = new URL(request.url).pathname;
     if (path === "/create" && request.method === "POST") {
       if (await this.state.storage.get("record")) return json({ error: "credential_exists" }, 409);
       const record = await request.json();
       await this.state.storage.put("record", record);
+      if (record.demo) await this.state.storage.setAlarm(Date.parse(record.expires_at) + 86400000);
       return json({ ok: true }, 201);
     }
     const record = await this.state.storage.get("record");
@@ -715,7 +783,7 @@ export class EgressCredentialState {
         return json({ ok: true, credential_id: record.id });
       }
       if (path === "/use") {
-        const target = safeTarget(body?.target);
+        const target = record.demo ? demoTarget(body?.target) : safeTarget(body?.target);
         const method = String(body?.method || "GET").toUpperCase();
         if (!target || !targetAllowed(record, target, method)) return json({ error: "credential_scope_denied" }, 403);
       }
@@ -795,18 +863,29 @@ export class EgressCapabilityState {
       });
       return result;
     }
-    if (path === "/begin" && request.method === "POST") {
+    if (["/begin", "/preflight"].includes(path) && request.method === "POST") {
       const body = await request.json();
-      if (!/^[a-f0-9]{64}$/.test(body.key_hash || "") || !/^[a-f0-9]{64}$/.test(body.request_digest || "") || !Number.isSafeInteger(body.units) || body.units <= 0) return json({ error: "invalid_execution_request" }, 400);
+      if (path === "/begin" && (!/^[a-f0-9]{64}$/.test(body.key_hash || "") || !/^[a-f0-9]{64}$/.test(body.request_digest || "")) || !Number.isSafeInteger(body.units) || body.units <= 0) return json({ error: "invalid_execution_request" }, 400);
       if (!equalHash(await sha256(body?.token || ""), record.token_hash)) return json({ error: "invalid_capability" }, 403);
-      const target = safeTarget(body?.target);
+      if (record.demo) body.units = 0;
+      const target = record.demo ? demoTarget(body?.target) : safeTarget(body?.target);
       const method = String(body?.method || "GET").toUpperCase();
       if (!target || target.origin !== record.target_origin || !pathMatches(record.path_prefix, target.pathname) || !record.allowed_methods.includes(method)) return json({ error: "capability_scope_denied" }, 403);
+      if (!operationPolicyAllows(record, body.operation, body.operation_context)) return json({ error: "capability_operation_denied" }, 403);
       let result;
       await this.state.storage.transaction(async txn => {
         const current = await txn.get("record");
         if (current.revoked) { result = { status: 403, body: { error: "capability_revoked" } }; return; }
         if (Date.now() >= Date.parse(current.expires_at)) { result = { status: 410, body: { error: "capability_expired" } }; return; }
+        if (path === "/preflight") {
+          const remaining = Math.max(0, current.max_total_credits - (current.reserved_credits || 0));
+          const allowed = current.used_calls < current.max_calls && body.units <= current.max_credits_per_call && remaining >= body.units;
+          result = { status: allowed ? 200 : 402, body: { ok: allowed, ...(allowed ? {} : { error: "capability_budget_exceeded" }), policy_allowed: allowed,
+            reserved: false, executed: false, billing_committed: false, billing_balance_checked: false, credits_per_attempt: body.units,
+            remaining_calls: Math.max(0, current.max_calls - current.used_calls), remaining_credits: remaining, expires_at: current.expires_at,
+            note: "Advisory snapshot; execution rechecks authorization, scope, budget, balance and idempotency atomically." } };
+          return;
+        }
         const operationKey = `execution:${body.key_hash}`;
         const existing = await txn.get(operationKey);
         if (existing) {
@@ -826,7 +905,7 @@ export class EgressCapabilityState {
         current.last_used_at = new Date().toISOString();
         await txn.put("record", current);
         await txn.put(operationKey, operation);
-        result = { status: 200, body: { credential_id: current.credential_id, owner_hash: current.owner_hash, billing_envelope: current.billing_envelope, execution_id: operation.execution_id, claim_token: operation.claim_token, used_calls: current.used_calls, max_calls: current.max_calls } };
+        result = { status: 200, body: { credential_id: current.credential_id, owner_hash: current.owner_hash, billing_envelope: current.billing_envelope, execution_id: operation.execution_id, claim_token: operation.claim_token, used_calls: current.used_calls, max_calls: current.max_calls, ...(current.demo ? { demo: true, demo_id: current.demo_id } : {}) } };
       });
       return json(result.body, result.status);
     }
@@ -836,8 +915,73 @@ export class EgressCapabilityState {
 
 export class EgressMeter {
   constructor(state) { this.state = state; }
+  async alarm() { if (await this.state.storage.get("controlled-demo")) await this.state.storage.deleteAll(); }
   async fetch(request) {
     const path = new URL(request.url).pathname;
+    if (path === "/operator/issued" && request.method === "POST") {
+      const body = await request.json();
+      if (!/^[a-f0-9]{32}$/.test(body.id || "") || !/^[a-f0-9]{64}$/.test(body.owner_hash || "") || !Number.isFinite(Date.parse(body.expires_at))) return json({ error: "invalid_registry_record" }, 400);
+      await this.state.storage.put(`operator-cap:${body.id}`, { owner_hash: body.owner_hash, expires_at: body.expires_at, revoked: false });
+      if (!await this.state.storage.get("registry-started")) await this.state.storage.put("registry-started", Date.now());
+      return json({ ok: true });
+    }
+    if (path === "/operator/revoked" && request.method === "POST") {
+      const body = await request.json(), key = `operator-cap:${body.id}`;
+      const record = await this.state.storage.get(key);
+      if (record) await this.state.storage.put(key, { ...record, revoked: true });
+      return json({ ok: true });
+    }
+    if (path === "/operator/snapshot" && request.method === "GET") {
+      const owners = new Set(); let active = 0, startAfter, examined = 0;
+      while (examined < 100000) {
+        const rows = await this.state.storage.list({ prefix: "operator-cap:", limit: 1000, ...(startAfter ? { startAfter } : {}) });
+        for (const [key, record] of rows) { examined++; startAfter = key; if (!record.revoked && Date.parse(record.expires_at) > Date.now()) { active++; owners.add(record.owner_hash); } else await this.state.storage.delete(key); }
+        if (rows.size < 1000) break;
+      }
+      const started = await this.state.storage.get("registry-started");
+      return json({ active_operators: examined < 100000 ? owners.size : null, active_capabilities: examined < 100000 ? active : null,
+        observed_since: started ? new Date(started).toISOString() : null, historical_backfill_complete: Boolean(started && Date.now() - started > 3600000),
+        definition: "Unrevoked, unexpired operator-issued capabilities; controlled demo capabilities excluded. Pre-release capabilities expire within one hour." });
+    }
+    if (path === "/demo/admit" && request.method === "POST") {
+      const bucket = Math.floor(Date.now() / 60000);
+      let allowed;
+      await this.state.storage.transaction(async tx => {
+        const old = await tx.get("demo-quota"), count = old?.bucket === bucket ? old.count : 0;
+        allowed = count < 5;
+        if (allowed) await tx.put("demo-quota", { bucket, count: count + 1 });
+      });
+      return json({ allowed }, allowed ? 200 : 429);
+    }
+    if (path === "/demo/configure" && request.method === "POST") {
+      if (await this.state.storage.get("controlled-demo")) return json({ error: "demo_exists" }, 409);
+      const body = await request.json();
+      await this.state.storage.put("controlled-demo", body);
+      await this.state.storage.setAlarm(Date.parse(body.expires_at) + 86400000);
+      return json({ ok: true });
+    }
+    if (path === "/demo/provider" && request.method === "GET") {
+      const record = await this.state.storage.get("controlled-demo");
+      if (!record || Date.now() >= Date.parse(record.expires_at) || !equalHash(await sha256(request.headers.get("authorization") || ""), record.secret_hash)) return json({ error: "demo_provider_authentication_failed" }, 403);
+      return json({ authenticated: true, fixture: { project: "XGuard controlled demo", operation: "read", message: "The server authenticated your capability-backed request." }, secret_returned: false });
+    }
+    if (path === "/telemetry/record" && request.method === "POST") {
+      await recordTelemetry(this.state.storage, await request.json());
+      return json({ ok: true });
+    }
+    if (path === "/telemetry/snapshot" && request.method === "GET") return json(await telemetrySnapshot(this.state.storage));
+    if (request.method === "POST" && ["/agent-usage/admit", "/agent-usage/record"].includes(path)) {
+      try {
+        if (path === "/agent-usage/admit") {
+          const admission = await admitUsage(this.state.storage);
+          return json(admission, admission.allowed ? 200 : 429);
+        }
+        return json(await recordUsage(this.state.storage, await request.json()));
+      } catch (cause) {
+        const error = cause instanceof UsageError ? cause : new UsageError("usage_store_unavailable", 503, "Usage storage could not commit the event.", true);
+        return json({ error: { code: error.code, message: error.message, retryable: error.retryable } }, error.status);
+      }
+    }
     if (path === "/record" && request.method === "POST") {
       const body = await request.json();
       let output;
@@ -896,7 +1040,10 @@ export default {
     if (/^\/v1\/egress\/capabilities\/[a-f0-9]{32}$/.test(path) && request.method === "DELETE") {
       const key = keyOf(request);
       if (!key) return json({ error: "xguard_key_required" }, 401);
-      return capabilityStub(env, path.split("/").pop()).fetch("https://capability/revoke", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ owner_hash: await sha256(key) }) });
+      const id = path.split("/").pop();
+      const response = await capabilityStub(env, id).fetch("https://capability/revoke", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ owner_hash: await sha256(key) }) });
+      if (response.ok) await registryStub(env).fetch("https://meter/operator/revoked", { method: "POST", body: JSON.stringify({ id }) });
+      return response;
     }
     if (path === "/v1/egress/fetch" && request.method === "POST") return egressFetch(request, env);
     if (path === "/v1/egress/pricing" && request.method === "GET") return json({ credits_per_authorized_egress_attempt: egressCredits(env), billing_boundary: "XGuard Usage Credits are consumed before credential release and before outbound network egress.", failed_billing: "no upstream request is sent", upstream_failure_after_billing: "the egress attempt remains billed; XGuard never auto-replays an ambiguous attempt", checkout_url: env.XGUARD_CHECKOUT_URL || null });
