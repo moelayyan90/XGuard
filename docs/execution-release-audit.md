@@ -1,6 +1,21 @@
-# Agent Execution Gateway 5.2.0 — release candidate audit
+# Agent Execution Gateway 5.2.0 — release audit
 
-Observed 2026-09-19. This is a candidate implementation, **not a production acceptance claim**. The earlier agent-token-usage task is retained in the same review chain.
+## Production acceptance update — 2026-09-20
+
+The user authorized continuing the merge and deployment. PRs [#546](https://github.com/moelayyan90/XGuard/pull/546), [#547](https://github.com/moelayyan90/XGuard/pull/547) and [#548](https://github.com/moelayyan90/XGuard/pull/548) merged through the protected branch checks. [Deployment 35506333363](https://github.com/moelayyan90/XGuard/actions/runs/35506333363) succeeded for commit `815937199a14f37f7b579bc0b71f8aa1869c4fbb`, Worker tag `git-815937199a14`, at 10:54 UTC.
+
+- Live identity reports **5.2.0 / Agent Execution Gateway**. MCP, A2A, egress, payment and reconciliation readiness all pass on that deployed tag. The configured Base RPC fallback was independently checked for chain ID `0x2105` and is shared by readiness and read-only reconciliation.
+- The deployment passed identity, public contract, settlement context, outside-in, capability execution, replay, proof, commercial observer and buyer-discovery checks. No real payment was performed by those checks.
+- A real browser completed the production controlled demo: authenticated request, no reusable secret returned, out-of-scope request blocked, same execution on replay, valid proof, and zero billed credits. This validates the controlled service; it does not establish permission for external vendor accounts.
+- **229 Node tests passed** with zero failures: 212 relay/core/SDK/script checks and 17 billing/edge/reconciliation checks. The actual Worker runtime and SQLite Durable Object concurrency checks also passed.
+- Payment-state version 1 is now tracked by the deployment guard. Forward migration is allowed; automatic rollback to an executable lacking the financial-state guards is blocked. Same-state rollback remains available.
+- Official MCP Registry publication of 5.2.0 succeeded in [run 35506382223](https://github.com/moelayyan90/XGuard/actions/runs/35506382223). A simultaneous second publisher reported a duplicate version; the follow-up restores one automatic publisher. The canonical publisher's [successful rerun](https://github.com/moelayyan90/XGuard/actions/runs/35506382217) independently verified 5.2.0 and the matching live manifest. [Version normalization](https://github.com/moelayyan90/XGuard/actions/runs/35506627356) succeeded. Not Human Search recrawled at 11:00 UTC and now exposes the execution identity and 5.2.0 OpenAPI. MCPCentral's strict mirror check still fails; its freshness is separate from upstream publication.
+- The facilitator safety and public-contract checks passed. Its final discovery check still expected three tools and the old extraction homepage; the follow-up checks the exact eight-tool manifest from the deployed commit and the current execution homepage. Payment and security assertions remain in place.
+- Production security, execution monitoring, public metadata, distribution contracts, WordPress integration, public-index refresh, IndexNow, A2A submission and Better Than HTML submission workflows passed. A successful submission workflow does not prove that a third-party listing has refreshed every field or passed protocol conformance.
+- Billing service health and trusted key authentication work on the existing **0.3.0** billing deployment. The separate billing release remains gated because `BILLING_RELEASE_APPROVED` is not configured. Protected operator KPIs report `operator_metrics_not_configured` until `XGUARD_OPERATOR_METRICS_KEY` is configured; the observer also has no `XGUARD_OPERATOR_KEY` for private balances.
+- No real paid settlement, external-provider acceptance, merchant outreach, customer adoption or revenue is claimed. Those require actual authorized accounts, scope and payment evidence.
+
+The remaining sections preserve the **2026-09-19 pre-deployment audit** and its then-current constraints. Statements below that call the implementation a candidate, describe 5.1.0 as production, or require deployment authorization are historical and superseded by this update. The earlier agent-token-usage task remains in the same merged review chain.
 
 ## Deployed baseline and access boundary
 
