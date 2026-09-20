@@ -1,10 +1,8 @@
 name: Publish XGuard to MCP Registry
 
 on:
-  workflow_run:
-    workflows: ["Deploy XGuard Relay"]
-    branches: [main]
-    types: [completed]
+  # Manual recovery only. publish-mcp-registry.yml owns automatic publication
+  # and its exact-version verification and downstream discovery workflows.
   workflow_dispatch:
 
 permissions:
