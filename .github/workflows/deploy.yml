@@ -165,7 +165,7 @@ jobs:
           llms="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/llms.txt)"
           printf '%s' "$llms" | grep -q '/v1/execute'
           printf '%s' "$llms" | grep -q 'X-XGuard-Quote'
-          curl --fail --silent --show-error --max-time 8 https://xguardgate.com/server.json | EXPECTED_VERSION="$(node -p 'require("./server.json").version')" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!==process.env.EXPECTED_VERSION||x.name!=="io.github.moelayyan90/xguard-control-plane"||!x.description.toLowerCase().includes("signed prices")||x.description.length>100)process.exit(1)})'
+          curl --fail --silent --show-error --max-time 8 https://xguardgate.com/server.json | node -e 'const expected=require("./server.json");let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.version!==expected.version||x.name!==expected.name||x.title!==expected.title||x.description!==expected.description||x.description.length>100||JSON.stringify(x.remotes)!==JSON.stringify(expected.remotes))process.exit(1)})'
           robots="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/robots.txt)"
           printf '%s' "$robots" | grep -q 'User-agent: GPTBot'
           printf '%s' "$robots" | grep -q 'User-agent: ClaudeBot'
