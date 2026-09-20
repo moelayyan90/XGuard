@@ -5,12 +5,21 @@ import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const CONFIG_PATH = "apps/relay/wrangler.jsonc";
+const STATE_VERSION_PATH = "apps/relay/deployment-state.json";
 
 function readAt(ref) {
   return execFileSync("git", ["show", `${ref}:${CONFIG_PATH}`], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
+}
+
+function paymentStateVersionAt(ref) {
+  const present = execFileSync("git", ["ls-tree", "--name-only", ref, "--", STATE_VERSION_PATH], { encoding: "utf8" }).trim();
+  if (!present) return 0;
+  const manifest = JSON.parse(execFileSync("git", ["show", `${ref}:${STATE_VERSION_PATH}`], { encoding: "utf8" }));
+  if (!Number.isSafeInteger(manifest.payment_state_version) || manifest.payment_state_version < 0) throw new Error("Invalid payment state compatibility version");
+  return manifest.payment_state_version;
 }
 
 function stripJsonComments(source) {
@@ -76,19 +85,23 @@ function changedFiles(previousRef, currentRef) {
   return output.split("\n").filter(Boolean);
 }
 
-export function evaluate(previousText, currentText, files = []) {
+export function evaluate(previousText, currentText, files = [], paymentState = { previous: 0, current: 0 }) {
   const previous = lifecycle(previousText);
   const current = lifecycle(currentText);
   const lifecycleChanged = JSON.stringify(previous) !== JSON.stringify(current);
+  const paymentStateChanged = paymentState.previous !== paymentState.current;
+  const paymentStateDowngrade = paymentState.current < paymentState.previous;
   const runtimeChanges = files.filter(
     (file) => file !== CONFIG_PATH && !file.startsWith("docs/") && file !== "CHANGELOG.md",
   );
   return {
     lifecycleChanged,
-    rollbackAllowed: !lifecycleChanged,
-    isolated: !lifecycleChanged || runtimeChanges.length === 0,
+    paymentStateChanged,
+    paymentStateDowngrade,
+    rollbackAllowed: !lifecycleChanged && !paymentStateChanged,
+    isolated: !paymentStateDowngrade && (!lifecycleChanged || runtimeChanges.length === 0),
     runtimeChanges,
-    reason: lifecycleChanged ? "durable_object_lifecycle_changed" : "same_durable_object_lifecycle",
+    reason: paymentStateDowngrade ? "payment_state_downgrade_forbidden" : lifecycleChanged ? "durable_object_lifecycle_changed" : paymentStateChanged ? "payment_state_forward_recovery_required" : "same_durable_object_lifecycle",
   };
 }
 
@@ -110,11 +123,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(2);
   }
   try {
-    const result = evaluate(readAt(previousRef), readAt(currentRef), changedFiles(previousRef, currentRef));
+    const result = evaluate(readAt(previousRef), readAt(currentRef), changedFiles(previousRef, currentRef), {
+      previous: paymentStateVersionAt(previousRef), current: paymentStateVersionAt(currentRef),
+    });
     emit(result);
     if (!result.isolated) {
       process.stderr.write(
-        `Durable Object lifecycle migrations must be deployed independently; runtime changes: ${result.runtimeChanges.join(", ")}\n`,
+        result.paymentStateDowngrade ? "Payment state downgrade forbidden: preserve reconciliation and no-repeat guards in a forward fix.\n" : `Durable Object lifecycle migrations must be deployed independently; runtime changes: ${result.runtimeChanges.join(", ")}\n`,
       );
       process.exit(1);
     }

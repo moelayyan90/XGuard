@@ -180,13 +180,12 @@ jobs:
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!x.endpoints?.verify||!x.endpoints?.settle||x.capabilities?.settlement_ambiguous_fail_closed!==true)process.exit(1)})'
 
           page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${DEPLOY_SHA}")"
-          printf '%s' "$page" | grep -q 'Run free extraction'
-          printf '%s' "$page" | grep -q 'Three sources.'
-          printf '%s' "$page" | grep -q 'source digests'
-          printf '%s' "$page" | grep -q 'signed receipt'
-          printf '%s' "$page" | grep -q 'Arial,Helvetica,sans-serif'
+          printf '%s' "$page" | grep -q 'Give agents capabilities'
+          printf '%s' "$page" | grep -q 'not reusable credentials'
+          printf '%s' "$page" | grep -q 'href="/demo/secretless"'
+          printf '%s' "$page" | grep -q 'href="/connect"'
+          printf '%s' "$page" | grep -q 'verifiable evidence'
           printf '%s' "$page" | grep -q 'rel="canonical"'
-          printf '%s' "$page" | grep -q 'application/ld+json'
           try_page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/try?build=${DEPLOY_SHA}")"
           printf '%s' "$try_page" | grep -q 'Run free extraction'
           printf '%s' "$try_page" | grep -q '/v1/execute'
@@ -203,6 +202,9 @@ jobs:
 
       - name: Verify outside-in MCP contract parity
         run: node scripts/verify-outside-in.mjs
+
+      - name: Verify real capability demo, replay and proof without payment
+        run: node scripts/verify-execution-production.mjs
 
       - name: Record actual commercial counters without making a payment
         continue-on-error: true
@@ -227,11 +229,11 @@ jobs:
           npx --yes wrangler@4.123.0 rollback "$PREVIOUS_VERSION" --yes --config apps/relay/wrangler.jsonc --message "Automatic rollback after failed XGuard ${DEPLOY_SHA} verification"
           curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 3 --max-time 12 https://api.xguardgate.com/healthz >/dev/null
 
-      - name: Require forward recovery after irreversible Durable Object migration
+      - name: Require forward recovery after incompatible durable state change
         if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          echo '::error title=Forward recovery required::Production verification failed after an atomic Durable Object lifecycle migration. Cloudflare forbids rollback to the prior version; no unsafe rollback was attempted. Publish a migration-compatible corrective version.'
+          echo '::error title=Forward recovery required::Production verification failed after an incompatible durable state change. Preserve payment reconciliation and no-repeat safeguards; publish a compatible corrective version. No unsafe rollback was attempted.'
           curl --silent --show-error --retry 3 --retry-all-errors --retry-delay 2 --max-time 12 https://api.xguardgate.com/v1/ready || true
           exit 1
