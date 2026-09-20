@@ -3,6 +3,7 @@ import { base } from "viem/chains";
 import { inspectPayment, createTrustedVerifiedPaymentContext } from "./core/payment-context.js";
 import { settlementReceiptId, receiptOperation, putSettlementReceipt, settlementPendingResponse, settlementSuccessResponse } from "./core/settlement-receipt.js";
 import { receiptConfirmsAuthorization } from "./core/settlement-proof.js";
+import { unsupportedApiRoute } from "./core/public-contract.js";
 
 const VERSION = "2.5.0";
 const BASE_CAIP = "eip155:8453";
@@ -497,7 +498,7 @@ export default {
       }
       if (url.pathname === "/llms.txt" && request.method === "GET") return new Response("XGuard Universal Facilitator Gateway\nFacilitator URL: https://api.xguardgate.com\nAggregates supported payment kinds across multiple x402 facilitators.\nSettlement safety: fail-closed on ambiguous outcomes unless network-specific reconciliation proves a retry is safe.\nGET /supported\nPOST /verify\nPOST /settle\nDocs: https://api.xguardgate.com/docs\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
       if ((url.pathname === "/.well-known/x402" || url.pathname === "/.well-known/x402-facilitator.json") && request.method === "GET") return docs(env);
-      return json({ error: "not_found" }, 404);
+      return json(unsupportedApiRoute(request), 404);
     } catch (error) {
       console.error(JSON.stringify({ event: "relay_error", error: String(error?.message || error) }));
       return json({ error: error?.message || "internal_error" }, Number(error?.status || 500));

@@ -3,6 +3,15 @@ import { readBoundedBody } from "./execution-contract.js";
 const API = "https://api.xguardgate.com";
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
 
+// Called only by the terminal router. Resource-specific 404s retain their meaning.
+export function unsupportedApiRoute(request) {
+  const url = new URL(request.url);
+  if (!/^\/v[0-9]+(?:\/|$)/.test(url.pathname) && url.hostname !== "api.xguardgate.com") return { error: "not_found" };
+  return { error: { code: "unsupported_endpoint", message: "The requested XGuard API endpoint is not currently supported.", retryable: false },
+    requested_endpoint: url.pathname.slice(0, 512), recoverable: true,
+    discovery: { openapi: `${API}/openapi.json`, mcp: `${API}/mcp`, capabilities: `${API}/v1/capabilities` } };
+}
+
 function hasDuplicateKeys(text) {
   const stack = [];
   for (const match of text.matchAll(/"(?:\\.|[^"\\])*"|[{}\[\],:]|[^{}\[\],:\s]+/g)) {

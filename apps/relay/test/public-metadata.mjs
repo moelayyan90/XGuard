@@ -1,7 +1,7 @@
 import metadata from "../src/public-metadata.js";
 
-const expected = "5.1.0";
-const identity = "XGuard Universal Paid AI Agent + Secretless Gateway";
+const expected = "5.2.0";
+const identity = "XGuard — Agent Execution Gateway";
 
 async function get(path, method = "GET") {
   const response = await metadata.fetch(new Request(`https://api.xguardgate.com${path}`, { method }));

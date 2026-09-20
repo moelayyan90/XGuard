@@ -34,3 +34,21 @@ test("blocks a migration bundled with runtime code changes", () => {
   assert.equal(result.isolated, false);
   assert.deepEqual(result.runtimeChanges, ["apps/relay/src/index.js"]);
 });
+
+test("new payment state permits forward deployment but forbids rollback even without DO migrations", () => {
+  const current = config([{ tag: "v1", new_sqlite_classes: ["State"] }]);
+  const result = evaluate(current, current, ["apps/relay/src/paid-agent-entry.js"], { previous: 0, current: 1 });
+  assert.equal(result.lifecycleChanged, false);
+  assert.equal(result.isolated, true);
+  assert.equal(result.rollbackAllowed, false);
+  assert.equal(result.reason, "payment_state_forward_recovery_required");
+  assert.equal(evaluate(current, current, [], { previous: 1, current: 1 }).rollbackAllowed, true);
+});
+
+test("blocks a deployment that removes durable payment state safeguards", () => {
+  const current = config([{ tag: "v1", new_sqlite_classes: ["State"] }]);
+  const result = evaluate(current, current, [], { previous: 1, current: 0 });
+  assert.equal(result.isolated, false);
+  assert.equal(result.rollbackAllowed, false);
+  assert.equal(result.reason, "payment_state_downgrade_forbidden");
+});

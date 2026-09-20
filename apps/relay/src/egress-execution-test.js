@@ -129,11 +129,14 @@ test("concurrent retries reserve a single execution and a single charge", async 
 
 test("different concurrent operations cannot overspend a capability budget", async t => {
   const f = await fixture(t, { budget: 1 });
-  const results = await Promise.all([f.execute(), f.execute({ ...f.input, idempotency_key: "order-fulfillment-002" })]);
+  const inputs = [f.input, { ...f.input, idempotency_key: "order-fulfillment-002" }];
+  const results = await Promise.all(inputs.map(input => f.execute(input)));
   assert.deepEqual(results.map(x => x.status).sort(), [201, 402]);
   assert.equal(f.state.bills, 1);
   assert.equal(f.state.upstreams, 1);
-  assert.equal((await f.execute()).headers.get("x-xguard-replay"), "true");
+  // Either concurrent operation may win. Replay the one that actually committed.
+  const winner = results.findIndex(response => response.status === 201);
+  assert.equal((await f.execute(inputs[winner])).headers.get("x-xguard-replay"), "true");
 });
 
 test("a price increase cannot exceed the operator's per-call authorization", async t => {

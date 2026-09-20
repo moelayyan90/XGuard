@@ -1,0 +1,9 @@
+export const VERSION = "5.2.0";
+export const NAME = "XGuard — Agent Execution Gateway";
+export const SERVER_NAME = "xguard-agent-execution-gateway";
+export const PROMISE = "Give agents capabilities, not reusable credentials.";
+export const DESCRIPTION = "Store credentials server-side, delegate scoped capabilities, enforce policy and budget before egress, and receive durable results with signed ProofRail evidence.";
+export const SITE = "https://xguardgate.com";
+export const API = "https://api.xguardgate.com";
+export const MCP = `${API}/mcp`;
+export const A2A = `${API}/a2a`;

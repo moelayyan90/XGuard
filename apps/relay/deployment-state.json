@@ -1,0 +1,4 @@
+{
+  "payment_state_version": 1,
+  "description": "Lifecycle-v1 records require durable settlement reservation, no repeated ambiguous settlement, read-only reconciliation and non-reclaimable execution claims. Deployments without these guards cannot safely receive traffic after this version."
+}

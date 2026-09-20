@@ -4,14 +4,14 @@
     "name": "XGuard"
   },
   "metadata": {
-    "description": "XGuard Secretless Agent Gateway plugin for controlled credential-backed egress and signed execution evidence.",
-    "version": "5.0.2"
+    "description": "XGuard — Agent Execution Gateway. Give agents capabilities, not reusable credentials.",
+    "version": "5.2.0"
   },
   "plugins": [
     {
       "name": "xguard",
-      "description": "Connect agents to the XGuard Secretless Agent Gateway remote MCP server.",
-      "version": "5.0.2",
+      "description": "Connect agents to scoped Secretless execution through the canonical XGuard MCP endpoint.",
+      "version": "5.2.0",
       "source": "."
     }
   ]

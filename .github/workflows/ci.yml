@@ -18,6 +18,8 @@ jobs:
           node-version: 24
       - name: Install relay dependencies
         run: npm ci --prefix apps/relay --no-audit --no-fund
+      - name: Execution gateway contract, capability boundaries and controlled demo
+        run: node --test apps/relay/src/execution-first-test.js
       - name: Relay syntax check
         run: npm run --prefix apps/relay check
       - name: Secretless Egress, discovery, WebMCP, A2A, Action Rail, universal edge and settlement syntax
@@ -44,6 +46,10 @@ jobs:
           node --check apps/relay/src/webmcp-entry.js
           node --check apps/relay/src/a2a-entry.js
           node --check apps/relay/src/canonical-entry.js
+          node --check apps/relay/src/agent-token-usage.js
+          node --check apps/relay/src/core/agent-usage.js
+          node --check apps/relay/src/agent-token-usage-openapi.js
+          node --check scripts/verify-agent-token-usage.mjs
           node --check apps/relay/src/a2a-entry-test.js
           node --check apps/relay/src/canonical-entry-test.js
           node --check apps/relay/src/product-entry-test.js
@@ -74,7 +80,7 @@ jobs:
           grep -q '"main": "src/canonical-entry.js"' apps/relay/wrangler.jsonc
           grep -q '"workers_dev": false' apps/relay/wrangler.jsonc
           ! grep -q '"routes"' apps/relay/wrangler.jsonc
-          grep -q 'XGuard Universal Paid AI Agent + Secretless Gateway' apps/relay/src/canonical-entry.js
+          grep -q 'XGuard — Agent Execution Gateway' apps/relay/src/core/identity.js
           grep -q 'www.xguardgate.com' apps/relay/src/canonical-entry.js
           grep -q 'Historical ACE/Solana/BAM' apps/relay/src/canonical-entry.js
           grep -q 'io.github.moelayyan90/xguard-control-plane' apps/relay/src/discovery-entry.js
@@ -110,6 +116,7 @@ jobs:
           node --test apps/relay/src/entry-test.js
           node --test apps/relay/src/a2a-entry-test.js
           node --test apps/relay/src/canonical-entry-test.js
+          node --test apps/relay/src/agent-token-usage-test.js scripts/verify-agent-token-usage-test.mjs
           node --test apps/relay/src/action-rail-test.js
           node --test apps/relay/src/egress-vault-test.js
           node --test apps/relay/src/egress-execution-test.js
@@ -123,7 +130,7 @@ jobs:
         run: |
           node --check sdk/index.js
           node --check sdk/outcomes.js
-          node --test sdk/outcomes-test.mjs
+          node --test sdk/outcomes-test.mjs sdk/execution-test.mjs
           npm pack --dry-run --ignore-scripts
       - name: Wrangler dry run
         run: npx --yes wrangler@4.130.0 deploy --dry-run --config apps/relay/wrangler.jsonc

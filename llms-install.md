@@ -1,8 +1,12 @@
 # Install XGuard MCP
 
-Start with `xguard_execute {"intent":"demo"}` for a free, real extraction. The primary tools are `xguard_discover`, `xguard_execute`, and `xguard_get_result`. Live pages, product offers and feed digests have an exact USDC price before execution. A funded x402 payer is required for paid work.
-Read https://api.xguardgate.com/agent.txt . Legacy explicit tools below are compatibility references, not the default catalog.
-
+Give agents capabilities, not reusable credentials. Primary tools: `xguard_execute`,
+`xguard_secretless_call`, `xguard_preflight`, `xguard_quote`, `xguard_verify_receipt`,
+`xguard_discover`, `xguard_status` and `xguard_get_result`. Credential-backed work
+requires an operator-issued scoped capability; never give an agent a provider key.
+Start with `xguard_execute {"intent":"demo"}` for a free public preview. Public paid
+outcomes keep their exact signed prices and require a funded x402 payer.
+Read https://api.xguardgate.com/agent.txt for the deployed contract.
 
 XGuard is a hosted remote MCP server. Do **not** clone, build, or run a local process merely to connect it.
 
@@ -14,13 +18,13 @@ https://api.xguardgate.com/mcp
 
 Transport: Streamable HTTP.
 
-Canonical product identity: **XGuard Universal Paid AI Agent + Secretless Gateway**.
+Canonical product identity: **XGuard — Agent Execution Gateway**.
 
 ## What XGuard is for
 
 Use XGuard when an AI agent needs a no-account paid tool or must call an upstream HTTPS API without receiving the reusable credential. XGuard signs prices, settles x402 v2 USDC before execution, makes retries idempotent and returns signed receipts plus ProofRail evidence.
 
-Primary MCP capabilities include:
+Explicitly callable compatibility tools include:
 
 - `xguard.capabilities`
 - `xguard.preflight` (free target-safety/payment-readiness gate; target is not contacted)
@@ -102,4 +106,4 @@ A reviewer can verify XGuard without running local code:
 3. Read `https://xguardgate.com/.well-known/mcp/server-card.json`.
 4. Check `https://xguardgate.com/server.json` and this public repository.
 
-Current discovery release: **5.1.0**.
+Current discovery release: **5.2.0**.

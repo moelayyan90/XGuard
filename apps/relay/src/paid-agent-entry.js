@@ -1,3 +1,4 @@
+import { VERSION } from "./core/identity.js";
 import { isPrivateIpv4, isPrivateIpv6, hostnameAllowed, publicDns } from "./core/network-policy.js";
 import { pricingEconomics, executionEconomics } from "./core/unit-economics.js";
 import { secretlessCapability } from "./egress-entry.js";
@@ -6,6 +7,9 @@ import { readPublicJson, parsePublicJson } from "./core/public-contract.js";
 import { executeOutcome } from "./outcome-engine.js";
 import { applyOutcomeMetric, applyOutcomeCommerce, outcomeMetrics } from "./outcome-metrics.js";
 import { readBoundedBody } from "./core/execution-contract.js";
+import { advanceLifecycle, financialLifecycle } from "./core/payment-lifecycle.js";
+import { recordPaymentHealth, paymentHealthSnapshot, selectFacilitator, observePaymentHealth } from "./core/payment-health.js";
+import { reconcilePayment } from "./core/reconcile-payment.js";
 import app from "./product-entry.js";
 export * from "./product-entry.js";
 
@@ -35,7 +39,6 @@ import {
   validatePaymentRailConfig,
 } from "./core/payment-rail.js";
 
-const VERSION = "5.1.0";
 const API = "https://api.xguardgate.com";
 const SITE = "https://xguardgate.com";
 const PROOF_KID = "did:web:api.xguardgate.com#xguard-proofrail";
@@ -284,7 +287,7 @@ function capabilities(env) {
   const mainnet = gatewayConfig(env, false);
   const testnet = gatewayConfig(env, true);
   return {
-    name: "XGuard Universal Paid AI Agent + Secretless Gateway",
+    name: "XGuard — Agent Execution Gateway",
     version: VERSION,
     discovery: {
       mcp: `${API}/mcp`,
@@ -978,7 +981,7 @@ function doJson(body, status = 200) {
 function safeFinancialPatch(record, next, patch = {}) {
   if (!ALLOWED_FINANCIAL_STATES.has(next)) throw new Error("invalid_financial_state");
   if (!paymentStateCanTransition(record.status, next)) throw new Error("invalid_financial_transition");
-  const updated = { ...record, ...patch, status: next, updated_at: new Date().toISOString() };
+  const updated = { ...financialLifecycle(record, next), ...patch, status: next, updated_at: new Date().toISOString() };
   if (next === "settled") {
     if (!patch.transaction || !patch.network) throw new Error("settlement_evidence_required");
     updated.settled_at = updated.updated_at;
@@ -1033,9 +1036,28 @@ export class PaidGatewayState {
   async fetch(request) {
     const path = new URL(request.url).pathname;
     if (path === "/ping") return doJson({ ok: true, class: "PaidGatewayState", version: VERSION });
+    if (path === "/journal/read" && request.method === "GET") return doJson(await this.state.storage.get("journey:v1") || { events: [], complete: false });
+    if (path === "/facilitator/snapshot") return doJson(await paymentHealthSnapshot(this.state.storage));
     if (request.method !== "POST") return doJson({ error: "method_not_allowed" }, 405);
     let body;
     try { body = await request.json(); } catch { return doJson({ error: "invalid_json" }, 400); }
+    if (path === "/journal/append") {
+      if (!JOURNEY_EVENTS.has(body.event) || !/^xgr_[A-Za-z0-9_-]{1,124}$/.test(body.request_id || "")) return doJson({ error: "invalid_journal_event" }, 400);
+      await this.state.storage.transaction(async tx => {
+        const journal = await tx.get("journey:v1") || { request_id: body.request_id, created_at: new Date().toISOString(), events: [], complete: true };
+        if (journal.events.length >= 100) { journal.complete = false; } else {
+          const allowed = ["event", "request_id", "trace_id", "traffic_class", "transport", "surface", "tool", "network", "outcome", "drop_reason", "amount_atomic", "environment", "payment_state"];
+          journal.events.push({ sequence: journal.events.length + 1, at: new Date().toISOString(), ...Object.fromEntries(allowed.filter(k => body[k] !== undefined).map(k => [k, String(body[k]).slice(0, 128)])) });
+        }
+        await tx.put("journey:v1", journal);
+      });
+      await this.state.storage.setAlarm(Date.now() + 30 * 86400000);
+      return doJson({ ok: true });
+    }
+    if (path === "/facilitator/record") {
+      try { await recordPaymentHealth(this.state.storage, body); return doJson({ ok: true }); }
+      catch { return doJson({ error: "invalid_health_event" }, 400); }
+    }
 
     if (path === "/index/provider-get" || path === "/index/provider-record") {
       if (!/^[a-f0-9]{64}$/.test(body.key || "")) return doJson({ error: "invalid_provider_key" }, 400);
@@ -1220,9 +1242,24 @@ export class PaidGatewayState {
         net_profit_usd_micros: null,
         revenue_source: null,
         reconciliation_attempts: 0,
+        ...(body.lifecycle_version === 1 ? { lifecycle_state: "PAYMENT_PRESENTED", lifecycle_sequence: 1,
+          lifecycle_events: [{ sequence: 1, state: "PAYMENT_PRESENTED", at: now, correlation_id: body.request_id }] } : {}),
       };
       await this.state.storage.put("operation", record);
       return doJson({ ok: true, replay: false, record });
+    }
+
+    if (path === "/operation/reserve-settlement") {
+      let output;
+      await this.state.storage.transaction(async tx => {
+        const existing = await tx.get("operation");
+        if (!existing || existing.status !== "verified" || existing.settlement_reserved_at) { output = doJson({ error: "settlement_already_reserved_or_unverified" }, 409); return; }
+        const record = { ...advanceLifecycle(advanceLifecycle(existing, "SETTLEMENT_RESERVED"), "SETTLEMENT_PENDING"), settlement_reserved_at: new Date().toISOString() };
+        await tx.put("operation", record);
+        output = doJson({ ok: true, record });
+      });
+      if (output.ok) await this.state.storage.setAlarm(Date.now() + 30000);
+      return output;
     }
 
     if (path === "/operation/transition") {
@@ -1243,9 +1280,10 @@ export class PaidGatewayState {
       if (existing.status === "succeeded") return doJson({ ok: true, replay: true, record: existing });
       if (!new Set(["settled", "credited"]).has(existing.status)) return doJson({ error: "operation_not_settled", status: existing.status }, 409);
       const activeUntil = Date.parse(existing.execution_claim?.expires_at || "");
+      if (existing.lifecycle_version === 1 && existing.execution_claim) return doJson({ error: "execution_outcome_unknown", retry_with_same_key_only: true }, 409);
       if (Number.isFinite(activeUntil) && activeUntil > Date.now()) return doJson({ error: "execution_in_progress", status: existing.status }, 409);
       const claim = { token: crypto.randomUUID(), claimed_at: new Date().toISOString(), expires_at: new Date(Date.now() + 60000).toISOString() };
-      const record = { ...existing, execution_claim: claim, execution_attempts: Number(existing.execution_attempts || 0) + 1, updated_at: claim.claimed_at };
+      const record = { ...advanceLifecycle(existing, "EXECUTION_STARTED"), execution_claim: claim, execution_attempts: Number(existing.execution_attempts || 0) + 1, updated_at: claim.claimed_at };
       await this.state.storage.put("operation", record);
       return doJson({ ok: true, replay: false, claim_token: claim.token, record });
     }
@@ -1255,6 +1293,7 @@ export class PaidGatewayState {
       if (existing?.status === "succeeded") return doJson({ ok: true, replay: true, record: existing });
       if (!existing || !["settled", "credited"].includes(existing.status)) return doJson({ error: "operation_not_settled" }, 409);
       if (existing.execution_claim?.token && body.claim_token !== existing.execution_claim.token) return doJson({ error: "execution_claim_invalid" }, 409);
+      if (existing.lifecycle_version === 1 && (!body.receipt?.signature || !body.proof?.proof)) return doJson({ error: "signed_delivery_evidence_required" }, 503);
       const record = safeFinancialPatch(existing, "succeeded", {
         result: body.result,
         settlement: body.settlement,
@@ -1298,7 +1337,13 @@ export class PaidGatewayState {
   }
 
   async alarm() {
-    const record = await this.state.storage.get("operation");
+    const journey = await this.state.storage.get("journey:v1");
+    if (journey && Date.now() >= Date.parse(journey.created_at) + 30 * 86400000) { await this.state.storage.deleteAll(); return; }
+    let record = await this.state.storage.get("operation");
+    if (record?.lifecycle_state === "SETTLEMENT_PENDING" && Date.now() - Date.parse(record.settlement_reserved_at) >= 25000) {
+      record = safeFinancialPatch(record, "ambiguous", { failure_stage: "settle", failure_reason: "settlement_worker_interrupted" });
+      await this.state.storage.put("operation", record);
+    }
     if (record && await this.state.storage.get("commerce_pending")) await syncCommerce(this.state, this.env, record);
     await reconcileStoredOperation(this.state, this.env);
   }
@@ -1332,7 +1377,7 @@ async function recordMetric(env, event, details = {}) {
 
 function trafficClass(request) {
   const declared = String(request?.headers?.get("x-xguard-traffic-class") || "").toLowerCase();
-  if (["synthetic", "monitoring", "registry", "security_scan"].includes(declared)) return declared;
+  if (["synthetic", "monitoring", "registry", "security_scan", "demo", "canary", "testnet", "self_test", "internal"].includes(declared)) return declared;
   const agent = String(request?.headers?.get("user-agent") || "").toLowerCase();
   if (/mcpbeat|uptime|healthcheck|better uptime|pingdom|statuscake/.test(agent)) return "monitoring";
   if (/registry|glama|smithery|mcpcentral|cardwall|agent.?card/.test(agent)) return "registry";
@@ -1342,7 +1387,7 @@ function trafficClass(request) {
 
 async function observeStage(env, event, id, details = {}) {
   if (!JOURNEY_EVENTS.has(event)) return;
-  const traffic = ["external", "synthetic", "monitoring", "registry", "security_scan"].includes(details.traffic_class) ? details.traffic_class : "external";
+  const traffic = ["external", "synthetic", "monitoring", "registry", "security_scan", "demo", "canary", "testnet", "self_test", "internal"].includes(details.traffic_class) ? details.traffic_class : "external";
   const safe = {
     event,
     conversion_stage: event,
@@ -1361,6 +1406,10 @@ async function observeStage(env, event, id, details = {}) {
     ...(details.payment_state ? { payment_state: safeLabel(details.payment_state) } : {}),
   };
   console.log(JSON.stringify(safe));
+  if (env.PAID_GATEWAY && /^xgr_[A-Za-z0-9_-]{1,124}$/.test(id)) {
+    const journal = env.PAID_GATEWAY.get(env.PAID_GATEWAY.idFromName(`journey:${id}`));
+    await postStub(journal, "/journal/append", safe).catch(() => {});
+  }
   if (traffic === "external") {
     const metric = { ...(details.metric || {}) };
     if (details.outcome) metric.outcome = safeReason(details.outcome, "unknown");
@@ -1717,7 +1766,8 @@ async function reconcileStoredOperation(state, env) {
   await state.storage.put("operation", record);
   let settlement;
   try {
-    settlement = await new HTTPFacilitatorClient({ url: record.facilitator_url, timeoutMs: 12000 }).settle(record.payment_payload, record.requirements);
+    settlement = await reconcilePayment(env, record);
+    if (!settlement) throw new Error("settlement_evidence_pending");
   } catch {
     const exhausted = record.reconciliation_attempts >= MAX_RECONCILIATION_ATTEMPTS;
     record = { ...record, dead_letter: exhausted, updated_at: new Date().toISOString() };
@@ -1915,7 +1965,19 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     return error("payment_identifier_conflict", 409, id, { details: reserve.body.record || null });
   }
   const stub = operationStub(env, authorizationFingerprint);
+  try {
+    if (reserve.body.replay) {
+      const prior = await postStub(stub, "/operation/get", {});
+      if (!prior.ok) return error("payment_preparation_in_progress", 409, id, { retryable: true });
+      config.facilitator = prior.body.record.facilitator_url;
+    } else config.facilitator = await selectFacilitator(env, config);
+  }
+  catch {
+    await postStub(gatewayIndex(env), "/index/release", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint });
+    return error("payment_facilitator_temporarily_unavailable", 503, id, { retryable: true });
+  }
   const begin = await postStub(stub, "/operation/begin", {
+    lifecycle_version: 1,
     request_id: reserve.body.record.request_id || id,
     payment_identifier: paymentIdentifier,
     authorization_fingerprint: authorizationFingerprint,
@@ -1963,8 +2025,10 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   await observeStage(env, "authorization_created", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending", outcome: "scoped" });
   const facilitator = new HTTPFacilitatorClient({ url: config.facilitator, timeoutMs: 10000 });
   let verification;
+  const verifyStarted = Date.now();
   await observeStage(env, "payment_verification_started", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
   try { verification = await facilitator.verify(paymentPayload, requirements); } catch (cause) {
+    await observePaymentHealth(env, config, "verify", verifyStarted, { ok: false, transport_failure: true });
     await postStub(stub, "/operation/transition", { status: "failed", patch: { failure_stage: "verify", failure_reason: "facilitator_verify_unavailable" } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "failed" });
     await recordMetric(env, "verification_failed");
@@ -1973,6 +2037,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     return error("payment_verification_failed", 402, id, { retryable: true, details: { reason: cause?.invalidReason || "facilitator_unavailable" } });
   }
   if (!verification?.isValid || (verification.payer && verification.payer.toLowerCase() !== identity.from)) {
+    await observePaymentHealth(env, config, "verify", verifyStarted, { ok: false });
     await postStub(stub, "/operation/transition", { status: "failed", patch: { failure_stage: "verify", failure_reason: verification?.invalidReason || "invalid_payment" } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "failed" });
     await recordMetric(env, "verification_failed");
@@ -1980,13 +2045,19 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     await logFinancialEvent("paid_gateway_verification_failed", id, paymentIdentifier, { reason: safeReason(verification?.invalidReason, "invalid_payment") });
     return paymentRequired(env, config, quoteToken, quote, id, verification?.invalidReason || "payment_verification_failed", observation);
   }
-  await postStub(stub, "/operation/transition", { status: "verified", patch: { verified_at: new Date().toISOString(), payer: verification.payer || identity.from } });
+  await observePaymentHealth(env, config, "verify", verifyStarted, { ok: true });
+  const verified = await postStub(stub, "/operation/transition", { status: "verified", patch: { verified_at: new Date().toISOString(), payer: verification.payer || identity.from } });
+  if (!verified.ok) return error("payment_state_commit_failed", 503, id);
+  const reservation = await postStub(stub, "/operation/reserve-settlement", {});
+  if (!reservation.ok) return error("settlement_already_reserved", 409, id);
   await observeStage(env, "payment_verified", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "verified" });
 
   let settlement;
+  const settleStarted = Date.now();
   await observeStage(env, "settlement_started", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "verified" });
   try { settlement = await facilitator.settle(paymentPayload, requirements); } catch (cause) {
     const classified = classifyFacilitatorError(cause);
+    await observePaymentHealth(env, config, "settle", settleStarted, { ok: false, transport_failure: classified.ambiguous, ambiguous: classified.ambiguous });
     const status = classified.ambiguous ? "ambiguous" : "failed";
     await postStub(stub, "/operation/transition", { status, patch: { failure_stage: "settle", failure_reason: classified.reason } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status });
@@ -1999,6 +2070,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   }
   if (!validSettlement(settlement, config, identity.from)) {
     const ambiguous = settlement?.success === true;
+    await observePaymentHealth(env, config, "settle", settleStarted, { ok: false, invalid_response: true, ambiguous });
     const status = ambiguous ? "ambiguous" : "failed";
     await postStub(stub, "/operation/transition", { status, patch: { failure_stage: "settle", failure_reason: settlement?.errorReason || "invalid_settlement_response", observed_transaction: settlement?.transaction || null } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status });
@@ -2008,6 +2080,8 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     return error(ambiguous ? "settlement_ambiguous" : "settlement_failed", ambiguous ? 503 : 402, id, { retryable: true });
   }
   const settled = await postStub(stub, "/operation/transition", { status: "settled", patch: { transaction: settlement.transaction, network: settlement.network, payer: settlement.payer || identity.from, settlement } });
+  await observePaymentHealth(env, config, "settle", settleStarted, { ok: true });
+  if (!settled.ok) return error("settlement_commit_ambiguous", 503, id, { retryable: true });
   await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "settled" });
   await observeStage(env, "settlement_created", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "settled", outcome: "confirmed" });
   await observeStage(env, "settlement_success", id, {
@@ -2234,7 +2308,7 @@ function discoverMcp(id) {
         resources: { subscribe: false, listChanged: false },
         prompts: { listChanged: false },
       },
-      _meta: { "io.modelcontextprotocol/serverInfo": { name: "xguard-universal-paid-secretless-gateway", version: VERSION } },
+      _meta: { "io.modelcontextprotocol/serverInfo": { name: "xguard-agent-execution-gateway", version: VERSION } },
       instructions: "Call xguard.web.fetch directly with a public HTTPS URL. XGuard returns its signed price and x402 PaymentRequired automatically; sign and retry the identical call. Capabilities, preflight and standalone pricing quote are optional and free. XGuard never executes a paid tool before settlement.",
       ttlMs: 60000,
       cacheScope: "public",
@@ -2328,7 +2402,7 @@ async function augmentMcpTools(message, response, env) {
       resources: { subscribe: false, listChanged: false },
       prompts: { listChanged: false },
     };
-    body.result.serverInfo = { name: "xguard-universal-paid-secretless-gateway", version: VERSION };
+    body.result.serverInfo = { name: "xguard-agent-execution-gateway", version: VERSION };
     body.result.instructions = "Call xguard.web.fetch with a public HTTPS URL. The first call returns an input-bound signed x402 v2 payment requirement; retry the identical call with Payment-Signature and X-XGuard-Quote. XGuard settles before exactly-once execution. Resources and prompts are intentionally empty because executable outcomes are exposed as tools.";
   } else if (message.method === "tools/list" && Array.isArray(body.result.tools)) {
     for (const tool of [...mcpToolsForEnv(env)].reverse()) {
@@ -2353,7 +2427,7 @@ async function augmentMcpTools(message, response, env) {
 
 function mcpDiscovery(env) {
   return {
-    name: "XGuard Universal Paid AI Agent + Secretless Gateway",
+    name: "XGuard — Agent Execution Gateway",
     version: VERSION,
     transport: "streamable-http",
     endpoint: `${API}/mcp`,
@@ -2369,7 +2443,7 @@ function paymentManifest(env) {
   const mainnet = gatewayConfig(env, false);
   const testnet = gatewayConfig(env, true);
   return {
-    name: "XGuard Universal Paid AI Agent + Secretless Gateway",
+    name: "XGuard — Agent Execution Gateway",
     version: VERSION,
     protocol: "x402",
     x402_version: 2,
@@ -2432,7 +2506,7 @@ function facilitatorManifest(env) {
   };
 }
 
-async function readiness(env) {
+export async function readiness(env) {
   const checks = { proof_authority: false, paid_state: false, mainnet_config: false, facilitator: false, testnet_config: false, testnet_facilitator: false };
   const config = gatewayConfig(env, false);
   const testConfig = gatewayConfig(env, true);
@@ -2589,7 +2663,7 @@ async function improveOpenApi(response, env) {
   if (!body || typeof body !== "object") return response;
   body.info = {
     ...(body.info || {}),
-    title: "XGuard Universal Paid AI Agent + Secretless Gateway",
+    title: "XGuard — Agent Execution Gateway",
     version: VERSION,
     description: "No-account x402 v2 USDC gateway for controlled agent tools, plus secretless upstream credential execution. Prices are signed before payment; successful execution returns a signed receipt and ProofRail evidence.",
   };
