@@ -124,6 +124,7 @@ jobs:
           node --test apps/relay/src/product-entry-test.js
           node --test apps/relay/src/paid-agent-entry-test.js
           node --test apps/relay/src/core/payment-rail-test.js
+          node --test apps/relay/src/core/reconcile-payment-test.js
           node --test apps/relay/src/core/settlement-proof-test.js
           node --test apps/relay/src/outcome-http-test.js
       - name: SDK syntax and package check

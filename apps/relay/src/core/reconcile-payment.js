@@ -2,13 +2,31 @@ import { createPublicClient, http, parseAbiItem } from "viem";
 import { base, baseSepolia } from "viem/chains";
 import { receiptConfirmsAuthorization } from "./settlement-proof.js";
 const AUTH_USED = parseAbiItem("event AuthorizationUsed(address indexed authorizer, bytes32 indexed nonce)");
+export function reconciliationRpcUrls(env, network = "eip155:8453") {
+  if (!["eip155:8453", "eip155:84532"].includes(network)) return [];
+  const testnet = network === "eip155:84532";
+  const configured = testnet ? env.BASE_SEPOLIA_RPC_URL : env.BASE_RPC_URL;
+  let fallbacks; try { fallbacks = JSON.parse((testnet ? env.BASE_SEPOLIA_RPC_FALLBACKS : env.BASE_RPC_FALLBACKS) || "[]"); } catch { return []; }
+  if (!Array.isArray(fallbacks)) return [];
+  return [...new Set([configured || (testnet ? "https://sepolia.base.org" : "https://mainnet.base.org"), ...fallbacks])].filter(endpoint => {
+    try { const url = new URL(endpoint); return url.protocol === "https:" && !url.username && !url.password; } catch { return false; }
+  }).slice(0, 3);
+}
+
+export async function reconciliationRpcHealth(env) {
+  try {
+    await Promise.any(reconciliationRpcUrls(env).map(async endpoint => {
+      const response = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }), redirect: "manual", signal: AbortSignal.timeout(2000) });
+      if (!response.ok || (await response.json()).result !== "0x2105") throw new Error("rpc_chain_unavailable");
+    }));
+    return { ready: true, status: "ready" };
+  } catch { return { ready: false, status: "unavailable" }; }
+}
+
 // Read-only recovery. An ambiguous /settle is never submitted again, even to the same provider.
 export async function reconcilePayment(env, record) {
   const testnet = record.network === "eip155:84532";
-  const configured = testnet ? env.BASE_SEPOLIA_RPC_URL : env.BASE_RPC_URL;
-  let fallbacks; try { fallbacks = JSON.parse((testnet ? env.BASE_SEPOLIA_RPC_FALLBACKS : env.BASE_RPC_FALLBACKS) || "[]"); } catch { return null; }
-  if (!Array.isArray(fallbacks)) return null;
-  const endpoints = [...new Set([configured || (testnet ? "https://sepolia.base.org" : "https://mainnet.base.org"), ...fallbacks])].slice(0, 3);
+  const endpoints = reconciliationRpcUrls(env, record.network);
   for (const endpoint of endpoints) {
     try {
       const url = new URL(endpoint);

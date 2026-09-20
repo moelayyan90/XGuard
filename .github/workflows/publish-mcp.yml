@@ -1,6 +1,10 @@
 name: Publish XGuard to MCP Registry
 
 on:
+  workflow_run:
+    workflows: ["Deploy XGuard Relay"]
+    branches: [main]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -9,22 +13,24 @@ permissions:
 
 jobs:
   publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
-      - name: Wait for XGuard paid and Secretless Gateway 5.2.0 MCP endpoint
+      - name: Wait for XGuard Agent Execution Gateway 5.2.0 MCP endpoint
         shell: bash
         run: |
           set -euo pipefail
           for i in {1..30}; do
             body="$(curl --silent --show-error --max-time 8 -X POST https://api.xguardgate.com/mcp -H 'content-type: application/json' -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-registry-smoke/5.2.0' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"registry-smoke","version":"1.0.0"}}}' || true)"
-            if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-agent-execution-gateway"&&x.result?.serverInfo?.version==="5.2.0"&&String(x.result?.instructions||"").includes("x402-paid tools")&&String(x.result?.instructions||"").includes("reusable upstream API credentials"))process.exit(0)}catch{}process.exit(1)})'; then exit 0; fi
+            if printf '%s' "$body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);if(x.result?.serverInfo?.name==="xguard-agent-execution-gateway"&&x.result?.serverInfo?.version==="5.2.0"&&String(x.result?.instructions||"").includes("operator-issued capability")&&String(x.result?.instructions||"").includes("exact x402 requirements"))process.exit(0)}catch{}process.exit(1)})'; then exit 0; fi
             sleep 4
           done
-          echo 'XGuard paid and Secretless Gateway 5.2.0 MCP endpoint is not live yet'
+          echo 'XGuard Agent Execution Gateway 5.2.0 MCP endpoint is not live yet'
           exit 1
       - name: Install MCP publisher
         shell: bash

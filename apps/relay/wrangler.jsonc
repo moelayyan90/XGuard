@@ -31,6 +31,8 @@
     "XGUARD_BILLING_URL": "https://hooks.xguardgate.com",
     "XGUARD_CHECKOUT_URL": "https://xguardgate.com/pricing",
     "BASE_RPC_URL": "https://mainnet.base.org",
+    // Read-only Base RPC fallback, published at https://base.publicnode.com/.
+    "BASE_RPC_FALLBACKS": "[\"https://base-rpc.publicnode.com\"]",
     "FREE_SETTLEMENTS": "25",
     "SETTLEMENT_CREDITS": "2",
     "RECOVERY_WINDOW_MS": "24000",
