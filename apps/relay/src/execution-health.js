@@ -3,6 +3,7 @@ import { readiness } from "./paid-agent-entry.js";
 import { executionTelemetryStub } from "./core/execution-telemetry.js";
 import { paymentHealthStub } from "./core/payment-health.js";
 import { digestBytes } from "./core/execution-contract.js";
+import { reconciliationRpcHealth } from "./core/reconcile-payment.js";
 const json = (body, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
 async function deadline(task, ms = 2500) {
   let timer;
@@ -56,11 +57,7 @@ export async function handleExecutionHealth(request, env) {
     } catch { return json({ error: "operator_metrics_unavailable" }, 503); }
   }
   if (["/healthz", "/v1/reconciliation/readiness"].includes(path)) {
-    const [egress, payment] = await Promise.all([executionReadiness(env), deadline(readiness(env), 6500).catch(() => ({ ready: false, production_payment_ready: false, reason: "payment_dependency_unavailable" }))]);
-    const rpc = await probe(async () => {
-      const response = await fetch(env.BASE_RPC_URL || "https://mainnet.base.org", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }), redirect: "manual", signal: AbortSignal.timeout(2000) });
-      return { ok: response.ok && (await response.json()).result === "0x2105" };
-    });
+    const [egress, payment, rpc] = await Promise.all([executionReadiness(env), deadline(readiness(env), 6500).catch(() => ({ ready: false, production_payment_ready: false, reason: "payment_dependency_unavailable" })), reconciliationRpcHealth(env)]);
     const ready = path.includes("reconciliation") ? rpc.ready && Boolean(env.PAID_GATEWAY) : egress.ready && payment.production_payment_ready && rpc.ready;
     return json({ name: NAME, version: VERSION, ready, status: ready ? "ready" : "not_ready", checked_at: new Date().toISOString(),
       components: { mcp: { ready: true, discovery: "local" }, a2a: { ready: true, discovery: "local" }, egress, payment, reconciliation: { ...rpc, mode: "read-only chain evidence; no resettlement", durable_state: Boolean(env.PAID_GATEWAY) } } }, ready ? 200 : 503);
