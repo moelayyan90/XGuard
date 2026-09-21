@@ -24,12 +24,12 @@ async function getJson(url, options = {}) {
 }
 
 const root = await getJson(`${API}/`);
-if (root.body.name !== NAME || root.body.version !== VERSION || root.body.primary_product !== "Agent Execution Gateway") fail("API root has stale canonical identity");
+if (root.body.name !== NAME || root.body.version !== VERSION || root.body.primary_product !== "Paid API Gateway") fail("API root has stale canonical identity");
 if (root.response.headers.get("x-xguard-version") !== VERSION) fail("API root has stale version header");
 
 const openapi = await getJson(`${API}/openapi.json`);
 if (openapi.body.info?.title !== NAME || openapi.body.info?.version !== VERSION) fail("OpenAPI has stale canonical identity");
-for (const path of ["/v1/execute", "/v1/capabilities/{id}", "/v1/results/{payment_identifier}", "/v1/capabilities", "/v1/pricing", "/v1/pricing/quote", "/v1/tools/web.fetch", "/v1/payment/readiness", "/v1/egress", "/v1/egress/fetch", "/v1/proof", "/verify", "/settle"]) {
+for (const path of ["/v1/sellers", "/v1/sellers/services", "/v1/marketplace/services", "/p/{seller}/{service}/{path}", "/v1/execute", "/v1/capabilities/{id}", "/v1/results/{payment_identifier}", "/v1/capabilities", "/v1/pricing", "/v1/pricing/quote", "/v1/tools/web.fetch", "/v1/payment/readiness", "/v1/egress", "/v1/egress/fetch", "/v1/proof", "/verify", "/settle"]) {
   if (!openapi.body.paths?.[path]) fail(`OpenAPI is missing ${path}`);
 }
 if (!openapi.body.paths["/v1/preflight"]?.post) fail("OpenAPI is missing the guarded preflight path");
@@ -41,7 +41,7 @@ if (!outcomeOperation["x-payment-info"]?.protocols?.some(protocol => protocol.x4
   || !outcomeOperation.requestBody.content["application/json"].schema?.anyOf?.length) fail("OpenAPI does not expose paid outcome discovery and required intent examples");
 
 const plugin = await getJson(`${API}/.well-known/ai-plugin.json`);
-if (plugin.body.name_for_human !== NAME || plugin.body.xguard?.product_version !== VERSION || plugin.body.xguard?.primary_product !== "Agent Execution Gateway") fail("AI plugin has stale product taxonomy");
+if (plugin.body.name_for_human !== NAME || plugin.body.xguard?.product_version !== VERSION || plugin.body.xguard?.primary_product !== "Paid API Gateway") fail("AI plugin has stale product taxonomy");
 if (plugin.body.xguard?.component_versions?.x402 !== VERSION) fail("AI plugin has a stale x402 component version");
 
 const agent = await getJson(`${API}/.well-known/agent-card.json`);
@@ -115,7 +115,7 @@ if (directBody.accepts?.[0]?.network !== "eip155:8453" || directBody.extensions?
 const syntheticHeaders = { "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-production-verifier/5.2.0" };
 const home = await fetch(freshDiscoveryUrl(`${SITE}/`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const homeText = await home.text();
-if (!home.ok || !homeText.includes("Give agents capabilities") || home.headers.get("x-xguard-version") !== VERSION) fail("Homepage has stale identity");
+if (!home.ok || !homeText.includes("Turn any API into a paid API for AI agents") || !homeText.includes("MONETIZE MY API") || home.headers.get("x-xguard-version") !== VERSION) fail("Homepage has stale identity");
 const tryPage = await fetch(freshDiscoveryUrl(`${SITE}/try`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const tryText = await tryPage.text();
 if (!tryPage.ok || !tryText.includes("Run free extraction") || !tryText.includes("/v1/execute")) fail("Live try page is missing the one-call payment path");

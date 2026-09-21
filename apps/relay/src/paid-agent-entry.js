@@ -1989,11 +1989,6 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   }
   await observeStage(env, "payment_authorization_received", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
   const authorizationFingerprint = await sha256(`${config.network}|${config.asset.toLowerCase()}|${identity.from}|${identity.nonce}`);
-  if (input.marketplace?.idempotency_key) {
-    try {
-      await sellerCall(env, "/seller/request-reserve", { key_hash: await sha256(`${input.marketplace.service_id}:${identity.from}:${input.marketplace.idempotency_key}`), operation_hash: authorizationFingerprint, request_digest: digest });
-    } catch { return error("seller_idempotency_conflict", 409, id, { details: { new_payment_required: false, retry_same_authorization_only: true } }); }
-  }
   const reserve = await postStub(gatewayIndex(env), "/index/reserve", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, request_digest: digest, request_id: id });
   if (!reserve.ok) {
     await observeStage(env, "replay_rejected", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, environment: config.environment, payment_state: "failed", outcome: "payment_identifier_conflict" });
@@ -2086,6 +2081,17 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   const verified = await postStub(stub, "/operation/transition", { status: "verified", patch: { verified_at: new Date().toISOString(), payer: verification.payer || identity.from } });
   if (!verified.ok) return error("payment_state_commit_failed", 503, id);
   await sellerStage(env, verified.body.record, "payment_verified");
+  // A claimed payer is untrusted until verification succeeds. Reserving earlier
+  // lets an invalid signature consume someone else's predictable request key.
+  if (input.marketplace?.idempotency_key) {
+    try {
+      await sellerCall(env, "/seller/request-reserve", { key_hash: await sha256(`${input.marketplace.service_id}:${identity.from}:${input.marketplace.idempotency_key}`), operation_hash: authorizationFingerprint, request_digest: digest });
+    } catch {
+      await postStub(stub, "/operation/transition", { status: "failed", patch: { failure_stage: "request_reservation", failure_reason: "seller_idempotency_conflict" } });
+      await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "failed" });
+      return error("seller_idempotency_conflict", 409, id, { details: { new_payment_required: false, retry_same_authorization_only: true } });
+    }
+  }
   const reservation = await postStub(stub, "/operation/reserve-settlement", {});
   if (!reservation.ok) return error("settlement_already_reserved", 409, id);
   await observeStage(env, "payment_verified", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "verified" });
