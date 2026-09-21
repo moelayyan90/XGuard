@@ -1,4 +1,23 @@
-# XGuard — Agent Execution Gateway
+# XGuard — Paid API Gateway
+
+**Turn any API into a paid API for AI agents.**
+
+Register an existing HTTPS API, choose a request price and payout wallet, and
+share one paid URL. XGuard quotes, verifies and settles authorized payments,
+executes the request, returns a signed receipt and records platform fees and
+seller proceeds separately.
+
+- [Monetize your API](https://xguardgate.com/sellers)
+- [Browse paid APIs](https://xguardgate.com/marketplace)
+- [Gateway, fees, payout setup and buyer recovery](docs/paid-api-gateway.md)
+- [Small Workers, Express and FastAPI integrations](integrations/paid-api)
+- [Revenue-path audit and acceptance limits](docs/revenue-path-audit.md)
+
+External seller routes stay draft without configured payout signing authority.
+A successful test is not a real customer payment. Production revenue acceptance
+requires a funded owner-authorized purchase and recorded settlement/delivery.
+
+## Scoped agent execution
 
 **Give agents capabilities, not reusable credentials.**
 

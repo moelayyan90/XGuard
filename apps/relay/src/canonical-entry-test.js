@@ -15,7 +15,7 @@ test("A2A plus-json response receives canonical product taxonomy", async () => {
   const body = await response.json();
   assert.equal(body.name, "XGuard — Agent Execution Gateway");
   assert.equal(body.version, "5.2.0");
-  assert.equal(body.canonical_identity.primary_product, "Agent Execution Gateway");
+  assert.equal(body.canonical_identity.primary_product, "Paid API Gateway");
   assert.ok(body.skills.some(skill => skill.id === "extract-preview"));
   assert.ok(body.skills.every(skill => !skill.id.startsWith("explain-")));
 });
@@ -48,8 +48,8 @@ test("identity is the complete machine-readable source of product taxonomy", asy
   const body = await response.json();
   assert.equal(body.name, "XGuard — Agent Execution Gateway");
   assert.equal(body.version, "5.2.0");
-  assert.equal(body.primary_product, "Agent Execution Gateway");
-  assert.match(body.primary_role, /scoped agent execution with server-side credential custody/);
+  assert.equal(body.primary_product, "Paid API Gateway");
+  assert.match(body.primary_role, /Turn any API into a paid API/);
   assert.equal(body.proofrail.discovery, "https://api.xguardgate.com/v1/proof");
   assert.equal(body.compatibility_rails.x402, "https://api.xguardgate.com/facilitator");
 });

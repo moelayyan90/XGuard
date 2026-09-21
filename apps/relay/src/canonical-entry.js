@@ -3,6 +3,9 @@ import { finalizePublicResponse } from "./core/public-contract.js";
 import { gatewayConfig } from "./paid-agent-entry.js";
 import { handleOutcomeRoute, decorateOutcomeResponse } from "./outcome-entry.js";
 import { handleAgentUsageRoute } from "./agent-token-usage.js";
+import { handleSellerRoute } from "./seller-entry.js";
+import { sellerPage } from "./seller-site.js";
+import { decorateSellerDiscovery } from "./seller-discovery.js";
 import { describeAgentUsage } from "./agent-token-usage-openapi.js";
 import { handleExecutionRoute, decorateExecutionResponse } from "./execution-entry.js";
 import { VERSION, NAME, DESCRIPTION } from "./core/identity.js";
@@ -11,8 +14,8 @@ export * from "./a2a-entry.js";
 const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const MCP = `${API}/mcp`;
-const PRIMARY_PRODUCT = "Agent Execution Gateway";
-const PRIMARY_ROLE = "scoped agent execution with server-side credential custody, policy, budget, billing and durable evidence";
+const PRIMARY_PRODUCT = "Paid API Gateway";
+const PRIMARY_ROLE = "Turn any API into a paid API for AI agents: exact prices, metering, signed receipts and seller proceeds";
 
 const PUBLIC_JSON = new Set([
   "/identity",
@@ -430,6 +433,10 @@ const canonicalApp = {
     if (redirect) return redirect;
 
     const url = new URL(request.url);
+    const sellerSite = sellerPage(request, env);
+    if (sellerSite) return sellerSite;
+    const seller = await handleSellerRoute(request, env);
+    if (seller) return normalizeResponse(request, seller, env);
     const usage = await handleAgentUsageRoute(request, env);
     if (usage) return normalizeResponse(request, usage, env);
     const execution = await handleExecutionRoute(request, env, ctx);
@@ -527,11 +534,12 @@ export default {
       { status: 500, headers: { "cache-control": "no-store", "access-control-allow-origin": "*" } });
     }
     response = await decorateExecutionResponse(request, response, env);
+    response = await decorateSellerDiscovery(request, response);
     if ([SITE, API].includes(request.headers.get("origin"))) {
       const headers = new Headers(response.headers);
       headers.set("access-control-allow-origin", request.headers.get("origin"));
       headers.set("vary", "Origin");
-      headers.set("access-control-expose-headers", "payment-required,payment-response,x-xguard-quote,x-xguard-request-id,x-xguard-proof,x-xguard-execution-id,x-xguard-replay");
+      headers.set("access-control-expose-headers", "payment-required,payment-response,x-xguard-quote,x-xguard-request-id,x-xguard-proof,x-xguard-receipt,x-xguard-payment-identifier,x-xguard-platform-fee-atomic,x-xguard-seller-proceeds-atomic,x-xguard-accounting-status,x-xguard-execution-id,x-xguard-replay");
       response = new Response(response.body, { status: response.status, headers });
     }
     return finalizePublicResponse(request, response);

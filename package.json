@@ -9,7 +9,8 @@
     ".": "./sdk/index.js",
     "./outcomes": "./sdk/outcomes.js",
     "./package.json": "./package.json",
-    "./execution": "./sdk/execution.js"
+    "./execution": "./sdk/execution.js",
+    "./paid-api": "./sdk/paid-api.js"
   },
   "files": [
     "sdk/index.js",
@@ -18,7 +19,8 @@
     "sdk/examples",
     "integrations",
     "LICENSE",
-    "sdk/execution.js"
+    "sdk/execution.js",
+    "sdk/paid-api.js"
   ],
   "sideEffects": false,
   "peerDependencies": {

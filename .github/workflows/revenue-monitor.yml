@@ -1,0 +1,37 @@
+name: XGuard Revenue Path Monitor
+on:
+  workflow_run:
+    workflows: ["Deploy XGuard Relay"]
+    branches: [main]
+    types: [completed]
+  schedule:
+    - cron: "37 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: revenue-path-monitor
+  cancel-in-progress: false
+jobs:
+  observe:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Inspect catalog, exact quote and protected real revenue ledger
+        env:
+          XGUARD_OPERATOR_METRICS_KEY: ${{ secrets.XGUARD_OPERATOR_METRICS_KEY }}
+        run: node scripts/verify-paid-api-gateway.mjs > revenue-path-monitor.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: revenue-path-monitor
+          path: revenue-path-monitor.json
+          retention-days: 30

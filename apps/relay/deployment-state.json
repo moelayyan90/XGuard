@@ -1,4 +1,4 @@
 {
-  "payment_state_version": 1,
-  "description": "Lifecycle-v1 records require durable settlement reservation, no repeated ambiguous settlement, read-only reconciliation and non-reclaimable execution claims. Deployments without these guards cannot safely receive traffic after this version."
+  "payment_state_version": 2,
+  "description": "Includes lifecycle-v1 payment guards plus seller fee allocations, seller receivables, payout reservations, separate traffic-class ledgers and non-replayable upstream writes. Older deployments do not process these financial outboxes and must not receive automatic rollback traffic."
 }

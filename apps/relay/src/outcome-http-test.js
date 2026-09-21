@@ -352,7 +352,7 @@ test("FLOW 5: wrong amount/network/asset/recipient/intent and replayed authoriza
 test("FLOW 6: public capability pages, OpenAPI, MCP and A2A are linked to the same live outcomes", async t => {
   const h = await harness(t);
   const home = await h.request("/", undefined, { "x-test-site": "site" }); const html = await home.text();
-  assert.match(html, /Give agents capabilities/); assert.match(html, /\/demo\/secretless/);
+  assert.match(html, /Turn any API into a paid API for AI agents/); assert.match(html, /MONETIZE MY API/);
   const catalog = await (await h.request("/v1/capabilities")).json();
   for (const item of catalog.capabilities) { const page = await h.request(new URL(item.url).pathname, undefined, { "x-test-site": "site" }); assert.equal(page.status, 200); const text = await page.text(); assert.match(text, /rel="canonical"/); assert.ok(text.includes(item.id)); }
   const text = await (await h.request("/agent.txt")).text(); assert.match(text, /X-XGuard-Quote/);
@@ -370,7 +370,7 @@ test("FLOW 6: public capability pages, OpenAPI, MCP and A2A are linked to the sa
   assert.deepEqual(listed.result.tools.map(x => x.name), ["xguard_execute", "xguard_secretless_call", "xguard_preflight", "xguard_quote", "xguard_verify_receipt", "xguard_discover", "xguard_status", "xguard_get_result"]);
   const mcp = await (await h.request("/mcp", { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "xguard_execute", arguments: { intent: "demo" } } })).json(); assert.equal(mcp.result.structuredContent.ok, true);
   const a2a = await (await h.request("/a2a", { jsonrpc: "2.0", id: 3, method: "SendMessage", params: { message: { messageId: "a2a-1", role: "ROLE_USER", parts: [{ text: "demo" }] } } })).json(); assert.equal(a2a.result.message.parts[0].data.ok, true);
-  const card = await (await h.request("/.well-known/agent-card.json")).json(); assert.deepEqual(card.skills.map(x => x.id), ["xguard-secretless-execution", ...catalog.capabilities.map(x => x.id)]);
+  const card = await (await h.request("/.well-known/agent-card.json")).json(); assert.deepEqual(card.skills.map(x => x.id), ["paid-api-catalog", "xguard-secretless-execution", ...catalog.capabilities.map(x => x.id)]);
   const sitemap = await (await h.request("/sitemap.xml")).text(); for (const item of catalog.capabilities) assert.ok(sitemap.includes(item.url));
 });
 
