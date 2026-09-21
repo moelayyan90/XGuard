@@ -10,6 +10,10 @@ import { readBoundedBody } from "./core/execution-contract.js";
 import { advanceLifecycle, financialLifecycle } from "./core/payment-lifecycle.js";
 import { recordPaymentHealth, paymentHealthSnapshot, selectFacilitator, observePaymentHealth } from "./core/payment-health.js";
 import { reconcilePayment } from "./core/reconcile-payment.js";
+import { sellerStateRoute, sellerPayoutAlarm, syncSellerCommerce, sellerCall, sellerStage } from "./seller-commerce.js";
+import { sellerTraffic } from "./core/seller-policy.js";
+import { sellerPayoutConfiguration } from "./core/seller-payout.js";
+import { executeSellerUpstream, sellerDeliveryResponse } from "./seller-upstream.js";
 import app from "./product-entry.js";
 export * from "./product-entry.js";
 
@@ -241,14 +245,16 @@ export function gatewayConfig(env, testnet = false, outcomeInput = null) {
   const asset = testnet ? TESTNET_USDC : MAINNET_USDC;
   const environment = testnet ? PAYMENT_ENVIRONMENTS.TEST : String(env.XGUARD_PAYMENT_ENVIRONMENT || PAYMENT_ENVIRONMENTS.PRODUCTION).toLowerCase();
   const payTo = String(testnet ? env.XGUARD_TESTNET_PAY_TO || "" : env.XGUARD_TREASURY_USDC_ADDRESS || "");
-  const amount = outcomeInput ? outcomeAmount(env, outcomeInput.capability) : String(testnet ? env.XGUARD_TESTNET_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC : env.XGUARD_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC);
+  const marketplace = outcomeInput?.marketplace;
+  const amount = marketplace ? marketplace.split.gross_atomic : outcomeInput ? outcomeAmount(env, outcomeInput.capability) : String(testnet ? env.XGUARD_TESTNET_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC : env.XGUARD_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC);
   const facilitator = String(testnet ? env.XGUARD_TESTNET_FACILITATOR || "" : env.XGUARD_PAID_FACILITATOR || env.X402_BASE_PRIMARY || "").replace(/\/+$/, "");
   const marginMicros = outcomeInput ? Number(amount) : Number(testnet ? env.XGUARD_TESTNET_MARGIN_USD_MICROS || amount : env.XGUARD_MARGIN_USD_MICROS || amount);
   const railValidation = validatePaymentRailConfig({ environment, network, asset, payTo, amount, facilitator });
   const budgetEnv = outcomeInput ? { ...env, XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: String(Number(env.XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS) * 6) } : env;
-  const economics = pricingEconomics(budgetEnv, Number(amount));
+  const economics = pricingEconomics(budgetEnv, Number(marketplace?.split.platform_fee_atomic ?? amount));
   const economicsValid = Number.isSafeInteger(marginMicros) && marginMicros >= 0 && marginMicros === Number(amount) && economics.available;
-  const configured = railValidation.configured && economicsValid;
+  const payoutReady = !marketplace || (!testnet && sellerPayoutConfiguration(env, marketplace.payout_destination, marketplace.split.seller_proceeds_atomic).ready);
+  const configured = railValidation.configured && economicsValid && payoutReady;
   const configurationError = !railValidation.environment_configured ? "payment_environment_invalid"
     : !railValidation.environment_matches_network ? "payment_environment_network_mismatch"
     : !railValidation.recipient_configured ? "payment_recipient_missing"
@@ -256,7 +262,8 @@ export function gatewayConfig(env, testnet = false, outcomeInput = null) {
         : !railValidation.amount_configured ? "payment_price_invalid"
           : !economics.available ? economics.rejection_reason
           : !economicsValid ? "payment_price_invalid"
-          : !railValidation.facilitator_configured ? "payment_facilitator_missing" : null;
+          : !railValidation.facilitator_configured ? "payment_facilitator_missing"
+          : !payoutReady ? "seller_payout_unavailable" : null;
   const rail = {
     id: `x402:${network}:exact`,
     provider: "x402",
@@ -279,7 +286,7 @@ export function gatewayConfig(env, testnet = false, outcomeInput = null) {
     upstreamCostMaxUsdMicros: 0,
     marginUsdMicros: marginMicros,
     customerPriceUsdMicros: Number(amount),
-    resource: outcomeInput ? `${API}/v1/execute` : `${API}/v1/tools/web.fetch${testnet ? "/testnet" : ""}`,
+    resource: marketplace ? marketplace.resource : outcomeInput ? `${API}/v1/execute` : `${API}/v1/tools/web.fetch${testnet ? "/testnet" : ""}`,
   };
 }
 
@@ -985,7 +992,7 @@ function safeFinancialPatch(record, next, patch = {}) {
   if (next === "settled") {
     if (!patch.transaction || !patch.network) throw new Error("settlement_evidence_required");
     updated.settled_at = updated.updated_at;
-    const economicallyReal = isRealRevenueSettlement(record, { success: true, network: patch.network, transaction: patch.transaction });
+    const economicallyReal = !record.input?.marketplace && isRealRevenueSettlement(record, { success: true, network: patch.network, transaction: patch.transaction });
     updated.gross_revenue_usd_micros = economicallyReal ? Number(record.customer_price_usd_micros || 0) : 0;
     updated.actual_upstream_cost_usd_micros = economicallyReal ? Number(record.maximum_upstream_cost_usd_micros || 0) : 0;
     updated.credit_liability_usd_micros = 0;
@@ -1011,6 +1018,7 @@ function emptyCommerce() {
 }
 
 async function syncCommerce(state, env, record) {
+  if (record.input?.marketplace) { await syncSellerCommerce(state, env, record); return; }
   if (!(record.gross_revenue_usd_micros > 0) || !/^[a-f0-9]{64}$/.test(record.authorization_fingerprint || "")) return;
   try {
     await state.storage.put("commerce_pending", true);
@@ -1041,6 +1049,10 @@ export class PaidGatewayState {
     if (request.method !== "POST") return doJson({ error: "method_not_allowed" }, 405);
     let body;
     try { body = await request.json(); } catch { return doJson({ error: "invalid_json" }, 400); }
+    if (path.startsWith("/seller/")) {
+      try { return await sellerStateRoute(this.state, this.env, path, body); }
+      catch (cause) { return doJson({ error: /^[a-z_]{1,80}$/.test(cause.code || "") ? cause.code : "seller_state_unavailable" }, cause.status || 503); }
+    }
     if (path === "/journal/append") {
       if (!JOURNEY_EVENTS.has(body.event) || !/^xgr_[A-Za-z0-9_-]{1,124}$/.test(body.request_id || "")) return doJson({ error: "invalid_journal_event" }, 400);
       await this.state.storage.transaction(async tx => {
@@ -1337,6 +1349,7 @@ export class PaidGatewayState {
   }
 
   async alarm() {
+    if (await sellerPayoutAlarm(this.state, this.env)) return;
     const journey = await this.state.storage.get("journey:v1");
     if (journey && Date.now() >= Date.parse(journey.created_at) + 30 * 86400000) { await this.state.storage.deleteAll(); return; }
     let record = await this.state.storage.get("operation");
@@ -1495,13 +1508,13 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
       price: { amount_atomic: config.amount, amount: (Number(config.amount) / 1e6).toFixed(6), currency: "USDC", exact: true },
       will_return: outcomeDefinition(quote.input.capability)?.delivery,
       expires_at: new Date(quote.expires_at * 1000).toISOString(), target_contacted: false,
-      retry: { method: "POST", url: config.resource, preserve_body: true, preserve_headers: ["X-XGuard-Quote"], payment_header: "Payment-Signature" },
+      retry: { method: quote.input?.marketplace?.method || "POST", url: config.resource, preserve_body: true, preserve_headers: ["X-XGuard-Quote", ...(quote.input?.marketplace ? ["Idempotency-Key"] : [])], payment_header: "Payment-Signature" },
     } : {}),
     x402Version: 2,
     error: reason,
     resource: {
       url: config.resource,
-      description: quote.input?.capability ? outcomeDefinition(quote.input.capability)?.delivery : "Fetch one bounded public HTTPS resource through XGuard with SSRF protection, source evidence, idempotent settlement and a signed receipt.",
+      description: quote.input?.marketplace ? "Paid seller API request with metered delivery and a signed receipt" : quote.input?.capability ? outcomeDefinition(quote.input.capability)?.delivery : "Fetch one bounded public HTTPS resource through XGuard with SSRF protection, source evidence, idempotent settlement and a signed receipt.",
       mimeType: "application/json",
       serviceName: "XGuard",
       tags: outcome ? [outcome.id, "public-sources", "x402"] : ["ai-agent", "web-fetch", "x402", "secretless"],
@@ -1526,6 +1539,7 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
         paymentEnvironment: config.environment,
         paymentRail: config.rail.id,
         inputDigest: quote.input_digest,
+        ...(quote.input?.marketplace ? { seller: quote.input.marketplace.seller_id, service: quote.input.marketplace.service_id, allocation: quote.input.marketplace.split } : {}),
         proofKey: `${API}/.well-known/xguard-proof-key.json`,
         next: {
           action: "sign_and_retry",
@@ -1637,6 +1651,7 @@ async function deliveryArtifacts(env, record, settlement, result) {
     payment_environment: record.environment,
     payment_rail: record.payment_rail,
     receipt_signature_sha256: await sha256(receipt.signature),
+    ...(record.input?.marketplace ? { seller: { seller_id: record.input.marketplace.seller_id, service_id: record.input.marketplace.service_id, payout_destination: record.input.marketplace.payout_destination, ...record.input.marketplace.split }, seller_payout_state: "receivable_created_payout_pending" } : {}),
     status: "succeeded",
     source_origin: new URL(result.final_url).origin,
     source_path: new URL(result.final_url).pathname,
@@ -1672,6 +1687,7 @@ async function issueExecutionCredit(env, record, causeCode) {
 }
 
 function successfulResponse(record, replay = false) {
+  if (record.input?.marketplace) return sellerDeliveryResponse(record, replay);
   return json({
     ...(record.input?.capability ? {
       ok: true, intent: { capability: record.input.capability, sources: record.input.sources, limit: record.input.limit, max_age_seconds: record.input.max_age_seconds },
@@ -1720,12 +1736,21 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
   if (claim.body.replay) return successfulResponse(claim.body.record, true);
   record = claim.body.record;
   await observeStage(env, "execution_started", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled" });
+  await sellerStage(env, record, "upstream_execution_started");
   let result;
   try {
-    result = record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
+    result = record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
   } catch (cause) {
     const code = cause?.code || "upstream_failed";
+    if (record.input?.marketplace) {
+      // A seller mutation may already have happened. Preserve its execution
+      // claim and the full buyer liability; never issue a blind retry credit.
+      await postStub(stub, "/operation/transition", { status: "credited", patch: { failure_code: code, seller_delivery_review_required: true } });
+      await sellerCall(env, "/seller/event", { event: "failure", service_id: record.input.marketplace.service_id, request_id: record.request_id, traffic_class: record.marketplace_traffic_class || "INTERNAL", reason: code }).catch(() => {});
+      await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, status: "credited" });
+      return error("seller_delivery_requires_review", 502, record.request_id, { retryable: false, details: { payment_identifier: record.payment_identifier, settlement_transaction: settlement.transaction, new_payment_required: false } });
+    }
     const credit = await issueExecutionCredit(env, record, code);
     await postStub(stub, "/operation/transition", { status: "credited", patch: { credit_token: credit.token, credit_id: credit.payload.credit_id, failure_code: code, execution_claim: null } });
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, status: "credited" });
@@ -1736,6 +1761,7 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
     return error("upstream_failed", code === "upstream_timeout" ? 504 : 502, record.request_id, { retryable: true, details: { execution_credit: credit.token, credit_id: credit.payload.credit_id, original_transaction: settlement.transaction } });
   }
   await observeStage(env, "execution_completed", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled", outcome: "succeeded" });
+  await sellerStage(env, record, "upstream_execution_succeeded");
   const artifacts = await deliveryArtifacts(env, record, settlement, result);
   await observeStage(env, "receipt_created", record.request_id, { traffic_class: observation.trafficClass || record.traffic_class, transport: observation.transport || record.transport || "reconcile", tool, network: record.network, amount_atomic: record.amount, environment: record.environment, payment_state: "settled", outcome: artifacts.proof ? "signed" : "proof_unavailable" });
   const completed = await postStub(stub, "/operation/complete", { claim_token: claim.body.claim_token, result, settlement, receipt: artifacts.receipt, proof: artifacts.proof, payment_response: artifacts.paymentResponseHeader });
@@ -1748,6 +1774,7 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
   console.log(JSON.stringify({ event: "paid_gateway_succeeded", request_id: finalRecord.request_id, payment_identifier_hash: await sha256(finalRecord.payment_identifier), tool, target_host: finalRecord.input.url ? new URL(finalRecord.input.url).hostname : "multiple_public_sources", network: finalRecord.network, environment: finalRecord.environment, amount_atomic: finalRecord.amount, transaction: settlement.transaction, latency_ms: result.latency_ms, revenue_usd_micros: finalRecord.gross_revenue_usd_micros, upstream_cost_usd_micros: finalRecord.actual_upstream_cost_usd_micros, net_profit_usd_micros: finalRecord.net_profit_usd_micros, resumed }));
   await observeStage(env, "response_sent", finalRecord.request_id, { traffic_class: observation.trafficClass || finalRecord.traffic_class, transport: observation.transport || finalRecord.transport || "reconcile", tool, network: finalRecord.network, amount_atomic: finalRecord.amount, environment: finalRecord.environment, payment_state: "settled", outcome: "succeeded" });
   if (finalRecord.input?.capability) await observeStage(env, "result_returned", finalRecord.request_id, { traffic_class: finalRecord.traffic_class, environment: finalRecord.environment, tool, metric: { first_result_ms: Math.max(0, Date.now() - Number(finalRecord.quote_issued_at || Date.now() / 1000) * 1000) } });
+  await sellerStage(env, finalRecord, "receipt_returned");
   return successfulResponse(finalRecord, false);
 }
 
@@ -1784,7 +1811,7 @@ async function reconcileStoredOperation(state, env) {
     await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, status: "failed" });
     return;
   }
-  const config = gatewayConfig(env, record.network === TESTNET);
+  const config = gatewayConfig(env, record.network === TESTNET, record.input?.capability ? record.input : null);
   if (!validSettlement(settlement, config, record.payer)) {
     const exhausted = record.reconciliation_attempts >= MAX_RECONCILIATION_ATTEMPTS;
     record = { ...record, dead_letter: exhausted, updated_at: new Date().toISOString() };
@@ -1810,6 +1837,8 @@ async function reconcileStoredOperation(state, env) {
       real_revenue: record.gross_revenue_usd_micros > 0,
     },
   });
+  await syncCommerce(state, env, record);
+  await sellerStage(env, record, "payment_settled");
   const localStub = {
     fetch(input, init) {
       const request = input instanceof Request ? input : new Request(input, init);
@@ -1884,6 +1913,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   const normalizedInput = outcomeInput ? { ok: true, input: outcomeInput } : normalizeFetchInputDetailed(rawInput);
   if (!normalizedInput.ok) return validationError("invalid_input", id, normalizedInput.issues);
   const input = normalizedInput.input;
+  if (input.marketplace && request.headers.has("x-xguard-credit")) return error("seller_execution_credit_not_supported", 400, id);
   await observeStage(env, "operation_resolved", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production", outcome: "normalized" });
   await observeStage(env, "tool_call_valid", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production" });
   const envelope = inputEnvelope(rawInput);
@@ -1959,6 +1989,11 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   }
   await observeStage(env, "payment_authorization_received", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "pending" });
   const authorizationFingerprint = await sha256(`${config.network}|${config.asset.toLowerCase()}|${identity.from}|${identity.nonce}`);
+  if (input.marketplace?.idempotency_key) {
+    try {
+      await sellerCall(env, "/seller/request-reserve", { key_hash: await sha256(`${input.marketplace.service_id}:${identity.from}:${input.marketplace.idempotency_key}`), operation_hash: authorizationFingerprint, request_digest: digest });
+    } catch { return error("seller_idempotency_conflict", 409, id, { details: { new_payment_required: false, retry_same_authorization_only: true } }); }
+  }
   const reserve = await postStub(gatewayIndex(env), "/index/reserve", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, request_digest: digest, request_id: id });
   if (!reserve.ok) {
     await observeStage(env, "replay_rejected", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, environment: config.environment, payment_state: "failed", outcome: "payment_identifier_conflict" });
@@ -1987,6 +2022,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     resource: config.resource,
     tool,
     input,
+    ...(input.marketplace ? { marketplace_traffic_class: sellerTraffic(request, identity.from, input.marketplace, env) } : {}),
     payer: identity.from,
     pay_to: config.payTo,
     nonce: identity.nonce,
@@ -2015,6 +2051,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
       await recordMetric(env, "replay");
       return successfulResponse(record, true);
     }
+    if (record.status === "credited" && record.input?.marketplace) return json({ error: "seller_delivery_requires_review", retryable: false, new_payment_required: false, payment_identifier: record.payment_identifier, transaction: record.transaction }, 502);
     if (record.status === "credited") return error("upstream_failed", 502, record.request_id, { retryable: true, details: { execution_credit: record.credit_token, credit_id: record.credit_id } });
     if (record.status === "ambiguous") return error("settlement_ambiguous", 503, record.request_id, { retryable: true, details: { status_url: `${API}/v1/operations/${paymentIdentifier}` } });
     if (record.status === "settled") return executeSettledOperation({ stub, env, record, settlement: record.settlement || { success: true, transaction: record.transaction, network: record.network, payer: record.payer }, observation, resumed: true });
@@ -2048,6 +2085,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   await observePaymentHealth(env, config, "verify", verifyStarted, { ok: true });
   const verified = await postStub(stub, "/operation/transition", { status: "verified", patch: { verified_at: new Date().toISOString(), payer: verification.payer || identity.from } });
   if (!verified.ok) return error("payment_state_commit_failed", 503, id);
+  await sellerStage(env, verified.body.record, "payment_verified");
   const reservation = await postStub(stub, "/operation/reserve-settlement", {});
   if (!reservation.ok) return error("settlement_already_reserved", 409, id);
   await observeStage(env, "payment_verified", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "verified" });
@@ -2092,8 +2130,9 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     amount_atomic: config.amount,
     environment: config.environment,
     payment_state: "settled",
-    metric: { amount_usd_micros: config.customerPriceUsdMicros, environment: config.environment, traffic_class: observation.trafficClass, real_revenue: isRealRevenueSettlement(settled.body.record, settlement) },
+    metric: { amount_usd_micros: config.customerPriceUsdMicros, environment: config.environment, traffic_class: observation.trafficClass, real_revenue: !input.marketplace && isRealRevenueSettlement(settled.body.record, settlement) },
   });
+  await sellerStage(env, settled.body.record, "payment_settled");
   return executeSettledOperation({ stub, env, record: settled.body.record, settlement, observation, resumed: false });
 }
 
@@ -2546,7 +2585,8 @@ export async function readiness(env) {
 export async function recoverOutcome(env, paymentIdentifier, quoteToken, id) {
   if (!env.PAID_GATEWAY || !env.PROOF_AUTHORITY || !isValidPaymentId(paymentIdentifier)) return error("not_found", 404, id);
   const quote = await verifyJws(env, quoteToken);
-  if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || quote.aud !== `${API}/v1/execute` || quote.payment_identifier !== paymentIdentifier) return error("quote_invalid", 403, id);
+  const sellerQuote = quote?.input?.marketplace && quote.aud === quote.input.marketplace.resource && quote.aud.startsWith(`${API}/p/`);
+  if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || (quote.aud !== `${API}/v1/execute` && !sellerQuote) || quote.payment_identifier !== paymentIdentifier) return error("quote_invalid", 403, id);
   const lookup = await postStub(gatewayIndex(env), "/index/lookup", { payment_identifier: paymentIdentifier });
   if (!lookup.ok) return error("not_found", 404, id);
   const operation = await postStub(operationStub(env, lookup.body.record.authorization_fingerprint), "/operation/get", {});
@@ -2555,7 +2595,7 @@ export async function recoverOutcome(env, paymentIdentifier, quoteToken, id) {
   if (record.status === "succeeded" || record.input?.capability && record.credit_redeemed && record.result) return successfulResponse(record, true);
   return json({ ok: false, status: record.status, payment_identifier: paymentIdentifier,
     ...(record.credit_token ? { execution_credit: record.credit_token } : {}),
-    next: { action: record.status === "credited" ? "retry_same_intent_with_execution_credit" : "retry_status", retry_after_seconds: 5 } }, 202);
+    next: { action: record.input?.marketplace && record.status === "credited" ? "seller_delivery_requires_review" : record.status === "credited" ? "retry_same_intent_with_execution_credit" : "retry_status", retry_after_seconds: 5 }, new_payment_required: false }, 202);
 }
 
 export { jsonBody, rateLimit, validateMcpRequest, mcpTransportResponse };
