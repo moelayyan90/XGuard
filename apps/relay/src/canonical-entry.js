@@ -93,7 +93,7 @@ function baseHeaders(headers = new Headers()) {
   next.set("x-xguard-version", VERSION);
   next.set("x-xguard-control-plane", VERSION);
   next.set("x-xguard-canonical-name", NAME.replace("—", "-"));
-  next.set("x-xguard-primary-product", "agent-execution-gateway");
+  next.set("x-xguard-primary-product", "paid-api-gateway");
   next.set("x-xguard-canonical-site", SITE);
   next.set("x-xguard-canonical-api", API);
   next.set("x-xguard-canonical-mcp", MCP);
@@ -434,7 +434,7 @@ const canonicalApp = {
 
     const url = new URL(request.url);
     const sellerSite = sellerPage(request, env);
-    if (sellerSite) return sellerSite;
+    if (sellerSite) return normalizeResponse(request, sellerSite, env);
     const seller = await handleSellerRoute(request, env);
     if (seller) return normalizeResponse(request, seller, env);
     const usage = await handleAgentUsageRoute(request, env);
