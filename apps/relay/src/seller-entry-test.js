@@ -53,7 +53,7 @@ function network(t, { valid = true, failExecution = false, secret = '', buyer = 
     const url = new URL(input instanceof Request ? input.url : input);
     if (['cloudflare-dns.com', 'one.one.one.one', 'dns.google'].includes(url.hostname)) return Response.json({ Status: 0, Answer: url.searchParams.get('type') === 'A' ? [{ type: 1, data: '93.184.216.34' }] : [] });
     if (url.hostname === 'facilitator.test') {
-      if (url.pathname === '/verify') { calls.verify++; return Response.json({ isValid: valid, payer: buyer, ...(!valid ? { invalidReason: 'invalid_signature' } : {}) }); }
+      if (url.pathname === '/verify') { calls.verify++; const isValid = typeof valid === 'function' ? valid() : valid; return Response.json({ isValid, payer: buyer, ...(!isValid ? { invalidReason: 'invalid_signature' } : {}) }); }
       if (url.pathname === '/settle') { calls.settle++; return Response.json({ success: true, payer: buyer, transaction, network: 'eip155:8453' }); }
     }
     if (url.hostname === 'example.com') {
@@ -143,9 +143,29 @@ test('Official x402 signer works with bounded paid API SDK and persists recovery
   await assert.rejects(() => capped.request(seller.service.endpoint), /exceed/); assert.equal(calls.settle, 1);
 });
 
+test('Paid API SDK reads bodyless HEAD challenges from Payment-Required', async t => {
+  const account = privateKeyToAccount(`0x${'1'.repeat(64)}`), env = environment(), calls = network(t, { buyer: account.address });
+  const seller = await onboard(env, { allowed_methods: ['HEAD'] });
+  const payerClient = new x402Client().register('eip155:8453', new ExactEvmScheme(account));
+  const methods = [];
+  const client = createPaidAPIClient({ payer: payerClient, maxAmountAtomic: '100000', trafficClass: 'synthetic', fetchImpl: async (url, init) => {
+    methods.push(init.method);
+    const response = await app.fetch(new Request(url, init), env, {});
+    // Match HTTP HEAD semantics even when using an in-process Worker adapter.
+    return new Response(null, { status: response.status, headers: response.headers });
+  } });
+  const response = await client.request(seller.service.endpoint, { method: 'HEAD' });
+  assert.equal(response.status, 200); assert.equal(await response.text(), '');
+  assert.ok(response.headers.has('x-xguard-proof'));
+  assert.deepEqual(methods, ['HEAD', 'HEAD']); assert.equal(calls.settle, 1); assert.equal(calls.upstream, 1);
+});
+
 test('Seller form executes registration and service creation with exact decimal price and no browser secret storage', async () => {
   const env = environment();
   const page = await app.fetch(new Request('https://xguardgate.com/sellers'), env, {}); const html = await page.text();
+  assert.equal(page.headers.get('x-xguard-version'), '5.2.0');
+  assert.equal(page.headers.get('x-xguard-primary-product'), 'paid-api-gateway');
+  assert.match(page.headers.get('strict-transport-security'), /max-age=/);
   const { document } = parseHTML(html);
   assert.equal(document.querySelector('link[rel="canonical"]').getAttribute('href'), 'https://xguardgate.com/sellers');
   assert.doesNotMatch(html, /localStorage|sessionStorage|\.innerHTML\s*=/);
@@ -220,6 +240,24 @@ test('Write idempotency binds authorization and body; changing either never caus
   const q2 = await challenge(env, seller.service.endpoint, init);
   const second = await request(env, path, { ...init, headers: { ...init.headers, ...paidHeaders(q2, { nonce: '4' }) } });
   assert.equal(second.status, 409); assert.equal(calls.settle, 1); assert.equal(calls.upstream, 1);
+});
+
+test('Forged payer cannot reserve a write key before a valid buyer is verified', async t => {
+  let valid = false;
+  const env = environment(), calls = network(t, { valid: () => valid }), seller = await onboard(env);
+  const path = new URL(seller.service.endpoint).pathname;
+  const init = { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'predictable-order-key' }, body: '{"job":"one"}' };
+  const forgedQuote = await challenge(env, seller.service.endpoint, init);
+  const forged = await request(env, path, { ...init, headers: { ...init.headers, ...paidHeaders(forgedQuote) } });
+  assert.equal(forged.status, 402); assert.equal(calls.settle, 0); assert.equal(calls.upstream, 0);
+  valid = true;
+  const buyerQuote = await challenge(env, seller.service.endpoint, init);
+  const buyerRequest = { ...init, headers: { ...init.headers, ...paidHeaders(buyerQuote, { nonce: '4' }) } };
+  const paid = await request(env, path, buyerRequest);
+  assert.equal(paid.status, 200, await paid.clone().text());
+  const replay = await request(env, path, buyerRequest);
+  assert.equal(replay.status, 200); assert.equal(replay.headers.get('x-xguard-replay'), 'true');
+  assert.deepEqual({ verify: calls.verify, settle: calls.settle, upstream: calls.upstream }, { verify: 2, settle: 1, upstream: 1 });
 });
 
 test('Uncertain upstream delivery earn no fee and cannot replay a write', async t => {

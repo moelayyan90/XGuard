@@ -24,7 +24,12 @@ export function createPaidAPIClient({ payer, maxAmountAtomic, fetchImpl = global
       const options = { method, headers, body: init.body, redirect: 'error' };
       const first = await fetchImpl(url, options);
       if (first.status !== 402 || !payer) return first;
-      const challenge = await first.json(), requirement = challenge.accepts?.[0];
+      // HEAD responses have no body; x402 carries the complete challenge in
+      // Payment-Required for every method.
+      const challenge = method === 'HEAD'
+        ? JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(first.headers.get('payment-required') || ''), char => char.charCodeAt(0))))
+        : await first.json();
+      const requirement = challenge.accepts?.[0];
       if (!/^[1-9][0-9]{0,8}$/.test(String(maxAmountAtomic || ''))) throw new Error('An explicit positive spending cap is required.');
       if (challenge.x402Version !== 2 || challenge.resource?.url !== url || challenge.accepts?.length !== 1 || requirement.scheme !== 'exact' || requirement.network !== 'eip155:8453' || requirement.asset?.toLowerCase() !== ASSET.toLowerCase() || !/^[1-9][0-9]{0,8}$/.test(requirement.amount || '') || BigInt(requirement.amount) > BigInt(maxAmountAtomic)) throw new Error('Payment requirements exceed the authorized policy. No authorization was created.');
       const quote = first.headers.get('x-xguard-quote'), payment_identifier = challenge.extensions?.xguard?.paymentIdentifier;

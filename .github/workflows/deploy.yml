@@ -161,7 +161,7 @@ jobs:
           EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node scripts/verify-agent-token-usage.mjs
 
           identity="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/identity)"
-          printf '%s' "$identity" | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard — Agent Execution Gateway"||x.version!==process.env.EXPECTED_VERSION||x.primary_product!=="Agent Execution Gateway"||!x.providers?.includes("OpenAI"))process.exit(1)})'
+          printf '%s' "$identity" | EXPECTED_VERSION="$expected_discovery_version" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.name!=="XGuard — Agent Execution Gateway"||x.version!==process.env.EXPECTED_VERSION||x.primary_product!=="Paid API Gateway"||!x.providers?.includes("OpenAI"))process.exit(1)})'
           llms="$(curl --fail --silent --show-error --max-time 8 https://xguardgate.com/llms.txt)"
           printf '%s' "$llms" | grep -q '/v1/execute'
           printf '%s' "$llms" | grep -q 'X-XGuard-Quote'
@@ -180,11 +180,11 @@ jobs:
           curl --fail --silent --show-error --max-time 8 https://api.xguardgate.com/facilitator | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.x402Version!==2||!x.endpoints?.verify||!x.endpoints?.settle||x.capabilities?.settlement_ambiguous_fail_closed!==true)process.exit(1)})'
 
           page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/?build=${DEPLOY_SHA}")"
-          printf '%s' "$page" | grep -q 'Give agents capabilities'
-          printf '%s' "$page" | grep -q 'not reusable credentials'
-          printf '%s' "$page" | grep -q 'href="/demo/secretless"'
-          printf '%s' "$page" | grep -q 'href="/connect"'
-          printf '%s' "$page" | grep -q 'verifiable evidence'
+          printf '%s' "$page" | grep -q 'Turn any API into a paid API for AI agents'
+          printf '%s' "$page" | grep -q 'MONETIZE MY API'
+          printf '%s' "$page" | grep -q 'href="/sellers"'
+          printf '%s' "$page" | grep -q 'href="/marketplace"'
+          printf '%s' "$page" | grep -q 'signed receipts'
           printf '%s' "$page" | grep -q 'rel="canonical"'
           try_page="$(curl --fail --silent --show-error --max-time 8 "https://xguardgate.com/try?build=${DEPLOY_SHA}")"
           printf '%s' "$try_page" | grep -q 'Run free extraction'
@@ -193,6 +193,9 @@ jobs:
       - name: Verify canonical identity and discovery contract
         id: identity_contract
         run: node scripts/verify-production-identity.mjs
+
+      - name: Verify paid API catalog, exact fee allocation and protected revenue view
+        run: node scripts/verify-paid-api-gateway.mjs
 
       - name: Verify stateless settlement context without a valid payment authorization
         run: node scripts/verify-settlement-context.mjs
