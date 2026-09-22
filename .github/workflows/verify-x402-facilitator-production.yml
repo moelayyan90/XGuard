@@ -176,8 +176,8 @@ jobs:
           done
 
           page="$(curl --fail --silent --show-error --max-time 8 'https://xguardgate.com/?facilitator-component=5.2.0')"
-          printf '%s' "$page" | grep -q 'Give agents capabilities'
-          printf '%s' "$page" | grep -q 'not reusable credentials'
+          printf '%s' "$page" | grep -q 'Turn any API into a paid API for AI agents'
+          printf '%s' "$page" | grep -q 'MONETIZE MY API'
           printf '%s' "$page" | grep -q 'rel="canonical"'
-          printf '%s' "$page" | grep -q 'href="/demo/secretless"'
-          printf '%s' "$page" | grep -q 'href="/developers"'
+          printf '%s' "$page" | grep -q 'href="/sellers"'
+          printf '%s' "$page" | grep -q 'href="/marketplace"'
