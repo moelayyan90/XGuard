@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "xguard",
-  "version": "5.2.0",
-  "description": "Agent Execution Gateway: scoped capabilities, server-side credentials, policy, budgets and signed execution evidence.",
+  "version": "6.0.0",
+  "description": "Governed API access, server-side credentials, spending limits, paid APIs and signed receipts.",
   "author": {
     "name": "XGuard",
     "url": "https://github.com/moelayyan90/XGuard"

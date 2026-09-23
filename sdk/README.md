@@ -26,23 +26,26 @@ execution credit) is preserved on `error.data`.
 
 ## Delegated API actions
 
-An operator provisions the vendor credential, prepays gateway credits and grants a scoped capability. An agent uses only that capability:
+An operator provisions the vendor credential, prepays gateway credits and grants a scoped capability with the required governance policy. The agent obtains a signed ticket before external execution:
 
 ```js
 import { createXGuardAgentClient } from "xguard-x402-control-plane";
 
 const agent = createXGuardAgentClient(process.env.XGUARD_CAPABILITY);
-const response = await agent.fetch("https://api.github.com/repos/your-org/your-repo/issues", {
+const target = "https://api.github.com/repos/your-org/your-repo/issues";
+const request = {
   method: "POST",
   idempotencyKey: "support-case-123-v1",
   json: { title: "Investigate customer case 123" },
-});
+};
+const approval = await agent.authorize(target, request);
+const response = await agent.fetch(target, { ...request, governanceAuthorization: approval.authorization });
 console.log(response.status, response.headers.get("x-xguard-execution-id"));
 ```
 
-All writes now require `idempotencyKey`. Reuse the same key and identical input to recover the saved response without another gateway charge or upstream request. A changed request with the same key returns 409. Ambiguous results are never automatically reexecuted; do not rotate keys to bypass that protection. The helper returns a native `Response`, including `X-XGuard-Proof` and `X-XGuard-Replay`.
+Every method requires `idempotencyKey` for authorization and execution. Reuse the same key and identical input to recover the saved response without another gateway charge or upstream request. A changed request or mismatched ticket is refused and halts the workload. Ambiguous results are never automatically reexecuted; do not rotate keys to bypass that protection. The helper returns a native `Response`, including `X-XGuard-Proof` and `X-XGuard-Replay`.
 
-This change applies to the source release; no npm publication is claimed. Install the tested GitHub revision. Existing write callers must add a stable business operation key. Vendor fees are separate, replay requires an unexpired capability, and results are limited to 48 KiB. See [the full execution contract](../docs/secretless-outcomes.md).
+This change applies to the source release; no npm publication is claimed. Install the tested GitHub revision. Existing external callers must migrate to governed grants and the signed ticket flow. Vendor fees are separate, replay requires an unexpired capability, and results are limited to 48 KiB. See [the full execution contract](../docs/secretless-outcomes.md).
 
 ## x402 facilitator client
 
@@ -169,3 +172,17 @@ GET  https://api.xguardgate.com/v1/facilitator/route?network=eip155:8453&scheme=
 ```
 
 XGuard is non-custodial and does not rewrite the signed x402 recipient or amount.
+
+## Strict governed agents
+
+The complete Python Singleton client and bounded opportunity loop are in
+`xguard_governance.py`. They require operator-provisioned strict capabilities,
+a pinned public verification key and a private durable journal.
+See [the governance contract](../docs/strict-governance.md) for provisioning,
+economics, stop/recovery behavior and required deployment isolation.
+
+The JavaScript execution helper also exposes `authorize()`. Pass its signed
+ticket as `governanceAuthorization` to `execute()` using the same operation,
+input and stable key. It does not provide Python's durable local halt/journal.
+Legacy capabilities without a governance policy are refused for external execution.
+Reconcile and revoke them, then provision reviewed replacement grants before rollout.

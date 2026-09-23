@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { inspectMirror } from "./mcpcentral-contract.mjs";
 
-const manifest = { name: "io.github.moelayyan90/xguard-control-plane", version: "5.2.0",
+const manifest = { name: "io.github.moelayyan90/xguard-control-plane", version: "6.0.0",
   remotes: [{ type: "streamable-http", url: "https://api.xguardgate.com/mcp" }] };
 const current = { ...manifest, id: manifest.name };
 

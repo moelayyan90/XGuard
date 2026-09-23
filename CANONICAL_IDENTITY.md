@@ -1,60 +1,59 @@
 # XGuard canonical product identity
 
-**Current canonical identity:** XGuard — Agent Execution Gateway
+**Name:** XGuard — Governed API Gateway
 
-**Candidate version:** 5.2.0 (verify the deployed identity before claiming it is live)
+**Product:** Governed API Gateway
 
-**Primary product:** Agent Execution Gateway
+**Source version metadata:** 6.0.0. The mandatory authorization flow requires client migration. A source change is not evidence of deployment.
 
 **Canonical website:** https://xguardgate.com
 
 **Canonical API:** https://api.xguardgate.com
 
-**Canonical remote MCP:** https://api.xguardgate.com/mcp
-**Official MCP Registry name:** `io.github.moelayyan90/xguard-control-plane`
+**Canonical MCP:** https://api.xguardgate.com/mcp
 
-## What XGuard is now
+**Registry identifier:** `io.github.moelayyan90/xguard-control-plane` (stable compatibility identifier).
 
-Give agents capabilities, not reusable credentials.
+XGuard governs agent API access with scoped authorization, server-side credentials,
+spending limits and signed evidence. It also monetizes approved seller APIs with
+explicit prices and owner-authorized payments.
 
-XGuard is an execution gateway. An operator keeps reusable provider credentials
-server-side and delegates short-lived capabilities for explicit operations and
-resources. The gateway enforces policy and budgets, reserves idempotency, commits
-billing, injects credentials at egress and returns durable signed evidence.
+## Product components and their boundaries
 
-Public paid outcomes are working secondary examples. They preserve signed prices,
-x402 USDC settlement before execution and durable recovery. Demo, canary, testnet,
-probe and self-payment activity must not be represented as customer revenue.
+| Component | Actual behavior |
+| --- | --- |
+| Scoped execution | Provider secrets stay at the gateway; capabilities limit requests and credits. |
+| Mandatory governance | Every external scoped execution requires an operator policy, signed request authorization, positive forecast net value, durable stopping and daily exposure accounting. Legacy ungoverned grants are refused. |
+| Paid API Gateway | Seller catalog, exact prices, authorized x402 payments, delivery evidence and seller proceeds. |
+| ProofRail | Signs observed execution facts and byte digests; does not prove source truth or profitability. |
+| Compatibility rails | Stable MCP/A2A and SDK identifiers remain; external scoped callers must adopt the required ticket flow. Public outcomes, Action Rail and x402 have their own payment contracts. |
 
-ProofRail is the signed execution-evidence layer for successful settled paid tools and authorized Secretless Egress outcomes.
+Legacy grants cannot run external scoped operations without reviewed replacement
+policies. Public discovery remains free, and the internal demo cannot contact an
+external provider. The operator must isolate the integrated agent/workload;
+this source change does not force unrelated agents to use or pay XGuard.
 
-## Supported execution rails
+## Claims that must not be made
 
-Capability-backed Secretless execution is the primary path. The x402 paid-tool path remains supported. Action Rail, facilitator relay/routing endpoints, and the operator Usage Credit path remain supported secondary surfaces.
+- Guaranteed daily profits, maximum possible ROI, proven arbitrage demand, or revenue inferred from forecasts.
+- Universal interception using a Python Singleton alone, or installed network isolation without deployment evidence.
+- Instant rollback/cancellation of side effects already accepted by an external system.
+- Provider keys or wallet private keys delivered into agent context, even encrypted.
+- A paid customer inferred from discovery, synthetic tests, self-payments or successful deployment.
+- Historical ACE, Solana/BAM, Child Safety, High-Velocity Facilitator, or standalone Web Extractor positioning as the current product.
 
-## Historical descriptions that are not current
+## Identity ownership and rollout
 
-Do **not** describe the current XGuard product as any of the following:
+`apps/relay/src/core/identity.js` owns the source name, overall product and descriptions.
+`server.json`, `package.json` and `plugin.json` carry checked distribution metadata.
+The canonical response layer owns public identity headers and API metadata.
+Paid API Gateway remains a component name; it must not overwrite the overall identity.
+Historical release audits describe their original builds and are not current specifications.
 
-- XGuard ACE.
-- A Solana/BAM deterministic speed-bump product.
-- A 10–50 ms toxic-flow or stale-quote scheduler.
-- A Child Safety platform.
-- A Web Extractor product.
-- XGuard Universal Facilitator Gateway.
-- XGuard High-Velocity x402 Facilitator as the overall product.
-- A generic spend-only or universal transaction control plane as the overall product.
+A merged and deployed build should report matching identity at `/identity`,
+`/llms.txt`, `/server.json`, `/openapi.json`, MCP and A2A. Registries, npm packages,
+container images and cached search listings change only through their own release
+or indexing processes; editing source does not prove those external changes occurred.
 
-Some source files retain compatibility implementations and historical internal modules so existing protocol paths can continue to work. Their names and comments do not override this canonical product identity.
-
-## Source-of-truth priority
-
-When descriptions conflict, use this order:
-
-1. `https://xguardgate.com/identity`
-2. `https://xguardgate.com/llms.txt`
-3. `https://xguardgate.com/server.json`
-4. `https://api.xguardgate.com/openapi.json`
-5. This file and the repository README
-
-The production edge also adds canonical identity headers and normalizes public discovery metadata so compatibility modules cannot overwrite the public product identity.
+See [strict governance](docs/strict-governance.md) for the security boundary,
+forecast formula, APIs, operational limits and validation commands.

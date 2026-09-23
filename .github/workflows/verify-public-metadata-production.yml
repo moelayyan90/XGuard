@@ -25,14 +25,14 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Wait for canonical 5.2.0 metadata deployment
+      - name: Wait for canonical 6.0.0 metadata deployment
         shell: bash
         run: |
           set -euo pipefail
           ready=0
           for i in {1..45}; do
             headers="$(mktemp)"
-            curl --silent --show-error --max-time 8 -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-public-metadata-verifier/5.2.0' -D "$headers" 'https://api.xguardgate.com/v1/ready?metadata-verification=1' -o /dev/null || true
+            curl --silent --show-error --max-time 8 -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-public-metadata-verifier/6.0.0' -D "$headers" 'https://api.xguardgate.com/v1/ready?metadata-verification=1' -o /dev/null || true
             if grep -qi "^x-xguard-worker-version-tag: git-${DEPLOY_SHA:0:12}" "$headers" && node scripts/verify-production-identity.mjs; then ready=1; break; fi
             sleep 4
           done
@@ -42,11 +42,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-public-metadata-verifier/5.2.0' "$@"; }
+          curl() { command curl -H 'x-xguard-traffic-class: synthetic' -H 'user-agent: xguard-public-metadata-verifier/6.0.0' "$@"; }
           for path in architecture openapi.json .well-known/xguard.json .well-known/ai-plugin.json .well-known/agent-card.json; do
             headers="$(mktemp)"
             curl --fail --silent --show-error --max-time 8 -D "$headers" "https://api.xguardgate.com/$path" -o /dev/null
             grep -qi '^strict-transport-security: .*max-age=31536000' "$headers"
-            grep -qi '^x-xguard-version: 5.2.0' "$headers"
+            grep -qi '^x-xguard-version: 6.0.0' "$headers"
             curl --fail --silent --show-error --max-time 8 -I "https://api.xguardgate.com/$path" -o /dev/null
           done

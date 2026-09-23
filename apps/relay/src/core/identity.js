@@ -1,8 +1,11 @@
-export const VERSION = "5.2.0";
-export const NAME = "XGuard — Agent Execution Gateway";
+export const VERSION = "6.0.0";
+export const NAME = "XGuard — Governed API Gateway";
+export const PRODUCT = "Governed API Gateway";
+export const PRODUCT_SLUG = "governed-api-gateway";
+export const REGISTRY_DESCRIPTION = "Governed API access, server-side credentials, spending limits, paid APIs and signed receipts.";
 export const SERVER_NAME = "xguard-agent-execution-gateway";
 export const PROMISE = "Give agents capabilities, not reusable credentials.";
-export const DESCRIPTION = "Store credentials server-side, delegate scoped capabilities, enforce policy and budget before egress, and receive durable results with signed ProofRail evidence.";
+export const DESCRIPTION = "Govern agent API access with scoped authorization, server-side credentials, spending limits and signed evidence. Monetize approved APIs with explicit prices and owner-authorized payments.";
 export const SITE = "https://xguardgate.com";
 export const API = "https://api.xguardgate.com";
 export const MCP = `${API}/mcp`;

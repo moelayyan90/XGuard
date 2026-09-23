@@ -3,7 +3,7 @@ import { HTTPFacilitatorClient, x402ResourceServer } from "@x402/core/server";
 export const XGUARD_FACILITATOR_URL = "https://api.xguardgate.com";
 export const XGUARD_MCP_URL = `${XGUARD_FACILITATOR_URL}/mcp`;
 export const XGUARD_EGRESS_URL = `${XGUARD_FACILITATOR_URL}/v1/egress`;
-export const XGUARD_VERSION = "5.2.0";
+export const XGUARD_VERSION = "6.0.0";
 
 function normalizeBaseUrl(value) {
   const input = String(value || XGUARD_FACILITATOR_URL);
@@ -94,29 +94,45 @@ export async function xguardIssueCapability(options = {}) {
   return xguardJson("/v1/egress/capabilities", { ...requestOptions, xguardKey, body: capability });
 }
 
-/** Agent-facing. The upstream reusable credential is never required here. */
-export async function xguardEgressFetch(options = {}) {
-  const { capability, target, method = "GET", headers = {}, idempotencyKey, bodyJson, bodyText, bodyBase64, contentType, baseUrl = XGUARD_FACILITATOR_URL, fetchImpl, signal } = options;
+function egressPayload(options) {
+  const { capability, target, method = "GET", headers = {}, idempotencyKey, bodyJson, bodyText, bodyBase64, contentType, governanceAuthorization } = options;
   if (!capability) throw new Error("xguardEgressFetch requires capability");
   if (!target) throw new Error("xguardEgressFetch requires target");
-  if (!["GET", "HEAD"].includes(String(method).toUpperCase()) && !idempotencyKey) throw new Error("xguardEgressFetch requires a stable idempotencyKey for writes; reuse it on retries");
+  if (typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_:.-]{8,128}$/.test(idempotencyKey)) throw new Error("A stable idempotencyKey is required for authorization, execution and recovery");
   const payload = { capability, target, method, headers };
   if (idempotencyKey) payload.idempotency_key = idempotencyKey;
   if (bodyJson !== undefined) payload.body_json = bodyJson;
   if (bodyText !== undefined) payload.body_text = bodyText;
   if (bodyBase64 !== undefined) payload.body_base64 = bodyBase64;
   if (contentType) payload.content_type = contentType;
+  if (governanceAuthorization) payload.governance_authorization = governanceAuthorization;
+  return payload;
+}
+
+/** Agent-facing. The upstream reusable credential is never required here. */
+export async function xguardEgressFetch(options = {}) {
+  const { baseUrl = XGUARD_FACILITATOR_URL, fetchImpl, signal } = options;
+  const payload = egressPayload(options);
   return getFetch(fetchImpl)(`${normalizeBaseUrl(baseUrl)}/v1/egress/fetch`, { method: "POST", headers: { "content-type": "application/json", accept: "*/*" }, body: JSON.stringify(payload), signal, redirect: "manual" });
 }
 
+/** Obtain the ticket without sending the provider request. No implicit retries. */
+export async function xguardAuthorizeEgress(options = {}) {
+  const { baseUrl = XGUARD_FACILITATOR_URL, fetchImpl, signal } = options;
+  const payload = egressPayload(options);
+  delete payload.governance_authorization;
+  const response = await getFetch(fetchImpl)(`${normalizeBaseUrl(baseUrl)}/v1/egress/authorize`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload), signal, redirect: "manual" });
+  if (!response.ok) throw Object.assign(new Error(`XGuard authorization refused with HTTP ${response.status}`), { status: response.status });
+  return response.json();
+}
+
 /**
- * Drop-in secretless client for agents.
- * Usage: const agent = createXGuardAgentClient(capability); await agent.fetch(url, { method: "POST", idempotencyKey: "operation-001", json: {...} });
+ * Explicit secretless client. Call authorize(target, init), then fetch with the
+ * same init plus governanceAuthorization. The Python SDK also persists halts.
  */
 export function createXGuardAgentClient(capability, options = {}) {
   if (!capability) throw new Error("createXGuardAgentClient requires capability");
-  return {
-    async fetch(target, init = {}) {
+  function requestFor(target, init = {}) {
       const headers = Object.fromEntries(new Headers(init.headers || {}).entries());
       const request = {
         capability,
@@ -124,6 +140,7 @@ export function createXGuardAgentClient(capability, options = {}) {
         method: init.method || "GET",
         headers,
         idempotencyKey: init.idempotencyKey,
+        governanceAuthorization: init.governanceAuthorization,
         baseUrl: options.baseUrl,
         fetchImpl: options.fetchImpl,
         signal: init.signal,
@@ -131,8 +148,11 @@ export function createXGuardAgentClient(capability, options = {}) {
       if (Object.hasOwn(init, "json")) request.bodyJson = init.json;
       else if (typeof init.body === "string") { request.bodyText = init.body; request.contentType = headers["content-type"] || headers["Content-Type"]; }
       else if (init.body !== undefined && init.body !== null) throw new Error("XGuard agent client supports init.json or string init.body; use xguardEgressFetch for base64 bodies");
-      return xguardEgressFetch(request);
-    },
+      return request;
+  }
+  return {
+    authorize: (target, init) => xguardAuthorizeEgress(requestFor(target, init)),
+    fetch: (target, init) => xguardEgressFetch(requestFor(target, init)),
   };
 }
 

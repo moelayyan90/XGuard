@@ -4,3 +4,11 @@ node_modules/
 *.log
 xguard-recovery-*.json
 xguard-response-*.json
+
+# Private governed-agent state
+__pycache__/
+*.pyc
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm

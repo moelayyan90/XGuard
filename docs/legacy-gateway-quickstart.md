@@ -1,3 +1,5 @@
+> Historical build record. Current product identity and strict-mode behavior are defined in [CANONICAL_IDENTITY.md](../CANONICAL_IDENTITY.md) and [strict-governance.md](strict-governance.md).
+
 # Archived gateway quickstart
 
 Compatibility reference. The primary product and default MCP tool list are now documented in [README](../README.md). The legacy API routes and explicit tool calls below remain supported.

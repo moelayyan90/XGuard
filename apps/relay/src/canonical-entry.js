@@ -8,14 +8,15 @@ import { sellerPage } from "./seller-site.js";
 import { decorateSellerDiscovery } from "./seller-discovery.js";
 import { describeAgentUsage } from "./agent-token-usage-openapi.js";
 import { handleExecutionRoute, decorateExecutionResponse } from "./execution-entry.js";
-import { VERSION, NAME, DESCRIPTION } from "./core/identity.js";
+import { VERSION, NAME, DESCRIPTION, PRODUCT, PRODUCT_SLUG } from "./core/identity.js";
+import { GOVERNANCE_DISCOVERY } from "./core/governance.js";
 export * from "./a2a-entry.js";
 
 const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
 const MCP = `${API}/mcp`;
-const PRIMARY_PRODUCT = "Paid API Gateway";
-const PRIMARY_ROLE = "Turn any API into a paid API for AI agents: exact prices, metering, signed receipts and seller proceeds";
+const PRIMARY_PRODUCT = PRODUCT;
+const PRIMARY_ROLE = DESCRIPTION;
 
 const PUBLIC_JSON = new Set([
   "/identity",
@@ -82,6 +83,7 @@ function canonicalIdentity() {
     version: VERSION,
     primary_product: PRIMARY_PRODUCT,
     primary_role: PRIMARY_ROLE,
+    governance: GOVERNANCE_DISCOVERY,
     site: SITE,
     api: API,
     mcp: MCP,
@@ -93,7 +95,7 @@ function baseHeaders(headers = new Headers()) {
   next.set("x-xguard-version", VERSION);
   next.set("x-xguard-control-plane", VERSION);
   next.set("x-xguard-canonical-name", NAME.replace("—", "-"));
-  next.set("x-xguard-primary-product", "paid-api-gateway");
+  next.set("x-xguard-primary-product", PRODUCT_SLUG);
   next.set("x-xguard-canonical-site", SITE);
   next.set("x-xguard-canonical-api", API);
   next.set("x-xguard-canonical-mcp", MCP);
@@ -191,7 +193,7 @@ const PAGE_STYLE = `body{margin:0;background:#0b0b0b;color:#f7f7f3;font-family:A
 
 function publicPage(request, pathname, title, heading, content, script = "") {
   const nonce = script ? randomNonce() : "";
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><meta name="description" content="XGuard — Agent Execution Gateway"><link rel="canonical" href="${SITE}${pathname}"><style>${PAGE_STYLE}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · Paid + Secretless Gateway</span><h1>${heading}</h1>${content}<p class="foot"><a href="/">Home</a> · <a href="/connect">Connect</a> · <a href="/developers">Developers</a> · <a href="/pricing">Pricing</a> · <a href="/security">Security</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/refund-policy">Refunds</a></p></main>${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><meta name="description" content="XGuard — Governed API Gateway"><link rel="canonical" href="${SITE}${pathname}"><style>${PAGE_STYLE}</style></head><body><main class="w"><span class="badge">XGuard v${VERSION} · Paid + Secretless Gateway</span><h1>${heading}</h1>${content}<p class="foot"><a href="/">Home</a> · <a href="/connect">Connect</a> · <a href="/developers">Developers</a> · <a href="/pricing">Pricing</a> · <a href="/security">Security</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/refund-policy">Refunds</a></p></main>${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body></html>`;
   return new Response(request.method === "HEAD" ? null : html, { status: 200, headers: htmlHeaders(pathname, nonce) });
 }
 

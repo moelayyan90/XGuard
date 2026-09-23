@@ -294,7 +294,7 @@ function capabilities(env) {
   const mainnet = gatewayConfig(env, false);
   const testnet = gatewayConfig(env, true);
   return {
-    name: "XGuard — Agent Execution Gateway",
+    name: "XGuard — Governed API Gateway",
     version: VERSION,
     discovery: {
       mcp: `${API}/mcp`,
@@ -2472,7 +2472,7 @@ async function augmentMcpTools(message, response, env) {
 
 function mcpDiscovery(env) {
   return {
-    name: "XGuard — Agent Execution Gateway",
+    name: "XGuard — Governed API Gateway",
     version: VERSION,
     transport: "streamable-http",
     endpoint: `${API}/mcp`,
@@ -2488,7 +2488,7 @@ function paymentManifest(env) {
   const mainnet = gatewayConfig(env, false);
   const testnet = gatewayConfig(env, true);
   return {
-    name: "XGuard — Agent Execution Gateway",
+    name: "XGuard — Governed API Gateway",
     version: VERSION,
     protocol: "x402",
     x402_version: 2,
@@ -2709,7 +2709,7 @@ async function improveOpenApi(response, env) {
   if (!body || typeof body !== "object") return response;
   body.info = {
     ...(body.info || {}),
-    title: "XGuard — Agent Execution Gateway",
+    title: "XGuard — Governed API Gateway",
     version: VERSION,
     description: "No-account x402 v2 USDC gateway for controlled agent tools, plus secretless upstream credential execution. Prices are signed before payment; successful execution returns a signed receipt and ProofRail evidence.",
   };

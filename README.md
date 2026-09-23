@@ -1,21 +1,37 @@
-# XGuard — Paid API Gateway
+# XGuard — Governed API Gateway
 
-**Turn any API into a paid API for AI agents.**
+**Govern agent access, control spending, and monetize approved APIs.**
 
-Register an existing HTTPS API, choose a request price and payout wallet, and
-share one paid URL. XGuard quotes, verifies and settles authorized payments,
-executes the request, returns a signed receipt and records platform fees and
-seller proceeds separately.
+XGuard is a governed API gateway. Operators keep reusable provider credentials
+server-side and delegate scoped capabilities. Sellers can publish priced API
+routes with owner-authorized payments, metering and signed delivery evidence.
+These are two capabilities of the same product, not competing product identities.
 
+- [Strict authorization, economics and deployment boundaries](docs/strict-governance.md)
+- [Complete Python Singleton and bounded opportunity engine](sdk/xguard_governance.py)
+- [Govern agent access](https://xguardgate.com/operators)
 - [Monetize your API](https://xguardgate.com/sellers)
 - [Browse paid APIs](https://xguardgate.com/marketplace)
-- [Gateway, fees, payout setup and buyer recovery](docs/paid-api-gateway.md)
-- [Small Workers, Express and FastAPI integrations](integrations/paid-api)
-- [Revenue-path audit and acceptance limits](docs/revenue-path-audit.md)
+- [Seller fees, payout setup and buyer recovery](docs/paid-api-gateway.md)
 
-External seller routes stay draft without configured payout signing authority.
-A successful test is not a real customer payment. Production revenue acceptance
-requires a funded owner-authorized purchase and recorded settlement/delivery.
+Every external scoped execution requires an operator-provisioned governance
+policy and a signed, short-lived request authorization, including raw egress.
+A durable halt latch and operator-wide UTC daily forecast-exposure budget apply.
+Legacy ungoverned grants are refused and must be reconciled, revoked and replaced.
+Paid seller contracts keep their separate authorization rules. Install host/network
+egress isolation before claiming that an agent cannot connect outside this boundary.
+
+Expected net value uses operator-provided request-bound forecasts. It is not
+realized revenue or a promise of daily profits. No trading venue, live arbitrage
+feed, autonomous wallet signer or new customer demand is claimed by this change.
+The Python loop stops when forecasts or scoped grants expire; the operator must
+provide fresh authorized configuration for sustained operation.
+
+This branch prepares the 6.0.0 major release for mandatory scoped execution governance.
+External execution requires the new policy and ticket flow; migrate callers before rollout.
+Check the deployed build before describing the change as live. External seller
+routes stay draft without configured payout signing authority. A successful test
+is not a real customer payment.
 
 ## Scoped agent execution
 
@@ -26,8 +42,8 @@ agent execute one authorized operation. XGuard enforces policy, expiration,
 revocation, budgets and idempotency before injecting the credential. Every
 completed execution returns a durable result and signed ProofRail evidence.
 
-This branch contains the **5.2.0 release candidate**. Its deployment is tracked in
-[the release audit](docs/execution-release-audit.md); the production version is
+This branch contains the **6.0.0 release candidate**. The prior 5.2.0 deployment is recorded in
+[the historical release audit](docs/execution-release-audit.md); the current production version is
 reported by [identity](https://xguardgate.com/identity).
 
 - [Operator setup](docs/execution-gateway.md#operator-setup): keep operator/provider keys out of agent context.
@@ -44,7 +60,8 @@ const request = {
   idempotencyKey: 'read-xguard-repository-001'
 };
 await agent.preflight(request);
-const output = await agent.execute(request);
+const approval = await agent.authorize(request);
+const output = await agent.execute({ ...request, governanceAuthorization: approval.authorization });
 // Retain the same key and exact input for recovery; never retry an uncertain write with a new key.
 await agent.verify({ proof: output.proof, resultSha256: output.receipt.result_sha256 });
 ```

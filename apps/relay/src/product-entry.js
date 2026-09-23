@@ -17,7 +17,7 @@ export {
   EgressMeter,
 } from "./egress-entry.js";
 
-const VERSION = "5.2.0";
+const VERSION = "6.0.0";
 const NAME = "xguard-agent-execution-gateway";
 const MCP = "https://api.xguardgate.com/mcp";
 const API = "https://api.xguardgate.com";
@@ -352,7 +352,7 @@ async function improveMcp(snapshot, response) {
 
   if (message.method === "initialize") {
     body.result.serverInfo = { ...(body.result.serverInfo || {}), name: NAME, version: VERSION };
-    body.result.instructions = `XGuard — Agent Execution Gateway exposes signed pricing and x402-paid tools while keeping reusable upstream API credentials outside AI agent context. Operators provision encrypted credentials and scoped capabilities; agents use xguard_egress_fetch. When an operator keeps the reusable credential exclusively in XGuard instead of distributing it to agents, XGuard becomes the required credential-backed egress path for that agent environment. ProofRail adds an ES256-signed proof to authorized credential-backed egress outcomes so callers can verify the enforced path without seeing the secret. Canonical remote MCP endpoint: ${MCP}. XGuard Action Rail, x402 facilitator routing, receipts and inspection remain available as compatibility capabilities.`;
+    body.result.instructions = `XGuard — Governed API Gateway exposes signed pricing and x402-paid tools while keeping reusable upstream API credentials outside AI agent context. Operators provision encrypted credentials and scoped capabilities; agents use xguard_egress_fetch. When an operator keeps the reusable credential exclusively in XGuard instead of distributing it to agents, XGuard becomes the required credential-backed egress path for that agent environment. ProofRail adds an ES256-signed proof to authorized credential-backed egress outcomes so callers can verify the enforced path without seeing the secret. Canonical remote MCP endpoint: ${MCP}. XGuard Action Rail, x402 facilitator routing, receipts and inspection remain available as compatibility capabilities.`;
   }
 
   if (message.method === "tools/list" && Array.isArray(body.result.tools)) {

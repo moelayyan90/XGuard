@@ -21,7 +21,7 @@ test("product entry rewrites MCP initialize to Secretless Gateway identity", asy
   assert.equal(response.status, 200);
   const data = await response.json();
   assert.equal(data.result?.serverInfo?.name, "xguard-agent-execution-gateway");
-  assert.equal(data.result?.serverInfo?.version, "5.2.0");
+  assert.equal(data.result?.serverInfo?.version, "6.0.0");
   assert.match(String(data.result?.instructions || ""), /reusable upstream API credentials/i);
   assert.equal(response.headers.get("x-xguard-canonical-mcp"), "https://api.xguardgate.com/mcp");
 });

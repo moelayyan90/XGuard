@@ -69,13 +69,13 @@ jobs:
             const fs = require("fs");
             const x = JSON.parse(fs.readFileSync("/tmp/health.json", "utf8"));
             if (x.product !== "XGuard Edge Gate") process.exit(1);
-            if (x.version !== "5.2.0") process.exit(1);
+            if (x.version !== "6.0.0") process.exit(1);
             if (x.facilitator !== "https://api.xguardgate.com") process.exit(1);
           '
       - name: Verify Kubernetes manifest keeps origin behind the gate topology
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'image: ghcr.io/moelayyan90/xguard-gate:5.2.0' apps/universal-gate/kubernetes.yaml
+          grep -q 'image: ghcr.io/moelayyan90/xguard-gate:6.0.0' apps/universal-gate/kubernetes.yaml
           grep -q 'name: xguard-gate' apps/universal-gate/kubernetes.yaml
           grep -q 'FACILITATOR_URL' apps/universal-gate/kubernetes.yaml

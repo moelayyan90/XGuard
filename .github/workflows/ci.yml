@@ -18,6 +18,15 @@ jobs:
           node-version: 24
       - name: Install relay dependencies
         run: npm ci --prefix apps/relay --no-audit --no-fund
+      - name: Install the SDK peer dependency for the raw authorization contract test
+        run: npm install --ignore-scripts --no-save --package-lock=false --no-audit --no-fund @x402/core@2.24.0
+      - name: Install governed Python client dependency in an isolated environment
+        run: |
+          python3 -m venv /tmp/xguard-governance-venv
+          /tmp/xguard-governance-venv/bin/python -m pip install -r sdk/requirements-governance.txt
+          echo /tmp/xguard-governance-venv/bin >> "$GITHUB_PATH"
+      - name: Strict economics and canonical product identity
+        run: node --test apps/relay/src/core/governance-test.js apps/relay/src/governance-identity-test.js
       - name: Execution gateway contract, capability boundaries and controlled demo
         run: node --test apps/relay/src/execution-first-test.js
       - name: Seller gateway, fee ledger, secret isolation and payment replay boundaries
@@ -82,7 +91,7 @@ jobs:
           grep -q '"main": "src/canonical-entry.js"' apps/relay/wrangler.jsonc
           grep -q '"workers_dev": false' apps/relay/wrangler.jsonc
           ! grep -q '"routes"' apps/relay/wrangler.jsonc
-          grep -q 'XGuard — Agent Execution Gateway' apps/relay/src/core/identity.js
+          grep -q 'XGuard — Governed API Gateway' apps/relay/src/core/identity.js
           grep -q 'www.xguardgate.com' apps/relay/src/canonical-entry.js
           grep -q 'Historical ACE/Solana/BAM' apps/relay/src/canonical-entry.js
           grep -q 'io.github.moelayyan90/xguard-control-plane' apps/relay/src/discovery-entry.js
@@ -133,12 +142,16 @@ jobs:
         run: |
           node --check sdk/index.js
           node --check sdk/outcomes.js
-          node --test sdk/outcomes-test.mjs sdk/execution-test.mjs
+          node --test sdk/outcomes-test.mjs sdk/execution-test.mjs sdk/raw-egress-test.mjs
           npm pack --dry-run --ignore-scripts
       - name: Wrangler dry run
         run: npx --yes wrangler@4.130.0 deploy --dry-run --outdir /tmp/xguard-seller-worker --config apps/relay/wrangler.jsonc
       - name: Concurrent paid requests in workerd with SQLite Durable Objects
         run: npx --yes --package=wrangler@4.130.0 --call 'node apps/relay/test/seller-workerd.mjs'
+      - name: Python TLS and pinned signatures against governed workerd execution
+        env:
+          XGUARD_WORKER_BUNDLE: /tmp/xguard-seller-worker/canonical-entry.js
+        run: npx --yes --package=wrangler@4.130.0 --call 'node apps/relay/test/governance-workerd.mjs'
       - name: Anonymous free execution in the actual Worker runtime
         shell: bash
         run: |

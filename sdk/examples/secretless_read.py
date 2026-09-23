@@ -1,36 +1,29 @@
-"""Agent-side read. Supply only an operator-issued scoped capability."""
+"""Run from the repository root: python -m sdk.examples.secretless_read --help.
+
+The operator must provision a raw HTTPS grant and a forecast for this exact read.
+Provider and wallet keys stay at XGuard. The pinned JWK is a PUBLIC verification key.
+"""
+import argparse
 import json
-import os
-import urllib.request
+from pathlib import Path
+from sdk.xguard_governance import Operation, XGuardAuthorizationGateway
 
+parser = argparse.ArgumentParser(description="One governed repository read; no automatic retries")
+parser.add_argument("--capability-file", required=True)
+parser.add_argument("--pinned-jwk", required=True)
+parser.add_argument("--journal", required=True)
+parser.add_argument("--operation-key", required=True, help="Persist this key for this business operation")
+args = parser.parse_args()
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
-opener = urllib.request.build_opener(NoRedirect)
-
-
-def call(path, body):
-    request = urllib.request.Request(
-        "https://api.xguardgate.com" + path,
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    # A timeout may follow execution. Reuse the same input and key; no automatic retries.
-    with opener.open(request, timeout=40) as response:
-        return json.load(response)
-
-
-result = call("/v1/secretless/call", {
-    "capability": os.environ["XGUARD_CAPABILITY"],
-    "operation": "github.repository.read",
-    "input": {"owner": "moelayyan90", "repo": "XGuard"},
-    "idempotency_key": "read-xguard-repository-001",
-})
-verified = call("/v1/receipts/verify", {
-    "proof": result["proof"], "result_sha256": result["receipt"]["result_sha256"],
-})
-print(json.dumps({"execution_id": result["request_id"], "proof_valid": verified["valid"]}))
+gateway = XGuardAuthorizationGateway(
+    capability=Path(args.capability_file).read_text().strip(),
+    pinned_jwk=json.loads(Path(args.pinned_jwk).read_text()),
+    journal=args.journal,
+)
+# execute obtains and verifies a request-bound ticket before provider dispatch.
+# A timeout or bad signature durably halts; do not delete the journal to retry.
+result = gateway.execute(Operation(
+    "https://api.github.com/repos/moelayyan90/XGuard", args.operation_key,
+))
+print(json.dumps({"status": result.status, "execution_id": result.evidence["execution_id"],
+                  "proof_verified": True, "result": json.loads(result.body)}))

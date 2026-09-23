@@ -50,8 +50,8 @@ test("A2A Agent Card exposes the canonical v1 discovery surface", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") || "", /application\/a2a\+json/);
   const card = await response.json();
-  assert.equal(card.name, "XGuard — Agent Execution Gateway");
-  assert.equal(card.version, "5.2.0");
+  assert.equal(card.name, "XGuard — Governed API Gateway");
+  assert.equal(card.version, "6.0.0");
   assert.equal(card.supportedInterfaces?.[0]?.url, "https://api.xguardgate.com/a2a");
   assert.equal(card.supportedInterfaces?.[0]?.protocolBinding, "JSONRPC");
   assert.equal(card.supportedInterfaces?.[0]?.protocolVersion, "1.0.0");

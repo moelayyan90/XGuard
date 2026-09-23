@@ -65,7 +65,7 @@ test("paid discovery advertises only the real enabled connector", async () => {
   const response = await app.fetch(new Request("https://api.xguardgate.com/v1/capabilities"), env, {});
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.equal(body.version, "5.2.0");
+  assert.equal(body.version, "6.0.0");
   assert.equal(body.tools.find(tool => tool.id === "xguard.web.fetch")?.available, true);
   assert.equal(body.tools.find(tool => tool.id === "xguard.web.search")?.available, false);
   assert.equal(body.tools.find(tool => tool.id === "xguard.ai.generate")?.unavailable_reason?.code, "connector_not_configured");
@@ -92,7 +92,7 @@ test("modern MCP discovery, routing headers, caching metadata, and JSON-RPC vali
   const discovered = await discover.json();
   assert.deepEqual(discovered.result.supportedVersions, ["2026-07-28", "2025-11-25"]);
   assert.equal(discovered.result.cacheScope, "public");
-  assert.equal(discovered.result._meta["io.modelcontextprotocol/serverInfo"].version, "5.2.0");
+  assert.equal(discovered.result._meta["io.modelcontextprotocol/serverInfo"].version, "6.0.0");
   assert.equal(discovered.result.capabilities.resources.subscribe, false);
   assert.equal(discovered.result.capabilities.prompts.listChanged, false);
 

@@ -1,4 +1,4 @@
 {
-  "payment_state_version": 2,
-  "description": "Includes lifecycle-v1 payment guards plus seller fee allocations, seller receivables, payout reservations, separate traffic-class ledgers and non-replayable upstream writes. Older deployments do not process these financial outboxes and must not receive automatic rollback traffic."
+  "payment_state_version": 3,
+  "description": "Includes mandatory governance latches, request-bound forecast policies and the shared operator exposure ledger, in addition to payment lifecycle-v1, seller receivables and payout reservations. Older deployments ignore these governance records and must not receive automatic rollback traffic; reconcile and recover with a compatible forward fix."
 }

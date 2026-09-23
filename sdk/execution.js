@@ -15,9 +15,13 @@ export function createExecutionClient({ capability, api = "https://api.xguardgat
     return value;
   }
   return {
-    execute({ operation, input, idempotencyKey, signal }) {
+    execute({ operation, input, idempotencyKey, governanceAuthorization, signal }) {
       if (typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_:.-]{8,128}$/.test(idempotencyKey)) throw new TypeError("Provide and retain a stable idempotencyKey for this business operation");
-      return call("/v1/secretless/call", { capability, operation, input, idempotency_key: idempotencyKey }, signal);
+      return call("/v1/secretless/call", { capability, operation, input, idempotency_key: idempotencyKey, ...(governanceAuthorization ? { governance_authorization: governanceAuthorization } : {}) }, signal);
+    },
+    authorize({ operation, input, idempotencyKey, signal }) {
+      if (typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_:.-]{8,128}$/.test(idempotencyKey)) throw new TypeError("Provide a stable idempotencyKey before authorizing");
+      return call("/v1/secretless/authorize", { capability, operation, input, idempotency_key: idempotencyKey }, signal);
     },
     preflight({ operation, input, signal }) { return call("/v1/preflight", { capability, operation, input }, signal); },
     verify({ proof, resultSha256, receipt, signal }) { return call("/v1/receipts/verify", { proof, ...(resultSha256 ? { result_sha256: resultSha256 } : {}), ...(receipt ? { receipt } : {}) }, signal); },

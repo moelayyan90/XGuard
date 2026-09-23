@@ -3,6 +3,7 @@ import { publicDns } from "./core/network-policy.js";
 import { admitUsage, recordUsage, UsageError } from "./core/agent-usage.js";
 import { compileOperation, validateOperationPolicy, operationPolicyAllows, normalizedProviderResult } from "./core/provider-operations.js";
 import { recordTelemetry, telemetrySnapshot } from "./core/execution-telemetry.js";
+import { validateGovernancePolicy, evaluateForecast, XGuardAuthorizationGateway, reserveDailyExposure, GOVERNANCE_DISCOVERY } from "./core/governance.js";
 
 const VERSION = "1.0.0";
 const API = "https://api.xguardgate.com";
@@ -312,6 +313,7 @@ function discovery(env) {
     name: "XGuard Secretless Egress",
     version: VERSION,
     role: "credential broker and egress choke point for AI agents",
+    governance: GOVERNANCE_DISCOVERY,
     guarantee: "Agents receive scoped XGuard capabilities, never reusable upstream API credentials. XGuard injects the credential only after scope and Usage Credit checks, then forwards one public HTTPS request without following redirects.",
     credentials: `POST ${API}/v1/egress/credentials`,
     list_credentials: `GET ${API}/v1/egress/credentials`,
@@ -322,7 +324,7 @@ function discovery(env) {
     public_key: `${API}/.well-known/xguard-egress-key.json`,
     credits_per_authorized_egress_attempt: egressCredits(env),
     outcome: "Execute a delegated API action once per capability and idempotency key, with a gateway-credit budget and a signed, retrievable outcome.",
-    idempotency: { field: "idempotency_key", header: "Idempotency-Key", required_for: ["POST", "PUT", "PATCH", "DELETE"], scope: "capability + key + exact request digest", replay: "same encrypted stored response; no additional billing or upstream execution", ambiguity: "no automatic retry or takeover after an unknown outcome", retention: "replay while the capability is valid; records deleted 24 hours after expiry" },
+    idempotency: { field: "idempotency_key", header: "Idempotency-Key", required_for: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"], scope: "capability + key + exact request digest", replay: "same encrypted stored response; no additional billing or upstream execution", ambiguity: "no automatic retry or takeover after an unknown outcome", retention: "replay while the capability is valid; records deleted 24 hours after expiry" },
     budgets: { fields: ["max_total_credits", "max_credits_per_call"], scope: "XGuard Usage Credits only; upstream vendor charges are billed to the operator separately", uncertain_attempts: "remain reserved until reconciliation" },
     maximum_response_bytes: MAX_RESULT_BYTES,
     providers_supported: Object.keys(PROVIDERS).concat("custom"),
@@ -336,7 +338,9 @@ function discovery(env) {
       "billing before credential release and network egress",
       "manual redirect handling prevents credential forwarding to another host",
       "private/local targets blocked",
-      "automatic Idempotency-Key for unsafe methods",
+      "explicit stable Idempotency-Key for authorization and every execution",
+      "mandatory signed authorization and positive request-bound forecast net value",
+      "durable halt and operator-wide forecast exposure ledger",
       "no automatic retry after network ambiguity",
       "durable request-bound idempotency and encrypted response replay",
       "atomic per-capability gateway-credit reservations",
@@ -456,6 +460,9 @@ async function issueCapability(request, env) {
   let operationPolicy;
   try { operationPolicy = validateOperationPolicy(body.allowed_operations, body.operation_limits, credential.provider); }
   catch (cause) { return json({ error: cause.message }, 400); }
+  let governance;
+  try { governance = validateGovernancePolicy(body.governance); }
+  catch (cause) { return json({ error: cause.message }, 400); }
   if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 30 || ttlSeconds > 3600 || !Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > 1000) return json({ error: "invalid_capability_limits" }, 400);
   if (!units) return json({ error: "egress_price_invalid" }, 503);
   if (!Number.isSafeInteger(maxPerCall) || maxPerCall < units || maxPerCall > 1000000 || !Number.isSafeInteger(maxTotal) || maxTotal < units || maxTotal > 1000000000) return json({ error: "invalid_credit_budget" }, 400);
@@ -477,6 +484,7 @@ async function issueCapability(request, env) {
     max_credits_per_call: maxPerCall,
     max_total_credits: maxTotal,
     ...(operationPolicy || {}),
+    ...(governance ? { governance, governance_state: "ACTIVE" } : {}),
     reserved_credits: 0,
     billing_envelope: billingEnvelope,
     created_at: new Date().toISOString(),
@@ -502,6 +510,7 @@ async function issueCapability(request, env) {
     path_prefix: record.path_prefix,
     allowed_methods: record.allowed_methods,
     ...(operationPolicy || {}),
+    ...(governance ? { governance, governance_state: "ACTIVE", governance_contract: GOVERNANCE_DISCOVERY } : {}),
     max_calls: maxCalls,
     max_credits_per_call: maxPerCall,
     max_total_credits: maxTotal,
@@ -559,48 +568,59 @@ function serializeBody(body) {
 }
 
 async function egressFetch(request, env) {
+  const authorizing = new URL(request.url).pathname === "/v1/egress/authorize";
+  const recovering = new URL(request.url).pathname === "/v1/egress/recover";
   let body;
   try { body = JSON.parse(dec.decode(await readBoundedBody(request.body, MAX_BODY_BYTES * 2))); } catch (cause) { return json({ error: cause.message === "response_too_large" ? "request_body_too_large" : "invalid_json" }, cause.message === "response_too_large" ? 413 : 400); }
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "invalid_json" }, 400);
+  const parsed = parseCapabilityToken(body?.capability || request.headers.get("x-xguard-capability"));
+  if (!parsed) return json({ error: "valid_xguard_capability_required" }, 401);
+  const latch = async () => {
+    try { await capabilityStub(env, parsed.id).fetch("https://capability/governance/halt", {
+      method: "POST", body: JSON.stringify({ token: parsed.token }), signal: AbortSignal.timeout(5000),
+    }); } catch { /* A failed durable stop cannot authorize another dispatch. */ }
+  };
+  const reject = async (value, status) => { await latch(); return json(value, status); };
+  try {
   let operationContext;
   if (body.operation) {
     try {
       const plan = compileOperation(body.operation, body.input);
       if (body.target !== plan.target || String(body.method || "GET").toUpperCase() !== plan.method
         || JSON.stringify(body.body_json) !== JSON.stringify(plan.body_json)
-        || body.body_text !== undefined || body.body_base64 !== undefined) return json({ error: "operation_request_mismatch" }, 400);
+        || body.body_text !== undefined || body.body_base64 !== undefined) return reject({ error: "operation_request_mismatch" }, 400);
       body.headers = plan.headers;
       operationContext = plan.context;
-    } catch (cause) { return json({ error: cause.message }, 422); }
+    } catch (cause) { return reject({ error: cause.message }, 422); }
   }
-  const parsed = parseCapabilityToken(body?.capability || request.headers.get("x-xguard-capability"));
-  if (!parsed) return json({ error: "valid_xguard_capability_required" }, 401);
   const target = demoTarget(body?.target) || safeTarget(body?.target);
-  if (!target) return json({ error: "public_https_target_required" }, 400);
+  if (!target) return reject({ error: "public_https_target_required" }, 400);
   const method = String(body?.method || "GET").toUpperCase();
-  if (!methods.has(method)) return json({ error: "unsupported_method" }, 400);
+  if (!methods.has(method)) return reject({ error: "unsupported_method" }, 400);
   const serialized = serializeBody(body);
-  if (!serialized) return json({ error: "invalid_body_encoding" }, 400);
+  if (!serialized) return reject({ error: "invalid_body_encoding" }, 400);
   const size = serialized.data == null ? 0 : (typeof serialized.data === "string" ? enc.encode(serialized.data).byteLength : serialized.data.byteLength);
-  if (size > MAX_BODY_BYTES) return json({ error: "request_body_too_large", max_bytes: MAX_BODY_BYTES }, 413);
-  if (["GET", "HEAD"].includes(method) && serialized.data !== null) return json({ error: "body_not_allowed_for_method" }, 400);
-  if (["body_json", "body_text", "body_base64"].filter(key => Object.hasOwn(body, key)).length > 1) return json({ error: "ambiguous_body" }, 400);
+  if (size > MAX_BODY_BYTES) return reject({ error: "request_body_too_large", max_bytes: MAX_BODY_BYTES }, 413);
+  if (["GET", "HEAD"].includes(method) && serialized.data !== null) return reject({ error: "body_not_allowed_for_method" }, 400);
+  if (["body_json", "body_text", "body_base64"].filter(key => Object.hasOwn(body, key)).length > 1) return reject({ error: "ambiguous_body" }, 400);
   let units = egressCredits(env);
-  if (!units || !env.PROOF_AUTHORITY) return json({ error: "execution_configuration_unavailable" }, 503);
+  if (!units || !env.PROOF_AUTHORITY) return reject({ error: "execution_configuration_unavailable" }, 503);
   let key, outgoing;
   try {
+    if (!body.idempotency_key && !request.headers.has("idempotency-key")) throw new Error("idempotency_key_required");
     key = executionKey(request, body, method);
     outgoing = sanitizeHeaders(body.headers, "");
     if (serialized.contentType && !outgoing.has("content-type")) outgoing.set("content-type", serialized.contentType);
-  } catch (cause) { return json({ error: cause.message.startsWith("idempotency") || cause.message === "invalid_idempotency_key" ? cause.message : "invalid_headers" }, 400); }
+  } catch (cause) { return reject({ error: cause.message.startsWith("idempotency") || cause.message === "invalid_idempotency_key" ? cause.message : "invalid_headers" }, 400); }
   const digest = await requestDigest(target.toString(), method, outgoing, serialized.data);
   const keyHash = await sha256(key);
 
-  const begun = await capabilityStub(env, parsed.id).fetch("https://capability/begin", {
+  const begun = await capabilityStub(env, parsed.id).fetch(`https://capability/${authorizing ? "authorize" : recovering ? "recover" : "begin"}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: parsed.token, target: target.toString(), method, key_hash: keyHash, request_digest: digest, units, operation: body.operation, operation_context: operationContext }),
+    body: JSON.stringify({ token: parsed.token, target: target.toString(), method, key_hash: keyHash, request_digest: digest, units, operation: body.operation, operation_context: operationContext, governance_authorization: body.governance_authorization }),
   });
+  if (authorizing) return begun;
   const cap = await begun.json().catch(() => ({}));
   if (!begun.ok) return json(cap, begun.status);
   if (cap.demo === true) units = 0;
@@ -634,12 +654,31 @@ async function egressFetch(request, env) {
       headers.set("x-xguard-proof-alg", signed.alg);
       headers.set("access-control-expose-headers", "x-xguard-execution-id,x-xguard-egress-state,x-xguard-replay,x-xguard-request-digest,x-xguard-proof,x-xguard-proof-kid,x-xguard-proof-alg,x-xguard-billed-credits,x-xguard-upstream-status");
       const envelope = await encryptResult(env, JSON.stringify({ status: response.status, headers: [...headers], body: b64url(bytes) }));
-      const saved = await capabilityStub(env, parsed.id).fetch("https://capability/complete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key_hash: keyHash, claim_token: cap.claim_token, response_envelope: envelope, state, billed_credits: billedCredits }) });
+      const saved = await capabilityStub(env, parsed.id).fetch("https://capability/complete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key_hash: keyHash, claim_token: cap.claim_token, response_envelope: envelope, state, billed_credits: billedCredits, governance_halt: state !== "completed" || response.status >= 300 }) });
       if (!saved.ok) throw new Error("result_commit_failed");
       return new Response([204, 205, 304].includes(response.status) || method === "HEAD" ? null : bytes, { status: response.status, headers });
     } catch {
+      if (cap.governance) await capabilityStub(env, parsed.id).fetch("https://capability/governance/halt", { method: "POST", body: JSON.stringify({ token: parsed.token }) }).catch(() => {});
       return json({ error: "execution_result_unavailable", execution_id: cap.execution_id, may_have_executed: true, message: "The reserved operation will not be repeated. Retry only the identical request with the same key to retrieve a committed result." }, 503);
     }
+  };
+  // Every operation using this capability, including direct legacy raw egress,
+  // has already passed signed authorization and an atomic capability reservation.
+  if (cap.governance) {
+    try {
+      const daily = await env.EGRESS_METER.get(env.EGRESS_METER.idFromName(`governance-owner:${cap.owner_hash}`)).fetch("https://meter/governance/reserve", {
+        method: "POST", body: JSON.stringify({ execution_id: cap.execution_id, amount: cap.economics.reserved_exposure_usd_micros, limit: cap.governance.daily_cost_limit_usd_micros }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!daily.ok || !(await daily.json()).allowed) return finish(json({ error: "governance_daily_budget_exceeded" }, 412), "failed_before_execution");
+    } catch { return finish(json({ error: "governance_budget_store_unavailable" }, 503), "failed_before_execution"); }
+  }
+  const stillActive = async () => {
+    if (!cap.governance) return true;
+    try {
+      const check = await capabilityStub(env, parsed.id).fetch("https://capability/governance/dispatch", { method: "POST", body: JSON.stringify({ token: parsed.token, key_hash: keyHash, claim_token: cap.claim_token }) });
+      return check.ok;
+    } catch { return false; }
   };
   const dns = cap.demo === true && demoTarget(target.href) ? { ok: true } : await publicDns(target.hostname);
   if (!dns.ok) return finish(json({ error: dns.code }, dns.code === "target_not_public" ? 403 : 503), "failed_before_execution");
@@ -653,6 +692,7 @@ async function egressFetch(request, env) {
   if (!credentialResponse.ok) return finish(json({ error: credential.error || "credential_access_denied" }, credentialResponse.status), "failed_before_execution");
 
   let billingKey;
+  if (!await stillActive()) return finish(json({ error: "governance_halted" }, 423), "failed_before_execution");
   try { billingKey = cap.demo ? null : await decryptSecret(env, cap.billing_envelope); } catch { return finish(json({ error: "billing_key_unavailable" }, 503), "failed_before_execution"); }
   const balance = cap.demo ? { ok: true, credits: 0 } : await billingBalance(env, billingKey);
   if (!balance.ok) return finish(json({ error: balance.status === 404 ? "unknown_xguard_license" : "billing_unavailable" }, balance.status === 404 ? 401 : 503), "failed_before_execution");
@@ -661,6 +701,7 @@ async function egressFetch(request, env) {
   if (!billed.ok) return finish(json({ error: billed.status === 402 ? "insufficient_xguard_credits" : "billing_commit_failed", checkout_url: env.XGUARD_CHECKOUT_URL || null }, billed.status === 402 ? 402 : 503), billed.status === 402 ? "failed_before_execution" : "billing_ambiguous", billed.status === 402 ? 0 : null);
 
   let secret;
+  if (!await stillActive()) return finish(json({ error: "governance_halted_after_billing" }, 423), "failed_before_execution", units);
   try { secret = await decryptSecret(env, credential.envelope); } catch { return finish(json({ error: "credential_decryption_unavailable" }, 503), "failed_before_execution", units); }
   const headers = sanitizeHeaders(Object.fromEntries(outgoing), credential.injection?.header);
   headers.set(credential.injection.header, `${credential.injection.prefix || ""}${secret}`);
@@ -670,6 +711,7 @@ async function egressFetch(request, env) {
 
   const started = Date.now();
   try {
+    if (!await stillActive()) return finish(json({ error: "governance_halted_after_billing" }, 423), "failed_before_execution", units);
     const fetchTarget = cap.demo ? (targetUrl, options) => env.EGRESS_METER.get(env.EGRESS_METER.idFromName(`controlled-demo:${cap.demo_id}`)).fetch("https://meter/demo/provider", options) : fetch;
     const upstream = await fetchTarget(target.toString(), {
       method,
@@ -701,6 +743,11 @@ async function egressFetch(request, env) {
       body: JSON.stringify({ billed_credits: units, latency_ms: Date.now() - started, ambiguous: true }),
     }).catch(() => null);
     return finish(json({ error: "egress_outcome_ambiguous", reason: ["response_too_large", "response_headers_too_large", "credential_reflected_by_upstream"].includes(error.message) ? error.message : "upstream_transport_failed", message: "The authorized attempt was billed. XGuard cannot safely deliver its outcome and will not repeat it.", execution_id: cap.execution_id }, 503), "ambiguous", units);
+  }
+  } catch {
+    await latch();
+    return json({ error: "egress_control_unavailable", may_have_executed: true,
+      message: "Dispatch stopped. Preserve the request and key; use read-only recovery and reconcile uncertain side effects." }, 503);
   }
 }
 
@@ -817,7 +864,7 @@ export class EgressTenantIndex {
 }
 
 export class EgressCapabilityState {
-  constructor(state) { this.state = state; }
+  constructor(state, env) { this.state = state; this.governor = new XGuardAuthorizationGateway(state.storage, env); }
   async alarm() {
     const record = await this.state.storage.get("record");
     const cleanupAt = Date.parse(record?.expires_at || "") + 86400000;
@@ -829,12 +876,49 @@ export class EgressCapabilityState {
     if (path === "/create" && request.method === "POST") {
       if (await this.state.storage.get("record")) return json({ error: "capability_exists" }, 409);
       const record = await request.json();
+      if (!record.demo) {
+        try { record.governance = validateGovernancePolicy(record.governance); }
+        catch (cause) { return json({ error: cause.message }, 400); }
+        record.governance_state = "ACTIVE";
+      }
       await this.state.storage.put("record", record);
       await this.state.storage.setAlarm(Date.parse(record.expires_at) + 86400000);
       return json({ ok: true }, 201);
     }
     const record = await this.state.storage.get("record");
     if (!record) return json({ error: "capability_not_found" }, 404);
+    if (path === "/recover" && request.method === "POST") {
+      const body = await request.json();
+      if (!equalHash(await sha256(body?.token || ""), record.token_hash)) return json({ error: "invalid_capability" }, 403);
+      if (record.revoked || Date.now() >= Date.parse(record.expires_at)) return json({ error: "capability_inactive" }, 403);
+      if (!/^[a-f0-9]{64}$/.test(body.key_hash || "")) return json({ error: "invalid_execution_request" }, 400);
+      const previous = await this.state.storage.get(`execution:${body.key_hash}`);
+      if (!previous) return json({ error: "execution_not_found", executed: false }, 404);
+      if (previous.request_digest !== body.request_digest) return json({ error: "idempotency_request_conflict" }, 409);
+      if (!previous.response_envelope) return json({ error: "execution_outcome_unknown", automatic_reexecution: false }, 409);
+      return json({ replay: true, execution_id: previous.execution_id, response_envelope: previous.response_envelope });
+    }
+    if (path.startsWith("/governance/") && request.method === "POST") {
+      const body = await request.json();
+      if (!equalHash(await sha256(body?.token || ""), record.token_hash)) return json({ error: "invalid_capability" }, 403);
+      if (!record.governance && (record.demo || path === "/governance/dispatch")) return json({ error: "governance_policy_required" }, 412);
+      if (path === "/governance/halt") {
+        await this.governor.halt("authenticated_client_stop");
+        return json({ ok: true, state: "HALTED", remote_side_effects_may_finish: true });
+      }
+      if (path === "/governance/status") return json({ ok: true, state: record.governance_state || "POLICY_REQUIRED", halt_reason: record.halt_reason || null,
+        pending_execution: Boolean(record.pending_execution), revoked: record.revoked, expires_at: record.expires_at });
+      if (path === "/governance/dispatch") {
+        const operation = await this.state.storage.get(`execution:${body.key_hash}`);
+        if (!operation || operation.claim_token !== body.claim_token || operation.state !== "reserved") return json({ error: "execution_claim_invalid" }, 409);
+        const current = await this.state.storage.get("record");
+        if (current.governance_state === "HALTED" || current.revoked || Date.now() >= Date.parse(current.expires_at)) return json({ error: "governance_halted" }, 423);
+        try { if (!evaluateForecast(current.governance, operation.request_digest).allowed) throw new Error("net_value_below_floor"); }
+        catch { await this.governor.halt("forecast_invalid_before_dispatch"); return json({ error: "governance_forecast_invalid" }, 412); }
+        return json({ ok: true });
+      }
+      return json({ error: "not_found" }, 404);
+    }
     if (path === "/revoke" && request.method === "POST") {
       const body = await request.json();
       if (!equalHash(body.owner_hash, record.owner_hash)) return json({ error: "capability_access_denied" }, 403);
@@ -859,40 +943,82 @@ export class EgressCapabilityState {
           current.reserved_credits = Math.max(0, current.reserved_credits - operation.units);
           await txn.put("record", current);
         }
+        const current = await txn.get("record");
+        if (current.governance) {
+          if (current.pending_execution === body.key_hash) current.pending_execution = null;
+          if (body.governance_halt && current.governance_state !== "HALTED") Object.assign(current, { governance_state: "HALTED", halt_reason: "execution_failed_or_uncertain", halted_at: new Date().toISOString() });
+          await txn.put("record", current);
+        }
         result = json({ ok: true });
       });
       return result;
     }
-    if (["/begin", "/preflight"].includes(path) && request.method === "POST") {
+    if (["/begin", "/preflight", "/authorize"].includes(path) && request.method === "POST") {
       const body = await request.json();
-      if (path === "/begin" && (!/^[a-f0-9]{64}$/.test(body.key_hash || "") || !/^[a-f0-9]{64}$/.test(body.request_digest || "")) || !Number.isSafeInteger(body.units) || body.units <= 0) return json({ error: "invalid_execution_request" }, 400);
+      if (path !== "/preflight" && (!/^[a-f0-9]{64}$/.test(body.key_hash || "") || !/^[a-f0-9]{64}$/.test(body.request_digest || "")) || !Number.isSafeInteger(body.units) || body.units <= 0) return json({ error: "invalid_execution_request" }, 400);
       if (!equalHash(await sha256(body?.token || ""), record.token_hash)) return json({ error: "invalid_capability" }, 403);
+      // Authenticate before latching: a stranger cannot stop another workload by
+      // guessing its capability ID or sending an invalid signature without its token.
+      // Persisted pre-migration grants fail closed too. There is no request flag,
+      // header or configuration switch that can opt external execution out.
+      // The server-created demo can only reach its internal read-only fixture.
+      if (!record.governance && !record.demo) {
+        await this.governor.halt("governance_policy_required");
+        return json({ error: "governance_policy_required", state: "HALTED", migration_required: true }, 412);
+      }
+      if (path === "/authorize" && record.demo) return json({ error: "demo_has_no_external_execution" }, 412);
       if (record.demo) body.units = 0;
       const target = record.demo ? demoTarget(body?.target) : safeTarget(body?.target);
       const method = String(body?.method || "GET").toUpperCase();
-      if (!target || target.origin !== record.target_origin || !pathMatches(record.path_prefix, target.pathname) || !record.allowed_methods.includes(method)) return json({ error: "capability_scope_denied" }, 403);
-      if (!operationPolicyAllows(record, body.operation, body.operation_context)) return json({ error: "capability_operation_denied" }, 403);
+      if (!target || target.origin !== record.target_origin || !pathMatches(record.path_prefix, target.pathname) || !record.allowed_methods.includes(method)) { if (record.governance) await this.governor.halt("capability_scope_denied"); return json({ error: "capability_scope_denied" }, 403); }
+      if (!operationPolicyAllows(record, body.operation, body.operation_context)) { if (record.governance) await this.governor.halt("capability_operation_denied"); return json({ error: "capability_operation_denied" }, 403); }
+      let authorization;
+      if (record.governance && path === "/begin") {
+        try { authorization = await this.governor.validate(record, body); }
+        catch (cause) { await this.governor.halt("authorization_invalid_or_unavailable"); return json({ error: cause.message, state: "HALTED" }, 403); }
+      }
       let result;
       await this.state.storage.transaction(async txn => {
         const current = await txn.get("record");
         if (current.revoked) { result = { status: 403, body: { error: "capability_revoked" } }; return; }
         if (Date.now() >= Date.parse(current.expires_at)) { result = { status: 410, body: { error: "capability_expired" } }; return; }
-        if (path === "/preflight") {
+        if (path === "/preflight" || path === "/authorize") {
+          if (current.governance_state === "HALTED") { result = { status: 423, body: { error: "governance_halted" } }; return; }
+          let economics;
+          if (path === "/authorize") {
+            try { economics = evaluateForecast(current.governance, body.request_digest); }
+            catch (cause) { result = { status: 412, body: { error: cause.message } }; return; }
+            if (!economics.allowed) { result = { status: 412, body: { error: "net_expected_value_below_floor", economics } }; return; }
+          }
           const remaining = Math.max(0, current.max_total_credits - (current.reserved_credits || 0));
           const allowed = current.used_calls < current.max_calls && body.units <= current.max_credits_per_call && remaining >= body.units;
           result = { status: allowed ? 200 : 402, body: { ok: allowed, ...(allowed ? {} : { error: "capability_budget_exceeded" }), policy_allowed: allowed,
             reserved: false, executed: false, billing_committed: false, billing_balance_checked: false, credits_per_attempt: body.units,
             remaining_calls: Math.max(0, current.max_calls - current.used_calls), remaining_credits: remaining, expires_at: current.expires_at,
+            ...(economics ? { economics } : {}), strict_governance: Boolean(current.governance),
             note: "Advisory snapshot; execution rechecks authorization, scope, budget, balance and idempotency atomically." } };
           return;
         }
         const operationKey = `execution:${body.key_hash}`;
         const existing = await txn.get(operationKey);
         if (existing) {
-          if (existing.request_digest !== body.request_digest) { result = { status: 409, body: { error: "idempotency_request_conflict", execution_id: existing.execution_id } }; return; }
+          if (existing.request_digest !== body.request_digest) {
+            if (current.governance) await txn.put("record", { ...current, governance_state: "HALTED", halt_reason: "idempotency_request_conflict", halted_at: new Date().toISOString() });
+            result = { status: 409, body: { error: "idempotency_request_conflict", execution_id: existing.execution_id } }; return;
+          }
           if (existing.response_envelope) { result = { status: 200, body: { replay: true, execution_id: existing.execution_id, response_envelope: existing.response_envelope } }; return; }
           result = { status: 409, body: { error: Date.now() - Date.parse(existing.created_at) > 60000 ? "execution_outcome_unknown" : "execution_in_progress", execution_id: existing.execution_id, retry_with_same_key_only: true, automatic_reexecution: false } };
           return;
+        }
+        let economics;
+        if (current.governance) {
+          if (current.governance_state === "HALTED") { result = { status: 423, body: { error: "governance_halted" } }; return; }
+          if (Date.now() >= authorization.exp) { result = { status: 412, body: { error: "governance_authorization_expired" } }; return; }
+          if (current.pending_execution) { result = { status: 409, body: { error: "governance_execution_pending", automatic_reexecution: false } }; return; }
+          try { economics = evaluateForecast(current.governance, body.request_digest); }
+          catch (cause) { result = { status: 412, body: { error: cause.message } }; return; }
+          if (!economics.allowed) { result = { status: 412, body: { error: "net_expected_value_below_floor", economics } }; return; }
+          current.pending_execution = body.key_hash;
         }
         if (current.used_calls >= current.max_calls) { result = { status: 409, body: { error: "capability_exhausted" } }; return; }
         const reserved = current.reserved_credits ?? current.used_calls * DEFAULT_CREDITS;
@@ -905,8 +1031,12 @@ export class EgressCapabilityState {
         current.last_used_at = new Date().toISOString();
         await txn.put("record", current);
         await txn.put(operationKey, operation);
-        result = { status: 200, body: { credential_id: current.credential_id, owner_hash: current.owner_hash, billing_envelope: current.billing_envelope, execution_id: operation.execution_id, claim_token: operation.claim_token, used_calls: current.used_calls, max_calls: current.max_calls, ...(current.demo ? { demo: true, demo_id: current.demo_id } : {}) } };
+        result = { status: 200, body: { credential_id: current.credential_id, owner_hash: current.owner_hash, billing_envelope: current.billing_envelope, execution_id: operation.execution_id, claim_token: operation.claim_token, used_calls: current.used_calls, max_calls: current.max_calls, ...(current.governance ? { governance: current.governance, economics } : {}), ...(current.demo ? { demo: true, demo_id: current.demo_id } : {}) } };
       });
+      if (path === "/authorize" && result.status === 200) {
+        try { return json(await this.governor.authorize(record, body, result.body.economics)); }
+        catch { await this.governor.halt("governance_signing_unavailable"); return json({ error: "governance_signing_unavailable", state: "HALTED" }, 503); }
+      }
       return json(result.body, result.status);
     }
     return json({ error: "not_found" }, 404);
@@ -918,6 +1048,10 @@ export class EgressMeter {
   async alarm() { if (await this.state.storage.get("controlled-demo")) await this.state.storage.deleteAll(); }
   async fetch(request) {
     const path = new URL(request.url).pathname;
+    if (path === "/governance/reserve" && request.method === "POST") {
+      try { const value = await reserveDailyExposure(this.state.storage, await request.json()); return json(value, value.allowed ? 200 : 412); }
+      catch { return json({ error: "governance_budget_store_unavailable" }, 503); }
+    }
     if (path === "/operator/issued" && request.method === "POST") {
       const body = await request.json();
       if (!/^[a-f0-9]{32}$/.test(body.id || "") || !/^[a-f0-9]{64}$/.test(body.owner_hash || "") || !Number.isFinite(Date.parse(body.expires_at))) return json({ error: "invalid_registry_record" }, 400);
@@ -1045,7 +1179,14 @@ export default {
       if (response.ok) await registryStub(env).fetch("https://meter/operator/revoked", { method: "POST", body: JSON.stringify({ id }) });
       return response;
     }
-    if (path === "/v1/egress/fetch" && request.method === "POST") return egressFetch(request, env);
+    if (["/v1/egress/fetch", "/v1/egress/authorize", "/v1/egress/recover"].includes(path) && request.method === "POST") return egressFetch(request, env);
+    if (["/v1/egress/halt", "/v1/egress/governance-status"].includes(path) && request.method === "POST") {
+      let body;
+      try { body = JSON.parse(dec.decode(await readBoundedBody(request.body, 8192))); } catch { return json({ error: "invalid_json" }, 400); }
+      const parsed = parseCapabilityToken(body.capability);
+      if (!parsed) return json({ error: "valid_xguard_capability_required" }, 401);
+      return capabilityStub(env, parsed.id).fetch(`https://capability/governance/${path.endsWith("/halt") ? "halt" : "status"}`, { method: "POST", body: JSON.stringify({ token: parsed.token }) });
+    }
     if (path === "/v1/egress/pricing" && request.method === "GET") return json({ credits_per_authorized_egress_attempt: egressCredits(env), billing_boundary: "XGuard Usage Credits are consumed before credential release and before outbound network egress.", failed_billing: "no upstream request is sent", upstream_failure_after_billing: "the egress attempt remains billed; XGuard never auto-replays an ambiguous attempt", checkout_url: env.XGUARD_CHECKOUT_URL || null });
     if (path === "/v1/egress/stats" && request.method === "GET") return meterStub(env).fetch("https://meter/stats");
     return null;

@@ -6,7 +6,7 @@ XGuard's focused outcome is a protected external action: an agent can use an ope
 
 1. Purchase XGuard Usage Credits through the existing checkout.
 2. Provision an upstream credential at `POST /v1/egress/credentials` using the operator's `X-XGuard-Key`. Restrict its origin, paths and methods.
-3. Issue a short-lived capability at `POST /v1/egress/capabilities`. Set `max_calls`, `max_credits_per_call` and `max_total_credits`; pass only the resulting capability to the agent.
+3. Issue a short-lived capability at `POST /v1/egress/capabilities`. Set `max_calls`, `max_credits_per_call`, `max_total_credits` and the required [governance policy](strict-governance.md); pass only the resulting capability to the agent. Legacy ungoverned grants are refused.
 4. Keep the returned `capability_id` to revoke it with `DELETE /v1/egress/capabilities/{capability_id}` and the same operator key.
 
 The operator must own an authorized vendor account. XGuard is not a marketplace of pooled provider accounts, and the vendor's API request and response schemas still apply. Gateway credits do not include or limit the vendor's own fees. Existing provider policy templates are not resale agreements or measured provider availability.
@@ -17,14 +17,14 @@ The operator must own an authorized vendor account. XGuard is not a marketplace 
 import { createXGuardAgentClient } from "xguard-x402-control-plane";
 
 const agent = createXGuardAgentClient(process.env.XGUARD_CAPABILITY);
-const response = await agent.fetch(
-  "https://api.github.com/repos/your-org/your-repo/issues",
-  {
-    method: "POST",
-    idempotencyKey: "support-escalation-case-123-v1",
-    json: { title: "Investigate customer case 123" },
-  },
-);
+const target = "https://api.github.com/repos/your-org/your-repo/issues";
+const request = {
+  method: "POST",
+  idempotencyKey: "support-escalation-case-123-v1",
+  json: { title: "Investigate customer case 123" },
+};
+const approval = await agent.authorize(target, request);
+const response = await agent.fetch(target, { ...request, governanceAuthorization: approval.authorization });
 const executionId = response.headers.get("x-xguard-execution-id");
 const proof = response.headers.get("x-xguard-proof");
 const result = await response.json();
@@ -36,17 +36,17 @@ Provision a suitably scoped GitHub credential before running this example. The a
 
 | Situation | Behavior |
 | --- | --- |
-| POST, PUT, PATCH or DELETE without a key | HTTP 400 before billing or upstream execution |
+| Any method without a stable key | HTTP 400 before billing or upstream execution |
 | Same capability, key and exact request | Stored HTTP status, body and signed proof; `X-XGuard-Replay: true`; no new charge or upstream request |
-| Same key, changed URL/query, method, headers or serialized body | HTTP 409 `idempotency_request_conflict` |
-| Concurrent copy while the first attempt is active | HTTP 409 `execution_in_progress`; poll with the same key |
+| Same key, changed URL/query, method, headers or serialized body | Refused with HTTP 403/409 and durable halt |
+| Concurrent copy while the first attempt is active | HTTP 409 `execution_in_progress`; inspect through read-only recovery with the same key |
 | Reserved attempt with no recoverable result | HTTP 409 `execution_outcome_unknown`; never automatically execute it again |
-| Transport timeout, blocked reflected secret, or oversized response after billing | Stored ambiguous result; no automatic reexecution or cash refund |
+| Transport timeout, blocked reflected secret, or oversized response after billing | Durable halt and stored ambiguous result; no automatic reexecution or cash refund |
 | Price exceeds per-call or remaining capability budget | HTTP 402 before billing and credential release |
 | Revoked or expired capability | Stored-result access and new attempts are denied; already authorized in-flight work may finish |
-| Known pre-billing failure | Credit reservation is released; the attempted call still counts toward `max_calls` |
+| Known pre-billing failure | Gateway-credit reservation is released; forecast exposure is retained, the attempted call still counts, and the workload halts |
 
-Use the same business key for a retry. Keys are 8–128 ASCII letters, digits, underscores, colons, periods or hyphens. REST also accepts `Idempotency-Key`; conflicting header/body keys fail. GET and HEAD require an explicit key if the caller wants replay protection. A new key means a new authorized attempt. Never generate a new key automatically to escape an ambiguous outcome.
+Use the same business key for a retry. Keys are 8–128 ASCII letters, digits, underscores, colons, periods or hyphens. REST also accepts `Idempotency-Key`; conflicting header/body keys fail. GET and HEAD also require an explicit key for the signed ticket. A new key is a different business operation and requires its own authorization. Never generate a new key automatically to escape an ambiguous outcome.
 
 The guarantee is at most one XGuard upstream attempt per capability and key. It is not a universal distributed exactly-once guarantee. If an upstream service performs an action but its response is lost, XGuard cannot prove whether that action completed. Provider idempotency support is additional protection, not an assumed capability.
 

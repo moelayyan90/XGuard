@@ -9,7 +9,7 @@ export interface Env {
 }
 
 export class XGuardPaidMCP extends McpAgent<Env> {
-  server = new McpServer({ name: "xguard-paid-mcp", version: "5.2.0" });
+  server = new McpServer({ name: "xguard-paid-mcp", version: "6.0.0" });
 
   async init() {
     const licenseKey = this.env.XGUARD_LICENSE_KEY?.trim();

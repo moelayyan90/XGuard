@@ -72,7 +72,7 @@ jobs:
           const market = read('.github/plugin/marketplace.json');
           if (market.name !== 'xguard-plugins') throw new Error('invalid Copilot marketplace manifest');
           const connect = fs.readFileSync('CONNECT.md', 'utf8');
-          for (const expected of ['XGuard — Agent Execution Gateway','claude mcp add xguard --transport http https://api.xguardgate.com/mcp','xguard.web.fetch','xguard_egress_fetch','signed prices']) if (!connect.includes(expected)) throw new Error(`CONNECT.md missing ${expected}`);
+          for (const expected of ['XGuard — Governed API Gateway','claude mcp add xguard --transport http https://api.xguardgate.com/mcp','xguard.web.fetch','xguard_egress_fetch','signed prices']) if (!connect.includes(expected)) throw new Error(`CONNECT.md missing ${expected}`);
           NODE
 
       - name: Install candidate dependencies

@@ -1,6 +1,6 @@
 {
   "name": "xguard-edge-gate",
-  "version": "5.2.0",
+  "version": "6.0.0",
   "private": true,
   "type": "module",
   "description": "Transparent x402 payment-gated reverse proxy using XGuard as the facilitator control plane.",

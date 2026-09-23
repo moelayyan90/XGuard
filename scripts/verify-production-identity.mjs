@@ -1,7 +1,7 @@
 const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";
-const VERSION = "5.2.0";
-const NAME = "XGuard — Agent Execution Gateway";
+const VERSION = "6.0.0";
+const NAME = "XGuard — Governed API Gateway";
 const DEPLOYMENT = process.env.DEPLOY_SHA || process.env.GITHUB_SHA || String(Date.now());
 
 function freshDiscoveryUrl(url) {
@@ -15,7 +15,7 @@ function fail(message) { throw new Error(message); }
 async function getJson(url, options = {}) {
   const requestHeaders = new Headers(options.headers || {});
   requestHeaders.set("x-xguard-traffic-class", "synthetic");
-  requestHeaders.set("user-agent", "xguard-production-verifier/5.2.0");
+  requestHeaders.set("user-agent", "xguard-production-verifier/6.0.0");
   requestHeaders.set("cache-control", "no-cache");
   const requestUrl = ["GET", "HEAD"].includes(options.method || "GET") ? freshDiscoveryUrl(url) : url;
   const response = await fetch(requestUrl, { signal: AbortSignal.timeout(12_000), ...options, headers: requestHeaders });
@@ -24,7 +24,7 @@ async function getJson(url, options = {}) {
 }
 
 const root = await getJson(`${API}/`);
-if (root.body.name !== NAME || root.body.version !== VERSION || root.body.primary_product !== "Paid API Gateway") fail("API root has stale canonical identity");
+if (root.body.name !== NAME || root.body.version !== VERSION || root.body.primary_product !== "Governed API Gateway") fail("API root has stale canonical identity");
 if (root.response.headers.get("x-xguard-version") !== VERSION) fail("API root has stale version header");
 
 const openapi = await getJson(`${API}/openapi.json`);
@@ -41,7 +41,7 @@ if (!outcomeOperation["x-payment-info"]?.protocols?.some(protocol => protocol.x4
   || !outcomeOperation.requestBody.content["application/json"].schema?.anyOf?.length) fail("OpenAPI does not expose paid outcome discovery and required intent examples");
 
 const plugin = await getJson(`${API}/.well-known/ai-plugin.json`);
-if (plugin.body.name_for_human !== NAME || plugin.body.xguard?.product_version !== VERSION || plugin.body.xguard?.primary_product !== "Paid API Gateway") fail("AI plugin has stale product taxonomy");
+if (plugin.body.name_for_human !== NAME || plugin.body.xguard?.product_version !== VERSION || plugin.body.xguard?.primary_product !== "Governed API Gateway") fail("AI plugin has stale product taxonomy");
 if (plugin.body.xguard?.component_versions?.x402 !== VERSION) fail("AI plugin has a stale x402 component version");
 
 const agent = await getJson(`${API}/.well-known/agent-card.json`);
@@ -104,7 +104,7 @@ if (paymentReadiness.body.production?.environment !== "production" || paymentRea
 
 const direct = await fetch(`${API}/v1/tools/web.fetch`, {
   method: "POST",
-  headers: { "content-type": "application/json", "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-production-verifier/5.2.0" },
+  headers: { "content-type": "application/json", "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-production-verifier/6.0.0" },
   body: JSON.stringify({ url: "https://example.com/" }),
   signal: AbortSignal.timeout(12_000),
 });
@@ -112,10 +112,10 @@ const directBody = await direct.json();
 if (direct.status !== 402 || !direct.headers.get("payment-required") || !direct.headers.get("x-xguard-quote")) fail("Direct paid call did not create an actionable 402");
 if (directBody.accepts?.[0]?.network !== "eip155:8453" || directBody.extensions?.xguard?.quote !== direct.headers.get("x-xguard-quote") || directBody.extensions?.xguard?.next?.action !== "sign_and_retry") fail("Direct paid 402 is incomplete or inconsistent");
 
-const syntheticHeaders = { "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-production-verifier/5.2.0" };
+const syntheticHeaders = { "x-xguard-traffic-class": "synthetic", "user-agent": "xguard-production-verifier/6.0.0" };
 const home = await fetch(freshDiscoveryUrl(`${SITE}/`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const homeText = await home.text();
-if (!home.ok || !homeText.includes("Turn any API into a paid API for AI agents") || !homeText.includes("MONETIZE MY API") || home.headers.get("x-xguard-version") !== VERSION) fail("Homepage has stale identity");
+if (!home.ok || !homeText.includes("Control agent access.") || !homeText.includes("MONETIZE MY API") || home.headers.get("x-xguard-version") !== VERSION) fail("Homepage has stale identity");
 const tryPage = await fetch(freshDiscoveryUrl(`${SITE}/try`), { headers: syntheticHeaders, signal: AbortSignal.timeout(12_000) });
 const tryText = await tryPage.text();
 if (!tryPage.ok || !tryText.includes("Run free extraction") || !tryText.includes("/v1/execute")) fail("Live try page is missing the one-call payment path");

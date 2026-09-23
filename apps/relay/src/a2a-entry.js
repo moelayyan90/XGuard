@@ -10,7 +10,7 @@ const A2A_SUPPORTED_VERSIONS = new Set(["1.0", "1.0.0"]);
 const A2A_ENDPOINT = `${API}/a2a`;
 
 const AGENT_CARD = {
-  name: "XGuard — Agent Execution Gateway",
+  name: "XGuard — Governed API Gateway",
   description: "Call one guarded public or secretless tool without an XGuard account. A direct paid call returns its signed x402 quote and PaymentRequired instructions automatically; XGuard settles before execution and returns a signed receipt plus ProofRail evidence.",
   supportedInterfaces: [
     {
@@ -109,7 +109,7 @@ const AGENT_CARD = {
 };
 
 const PUBLIC_DISCOVERY = {
-  name: "XGuard — Agent Execution Gateway",
+  name: "XGuard — Governed API Gateway",
   version: VERSION,
   website: SITE,
   api: API,
