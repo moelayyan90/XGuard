@@ -1,3 +1,5 @@
+> Historical build record. Current product identity and strict-mode behavior are defined in [CANONICAL_IDENTITY.md](../CANONICAL_IDENTITY.md) and [strict-governance.md](strict-governance.md).
+
 # Agent Execution Gateway 5.2.0 — release audit
 
 ## Production acceptance update — 2026-09-20

@@ -352,7 +352,7 @@ test("FLOW 5: wrong amount/network/asset/recipient/intent and replayed authoriza
 test("FLOW 6: public capability pages, OpenAPI, MCP and A2A are linked to the same live outcomes", async t => {
   const h = await harness(t);
   const home = await h.request("/", undefined, { "x-test-site": "site" }); const html = await home.text();
-  assert.match(html, /Turn any API into a paid API for AI agents/); assert.match(html, /MONETIZE MY API/);
+  assert.match(html, /Control agent access./); assert.match(html, /MONETIZE MY API/);
   const catalog = await (await h.request("/v1/capabilities")).json();
   for (const item of catalog.capabilities) { const page = await h.request(new URL(item.url).pathname, undefined, { "x-test-site": "site" }); assert.equal(page.status, 200); const text = await page.text(); assert.match(text, /rel="canonical"/); assert.ok(text.includes(item.id)); }
   const text = await (await h.request("/agent.txt")).text(); assert.match(text, /X-XGuard-Quote/);

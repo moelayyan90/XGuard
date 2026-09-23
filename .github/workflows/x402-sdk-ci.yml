@@ -42,7 +42,7 @@ jobs:
           node <<'NODE'
           const p = require('./package.json');
           if (p.name !== 'xguard-x402-control-plane') throw new Error('wrong package name');
-          if (p.version !== '5.2.0') throw new Error('package version must match XGuard 5.2.0');
+          if (p.version !== '6.0.0') throw new Error('package version must match XGuard 6.0.0');
           if (p.license !== 'Apache-2.0') throw new Error('package license must match LICENSE');
           if (!String(p.peerDependencies?.['@x402/core'] || '').includes('<3')) throw new Error('x402 v2 peer range missing');
           NODE
@@ -78,7 +78,7 @@ jobs:
           } from 'xguard-x402-control-plane';
 
           if (XGUARD_FACILITATOR_URL !== 'https://api.xguardgate.com') throw new Error('bad canonical URL');
-          if (XGUARD_VERSION !== '5.2.0') throw new Error('bad SDK version');
+          if (XGUARD_VERSION !== '6.0.0') throw new Error('bad SDK version');
           if (!facilitator || typeof facilitator !== 'object') throw new Error('drop-in facilitator missing');
           if (!createXGuardFacilitator() || !createXGuardResourceServer()) throw new Error('constructors failed');
 

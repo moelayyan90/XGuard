@@ -1,5 +1,5 @@
-const VERSION = "5.2.0";
-const X402_COMPONENT_VERSION = "5.2.0";
+const VERSION = "6.0.0";
+const X402_COMPONENT_VERSION = "6.0.0";
 const API = "https://api.xguardgate.com";
 const SITE = "https://xguardgate.com";
 const HSTS = "max-age=31536000; includeSubDomains";
@@ -56,7 +56,7 @@ function egressContract() {
 
 function architecture() {
   return {
-    name: "XGuard — Agent Execution Gateway",
+    name: "XGuard — Governed API Gateway",
     version: VERSION,
     product_version: VERSION,
     primary_role: "paid tool and credential broker with controlled egress for AI agents",
@@ -82,7 +82,7 @@ function architecture() {
 
 function protocolManifest() {
   return {
-    name: "XGuard — Agent Execution Gateway",
+    name: "XGuard — Governed API Gateway",
     version: VERSION,
     product_version: VERSION,
     primary_role: "paid tool and credential broker with controlled egress for AI agents",
@@ -108,14 +108,14 @@ function protocolManifest() {
 function aiPluginManifest() {
   return {
     schema_version: "v1",
-    name_for_human: "XGuard — Agent Execution Gateway",
+    name_for_human: "XGuard — Governed API Gateway",
     name_for_model: "xguard_paid_secretless_gateway",
     description_for_human: "Discover tools, see signed prices, pay per request through x402 USDC, and keep reusable upstream credentials outside agent context.",
     description_for_model: "Call xguard.web.fetch directly with a public HTTPS URL. XGuard returns an input-bound signed quote and x402 Payment-Required automatically, then settles before execution and returns a signed receipt plus ProofRail. Free capabilities, preflight and standalone quote remain optional. Search, inference, routing and data connectors are disabled unless live capabilities say otherwise. Secretless Egress separately injects operator-managed credentials server-side.",
     auth: { type: "service_http", authorization_type: "Operator management uses X-XGuard-Key; agent egress uses a scoped xgc_ capability" },
     api: { type: "openapi", url: `${API}/openapi.json`, is_user_authenticated: true },
     logo_url: `${SITE}/logo.svg`, contact_email: "mo.elayyan2023@gmail.com", legal_info_url: "https://github.com/moelayyan90/XGuard",
-    xguard: { version: VERSION, product_version: VERSION, primary_product: "Agent Execution Gateway", component_versions: { x402: X402_COMPONENT_VERSION }, capabilities: `${API}/v1/capabilities`, pricing: `${API}/v1/pricing`, payment_manifest: `${API}/.well-known/payment-manifest`, egress_manifest: `${API}/.well-known/xguard-egress.json`, action_manifest: `${API}/.well-known/xguard-actions.json`, mcp_url: `${API}/mcp`, facilitator_url: API, custody: "none" },
+    xguard: { version: VERSION, product_version: VERSION, primary_product: "Governed API Gateway", component_versions: { x402: X402_COMPONENT_VERSION }, capabilities: `${API}/v1/capabilities`, pricing: `${API}/v1/pricing`, payment_manifest: `${API}/.well-known/payment-manifest`, egress_manifest: `${API}/.well-known/xguard-egress.json`, action_manifest: `${API}/.well-known/xguard-actions.json`, mcp_url: `${API}/mcp`, facilitator_url: API, custody: "none" },
   };
 }
 

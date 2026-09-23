@@ -47,7 +47,7 @@ jobs:
             const marker = '<!-- xguard-monitor:execution-v1 -->';
             const labels = [
               ['production-incident', 'b60205', 'Observed current production failure'],
-              ['production-release', '0e8a16', 'Current Agent Execution Gateway release'],
+              ['production-release', '0e8a16', 'Current Governed API Gateway release'],
               ['distribution', '1d76db', 'Registry metadata and discovery'],
               ['legacy-identity', 'ededed', 'Historical product identity; retained as evidence'],
               ['design-partner', '5319e7', 'Small scoped integration proposal; not adoption']
@@ -56,7 +56,7 @@ jobs:
               try { await github.rest.issues.createLabel({ ...repo, name, color, description }); }
               catch (error) { if (error.status !== 422) throw error; }
             }
-            const title = 'Agent Execution Gateway 5.2 production acceptance';
+            const title = 'Governed API Gateway 5.2 production acceptance';
             const milestones = await github.paginate(github.rest.issues.listMilestones, { ...repo, state: 'all', per_page: 100 });
             let milestone = milestones.find(x => x.title === title);
             if (!milestone) milestone = (await github.rest.issues.createMilestone({ ...repo, title, description: 'Actual deployment, secure execution, settlement recovery, truthful observability and external acceptance. Passing synthetic probes alone does not establish paid or vendor acceptance.' })).data;

@@ -38,18 +38,18 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/moelayyan90/XGuard
             org.opencontainers.image.title=XGuard Universal Gate
-            org.opencontainers.image.version=5.2.0
+            org.opencontainers.image.version=6.0.0
           tags: |
-            ghcr.io/moelayyan90/xguard-gate:5.2.0
+            ghcr.io/moelayyan90/xguard-gate:6.0.0
             ghcr.io/moelayyan90/xguard-gate:latest
       - name: Verify anonymous pull and smoke-test immutable image
         shell: bash
         run: |
           set -euo pipefail
           docker logout ghcr.io >/dev/null 2>&1 || true
-          docker image rm ghcr.io/moelayyan90/xguard-gate:5.2.0 >/dev/null 2>&1 || true
-          docker pull ghcr.io/moelayyan90/xguard-gate:5.2.0
-          docker run -d --rm --name xguard-gate-release -p 18080:8080 ghcr.io/moelayyan90/xguard-gate:5.2.0
+          docker image rm ghcr.io/moelayyan90/xguard-gate:6.0.0 >/dev/null 2>&1 || true
+          docker pull ghcr.io/moelayyan90/xguard-gate:6.0.0
+          docker run -d --rm --name xguard-gate-release -p 18080:8080 ghcr.io/moelayyan90/xguard-gate:6.0.0
           trap 'docker stop xguard-gate-release >/dev/null 2>&1 || true' EXIT
           for i in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:18080/__xguard/health > /tmp/health.json; then
@@ -60,6 +60,6 @@ jobs:
           node -e '
             const fs = require("fs");
             const x = JSON.parse(fs.readFileSync("/tmp/health.json", "utf8"));
-            if (x.version !== "5.2.0") process.exit(1);
+            if (x.version !== "6.0.0") process.exit(1);
             if (x.facilitator !== "https://api.xguardgate.com") process.exit(1);
           '

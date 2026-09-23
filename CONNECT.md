@@ -1,6 +1,6 @@
-# Connect XGuard 5.2.0
+# Connect XGuard 6.0.0
 
-XGuard — Agent Execution Gateway. Give agents capabilities, not reusable credentials.
+XGuard — Governed API Gateway. Give agents capabilities, not reusable credentials.
 
 Discovery is public and stateless. The primary tools are `xguard_execute`,
 `xguard_secretless_call`, `xguard_preflight`, `xguard_quote`,
@@ -50,7 +50,7 @@ Configure a remote Streamable HTTP MCP server named `xguard` with URL `https://a
 These older tools remain explicitly callable; they are not in the default catalog.
 
 - Any agent can call `xguard.capabilities` and the free `xguard.preflight` guard, request `xguard.pricing.quote`, then invoke `xguard.web.fetch` after the mandatory x402 settlement.
-- Operators create encrypted credential records with `POST /v1/egress/credentials` and scoped capabilities with `POST /v1/egress/capabilities`.
+- Operators create encrypted credential records with `POST /v1/egress/credentials` and scoped capabilities with a required `governance` policy at `POST /v1/egress/capabilities`. Before every external operation, obtain a signed ticket from `/v1/secretless/authorize` (or `/v1/egress/authorize` for raw requests) and include it as `governance_authorization`. Legacy grants without the policy are refused.
 - Credential provisioning is intentionally not an MCP tool.
 - Agents call `POST /v1/egress/fetch` or MCP tool `xguard_egress_fetch` with a scoped capability, never the reusable upstream credential.
 

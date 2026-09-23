@@ -42,7 +42,7 @@ jobs:
           const manifest = require('./server.json');
           if (manifest.$schema !== 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json') throw new Error('unexpected MCP schema');
           if (manifest.name !== 'io.github.moelayyan90/xguard-control-plane') throw new Error('unexpected MCP registry name');
-          if (manifest.version !== '5.2.0') throw new Error('unexpected MCP version');
+          if (manifest.version !== '6.0.0') throw new Error('unexpected MCP version');
           if (manifest.remotes?.length !== 1 || manifest.remotes[0]?.type !== 'streamable-http' || manifest.remotes[0]?.url !== 'https://api.xguardgate.com/mcp') throw new Error('unexpected MCP remote');
           NODE
 

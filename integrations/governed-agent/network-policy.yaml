@@ -1,0 +1,22 @@
+# Template only. Requires an enforcing CNI and a separately provisioned trusted
+# HTTPS enforcement proxy. No proxy, DNS permission or workload is created here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: xguard-agent-egress-only
+  namespace: xguard-agents
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: xguard-system
+          podSelector:
+            matchLabels:
+              app: xguard-enforcement-proxy
+      ports:
+        - protocol: TCP
+          port: 8443

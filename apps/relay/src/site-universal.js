@@ -1,7 +1,7 @@
 import gateway from "./gateway.js";
 
 const API = "https://api.xguardgate.com";
-const VERSION = "5.2.0";
+const VERSION = "6.0.0";
 const CHECKOUT = "https://lfsystems.lemonsqueezy.com/checkout/buy/f4c81819-1b10-4f1d-995d-46206a889dab";
 
 function esc(value) {

@@ -32,3 +32,17 @@ test('preflight and proof verification use their separate contracts', async () =
   assert.equal(observed[0][0], '/v1/preflight'); assert.equal(observed[0][1].capability, capability);
   assert.equal(observed[1][0], '/v1/receipts/verify'); assert.equal(observed[1][1].capability, undefined);
 });
+
+test('authorization and execution preserve the exact operation and business key', async () => {
+  const observed = [];
+  const client = createExecutionClient({ capability, fetch: async (url, init) => {
+    assert.equal(init.redirect, 'manual');
+    observed.push([url.pathname, JSON.parse(init.body)]);
+    return Response.json({ ok: true, authorization: 'fixture-signed-ticket' });
+  } });
+  const approval = await client.authorize(request);
+  await client.execute({ ...request, governanceAuthorization: approval.authorization });
+  assert.equal(observed[0][0], '/v1/secretless/authorize');
+  assert.equal(observed[1][0], '/v1/secretless/call');
+  assert.deepEqual(observed[1][1], { ...observed[0][1], governance_authorization: 'fixture-signed-ticket' });
+});

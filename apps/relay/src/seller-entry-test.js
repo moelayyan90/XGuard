@@ -163,8 +163,8 @@ test('Paid API SDK reads bodyless HEAD challenges from Payment-Required', async 
 test('Seller form executes registration and service creation with exact decimal price and no browser secret storage', async () => {
   const env = environment();
   const page = await app.fetch(new Request('https://xguardgate.com/sellers'), env, {}); const html = await page.text();
-  assert.equal(page.headers.get('x-xguard-version'), '5.2.0');
-  assert.equal(page.headers.get('x-xguard-primary-product'), 'paid-api-gateway');
+  assert.equal(page.headers.get('x-xguard-version'), '6.0.0');
+  assert.equal(page.headers.get('x-xguard-primary-product'), 'governed-api-gateway');
   assert.match(page.headers.get('strict-transport-security'), /max-age=/);
   const { document } = parseHTML(html);
   assert.equal(document.querySelector('link[rel="canonical"]').getAttribute('href'), 'https://xguardgate.com/sellers');

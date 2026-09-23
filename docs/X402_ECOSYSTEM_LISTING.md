@@ -1,13 +1,13 @@
 # XGuard x402 ecosystem listing packet
 
-This file is the canonical copy/paste packet for the x402 compatibility component in external facilitator directories and routing libraries. The parent product is **XGuard — Agent Execution Gateway v5.2.0**, whose primary product is **Agent Execution Gateway**. The x402 component remains independently versioned at **5.2.0** and must not replace the parent product identity on general XGuard surfaces.
+This file is the canonical copy/paste packet for the x402 compatibility component in external facilitator directories and routing libraries. The parent product is **XGuard — Governed API Gateway v6.0.0**, whose primary product is **Governed API Gateway**. The x402 component remains independently versioned at **6.0.0** and must not replace the parent product identity on general XGuard surfaces.
 
 ## Provider
 
 - Name: XGuard
 - Product name: XGuard x402 Routing Surface
-- Surface role: x402 compatibility component of XGuard — Agent Execution Gateway
-- Component version: 5.2.0
+- Surface role: x402 compatibility component of XGuard — Governed API Gateway
+- Component version: 6.0.0
 - Facilitator URL: `https://api.xguardgate.com`
 - Website: `https://xguardgate.com`
 - Repository: `https://github.com/moelayyan90/XGuard`

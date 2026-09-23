@@ -4,14 +4,14 @@
     "name": "XGuard"
   },
   "metadata": {
-    "description": "XGuard — Agent Execution Gateway. Give agents capabilities, not reusable credentials.",
-    "version": "5.2.0"
+    "description": "XGuard — Governed API Gateway. Give agents capabilities, not reusable credentials.",
+    "version": "6.0.0"
   },
   "plugins": [
     {
       "name": "xguard",
       "description": "Connect agents to scoped Secretless execution through the canonical XGuard MCP endpoint.",
-      "version": "5.2.0",
+      "version": "6.0.0",
       "source": "."
     }
   ]

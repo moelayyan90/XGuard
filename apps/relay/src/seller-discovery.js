@@ -1,3 +1,5 @@
+import { PRODUCT, DESCRIPTION } from './core/identity.js';
+import { describeGovernance } from './governance-openapi.js';
 export const PAID_API_DISCOVERY = {
   product: 'Paid API Gateway',
   description: 'Turn any API into a paid API for AI agents. Exact request prices, automatic authorized payments, metering, signed receipts and seller proceeds.',
@@ -13,11 +15,11 @@ export async function decorateSellerDiscovery(request, response) {
   if (request.method !== 'GET' || !response.ok || !response.headers.get('content-type')?.includes('json') || !['/', '/openapi.json', '/a2a', '/mcp', '/v1/capabilities', '/.well-known/agent-card.json', '/.well-known/agent.json', '/.well-known/mcp/server-card.json', '/.well-known/xguard-tools.json', '/.well-known/payment-manifest', '/.well-known/payment-manifest.json', '/.well-known/x402', '/.well-known/x402.json'].includes(path)) return response;
   const body = await response.json();
   body[path === '/openapi.json' ? 'x-paid-api-gateway' : 'paid_api_gateway'] = PAID_API_DISCOVERY;
-  if (path === '/' || path === '/v1/capabilities') { body.primary_product = PAID_API_DISCOVERY.product; body.primary_role = PAID_API_DISCOVERY.description; }
+  if (path === '/' || path === '/v1/capabilities') { body.primary_product = PRODUCT; body.primary_role = DESCRIPTION; }
   const card = path === '/a2a' ? body.agent_card : path.includes('/agent') ? body : null;
-  if (card) { card.description = PAID_API_DISCOVERY.description; card.skills = [{ id: 'paid-api-catalog', name: 'Discover purchasable APIs', description: `Find available seller APIs and exact prices at ${PAID_API_DISCOVERY.catalog}. Call each listed endpoint with an authorized x402 client.`, tags: ['paid-api', 'catalog', 'payments'], examples: ['Find a paid feed digest API'] }, ...(card.skills || [])]; }
+  if (card) { card.description = DESCRIPTION; card.skills = [{ id: 'paid-api-catalog', name: 'Discover purchasable APIs', description: `Find available seller APIs and exact prices at ${PAID_API_DISCOVERY.catalog}. Call each listed endpoint with an authorized x402 client.`, tags: ['paid-api', 'catalog', 'payments'], examples: ['Find a paid feed digest API'] }, ...(card.skills || [])]; }
   if (path === '/openapi.json') {
-    body.info.description = PAID_API_DISCOVERY.description;
+    body.info.description = DESCRIPTION;
     body.components ||= {}; body.components.securitySchemes ||= {};
     body.components.securitySchemes.SellerToken = { type: 'http', scheme: 'bearer', description: 'One-time seller control token from POST /v1/sellers' };
     const reply = { description: 'Result or structured error', content: { 'application/json': { schema: { type: 'object', additionalProperties: true } } } };
@@ -36,6 +38,7 @@ export async function decorateSellerDiscovery(request, response) {
       parameters: ['seller', 'service', 'path'].map(name => ({ name, in: 'path', required: true, schema: { type: 'string' } })),
       ...Object.fromEntries(['get', 'post', 'put', 'patch', 'delete', 'head'].map(method => [method, { summary: 'Pay for one seller API request; exact method, body and path are quote-bound', parameters: [{ name: 'Idempotency-Key', in: 'header', required: !['get','head'].includes(method), schema: { type: 'string', minLength: 8, maxLength: 128 } }], responses: { '200': { description: 'Original bounded upstream response with Payment-Response, X-XGuard-Receipt and X-XGuard-Proof headers' }, '402': reply, '409': reply, '502': reply, '503': reply } }])) };
   }
+  if (path === '/openapi.json') describeGovernance(body);
   const headers = new Headers(response.headers); headers.delete('content-length');
   return new Response(JSON.stringify(body), { status: response.status, headers });
 }

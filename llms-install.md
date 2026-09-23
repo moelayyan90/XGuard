@@ -18,7 +18,7 @@ https://api.xguardgate.com/mcp
 
 Transport: Streamable HTTP.
 
-Canonical product identity: **XGuard — Agent Execution Gateway**.
+Canonical product identity: **XGuard — Governed API Gateway**.
 
 ## What XGuard is for
 
@@ -106,4 +106,4 @@ A reviewer can verify XGuard without running local code:
 3. Read `https://xguardgate.com/.well-known/mcp/server-card.json`.
 4. Check `https://xguardgate.com/server.json` and this public repository.
 
-Current discovery release: **5.2.0**.
+Current discovery release: **6.0.0**.

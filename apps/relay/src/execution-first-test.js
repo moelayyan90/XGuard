@@ -32,6 +32,15 @@ function fixture() {
   const call = (path, body, headers = {}, method = body === undefined ? "GET" : "POST") => app.fetch(new Request(`https://api.xguardgate.com${path}`, { method, headers: { "content-type": "application/json", ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }), env, ctx);
   return { env, namespaces, call, tasks };
 }
+// Explicit test-only forecasts exercise the real policy gate, not a legacy mode.
+function forecastPolicy(digest) {
+  return { version: 1, currency: "USD", minimum_net_usd_micros: "100", daily_cost_limit_usd_micros: "10000", forecasts: [{
+    request_digest: digest, revenue_if_success_usd_micros: "10000", success_probability_bps: 9000,
+    api_cost_usd_micros: "500", compute_cost_usd_micros: "100", payment_cost_usd_micros: "100",
+    slippage_cost_usd_micros: "100", safety_buffer_cost_usd_micros: "100", failure_loss_usd_micros: "100",
+    valid_until: new Date(Date.now() + 60000).toISOString(),
+  }] };
+}
 
 test("MCP initialization and tool listing remain local when every storage service hangs", async t => {
   t.mock.method(globalThis, "fetch", () => { throw new Error("discovery must not contact an external service"); });
@@ -77,15 +86,20 @@ test("provider operation restrictions cannot be bypassed through raw egress; bil
     return Response.json({ id: 1, number: 2 }, { status: 201 });
   });
   const credential = await (await f.call("/v1/egress/credentials", { provider: "github", value: secret, allowed_paths: ["/repos/acme/service"], allowed_methods: ["GET", "POST"] }, { "x-xguard-key": owner })).json();
-  const granted = await f.call("/v1/egress/capabilities", { credential_id: credential.credential.id, target_origin: "https://api.github.com", path_prefix: "/repos/acme/service", allowed_methods: ["GET", "POST"], allowed_operations: ["github.issue.create"], operation_limits: { resources: ["acme/service"] }, max_calls: 2, max_total_credits: 2 }, { "x-xguard-key": owner });
+  const operationInput = { owner: "acme", repo: "service", title: "Fixture", body: "Test" };
+  const plan = await (await f.call("/v1/providers/plan", { operation: "github.issue.create", input: operationInput })).json();
+  const granted = await f.call("/v1/egress/capabilities", { credential_id: credential.credential.id, target_origin: "https://api.github.com", path_prefix: "/repos/acme/service", allowed_methods: ["GET", "POST"], allowed_operations: ["github.issue.create"], operation_limits: { resources: ["acme/service"] }, max_calls: 2, max_total_credits: 2, governance: forecastPolicy(plan.request_digest) }, { "x-xguard-key": owner });
   assert.equal(granted.status, 201); const grant = await granted.json();
   const input = { capability: grant.capability, operation: "github.issue.create", input: { owner: "acme", repo: "service", title: "Fixture", body: "Test" }, idempotency_key: "operation-issue-001" };
-  assert.equal((await f.call("/v1/egress/fetch", { capability: grant.capability, target: "https://api.github.com/repos/acme/service/issues", method: "POST", body_json: { title: "escape" }, idempotency_key: "escape-001" })).status, 403);
   assert.equal((await f.call("/v1/preflight", input)).status, 200); assert.deepEqual(order, []);
+  const approval = await f.call("/v1/secretless/authorize", input);
+  assert.equal(approval.status, 200);
+  input.governance_authorization = (await approval.json()).authorization;
   const first = await f.call("/v1/secretless/call", input); assert.equal(first.status, 201);
   const result = await first.json(); assert.equal(result.ok, true); assert.deepEqual(order, ["billing", "provider"]);
   const replay = await (await f.call("/v1/execute", input)).json(); assert.equal(replay.request_id, result.request_id); assert.equal(order.length, 2);
-  assert.equal((await f.call("/v1/secretless/call", { ...input, input: { ...input.input, title: "Changed" } })).status, 409);
+  assert.equal((await f.call("/v1/egress/fetch", { capability: grant.capability, target: "https://api.github.com/repos/acme/service/issues", method: "POST", body_json: { title: "escape" }, idempotency_key: "escape-001" })).status, 403);
+  assert.equal((await f.call("/v1/secretless/call", { ...input, input: { ...input.input, title: "Changed" } })).status, 403);
   assert.equal((await f.call("/v1/secretless/call", { ...input, operation: "github.repository.read", input: { owner: "acme", repo: "service" } })).status, 403);
   assert.equal((await f.call(`/v1/egress/capabilities/${grant.capability_id}`, undefined, { "x-xguard-key": owner }, "DELETE")).status, 200);
   assert.equal((await f.call("/v1/secretless/call", input)).status, 403);
@@ -169,6 +183,11 @@ test("hosted demo button completes its actual API flow and operator form constru
   const demoResult = JSON.parse(demo("result").textContent); assert.equal(demoResult.proof_valid,true);assert.equal(demoResult.out_of_scope_blocked,true);assert.equal(debits,0);assert.equal(writes,0);
   const ui = await load("/operators"); ui("key").value=key;ui("secret").value=secret;
   Object.defineProperty(ui("operation"),"value",{value:"github.repository.read"});
+  // Blank forecasts refuse issuance before storing credentials or billing.
+  await ui("create").onclick();
+  assert.equal(f.namespaces.EGRESS_CREDENTIALS.size, 1); // Internal demo only.
+  assert.equal(debits, 0); assert.equal(writes, 0);
+  ui("governance").value = JSON.stringify(forecastPolicy("0".repeat(64)));
   await ui("create").onclick();
   const request=JSON.parse(ui("request").textContent); assert.ok(request.capability.startsWith("xgc_")); assert.equal(ui("secret").value,""); assert.equal(ui("request").textContent.includes(secret),false);assert.equal(ui("request").textContent.includes(key),false);
   await ui("execute").onclick();assert.equal(JSON.parse(ui("result").textContent).ok,true);

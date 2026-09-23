@@ -1,13 +1,13 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard-control-plane",
-  "title": "XGuard \u2014 Agent Execution Gateway",
-  "description": "Scoped agent execution. Server-side credentials, policy, budgets and verifiable receipts.",
+  "title": "XGuard — Governed API Gateway",
+  "description": "Governed API access, server-side credentials, spending limits, paid APIs and signed receipts.",
   "repository": {
     "url": "https://github.com/moelayyan90/XGuard",
     "source": "github"
   },
-  "version": "5.2.0",
+  "version": "6.0.0",
   "remotes": [
     {
       "type": "streamable-http",

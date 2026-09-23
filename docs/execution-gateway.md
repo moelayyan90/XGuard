@@ -1,20 +1,33 @@
-# XGuard — Agent Execution Gateway
+# XGuard — Governed API Gateway
+
+Scoped execution is a component of XGuard — Governed API Gateway.
+
+[Mandatory governance](strict-governance.md) requires signed request authorization,
+forecast economics and persistent stopping for every external scoped execution.
+Legacy ungoverned capabilities are refused; migrate operator and agent callers
+before deploying this source change.
 
 Give agents capabilities, not reusable credentials.
 
 An operator stores an encrypted provider credential and issues an expiring capability. The agent receives only that capability. XGuard validates the explicit operation, resource, origin, path, method, expiry, revocation and budgets; reserves an idempotent execution; commits credit consumption; then decrypts and injects the provider credential. The result is encrypted in durable storage and signed by ProofRail.
 
-Canonical surfaces: [site](https://xguardgate.com), [API](https://api.xguardgate.com), [MCP](https://api.xguardgate.com/mcp), [A2A](https://api.xguardgate.com/a2a), [OpenAPI](https://api.xguardgate.com/openapi.json). The candidate product version is 5.2.0. Deployment must be verified before describing this candidate as live.
+Canonical surfaces: [site](https://xguardgate.com), [API](https://api.xguardgate.com), [MCP](https://api.xguardgate.com/mcp), [A2A](https://api.xguardgate.com/a2a), [OpenAPI](https://api.xguardgate.com/openapi.json). The candidate product version is 6.0.0. Deployment must be verified before describing this candidate as live.
 
 ## Operator setup
 
 Use `/operators` in the candidate site, or the existing operator-only `/v1/egress/credentials` and `/v1/egress/capabilities` APIs with a provisioned `X-XGuard-Key`. Provider credentials and operator keys must not appear in agent prompts. The hosted form keeps keys in memory, clears the provider input after storage, uses no browser persistence or third-party analytics, and displays the exact agent request before execution.
 
-Choose an explicit `allowed_operations` list and `operation_limits.resources` allowlist. Model capabilities also require `max_output_tokens`. Credential policies and capability scopes intersect; an operation grant cannot expand the underlying credential's origin/path/method limits. Raw egress cannot bypass an operation-scoped capability. Legacy capabilities keep their original scope contract.
+Choose an explicit `allowed_operations` list and `operation_limits.resources` allowlist, and supply the required `governance` policy with reviewed request-bound forecasts. Model capabilities also require `max_output_tokens`. Credential policies and capability scopes intersect; an operation grant cannot expand the underlying credential's origin/path/method limits. Raw egress cannot bypass governance or an operation-scoped capability. Legacy ungoverned grants are blocked.
 
 `POST /v1/providers/plan` validates an operation and returns its derived scope without execution. `GET /v1/providers/operations` publishes all 16 schemas, permissions, classifications, billing boundaries and output contracts. Supported adapters are GitHub repository reads, issue creation/comments and draft pull requests; Cloudflare zone reads and filtered Worker metadata; Slack bounded history and channel messages; Notion page/database reads and limited page creation/title updates; bounded OpenAI, Anthropic and Gemini requests; Stripe customer reads. Cloudflare deployment and Stripe money movement are deliberately unavailable.
 
 ## Agent contract
+
+First send the exact operation and stable key below to
+`POST /v1/secretless/authorize`. Add the returned `authorization` as
+`governance_authorization` to the same request before executing it. The ticket
+expires after at most 30 seconds. The internal controlled demo is the only
+capability flow without external execution and does not need a financial forecast.
 
 ```json
 {
@@ -29,7 +42,7 @@ Send this to `POST /v1/secretless/call`, `POST /v1/execute`, or MCP `xguard_secr
 
 Operation IDs are explicit. Provider/action, tool/arguments and structured intent envelopes normalize to the same plan; conflicting fields, extra provider inputs, arbitrary headers, URL overrides and ambiguous writes are rejected. Natural-language public extraction intents retain their existing normalizer.
 
-All mutations require a stable idempotency key. Concurrent identical requests reserve one attempt. Identical completed requests retrieve the stored result; changed input with the same key returns 409. Uncertain writes never automatically repeat. A revoked or expired capability cannot authorize a new call or result recovery; retain important receipts and proofs separately. Existing capability state is cleaned up 24 hours after expiry.
+All mutations require a stable idempotency key. Concurrent identical requests reserve one attempt. Identical completed requests retrieve the stored result; changed input with the same key or a mismatched ticket is refused and halts the workload. Uncertain writes never automatically repeat. A revoked or expired capability cannot authorize a new call or result recovery; retain important receipts and proofs separately. Existing capability state is cleaned up 24 hours after expiry.
 
 `xguard_preflight` and capability `xguard_quote` return an advisory authorization/budget snapshot without reservation, credit consumption or provider contact. They are not a balance guarantee or signed x402 offer. Public paid outcome quotes retain their signed x402 contract.
 
