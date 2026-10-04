@@ -3,18 +3,28 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/index.js && node --check src/gateway.js && node --check src/site-entry.js && node --check src/control-plane.js && node --check src/control-entry.js && node --check src/paid-agent-entry.js && node --check src/discovery-entry.js && node --check src/webmcp-entry.js && node --check src/a2a-entry.js && node --check src/canonical-entry.js"
+    "check": "node --check src/index.js && node --check src/gateway.js && node --check src/site-entry.js && node --check src/control-plane.js && node --check src/control-entry.js && node --check src/paid-agent-entry.js && node --check src/discovery-entry.js && node --check src/webmcp-entry.js && node --check src/a2a-entry.js && node --check src/canonical-entry.js",
+    "live:check": "node ../../scripts/live-check.mjs",
+    "live:typecheck": "tsc -p tsconfig.live.json",
+    "live:test": "node --test test/live.test.mjs",
+    "live:build": "wrangler deploy src/live-entry.js --config wrangler.live-local.jsonc --dry-run --outdir ../../.live-build",
+    "live:test-runtime": "node test/live-workerd.mjs",
+    "live:dev": "wrangler dev --config wrangler.live-local.jsonc --test-scheduled",
+    "live:smoke": "node ../../scripts/live-smoke.mjs"
   },
   "dependencies": {
     "@x402/core": "2.24.0",
+    "@x402/evm": "2.24.0",
     "@x402/extensions": "2.24.0",
     "linkedom": "0.18.13",
-    "viem": "^2.37.6",
-    "@x402/evm": "2.24.0"
+    "viem": "^2.37.6"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "12.1.0",
+    "@cloudflare/workers-types": "^5.20261003.1",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@x402/mcp": "2.24.0"
+    "@x402/mcp": "2.24.0",
+    "typescript": "^5.9.3",
+    "wrangler": "4.147.0"
   }
 }

@@ -10,6 +10,8 @@ import { describeAgentUsage } from "./agent-token-usage-openapi.js";
 import { handleExecutionRoute, decorateExecutionResponse } from "./execution-entry.js";
 import { VERSION, NAME, DESCRIPTION } from "./core/identity.js";
 export * from "./a2a-entry.js";
+// Stage 1: make new durable classes deployable before their isolated binding migration.
+export { LiveShard, LiveControl } from './live/objects.ts';
 
 const SITE = "https://xguardgate.com";
 const API = "https://api.xguardgate.com";

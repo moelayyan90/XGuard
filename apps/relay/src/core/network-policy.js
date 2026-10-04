@@ -41,7 +41,7 @@ function hostnameAllowed(hostname) {
   return true;
 }
 
-async function publicDns(hostname) {
+async function publicDns(hostname, timeoutMs = 2500) {
   if (!hostnameAllowed(hostname)) return { ok: false, code: "target_not_public" };
   if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname) || hostname.includes(":")) return { ok: true, addresses: [hostname] };
   const answers = [];
@@ -58,7 +58,7 @@ async function publicDns(hostname) {
         const endpoint = new URL(resolver.endpoint);
         endpoint.searchParams.set("name", hostname);
         endpoint.searchParams.set("type", type);
-        const response = await fetch(endpoint, { headers: { accept: resolver.accept }, signal: AbortSignal.timeout(2500), redirect: "follow" });
+        const response = await fetch(endpoint, { headers: { accept: resolver.accept }, signal: AbortSignal.timeout(Math.min(8000, Math.max(1000, timeoutMs))), redirect: "follow" });
         if (!response.ok || !resolver.hosts.has(new URL(response.url || endpoint).hostname)) throw new Error("dns_resolver_unavailable");
         const candidate = await response.json().catch(() => null);
         if (!candidate || !Number.isInteger(Number(candidate.Status ?? 0))) throw new Error("dns_response_invalid");

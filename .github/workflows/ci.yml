@@ -18,6 +18,17 @@ jobs:
           node-version: 24
       - name: Install relay dependencies
         run: npm ci --prefix apps/relay --no-audit --no-fund
+      - name: XGuard Live lint, types, temporal graph, security and HTTP contracts
+        run: |
+          npm run --prefix apps/relay live:check
+          npm run --prefix apps/relay live:typecheck
+          npm run --prefix apps/relay live:test
+      - name: Build Live and verify real workerd SQLite bindings
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          npm run --prefix apps/relay live:build
+          npm run --prefix apps/relay live:test-runtime
       - name: Execution gateway contract, capability boundaries and controlled demo
         run: node --test apps/relay/src/execution-first-test.js
       - name: Seller gateway, fee ledger, secret isolation and payment replay boundaries
