@@ -213,3 +213,27 @@ test('in-band prices keep discovery free and never enable themselves', async () 
   assert.equal(crawlPrice('/fact/npm/react/latest-version', {...ready,mode:'observe'}), 'USD 0');
   assert.equal(crawlPrice('/fact/npm/react/latest-version', {...ready,dynamic_pricing_verified:false}), 'USD 0');
 });
+
+test('business ratios use actual reports and invoices with honest unknown states', async () => {
+  const {businessMetrics} = await import('../src/live/metrics.ts');
+  const clock = new Date('2026-10-04T00:00:00Z');
+  const traffic = [{requests:[{day:'2026-10-04',classification:'verified-ai',requests:1000}],top_pages:[],repeat:{crawlers:0}}];
+  const empty = {revenue:[],costs:[],category_revenue:[]};
+  assert.equal(businessMetrics(empty, traffic, clock).reported_gross_revenue_usd, null);
+  const state = {...empty,revenue:[{day:'2026-10-04',program:'pay-per-crawl',amount_micros:2000000,uses:5}],costs:[{month:'2026-10',amount_micros:500000}]};
+  const metrics = businessMetrics(state, traffic, clock);
+  assert.equal(metrics.reported_revenue_per_1000_verified_ai_requests_usd, 2);
+  assert.equal(metrics.reported_gross_margin, .75);
+  assert.equal(metrics.paid_retrievals_reported, 5);
+  assert.equal(businessMetrics(state, [], clock).invoiced_cost_per_1000_requests_usd, null);
+});
+
+test('vendor tiered pricing cannot mix context bands or undocumented units', () => {
+  const spec=sourceSpec('pricing','openai');
+  const table='<table><thead><tr><th></th><th>Short context</th><th>Long context</th></tr><tr><th>Model</th><th>Input</th><th>Cached input</th><th>Cache writes</th><th>Output</th><th>Input</th><th>Cached input</th><th>Cache writes</th><th>Output</th></tr></thead><tbody><tr><td>example-model</td><td>$1</td><td>$0.1</td><td>$0.2</td><td>$3</td><td>$2</td><td>$0.2</td><td>$0.4</td><td>$5</td></tr></tbody></table>';
+  const document='<p>Prices per 1M tokens.</p><section><astro-island component-export="TextTokenPricingTables" props=\'{"tier":[0,"standard"]}\'>'+table+'</astro-island></section>';
+  const facts=parseSource(spec,document).facts;
+  assert.equal(facts.find(x=>x.key==='example-model-standard-short-context-input-price').value,1);
+  assert.equal(facts.find(x=>x.key==='example-model-standard-long-context-input-price').value,2);
+  assert.throws(()=>parseSource(spec,document.replace('Prices per 1M tokens.','Undocumented unit')),/pricing_table_unverified/);
+});

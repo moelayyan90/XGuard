@@ -1,0 +1,62 @@
+{
+  "name": "xguard-x402-control-plane",
+  "version": "5.2.0",
+  "private": false,
+  "type": "module",
+  "description": "Agent Execution Gateway: scoped capabilities, server-side credentials, policy, budgets and verifiable receipts.",
+  "main": "./sdk/index.js",
+  "exports": {
+    ".": "./sdk/index.js",
+    "./outcomes": "./sdk/outcomes.js",
+    "./package.json": "./package.json",
+    "./execution": "./sdk/execution.js",
+    "./paid-api": "./sdk/paid-api.js"
+  },
+  "files": [
+    "sdk/index.js",
+    "sdk/outcomes.js",
+    "sdk/README.md",
+    "sdk/examples",
+    "integrations",
+    "LICENSE",
+    "sdk/execution.js",
+    "sdk/paid-api.js"
+  ],
+  "sideEffects": false,
+  "peerDependencies": {
+    "@x402/core": ">=2.24.0 <3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "intent-execution",
+    "web-extraction",
+    "product-offers",
+    "rss",
+    "mcp",
+    "a2a",
+    "xguard",
+    "secretless-egress",
+    "ai-agent-security",
+    "credential-broker",
+    "x402",
+    "x402-v2",
+    "facilitator",
+    "payments",
+    "micropayments",
+    "agent-payments",
+    "usdc",
+    "base",
+    "compatibility"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moelayyan90/XGuard.git"
+  },
+  "homepage": "https://xguardgate.com",
+  "bugs": {
+    "url": "https://github.com/moelayyan90/XGuard/issues"
+  }
+}

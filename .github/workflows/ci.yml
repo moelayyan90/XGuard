@@ -1,4 +1,4 @@
-name: XGuard Relay CI
+name: XGuard Live CI
 on:
   pull_request:
   push:
@@ -8,160 +8,38 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Install relay dependencies
-        run: npm ci --prefix apps/relay --no-audit --no-fund
-      - name: XGuard Live lint, types, temporal graph, security and HTTP contracts
+      - run: npm ci --prefix apps/relay --no-audit --no-fund
+      - name: Live syntax, security checks, strict types and behavior
         run: |
-          npm run --prefix apps/relay live:check
-          npm run --prefix apps/relay live:typecheck
-          npm run --prefix apps/relay live:test
-      - name: Build Live and verify real workerd SQLite bindings
+          npm run check
+          npm test
+      - name: Build and exercise actual workerd SQLite storage
         env:
           WRANGLER_SEND_METRICS: "false"
         run: |
-          npm run --prefix apps/relay live:build
+          npm run build
           npm run --prefix apps/relay live:test-runtime
-      - name: Execution gateway contract, capability boundaries and controlled demo
-        run: node --test apps/relay/src/execution-first-test.js
-      - name: Seller gateway, fee ledger, secret isolation and payment replay boundaries
-        run: node --test apps/relay/src/seller-entry-test.js
-      - name: Relay syntax check
-        run: npm run --prefix apps/relay check
-      - name: Secretless Egress, discovery, WebMCP, A2A, Action Rail, universal edge and settlement syntax
+      - name: Preserve financial state and recovery invariants
         run: |
-          node --check apps/relay/src/universal-edge.js
-          node --check apps/relay/src/site-universal.js
-          node --check apps/relay/src/site-action.js
-          node --check apps/relay/src/site-egress.js
-          node --check apps/relay/src/safety-test.js
-          node --check apps/relay/src/site-test.js
-          node --check apps/relay/src/authority.js
-          node --check apps/relay/src/rail.js
-          node --check apps/relay/src/action-rail.js
-          node --check apps/relay/src/action-rail-test.js
-          node --check apps/relay/src/egress-vault.js
-          node --check apps/relay/src/egress-vault-test.js
-          node --check apps/relay/src/egress-entry.js
-          node --check apps/relay/src/product-entry.js
-          node --check apps/relay/src/paid-agent-entry.js
-          node --check apps/relay/src/core/payment-rail.js
-          node --check apps/relay/src/core/payment-rail-test.js
-          node --check apps/relay/src/paid-agent-entry-test.js
-          node --check apps/relay/src/discovery-entry.js
-          node --check apps/relay/src/webmcp-entry.js
-          node --check apps/relay/src/a2a-entry.js
-          node --check apps/relay/src/canonical-entry.js
-          node --check apps/relay/src/agent-token-usage.js
-          node --check apps/relay/src/core/agent-usage.js
-          node --check apps/relay/src/agent-token-usage-openapi.js
-          node --check scripts/verify-agent-token-usage.mjs
-          node --check apps/relay/src/a2a-entry-test.js
-          node --check apps/relay/src/canonical-entry-test.js
-          node --check apps/relay/src/product-entry-test.js
-          node --check apps/relay/src/rail-entry.js
-          node --check apps/relay/src/entry.js
-          node --check apps/relay/src/secure-entry.js
-          node --check apps/relay/src/trust-entry.js
-          node --check apps/relay/src/public-metadata.js
-          node --check apps/relay/src/entry-test.js
-          node --check packages/edge/index.js
-          node --check scripts/ats100-ci.mjs
-          node -e "const x=require('./server.json');if(x.description.length>100)throw new Error('Official MCP Registry description exceeds 100 characters')"
-          node -e "JSON.parse(require('node:fs').readFileSync('packages/edge/package.json','utf8'))"
-          node -e "JSON.parse(require('node:fs').readFileSync('.xguard/transaction.json','utf8'))"
-          grep -q '^name: XGuard ATS-100' action.yml
-          grep -q 'min-score' action.yml
-          grep -q 'AgentAuthority' apps/relay/wrangler.jsonc
-          grep -q 'RailPermitState' apps/relay/wrangler.jsonc
-          grep -q 'ActionPermitState' apps/relay/wrangler.jsonc
-          grep -q 'EgressKeyAuthority' apps/relay/wrangler.jsonc
-          grep -q 'EgressCredentialState' apps/relay/wrangler.jsonc
-          grep -q 'EgressCapabilityState' apps/relay/wrangler.jsonc
-          grep -q 'EgressMeter' apps/relay/wrangler.jsonc
-          grep -q 'PaidGatewayState' apps/relay/wrangler.jsonc
-          grep -q 'XGUARD_PAID_FACILITATOR' apps/relay/wrangler.jsonc
-          grep -q 'ACTION_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
-          grep -q 'EGRESS_EXECUTION_CREDITS' apps/relay/wrangler.jsonc
-          grep -q '"main": "src/canonical-entry.js"' apps/relay/wrangler.jsonc
-          grep -q '"workers_dev": false' apps/relay/wrangler.jsonc
-          ! grep -q '"routes"' apps/relay/wrangler.jsonc
-          grep -q 'XGuard — Agent Execution Gateway' apps/relay/src/core/identity.js
-          grep -q 'www.xguardgate.com' apps/relay/src/canonical-entry.js
-          grep -q 'Historical ACE/Solana/BAM' apps/relay/src/canonical-entry.js
-          grep -q 'io.github.moelayyan90/xguard-control-plane' apps/relay/src/discovery-entry.js
-          grep -q '/llms.txt' apps/relay/src/discovery-entry.js
-          grep -q '/server.json' apps/relay/src/discovery-entry.js
-          grep -q 'document.modelContext' apps/relay/src/webmcp-entry.js
-          grep -q 'xguard_discover' apps/relay/src/webmcp-entry.js
-          grep -q 'readOnlyHint: true' apps/relay/src/webmcp-entry.js
-          grep -q '/.well-known/agent-card.json' apps/relay/src/a2a-entry.js
-          grep -q 'protocolBinding: "JSONRPC"' apps/relay/src/a2a-entry.js
-          grep -q 'protocolVersion: A2A_VERSION' apps/relay/src/a2a-entry.js
-          grep -q 'SendMessage' apps/relay/src/a2a-entry.js
-          grep -q 'execution-bridge-v1' apps/relay/src/a2a-entry.js
-          grep -q 'xguard.web.fetch' apps/relay/src/paid-agent-entry.js
-          grep -q 'payment-identifier' apps/relay/src/paid-agent-entry.js
-          grep -q 'settlement_ambiguous' apps/relay/src/paid-agent-entry.js
-          grep -q 'revenue_source' apps/relay/src/paid-agent-entry.js
-          grep -q 'quote_attempt' apps/relay/src/paid-agent-entry.js
-          grep -q 'payment_required' apps/relay/src/paid-agent-entry.js
-          grep -q 'payment_verified' apps/relay/src/paid-agent-entry.js
-          grep -q 'settlement_success' apps/relay/src/paid-agent-entry.js
-          grep -q 'xguard_mandate_required' apps/relay/src/authority.js
-          grep -q 'permit_replay_detected' apps/relay/src/rail.js
-          grep -q 'action_replay_detected' apps/relay/src/action-rail.js
-          grep -q 'egress_outcome_ambiguous' apps/relay/src/egress-vault.js
-          grep -q 'billing_before_credential_release: true' apps/relay/src/public-metadata.js
-          grep -q 'font-family:Arial' apps/relay/src/site-egress.js
-      - name: Discovery, A2A, Action Rail and Secretless Egress behavior tests
-        run: |
+          node --test scripts/durable-object-deploy-guard-test.mjs
           node --test apps/relay/test/payment-context.mjs
           node apps/relay/test/settlement-safety.mjs
-          node --test scripts/durable-object-deploy-guard-test.mjs
-          node --test apps/relay/src/entry-test.js
-          node --test apps/relay/src/a2a-entry-test.js
-          node --test apps/relay/src/canonical-entry-test.js
-          node --test apps/relay/src/agent-token-usage-test.js scripts/verify-agent-token-usage-test.mjs
-          node --test apps/relay/src/action-rail-test.js
-          node --test apps/relay/src/egress-vault-test.js
-          node --test apps/relay/src/egress-execution-test.js
-          node --test apps/relay/src/core/unit-economics-test.js
-          node --test apps/relay/src/product-entry-test.js
-          node --test apps/relay/src/paid-agent-entry-test.js
-          node --test apps/relay/src/core/payment-rail-test.js
-          node --test apps/relay/src/core/reconcile-payment-test.js
-          node --test apps/relay/src/core/settlement-proof-test.js
-          node --test apps/relay/src/outcome-http-test.js
-      - name: SDK syntax and package check
-        run: |
-          node --check sdk/index.js
-          node --check sdk/outcomes.js
-          node --test sdk/outcomes-test.mjs sdk/execution-test.mjs
-          npm pack --dry-run --ignore-scripts
-      - name: Wrangler dry run
-        run: npx --yes wrangler@4.130.0 deploy --dry-run --outdir /tmp/xguard-seller-worker --config apps/relay/wrangler.jsonc
-      - name: Concurrent paid requests in workerd with SQLite Durable Objects
-        run: npx --yes --package=wrangler@4.130.0 --call 'node apps/relay/test/seller-workerd.mjs'
-      - name: Anonymous free execution in the actual Worker runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/xguard-local.key -out /tmp/xguard-local.crt -days 1 -subj /CN=localhost -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
-          npx --yes wrangler@4.130.0 dev --local --local-protocol https --https-key-path /tmp/xguard-local.key --https-cert-path /tmp/xguard-local.crt --ip 127.0.0.1 --port 8787 --config apps/relay/wrangler.jsonc > /tmp/xguard-worker.log 2>&1 &
-          worker_pid=$!
-          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
-          ready=0
-          for attempt in {1..25}; do
-            if curl --fail --silent --max-time 3 --cacert /tmp/xguard-local.crt https://127.0.0.1:8787/v1/execute -H 'content-type: application/json' --data '{"intent":"demo"}' -o /tmp/xguard-free.json; then ready=1; break; fi
-            sleep 2
-          done
-          if [[ "$ready" != '1' ]]; then cat /tmp/xguard-worker.log; exit 1; fi
-          node -e 'const x=require("/tmp/xguard-free.json");if(x.ok!==true||x.cost.amount_atomic!=="0"||!x.result.document.text||!x.result.offers.length||x.result.network_calls!==0)throw new Error("Worker free result failed")'
+          node --test apps/relay/src/core/payment-rail-test.js apps/relay/src/core/reconcile-payment-test.js apps/relay/src/core/settlement-proof-test.js
+          node --test apps/relay/src/seller-entry-test.js apps/relay/src/outcome-http-test.js
+      - name: Validate production lifecycle against pull request base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/durable-object-deploy-guard.mjs "$BASE_SHA" "$HEAD_SHA"
+      - name: Dry-run the production bundle
+        run: apps/relay/node_modules/.bin/wrangler deploy --dry-run --outdir .production-build --config apps/relay/wrangler.jsonc

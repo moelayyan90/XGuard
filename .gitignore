@@ -6,3 +6,4 @@ xguard-recovery-*.json
 xguard-response-*.json
 .live-build/
 .live-local/
+.production-build/

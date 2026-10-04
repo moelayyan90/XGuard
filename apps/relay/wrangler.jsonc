@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "xguard-mainnet",
-  "main": "src/canonical-entry.js",
+  "main": "src/live-entry.js",
   "compatibility_date": "2026-08-25",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
@@ -11,6 +11,9 @@
   "minify": true,
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "vars": {
+    "MONETIZATION_MODE": "observe",
+    "LIVE_BOOTSTRAP": "on",
+    "LIVE_SOURCE_FETCHES": "on",
     "X402_GLOBAL_PRIMARY": "https://facilitator.payai.network",
     "X402_BASE_PRIMARY": "https://facilitator.xpay.sh",
     "X402_BASE_SECONDARY": "https://facilitator.openx402.ai",
@@ -80,6 +83,7 @@
     { "tag": "relay-v8", "new_sqlite_classes": ["PaidGatewayState"] },
     { "tag": "relay-v9-live", "new_sqlite_classes": ["LiveShard", "LiveControl"] }
   ],
+  "triggers": { "crons": ["*/10 * * * *"] },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.2,
