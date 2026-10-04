@@ -64,7 +64,9 @@
       { "name": "EGRESS_CAPABILITIES", "class_name": "EgressCapabilityState" },
       { "name": "EGRESS_METER", "class_name": "EgressMeter" },
       { "name": "PROOF_AUTHORITY", "class_name": "ProofAuthority" },
-      { "name": "PAID_GATEWAY", "class_name": "PaidGatewayState" }
+      { "name": "PAID_GATEWAY", "class_name": "PaidGatewayState" },
+      { "name": "LIVE_SHARDS", "class_name": "LiveShard" },
+      { "name": "LIVE_CONTROL", "class_name": "LiveControl" }
     ]
   },
   "migrations": [
@@ -75,7 +77,8 @@
     { "tag": "relay-v5", "new_sqlite_classes": ["ActionKeyAuthority", "ActionPermitState", "ActionMeter"] },
     { "tag": "relay-v6", "new_sqlite_classes": ["EgressKeyAuthority", "EgressCredentialState", "EgressTenantIndex", "EgressCapabilityState", "EgressMeter"] },
     { "tag": "relay-v7", "new_sqlite_classes": ["ProofAuthority"] },
-    { "tag": "relay-v8", "new_sqlite_classes": ["PaidGatewayState"] }
+    { "tag": "relay-v8", "new_sqlite_classes": ["PaidGatewayState"] },
+    { "tag": "relay-v9-live", "new_sqlite_classes": ["LiveShard", "LiveControl"] }
   ],
   "observability": {
     "enabled": true,
