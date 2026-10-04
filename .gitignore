@@ -4,3 +4,5 @@ node_modules/
 *.log
 xguard-recovery-*.json
 xguard-response-*.json
+.live-build/
+.live-local/

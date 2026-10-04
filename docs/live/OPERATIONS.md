@@ -1,0 +1,50 @@
+# XGuard Live operations
+
+XGuard Live publishes primary-source observations through ordinary HTTP. Verification means a match to the cited source at the stated time, not independent certification of that source. Failed or expired verification is STALE. Unverified candidates never become indexable fact pages.
+
+## Migration and recovery
+
+The repository's Durable Object deployment guard remains mandatory. Deploy these stages in order, waiting for each production workflow to succeed:
+
+1. Export LiveShard and LiveControl and ship the implementation/tests while canonical-entry remains the public entry. Existing product behavior remains available at this stage.
+2. A separate config-only commit appends the two SQLite classes and bindings. Preserve every old migration and binding. There is no safe automatic rollback across this lifecycle boundary.
+3. Switch the public entry to live-entry, enable the ten-minute scheduler, replace public branding/discovery and production smoke checks. Rollback can use stage 2 because the durable lifecycle is identical. Live data survives rollback; do not delete classes or namespaces.
+
+All historical financial state, receipt/reconciliation classes and alarms stay exported. The new entry allows read-only recovery at `/v1/results/{payment_identifier}` and `/v1/marketplace/results/{payment_identifier}`, using the original signed `X-XGuard-Quote`. It exposes no new sale or execution path. Existing settlement obligations are not reclassified as Live revenue.
+
+## Data and scheduling
+
+32 stable SQLite Durable Object shards place entities with the versioned FNV placement function; one control object coordinates domain leases, source robots rules, owner settings and billing reports. Do not change the shard count in place. Source identity, current fact, immutable observation, immutable change, evidence hash and fetch record are separate. SQL triggers reject observation/change/evidence edits and deletes. A 304 revalidates prior evidence without inventing a changed value.
+
+Cron `*/10 * * * *` bootstraps curated candidates, wakes shard alarms, advances one official npm discovery query and evaluates observed demand. Each alarm processes two source jobs. Domain leases limit concurrent source requests to one, with a 75-second GitHub gap and one-second gap elsewhere; Retry-After is honored. Initial discovery is capped at 1,500 new candidates. Verified dependency relationships receiving at least three eligible requests can queue up to 20 new candidates per cycle, 100 per day and 5,000 total. These caps limit unbounded acquisition costs; candidates still require a successful official-source check.
+
+Base refresh: packages daily, Node every six hours, Python and pricing every twelve hours, service summaries every ten minutes. Observed changes and demand increase frequency; stable sources slow down. Failures back off with jitter. Scheduling is best effort and source throttling can delay checks. `healthz` reports the last cron heartbeat, real counts, pending work and failures. Sources may prohibit their API paths in robots.txt; those candidates remain unpublished, regardless of successful manual access elsewhere.
+
+The collectors validate source schemas, identity and units, honor robots.txt and identify as XGuardLiveBot. Outbound requests permit only fixed official HTTPS hosts, reject private/reserved DNS responses, reject credentials/ports, limit redirects to the original origin, and bound time and response size. New domains require reviewed code, not owner-supplied URLs. A digest covers the retrieved body; evidence retains normalized fields, not a full archival copy of the source page.
+
+## Owner interface
+
+`/admin` is private, noindex and never cached. `LIVE_ADMIN_KEY` must have at least 24 characters; the existing `XGUARD_OPERATOR_KEY` is accepted as a migration fallback. Set a distinct `LIVE_SESSION_KEY` for rotation. Browser sessions use an eight-hour Secure/HttpOnly/SameSite=Strict cookie and CSRF protection. API requests can use Bearer authentication. Keys must be provisioned as Worker secrets, never variables committed to git. Without a usable key the interface fails closed.
+
+Owners can inspect source/queue/cron health, queue refreshes, disable sources, suppress entities, review correction reports, manage monetization state, import actual provider reports and record invoices. Anonymous corrections cannot overwrite facts. Suppressed content may remain in edge cache for at most 60 seconds. Raw request telemetry expires after seven days; daily aggregates persist. Query strings and raw IPs are not stored. Requests labeled by user agent are claimed crawlers; only trusted Cloudflare verified-bot metadata upgrades a recognized AI crawler to verified-ai. Repeated crawler hashes are daily and keyed. Synthetic tests do not enter business aggregates. A missing referrer cannot establish AI attribution.
+
+## Cloudflare monetization: verify the account, not just the code
+
+Implementation-time references (2026-10-04):
+
+- https://developers.cloudflare.com/ai-crawl-control/features/pay-per-crawl/what-is-pay-per-crawl/
+- https://developers.cloudflare.com/ai-crawl-control/features/pay-per-crawl/use-pay-per-crawl-as-site-owner/advanced-configuration/
+- https://blog.cloudflare.com/pay-per-use/
+- https://developers.cloudflare.com/ai-crawl-control/reference/graphql-api/
+
+Pay Per Crawl is documented as a closed beta. No account eligibility has been established by application code. Default state is **observe**, provider status **unverified**, and no origin charge. In the authenticated dashboard, choose the xguardgate.com zone → AI Crawl Control → Pay Per Crawl. Check beta access/eligibility; complete the dedicated payout onboarding if offered. Preserve free access to `/`, `/robots.txt`, `/sitemap.xml`, `/sitemaps/*`, `/llms.txt`, `/.well-known/*`, `/topics*`, `/live/*`, and policy/source pages using Cloudflare Configuration Rules. Verify exemptions before selecting any paid paths. Enable in-band dynamic pricing in Cloudflare; the Worker returns a `crawler-price` hint only for Cloudflare's `pricing=in-band` requests. The hint is never treated as payment evidence. Off/observe return USD 0; selective targets history/change detail; full also targets fact detail. No crawler-specific factual content is served.
+
+Pay Per Use is separate: Cloudflare Dashboard → Monetize → Pay Per Use → inspect the offered buyer program → review/accept its terms if authorized → complete payout onboarding. Availability and accepted programs must be confirmed in the account. Buyers report usage to Cloudflare. XGuard does not forge buyer reports, call buyer ingestion as a publisher, or infer use from a fetch. Persist the verified state and evidence URL/time through `/admin/monetization-config` only after dashboard confirmation.
+
+For real revenue, import an actual provider export through `/admin/report-import` with `report_hash` (SHA-256 of the export), `report_reference` (Cloudflare URL or cloudflare-report identifier), and `events`. Each event requires a stable external_id, program (`pay-per-crawl` or `pay-per-use`), buyer, canonical path, occurred_at, integer amount_micros in USD, and integer uses. IDs deduplicate retries; conflicting records are rejected atomically. This is an owner-attested report import, not independent provider signature validation. No reports means unknown account revenue, not a demonstrated zero. Account fees/taxes/net payout require their actual provider reports. Invoice costs enter separately by month and reference; do not present a configured budget as an incurred cost.
+
+## Verification and cost limits
+
+Run Node 24 and `npm ci --prefix apps/relay`, then `npm run --prefix apps/relay live:check`, `live:typecheck`, `live:test`, `live:build`, `live:test-runtime`. Local interactive development: `npm run --prefix apps/relay live:dev`. Production smoke: `node scripts/live-smoke.mjs`. Source checks: `node scripts/live-source-check.mjs`; they can correctly report robots/schema/rate-limit failures.
+
+Workers render HTML/Markdown/JSON from the same records. Edge cache keys include format and build identity, and freshness limits bound TTL. Discovery pages are free. Sitemaps are segmented at 1,000 rows; arbitrary/empty fact pages are not indexed. Histories are paginated. Stable sharding provides an expansion path, not evidence of a million-fact load test. SQL storage, durable invocations, source fetches and telemetry have real costs. No bill was obtained during implementation; actual cost remains unknown until invoice import. Review usage before raising discovery caps or refreshing low-demand sources faster. The platform does not guarantee traffic, citations or revenue.

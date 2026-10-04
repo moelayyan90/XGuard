@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "xguard-live-local",
+  "main": "src/live-entry.js",
+  "compatibility_date": "2026-08-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "vars": { "MONETIZATION_MODE": "observe", "LIVE_BOOTSTRAP": "on", "LIVE_SOURCE_FETCHES": "on" },
+  "durable_objects": { "bindings": [
+    { "name": "LIVE_SHARDS", "class_name": "LiveShard" },
+    { "name": "LIVE_CONTROL", "class_name": "LiveControl" }
+  ] },
+  "migrations": [ { "tag": "live-local-v1", "new_sqlite_classes": ["LiveShard", "LiveControl"] } ],
+  "triggers": { "crons": ["*/10 * * * *"] }
+}
