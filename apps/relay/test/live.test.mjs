@@ -101,7 +101,11 @@ test('canonical HTML, Markdown and JSON expose equivalent verified facts with no
     for (const accept of ['text/html', 'text/markdown', 'application/json']) {
       const response = await worker.fetch(new Request(url, { headers: { accept } }), h.env, h.ctx);
       assert.equal(response.status, 200); assert.match(response.headers.get('content-type'), new RegExp(accept));
-      const text = await response.text(); assert.ok(text.includes('19.0.0')); assert.ok(text.includes('registry.npmjs.org'));
+      const text = await response.text(); assert.ok(text.includes('19.0.0'));
+      const citedSource = accept === 'application/json' ? JSON.parse(text).fact.source_url
+        : accept === 'text/markdown' ? text.match(/^Source: (.+)$/m)?.[1]
+        : parseHTML(text).document.querySelector('aside a[rel]')?.getAttribute('href');
+      assert.equal(citedSource, 'https://registry.npmjs.org/react/latest');
       assert.equal(response.headers.get('vary'), 'Accept'); assert.ok(response.headers.get('strict-transport-security'));
       if (accept === 'text/html') {
         const { document } = parseHTML(text), schema = JSON.parse(document.querySelector('script[type="application/ld+json"]').textContent);
