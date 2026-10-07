@@ -108,6 +108,33 @@ export function parseSource(spec: SourceSpec, body: string): ParsedSource {
     }
   } else if (spec.adapter === 'pricing') {
     const { document } = parseHTML(body);
+    // Current OpenAI tables explicitly distinguish service tier and context band.
+    // Publish only rendered rows with this exact table schema; never collapse rates.
+    if (spec.identifier === 'openai') for (const island of Array.from(document.querySelectorAll('astro-island[component-export="TextTokenPricingTables"]'))) {
+      let props: any; try { props = JSON.parse(island.getAttribute('props') || '{}'); } catch { continue; }
+      const tier = props.tier?.[1]; if (!['standard', 'batch', 'flex', 'fast', 'ultrafast'].includes(tier)) continue;
+      let parent = island.parentElement, denomination = false;
+      for (let i = 0; parent && i < 4; i++, parent = parent.parentElement) {
+        if (/prices\s+per\s+1m\s+tokens/i.test(parent.previousElementSibling?.textContent || '')) denomination = true;
+      }
+      if (!denomination) continue;
+      for (const table of Array.from(island.querySelectorAll('table'))) {
+        const headings = Array.from(table.querySelectorAll('thead tr'));
+        if (headings.length !== 2 || headings[0].textContent?.trim() !== 'Short contextLong context') continue;
+        const columns = Array.from(headings[1].querySelectorAll('th')).map(x => x.textContent?.trim().toLowerCase());
+        if (columns.join('|') !== 'model|input|cached input|cache writes|output|input|cached input|cache writes|output') continue;
+        for (const row of Array.from(table.querySelectorAll('tbody tr'))) {
+          const cells = Array.from(row.querySelectorAll('td')).map(x => x.textContent?.trim() || '');
+          if (cells.length !== 9 || !/^[a-zA-Z0-9._-]{1,70}$/.test(cells[0])) continue;
+          for (const [band, start] of [['short-context', 1], ['long-context', 5]] as const) {
+            for (const [field, offset] of [['input', 0], ['output', 3]] as const) {
+              const raw = cells[start + offset]; if (!/^\$\d+(?:\.\d+)?$/.test(raw)) continue;
+              add(`${cells[0].toLowerCase()}-${tier}-${band}-${field}-price`, `${cells[0]} · ${tier} · ${band.replace('-', ' ')} · ${field} price`, Number(raw.slice(1)), 'USD / 1 million tokens');
+            }
+          }
+        }
+      }
+    }
     for (const table of Array.from(document.querySelectorAll('table'))) {
       const rows = Array.from(table.querySelectorAll('tr'));
       const headers = Array.from(rows[0]?.querySelectorAll('th,td') || []).map(x => (x.textContent || '').trim().toLowerCase());

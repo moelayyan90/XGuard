@@ -87,6 +87,7 @@ export class LiveControl {
     return { config, bootstrap: this.store.get('bootstrap'), last_cron: this.store.get('last-cron'), discovery: this.store.get('discovery', {}), demand_growth: this.store.get('demand-growth'),
       revenue: this.store.rows('SELECT program,currency,substr(occurred_at,1,10) AS day,sum(amount_micros) AS amount_micros,sum(uses) AS uses FROM monetization_events GROUP BY program,currency,day ORDER BY day DESC LIMIT 180'),
       top_earning_pages: this.store.rows('SELECT path,program,sum(amount_micros) AS amount_micros,sum(uses) AS uses FROM monetization_events GROUP BY path,program ORDER BY amount_micros DESC LIMIT 20'),
+      category_revenue: this.store.rows('SELECT path,sum(amount_micros) AS amount_micros FROM monetization_events WHERE occurred_at>=? GROUP BY path', iso().slice(0, 7) + '-01'),
       costs: this.store.rows('SELECT * FROM costs ORDER BY month DESC LIMIT 12'),
       corrections: this.store.rows('SELECT * FROM corrections ORDER BY created_at DESC LIMIT 50'),
       audit: this.store.rows('SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT 50'),

@@ -4,6 +4,7 @@ import { DISCOVERY_QUERIES, SEED_SOURCES, sourceSpec } from './adapters.ts';
 import { adminIdentity, boundedBody, checkRobots, equalSecret, safeFetch, securityHeaders, sessionToken } from './security.ts';
 import { controlName, escape, hash, integer, iso, json, negotiate, rpc, shardName, shardOf } from './util.ts';
 import { CSS, markdown, render } from './presentation.ts';
+import { businessMetrics } from './metrics.ts';
 
 const control = (env: Env, op: string, body = {}) => rpc(env.LIVE_CONTROL, controlName, op, body);
 const shard = (env: Env, id: string, op: string, body = {}) => rpc(env.LIVE_SHARDS, shardName(shardOf(id)), op, body);
@@ -95,7 +96,7 @@ async function admin(request: Request, env: Env): Promise<Response> {
   }
   if (!READ.has(request.method)) return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, HEAD, POST' });
   const [state, stats, metrics, sources] = await Promise.all([control(env, 'state'), all(env, 'stats'), all(env, 'metrics'), all(env, 'sources')]);
-  return pageResponse(request, 'admin', { state, stats: sumStats(stats), metrics, sources: sources.flat().sort((a, b) => b.failures - a.failures), csrf }, '/admin', true);
+  return pageResponse(request, 'admin', { state, stats: sumStats(stats), metrics, sources: sources.flat().sort((a, b) => b.failures - a.failures), business: businessMetrics(state, metrics), csrf }, '/admin', true);
 }
 
 const ARTICLES: Record<string, { title: string; html: string }> = {
@@ -128,7 +129,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (path === '/healthz' || path === '/status') {
     const [parts, state] = await Promise.all([all(env, 'stats'), control(env, 'get', { key: 'last-cron' })]);
     const stats = sumStats(parts), overdue = state && Date.now() - Date.parse(state) > 3600000;
-    const body = { service: 'XGuard Live', version: VERSION, storage: 'reachable', collector: state ? overdue ? 'overdue' : 'scheduled' : 'awaiting-first-cron', last_cron: state, ...stats };
+    const body = { service: 'XGuard Live', version: VERSION, storage: 'reachable', owner_access: (env.LIVE_ADMIN_KEY || env.XGUARD_OPERATOR_KEY || '').length >= 24 ? 'configured' : 'unconfigured', collector: state ? overdue ? 'overdue' : 'scheduled' : 'awaiting-first-cron', last_cron: state, ...stats };
     if (path === '/healthz') return json(body, overdue ? 503 : 200);
     return pageResponse(request, 'prose', { title: 'System status', ...body, html: `<p>Storage is reachable across ${SHARDS} shards.</p><p>Collector: ${escape(body.collector)}. Last scheduler heartbeat: ${escape(state || 'not observed')}.</p><pre>${escape(JSON.stringify(stats, null, 2))}</pre>` }, path, true);
   }
