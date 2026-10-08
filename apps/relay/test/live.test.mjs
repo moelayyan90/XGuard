@@ -237,3 +237,87 @@ test('vendor tiered pricing cannot mix context bands or undocumented units', () 
   assert.equal(facts.find(x=>x.key==='example-model-standard-long-context-input-price').value,2);
   assert.throws(()=>parseSource(spec,document.replace('Prices per 1M tokens.','Undocumented unit')),/pricing_table_unverified/);
 });
+
+test('public indexes share one durable snapshot across concurrent requests and object restarts', async () => {
+  const h = environment();
+  try {
+    await seed(h);
+    let reads = 0;
+    const get = h.env.LIVE_SHARDS.get;
+    h.env.LIVE_SHARDS.get = id => ({ ...get(id), async fetch(request) { reads++; return get(id).fetch(request); } });
+    const request = path => worker.fetch(new Request('https://xguardgate.com' + path, { headers: { accept: 'application/json', 'user-agent': 'XGuardLive-regression' } }), h.env, h.ctx);
+    const health = await Promise.all(Array.from({ length: 8 }, () => request('/healthz')));
+    assert.ok(health.every(r => r.status === 200)); assert.equal(reads, 32);
+    const stats = await health[0].json(); assert.equal(stats.facts, 4); assert.ok(stats.catalog_as_of);
+    for (const path of ['/', '/topics', '/changes', '/sitemap.xml', '/sitemaps/site.xml']) assert.equal((await request(path)).status, 200);
+    assert.equal(reads, 32, 'repeated global pages must not fan out across all shards');
+    const previous = h.controls.get(controlName);
+    const { LiveControl } = await import('../src/live/objects.ts');
+    h.controls.set(controlName, new LiveControl(previous.state, h.env));
+    assert.equal((await request('/healthz')).status, 200); assert.equal(reads, 32, 'the catalog survives object eviction');
+    await seed(h, '2.0.0'); reads = 0;
+    const fact = await (await request('/fact/npm/react/latest-version')).json();
+    assert.equal(fact.fact.current_value, '2.0.0'); assert.equal(reads, 1, 'a fact and its history use one storage request');
+  } finally { await h.drain(); h.close(); }
+});
+
+test('aggregate snapshots age expired examples and invalidate suppressed entities', async () => {
+  const h = environment(), originalNow = Date.now;
+  try {
+    const { store } = await seed(h);
+    store.run('UPDATE fact_definitions SET max_age=1 WHERE id=?', 'npm/react/latest-version');
+    const headers = { accept: 'application/json', 'user-agent': 'XGuardLive-regression' };
+    const home = () => worker.fetch(new Request('https://xguardgate.com/', { headers }), h.env, h.ctx).then(r => r.json());
+    assert.equal((await home()).examples[0].verification, 'VERIFIED');
+    const now = originalNow(); Date.now = () => now + 2000;
+    const expired = (await home()).examples[0];
+    assert.equal(expired.verification, 'STALE'); assert.equal(expired.current_value, null); assert.equal(expired.normalized_value, null); assert.equal(expired.last_observed_value, '1.0.0');
+    Date.now = originalNow;
+    const suppressed = await worker.fetch(new Request('https://xguardgate.com/admin/suppress', { method: 'POST', headers: { authorization: `Bearer ${h.env.LIVE_ADMIN_KEY}`, 'content-type': 'application/json' }, body: JSON.stringify({ id: 'npm/react', suppressed: true }) }), h.env, h.ctx);
+    assert.equal(suppressed.status, 200);
+    const updated = await home(); assert.equal(updated.stats.facts, 0); assert.equal(updated.examples.length, 0);
+    assert.equal(store.one('SELECT count(*) AS n FROM fact_observations').n, 4);
+  } finally { Date.now = originalNow; await h.drain(); h.close(); }
+});
+
+test('automatic alarms and domain contention cannot create a seconds-long retry loop', async () => {
+  const h = environment({ LIVE_SOURCE_FETCHES: 'on' });
+  try {
+    const { object, store } = await seed(h), now = Date.now();
+    store.set('last-tick', new Date(now).toISOString());
+    store.run('UPDATE sources SET next_fetch=0');
+    await object.wake(); assert.ok(object.state.storage.alarm >= now + 600000);
+    await object.fetch(new Request('https://internal/', { method: 'POST', body: JSON.stringify({ op: 'seed', sources: [{ adapter: 'npm', identifier: 'undici' }] }) }));
+    assert.ok(object.state.storage.alarm >= now + 600000, 'new candidates do not bypass the automatic alarm budget');
+    store.deferDomain('registry.npmjs.org', 600000);
+    assert.equal(store.claimDue(), null); assert.ok(store.nextDue() >= now + 600000);
+    assert.ok(store.claimDue(now + 601000), 'the source becomes eligible after backoff');
+  } finally { h.close(); }
+});
+
+test('existing schema opens read-only and additive migration preserves observations', async () => {
+  const h = environment();
+  try {
+    const { store } = await seed(h), db = store.storage;
+    store.run('UPDATE schema_versions SET version=1'); store.run('DROP INDEX fetch_time');
+    const migrated = new Store(db);
+    assert.equal(migrated.one('SELECT count(*) AS n FROM schema_versions').n, 2);
+    assert.equal(migrated.one('SELECT count(*) AS n FROM fact_observations').n, 4);
+    const readOnly = { ...db, sql: { exec(query, ...args) { assert.match(query, /^SELECT /); return db.sql.exec(query, ...args); } }, transactionSync() { throw new Error('Reopening storage must not write'); } };
+    assert.equal(new Store(readOnly).fact('npm/react/latest-version').current_value, '1.0.0');
+  } finally { h.close(); }
+});
+
+test('provider request exhaustion stays an honest 503 while static documentation remains available', async () => {
+  const h = environment();
+  try {
+    h.env.LIVE_CONTROL = { idFromName: x => x, get: () => ({ fetch: async () => { throw new Error('Exceeded allowed volume of requests in Durable Objects free tier.'); } }) };
+    const headers = { accept: 'application/json', 'user-agent': 'XGuardLive-regression' };
+    const response = await worker.fetch(new Request('https://xguardgate.com/healthz', { headers }), h.env, h.ctx);
+    assert.equal(response.status, 503); assert.equal(response.headers.get('cache-control'), 'no-store');
+    const failure = await response.json(); assert.equal(failure.error, 'storage_request_quota_exhausted'); assert.ok(Date.parse(failure.quota_reset_at) > Date.now());
+    const home = await worker.fetch(new Request('https://xguardgate.com/', { headers: { ...headers, accept: 'text/html' } }), h.env, h.ctx);
+    assert.equal(home.status, 503); assert.match(await home.text(), /Previously published facts are preserved/);
+    assert.equal((await worker.fetch(new Request('https://xguardgate.com/methodology', { headers }), h.env, h.ctx)).status, 200);
+  } finally { await h.drain(); h.close(); }
+});

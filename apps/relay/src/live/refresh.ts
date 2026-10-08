@@ -13,7 +13,10 @@ export function refreshInterval(source: Row, reliability: Row | null, demand = 0
 export async function refreshOne(store: Store, env: Env, source: Row): Promise<void> {
   const spec = sourceSpec(JSON.parse(source.spec_json).adapter, JSON.parse(source.spec_json).identifier);
   const lease = await rpc(env.LIVE_CONTROL, controlName, 'source-lease', { domain: spec.domain });
-  if (!lease.token) { store.defer(source.id, lease.retry_after_ms + Math.random() * 15000); return; }
+  if (!lease.token) {
+    const delay = Math.max(300000, Number(lease.retry_after_ms) || 0) + Math.random() * 300000;
+    store.defer(source.id, delay); store.deferDomain(spec.domain, delay); return;
+  }
   const fetchId = crypto.randomUUID(), started = performance.now(); let status: number | null = null, retryAfter: string | null = null;
   try {
     await checkRobots(spec.url, env);

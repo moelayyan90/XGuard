@@ -1,0 +1,26 @@
+name: Diagnose Live storage availability
+on:
+  push:
+    branches: [codex/live-recovery]
+    paths: [.github/workflows/live-diagnostics.yml, scripts/live-diagnostics.mjs]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --prefix apps/relay --no-audit --no-fund
+      - name: Read bounded operational error telemetry
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: node scripts/live-diagnostics.mjs

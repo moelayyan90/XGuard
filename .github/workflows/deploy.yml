@@ -91,6 +91,7 @@ jobs:
           export EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}"
           for attempt in {1..8}; do
             if node scripts/live-smoke.mjs; then exit 0; fi
+            if grep -q '^quota_exhausted=true$' "$GITHUB_OUTPUT"; then exit 1; fi
             sleep 5
           done
           exit 1
@@ -101,7 +102,7 @@ jobs:
         run: node scripts/live-admin-smoke.mjs
 
       - name: Roll back compatible code-only deployment after failed verification
-        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true'
+        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true' && steps.production_smoke.outputs.quota_exhausted != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -114,10 +115,15 @@ jobs:
           curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 3 --max-time 12 https://xguardgate.com/healthz >/dev/null
 
       - name: Require forward recovery after incompatible durable state change
-        if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true'
+        if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true' && steps.production_smoke.outputs.quota_exhausted != 'true'
         shell: bash
         run: |
           set -euo pipefail
           echo '::error title=Forward recovery required::Production verification failed after an incompatible durable state change. Preserve payment reconciliation and no-repeat safeguards; publish a compatible corrective version. No unsafe rollback was attempted.'
           curl --silent --show-error --retry 3 --retry-all-errors --retry-delay 2 --max-time 12 https://xguardgate.com/healthz || true
           exit 1
+
+      - name: Keep request-quota recovery deployed and report incomplete verification
+        if: failure() && steps.deploy.outcome == 'success' && steps.production_smoke.outputs.quota_exhausted == 'true'
+        run: |
+          echo '::error title=Provider request quota exhausted::The tested recovery build is deployed, but public data verification is incomplete. Durable Objects free limits reset at 00:00 UTC. The scheduled Live monitor will check service recovery. No subscription or billing changes were made.'

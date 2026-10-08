@@ -11,6 +11,8 @@ export class Store {
   storage: Storage;
   constructor(storage: Storage) {
     this.storage = storage;
+    const initialized = this.one("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_versions'");
+    if (initialized && this.one('SELECT version FROM schema_versions WHERE version=?', SCHEMA_VERSION)) return;
     storage.transactionSync(() => {
       for (const sql of SCHEMA) storage.sql.exec(sql);
       storage.sql.exec('INSERT OR IGNORE INTO schema_versions VALUES(?,?)', SCHEMA_VERSION, iso());
@@ -32,16 +34,19 @@ export class Store {
   }
   claimDue(now = Date.now()): Row | null {
     return this.storage.transactionSync(() => {
-      const source = this.one('SELECT * FROM sources WHERE enabled=1 AND next_fetch<=? AND lease_until<? ORDER BY next_fetch,id LIMIT 1', now, now);
+      const source = this.one('SELECT * FROM sources WHERE enabled=1 AND next_fetch<=? AND lease_until<? AND COALESCE((SELECT until_ms FROM domain_leases WHERE domain=sources.domain),0)<=? ORDER BY (last_interval<=600) DESC,next_fetch,id LIMIT 1', now, now, now);
       if (source) this.run('UPDATE sources SET lease_until=? WHERE id=?', now + 120000, source.id);
       return source;
     });
   }
-  nextDue(): number | null { return this.one('SELECT min(max(next_fetch,lease_until)) AS next FROM sources WHERE enabled=1')?.next ?? null; }
+  nextDue(): number | null { return this.one('SELECT min(max(next_fetch,lease_until,COALESCE((SELECT until_ms FROM domain_leases WHERE domain=sources.domain),0))) AS next FROM sources WHERE enabled=1')?.next ?? null; }
   fetchLog(source: Row, id: string, status: number | null, bytes: number, latency: number, digest: string | null, error: string | null): void {
     this.run('INSERT INTO source_fetches VALUES(?,?,?,?,?,?,?,?,?)', id, source.id, iso(), status, Math.round(latency), bytes, digest, error, 'conditional-https');
   }
   defer(id: string, delay: number): void { this.run('UPDATE sources SET lease_until=0,next_fetch=? WHERE id=?', Date.now() + delay, id); }
+  deferDomain(domain: string, delay: number): void {
+    this.run('INSERT INTO domain_leases VALUES(?,?,?) ON CONFLICT(domain) DO UPDATE SET until_ms=max(until_ms,excluded.until_ms)', domain, 'local-backoff', Date.now() + delay);
+  }
   failed(source: Row, error: string, delay: number): void {
     this.storage.transactionSync(() => {
       this.run('UPDATE sources SET failures=failures+1,last_error=?,lease_until=0,next_fetch=? WHERE id=?', error, Date.now() + delay, source.id);
@@ -140,6 +145,11 @@ export class Store {
       fetches_24h: this.one('SELECT count(*) AS n FROM source_fetches WHERE observed_at>=?', cutoff)!.n,
       last_tick: this.get('last-tick'), schema_version: SCHEMA_VERSION,
     };
+  }
+  publicSummary(): any {
+    const items = this.list(null, 1, 4);
+    const examples = items.slice(0, 2).map(item => { const facts = this.entity(item.id)?.facts || []; return facts.find((fact: any) => /latest-version|service-status|latest-release/.test(fact.fact)) || facts[0]; }).filter(Boolean);
+    return { stats: this.stats(), items, examples, changes: this.changes(), topics: this.rows('SELECT topic,count(*) AS count FROM entities WHERE published=1 AND suppressed=0 GROUP BY topic') };
   }
   telemetry(event: Row): void {
     const day = event.timestamp.slice(0, 10);

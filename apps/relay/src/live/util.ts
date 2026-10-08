@@ -75,6 +75,15 @@ export function publicFact(row: Record<string, any>, now = Date.now()): Record<s
     evidence_url: `${ORIGIN}/evidence/${row.entity_id}/${row.observation_id}`, max_age_seconds: row.max_age,
   };
 }
+// Aggregate pages may reuse an explicitly dated snapshot. A cached observation
+// must still lose its current value as soon as its freshness window expires.
+export function agePublicFact(fact: Record<string, any>, now = Date.now()): Record<string, any> {
+  if (fact.verification !== 'VERIFIED' || now - Date.parse(fact.verified_at) <= fact.max_age_seconds * 1000) return fact;
+  return { ...fact, current_value: null, normalized_value: null, verification: 'STALE', confidence: 'unconfirmed-current-value' };
+}
+export function isRequestQuotaError(error: unknown): boolean {
+  return /Exceeded allowed volume of requests in Durable Objects free tier|storage_request_quota_exhausted/.test(String(error));
+}
 export function retryDelay(failures: number, interval: number, retryAfter: string | null = null, now = Date.now()): number {
   const parsed = retryAfter == null ? 0 : /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : Math.max(0, Date.parse(retryAfter) - now);
   const backoff = Math.min(86400000, Math.max(60000, interval * 1000) * 2 ** Math.min(failures, 8));

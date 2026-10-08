@@ -47,6 +47,7 @@ export function render(kind: string, data: any, path: string, noindex = false): 
   } else {
     title = data.title; content = `<p class="eyebrow">XGuard Live</p><h1>${e(title)}</h1><div class="prose">${data.html || `<p>${e(data.message || '')}</p>`}</div>`;
   }
+  if (data.catalog_as_of) content += `<p class="sub">Index and totals as of ${when(data.catalog_as_of)}; refreshed at most every 15 minutes. Open a fact for its latest verification.</p>`;
   return layout(title, path, content, description, schema, noindex);
 }
 function topicLinks(): string { return `<div class="topics">${Object.entries(TOPICS).map(([key, label]) => `<a href="/topics/${e(key)}">${e(label)}</a>`).join('')}</div>`; }
