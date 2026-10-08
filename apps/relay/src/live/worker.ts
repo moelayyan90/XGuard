@@ -2,7 +2,7 @@ import type { Context, Env, Row } from './types.ts';
 import { ORIGIN, SHARDS, TOPICS, VERSION } from './types.ts';
 import { DISCOVERY_QUERIES, SEED_SOURCES, sourceSpec } from './adapters.ts';
 import { adminIdentity, boundedBody, checkRobots, equalSecret, safeFetch, securityHeaders, sessionToken } from './security.ts';
-import { controlName, escape, hash, integer, iso, json, negotiate, rpc, shardName, shardOf } from './util.ts';
+import { agePublicFact, controlName, escape, hash, integer, iso, isRequestQuotaError, json, negotiate, rpc, shardName, shardOf } from './util.ts';
 import { CSS, markdown, render } from './presentation.ts';
 import { businessMetrics } from './metrics.ts';
 
@@ -85,6 +85,7 @@ async function admin(request: Request, env: Env): Promise<Response> {
     if (['refresh', 'source-enabled', 'suppress'].includes(action)) {
       const id = sourceRoute(body.id || ''); if (!id) return json({ error: 'invalid_entity' }, 400);
       result = await shard(env, id, action, { id, enabled: body.enabled === true || body.enabled === 'true', suppressed: body.suppressed === true || body.suppressed === 'true' });
+      if (action === 'suppress') await control(env, 'catalog-invalidate');
     } else if (['monetization-config', 'report-import', 'correction-review', 'cost'].includes(action)) {
       const payload = body.payload ? JSON.parse(body.payload) : body;
       result = await control(env, action, action === 'monetization-config' ? { config: payload } : action === 'cost' ? { ...payload, amount_micros: Number(payload.amount_micros) } : payload);
@@ -127,20 +128,20 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (path === '/llms.txt') return new Response(`# XGuard Live\n\n> The live facts layer for AI.\n\nPublic primary-source facts with observation timestamps and immutable change history. No API key, plugin or installation required.\n\n## Retrieve\n\nUse ordinary GET. Accept: text/html, text/markdown or application/json. All formats use the same factual records. STALE and UNKNOWN are not current verified values.\n\n- [Topics](${ORIGIN}/topics)\n- [Changes](${ORIGIN}/changes)\n- [Methodology](${ORIGIN}/methodology)\n- [Sources](${ORIGIN}/sources)\n- [Sitemap](${ORIGIN}/sitemap.xml)\n- [Changes feed](${ORIGIN}/changes.atom)\n- [Discovery manifest](${ORIGIN}/.well-known/xguard-live.json)\n\nPaths: /live/{registry}/{entity}, /fact/{registry}/{entity}/{key}, /history/{registry}/{entity}/{key}. Cite the canonical fact URL, official source and verification timestamp.\n`, { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=300' } });
   if (path === '/.well-known/xguard-live.json' || path === '/identity') return json({ name: 'XGuard Live', version: VERSION, positioning: 'The live facts layer for AI.', canonical: ORIGIN, formats: ['text/html', 'text/markdown', 'application/json'], public_authentication_required: false, topics: `${ORIGIN}/topics`, sitemap: `${ORIGIN}/sitemap.xml`, methodology: `${ORIGIN}/methodology`, changes: `${ORIGIN}/changes.atom`, monetization: 'Cloudflare-account-dependent; ordinary discovery is free.' }, 200, { 'cache-control': 'public, max-age=300' });
   if (path === '/healthz' || path === '/status') {
-    const [parts, state] = await Promise.all([all(env, 'stats'), control(env, 'get', { key: 'last-cron' })]);
+    const catalog = await control(env, 'catalog'), parts = catalog.shards.map((s: any) => s.stats), state = catalog.last_cron;
     const stats = sumStats(parts), overdue = state && Date.now() - Date.parse(state) > 3600000;
-    const body = { service: 'XGuard Live', version: VERSION, storage: 'reachable', owner_access: (env.LIVE_ADMIN_KEY || env.XGUARD_OPERATOR_KEY || '').length >= 24 ? 'configured' : 'unconfigured', collector: state ? overdue ? 'overdue' : 'scheduled' : 'awaiting-first-cron', last_cron: state, ...stats };
+    const body = { service: 'XGuard Live', version: VERSION, storage: 'reachable', owner_access: (env.LIVE_ADMIN_KEY || env.XGUARD_OPERATOR_KEY || '').length >= 24 ? 'configured' : 'unconfigured', collector: state ? overdue ? 'overdue' : 'scheduled' : 'awaiting-first-cron', last_cron: state, catalog_as_of: catalog.as_of, aggregate_interval_seconds: 900, collection_min_interval_seconds: 600, ...stats };
     if (path === '/healthz') return json(body, overdue ? 503 : 200);
-    return pageResponse(request, 'prose', { title: 'System status', ...body, html: `<p>Storage is reachable across ${SHARDS} shards.</p><p>Collector: ${escape(body.collector)}. Last scheduler heartbeat: ${escape(state || 'not observed')}.</p><pre>${escape(JSON.stringify(stats, null, 2))}</pre>` }, path, true);
+    return pageResponse(request, 'prose', { title: 'System status', ...body, html: `<p>Control storage is reachable. The ${SHARDS}-shard catalog was checked at ${escape(catalog.as_of)}.</p><p>Collector: ${escape(body.collector)}. Last scheduler heartbeat: ${escape(state || 'not observed')}.</p><pre>${escape(JSON.stringify(stats, null, 2))}</pre>` }, path, true);
   }
   if (path === '/sitemap.xml') {
-    const stats = await all(env, 'stats');
+    const stats = (await control(env, 'catalog')).shards.map((s: any) => s.stats);
     const urls = [`${ORIGIN}/sitemaps/site.xml`];
-    stats.forEach((s, i) => { for (const kind of ['facts', 'entities']) for (let p = 1; p <= Math.ceil(s[kind] / 1000); p++) urls.push(`${ORIGIN}/sitemaps/${kind}-${i}-${p}.xml`); });
+    stats.forEach((s: any, i: number) => { for (const kind of ['facts', 'entities']) for (let p = 1; p <= Math.ceil(s[kind] / 1000); p++) urls.push(`${ORIGIN}/sitemaps/${kind}-${i}-${p}.xml`); });
     return xml(`<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.map(loc => `<sitemap><loc>${escape(loc)}</loc></sitemap>`).join('')}</sitemapindex>`);
   }
   if (path === '/sitemaps/site.xml') {
-    const topics = new Set((await all(env, 'topic-counts')).flat().filter(x => x.count > 0).map(x => x.topic));
+    const topics = new Set((await control(env, 'catalog')).shards.flatMap((s: any) => s.topics).filter((x: any) => x.count > 0).map((x: any) => x.topic));
     return xml(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['/', '/topics', '/changes', '/methodology', '/sources', '/accuracy', '/corrections', ...[...topics].map(x => `/topics/${x}`)].map(x => `<url><loc>${ORIGIN}${x}</loc></url>`).join('')}</urlset>`);
   }
   const sitemap = path.match(/^\/sitemaps\/(facts|entities)-(\d+)-(\d+)\.xml$/);
@@ -152,16 +153,13 @@ async function route(request: Request, env: Env): Promise<Response> {
     return xml(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${rows.map((x: any) => `<url><loc>${ORIGIN}/${sitemap[1] === 'facts' ? 'fact' : 'live'}/${escape(x.id)}</loc><lastmod>${escape(x.modified || x.updated_at)}</lastmod></url>`).join('')}</urlset>`);
   }
   if (path === '/changes.atom') {
-    const changes = (await all(env, 'changes')).flat().sort((a, b) => b.observed_at.localeCompare(a.observed_at)).slice(0, 100);
+    const { changes } = await control(env, 'catalog');
     if (!changes.length) return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
-    return xml(`<feed xmlns="http://www.w3.org/2005/Atom"><title>XGuard Live changes</title><id>${ORIGIN}/changes.atom</id><link href="${ORIGIN}/changes.atom" rel="self"/><updated>${escape(changes[0].observed_at)}</updated><author><name>XGuard Live</name></author>${changes.map(x => `<entry><id>${ORIGIN}/changes/${escape(x.entity_id)}/${escape(x.id)}</id><title>${escape(x.label)}: ${escape(x.change_type)}</title><updated>${escape(x.observed_at)}</updated><link href="${ORIGIN}/changes/${escape(x.entity_id)}/${escape(x.id)}"/><summary>${escape(JSON.stringify({ before: x.previous_value, after: x.current_value, source: x.source_url }))}</summary></entry>`).join('')}</feed>`, 'application/atom+xml');
+    return xml(`<feed xmlns="http://www.w3.org/2005/Atom"><title>XGuard Live changes</title><id>${ORIGIN}/changes.atom</id><link href="${ORIGIN}/changes.atom" rel="self"/><updated>${escape(changes[0].observed_at)}</updated><author><name>XGuard Live</name></author>${changes.map((x: any) => `<entry><id>${ORIGIN}/changes/${escape(x.entity_id)}/${escape(x.id)}</id><title>${escape(x.label)}: ${escape(x.change_type)}</title><updated>${escape(x.observed_at)}</updated><link href="${ORIGIN}/changes/${escape(x.entity_id)}/${escape(x.id)}"/><summary>${escape(JSON.stringify({ before: x.previous_value, after: x.current_value, source: x.source_url }))}</summary></entry>`).join('')}</feed>`, 'application/atom+xml');
   }
   if (path === '/') {
-    const [stats, lists, changes] = await Promise.all([all(env, 'stats'), all(env, 'list', { size: 2 }), all(env, 'changes')]);
-    const picked = lists.flat().slice(0, 6);
-    const entities = await Promise.all(picked.map(x => shard(env, x.id, 'entity', { id: x.id })));
-    const examples = entities.filter(Boolean).map(x => x.facts.find((f: any) => /latest-version|service-status|latest-release/.test(f.fact)) || x.facts[0]).filter(Boolean);
-    return pageResponse(request, 'home', { title: 'XGuard Live', stats: sumStats(stats), examples, changes: changes.flat().sort((a, b) => b.observed_at.localeCompare(a.observed_at)).slice(0, 8) }, path);
+    const catalog = await control(env, 'catalog');
+    return pageResponse(request, 'home', { title: 'XGuard Live', catalog_as_of: catalog.as_of, stats: sumStats(catalog.shards.map((s: any) => s.stats)), examples: catalog.examples.map((f: any) => agePublicFact(f)), changes: catalog.changes.slice(0, 8) }, path);
   }
   if (ARTICLES[path]) return pageResponse(request, 'prose', ARTICLES[path], path);
   if (path === '/corrections') return pageResponse(request, 'corrections', { fact: url.searchParams.get('fact') || '' }, path, url.searchParams.has('fact'));
@@ -169,14 +167,14 @@ async function route(request: Request, env: Env): Promise<Response> {
     const topic = path.slice('/topics/'.length), parts = topic.split('/page/');
     if (path !== '/topics' && !TOPICS[parts[0]]) return errorPage(404, 'Topic not found', 'This topic is not in the verified index.');
     const page = parts[1] ? integer(parts[1], 0, 1, 100000) : 1; if (!page) return errorPage(404, 'Page not found', 'Invalid page number.');
-    const counts = await all(env, 'topic-counts');
+    const catalog = await control(env, 'catalog'), counts = catalog.shards.map((s: any) => s.topics);
     const pages: { shard: number; page: number }[] = [];
-    counts.forEach((rows, i) => { const count = rows.find((x: any) => x.topic === parts[0])?.count || 0;
+    counts.forEach((rows: any[], i: number) => { const count = rows.find((x: any) => x.topic === parts[0])?.count || 0;
       for (let p = 1; p <= Math.ceil(count / 50); p++) pages.push({ shard: i, page: p }); });
     if (path !== '/topics' && page > Math.max(1, pages.length)) return errorPage(404, 'Page not found', 'This index page has no published records.');
     const placement = pages[page - 1];
-    const items = path === '/topics' ? (await all(env, 'list', { size: 4 })).flat() : placement ? await rpc(env.LIVE_SHARDS, shardName(placement.shard), 'list', { topic: parts[0], page: placement.page, size: 50 }) : [];
-    return pageResponse(request, 'index', { title: path === '/topics' ? 'Explore current facts.' : TOPICS[parts[0]], description: 'Only primary-source observations are published.', items, next: path !== '/topics' && page < pages.length ? `/topics/${parts[0]}/page/${page + 1}` : null }, path, !items.length);
+    const items = path === '/topics' ? catalog.items : placement ? await rpc(env.LIVE_SHARDS, shardName(placement.shard), 'list', { topic: parts[0], page: placement.page, size: 50 }) : [];
+    return pageResponse(request, 'index', { title: path === '/topics' ? 'Explore current facts.' : TOPICS[parts[0]], description: 'Only primary-source observations are published.', catalog_as_of: catalog.as_of, items, next: path !== '/topics' && page < pages.length ? `/topics/${parts[0]}/page/${page + 1}` : null }, path, !items.length);
   }
   if (path === '/search') {
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
@@ -184,16 +182,16 @@ async function route(request: Request, env: Env): Promise<Response> {
     return pageResponse(request, 'index', { title: `Search: ${q}`, items }, path, true);
   }
   if (path === '/changes') {
-    const changes = (await all(env, 'changes')).flat().sort((a, b) => b.observed_at.localeCompare(a.observed_at)).slice(0, 100);
-    return pageResponse(request, 'changes', { title: 'What changed', changes }, path, !changes.length);
+    const { changes, as_of } = await control(env, 'catalog');
+    return pageResponse(request, 'changes', { title: 'What changed', changes, catalog_as_of: as_of }, path, !changes.length);
   }
   const type = path.split('/')[1];
   if (['live', 'fact', 'history', 'changes', 'evidence'].includes(type)) {
     const parts = path.split('/').slice(2); let id = entityId(parts), key: string | undefined;
     if (!id) { key = parts.pop(); id = entityId(parts); }
     if (!id) return errorPage(404, 'Record not found', 'No canonical entity matches this URL.');
-    if (type === 'live') { const entity = await shard(env, id, 'entity', { id }); if (entity && !key) return pageResponse(request, 'entity', { ...entity, changes: (await shard(env, id, 'changes', { entity: id })).slice(0, 8) }, path); }
-    if (type === 'fact' && key) { const fact = await shard(env, id, 'fact', { id: `${id}/${key}` }); if (fact) return pageResponse(request, 'fact', { fact, history: (await shard(env, id, 'history', { id: fact.id, page: 1 })).slice(0, 10) }, path, fact.verification === 'REMOVED'); }
+    if (type === 'live') { const entity = await shard(env, id, 'entity-page', { id }); if (entity && !key) return pageResponse(request, 'entity', entity, path); }
+    if (type === 'fact' && key) { const page = await shard(env, id, 'fact-page', { id: `${id}/${key}` }); if (page) return pageResponse(request, 'fact', page, path, page.fact.verification === 'REMOVED'); }
     if (type === 'history') {
       if (key) { const fact = await shard(env, id, 'fact', { id: `${id}/${key}` }); if (fact) return pageResponse(request, 'history', { title: `${fact.label} history`, history: await shard(env, id, 'history', { id: fact.id, page: integer(url.searchParams.get('page'), 1, 1, 1000000) }), page: integer(url.searchParams.get('page'), 1, 1, 1000000) }, path); }
       else { const entity = await shard(env, id, 'entity', { id }); if (entity) return pageResponse(request, 'history', { title: `${entity.title} history`, facts: entity.facts, history: [] }, path); }
@@ -217,6 +215,7 @@ export function classify(request: Request): any {
 async function telemetry(request: Request, response: Response, env: Env, duration: number, cache: string): Promise<void> {
   const url = new URL(request.url); if (/^\/(admin|healthz|assets)/.test(url.pathname)) return;
   const cls = classify(request); let referrer = '';
+  if (cls.synthetic || response.status >= 500) return;
   try { referrer = new URL(request.headers.get('referer') || '').hostname; } catch { /* No attribution without evidence. */ }
   const platforms: Record<string, string> = { 'chatgpt.com': 'ChatGPT', 'perplexity.ai': 'Perplexity', 'claude.ai': 'Claude' };
   const timestamp = iso(), cf = (request as any).cf || {};
@@ -262,6 +261,7 @@ export async function expandDemand(env: Env): Promise<void> {
   const prior = await control(env, 'get', { key: 'demand-growth' }) || { day: '', queued: 0, total: 0 };
   const day = iso().slice(0, 10), daily = prior.day === day ? prior.queued : 0;
   if (daily >= 100 || prior.total >= 5000) return;
+  if (prior.checked_at && Date.now() - Date.parse(prior.checked_at) < 3600000) return;
   const candidates = (await all(env, 'growth-candidates')).flat().sort((a, b) => b.requests - a.requests);
   const seen = new Set<string>(); let queued = 0;
   for (const candidate of candidates) {
@@ -303,7 +303,12 @@ export default {
       }
     } catch (error) {
       console.error(JSON.stringify({ event: 'live_request_failed', path: url.pathname, message: String(error) }));
-      response = json({ error: 'service_temporarily_unavailable', request_id: crypto.randomUUID() }, 503, { 'retry-after': '30' });
+      const quota = isRequestQuotaError(error), reset = new Date(new Date().setUTCHours(24, 0, 0, 0)).toISOString();
+      const detail = { error: quota ? 'storage_request_quota_exhausted' : 'service_temporarily_unavailable', request_id: crypto.randomUUID(), ...(quota ? { quota_reset_at: reset } : {}) };
+      response = negotiate(request.headers.get('accept')) === 'html'
+        ? errorPage(503, 'Live data is temporarily unavailable', quota ? `The daily data-service request allowance has been reached. It resets at ${reset}. Previously published facts are preserved. Please try again after the reset.` : 'We could not read the published facts. Please try again shortly.')
+        : json(detail, 503);
+      response.headers.set('retry-after', quota ? '300' : '30');
     }
     const headers = new Headers(response.headers);
     for (const [key, value] of Object.entries(securityHeaders())) if (!headers.has(key)) headers.set(key, value);

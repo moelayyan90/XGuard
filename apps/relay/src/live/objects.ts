@@ -2,16 +2,20 @@ import { Store } from './store.ts';
 import { refreshOne } from './refresh.ts';
 import { sourceSpec } from './adapters.ts';
 import { SOURCE_HOSTS } from './security.ts';
-import { iso, json, integer } from './util.ts';
+import { iso, json, integer, rpc, shardName, isRequestQuotaError } from './util.ts';
+import { SHARDS } from './types.ts';
 import type { Env, Row, State } from './types.ts';
 
 export class LiveShard {
   state: State; env: Env; store: Store; running = false;
   constructor(state: State, env: Env) { this.state = state; this.env = env; this.store = new Store(state.storage); }
-  async wake(): Promise<void> {
+  async wake(urgent = false): Promise<void> {
     if (this.env.LIVE_SOURCE_FETCHES === 'off') return;
     const next = this.store.nextDue();
-    if (next !== null) await this.state.storage.setAlarm(Math.max(Date.now() + 1000 + Math.random() * 10000, next));
+    const last = Date.parse(this.store.get('last-tick') || '') || 0;
+    // Alarm invocations also consume the provider request quota. Bound automatic
+    // work even when thousands of sources compete for one upstream domain lease.
+    if (next !== null) await this.state.storage.setAlarm(Math.max(Date.now() + 1000 + Math.random() * 10000, next, urgent ? 0 : last + 600000));
   }
   async alarm(): Promise<void> {
     if (this.running || this.env.LIVE_SOURCE_FETCHES === 'off') return;
@@ -36,7 +40,9 @@ export class LiveShard {
       }
       if (op === 'tick') { this.store.set('cron-seen', iso()); await this.wake(); return json({ scheduled: true }); }
       if (op === 'entity') return json(this.store.entity(body.id));
+      if (op === 'entity-page') { const entity = this.store.entity(body.id); return json(entity ? { ...entity, changes: this.store.changes(body.id).slice(0, 8) } : null); }
       if (op === 'fact') return json(this.store.fact(body.id));
+      if (op === 'fact-page') { const fact = this.store.fact(body.id); return json(fact ? { fact, history: this.store.history(body.id, 1).slice(0, 10) } : null); }
       if (op === 'history') return json(this.store.history(body.id, integer(body.page, 1, 1, 1000000)));
       if (op === 'evidence') return json(this.store.evidence(body.entity, body.observation));
       if (op === 'changes') return json(this.store.changes(body.entity, body.id, integer(body.page, 1, 1, 1000000)));
@@ -47,6 +53,7 @@ export class LiveShard {
       }
       if (op === 'sitemap') return json(this.store.sitemap(integer(body.offset, 0), 1000));
       if (op === 'stats') return json(this.store.stats());
+      if (op === 'summary') return json(this.store.publicSummary());
       if (op === 'topic-counts') return json(this.store.rows('SELECT topic,count(*) AS count FROM entities WHERE published=1 AND suppressed=0 GROUP BY topic'));
       if (op === 'metrics') return json(this.store.metrics());
       if (op === 'growth-candidates') {
@@ -66,7 +73,7 @@ export class LiveShard {
       if (op === 'sources') return json(this.store.rows('SELECT id,domain,enabled,failures,last_error,last_success,next_fetch,last_interval FROM sources ORDER BY failures DESC,id LIMIT 200'));
       if (op === 'refresh') {
         if (!this.store.one('SELECT id FROM sources WHERE id=?', body.id)) return json({ error: 'source_not_found' }, 404);
-        this.store.run('UPDATE sources SET next_fetch=0 WHERE id=? AND enabled=1', body.id); this.store.audit('manual-refresh', { id: body.id }, 'owner'); await this.wake(); return json({ queued: true });
+        this.store.run('UPDATE sources SET next_fetch=0 WHERE id=? AND enabled=1', body.id); this.store.audit('manual-refresh', { id: body.id }, 'owner'); await this.wake(true); return json({ queued: true });
       }
       if (op === 'source-enabled') {
         this.store.run('UPDATE sources SET enabled=? WHERE id=?', body.enabled ? 1 : 0, body.id); this.store.audit('source-enabled', { id: body.id, enabled: body.enabled }, 'owner'); await this.wake(); return json({ ok: true });
@@ -75,13 +82,24 @@ export class LiveShard {
         this.store.run('UPDATE entities SET suppressed=? WHERE id=?', body.suppressed ? 1 : 0, body.id); this.store.audit('suppress-entity', { id: body.id, suppressed: body.suppressed }, 'owner'); return json({ ok: true });
       }
       return json({ error: 'unknown_operation' }, 400);
-    } catch (error) { console.error(JSON.stringify({ event: 'shard_error', message: String(error) })); return json({ error: 'storage_operation_failed' }, 500); }
+    } catch (error) { console.error(JSON.stringify({ event: 'shard_error', message: String(error) })); return json({ error: isRequestQuotaError(error) ? 'storage_request_quota_exhausted' : 'storage_operation_failed' }, 500); }
   }
 }
 
 export class LiveControl {
   state: State; env: Env; store: Store;
+  catalogValue: any = null; catalogFlight: Promise<any> | null = null;
   constructor(state: State, env: Env) { this.state = state; this.env = env; this.store = new Store(state.storage); }
+  async catalog(): Promise<any> {
+    if (!this.catalogValue) this.catalogValue = this.store.get('public-catalog-v1');
+    if (this.catalogValue && this.catalogValue.as_of.slice(0, 10) === iso().slice(0, 10) && Date.now() - Date.parse(this.catalogValue.as_of) < 900000) return this.catalogValue;
+    if (!this.catalogFlight) this.catalogFlight = (async () => {
+      const parts = await Promise.all(Array.from({ length: SHARDS }, (_, i) => rpc(this.env.LIVE_SHARDS, shardName(i), 'summary')));
+      const value = { as_of: iso(), shards: parts.map(p => ({ stats: p.stats, topics: p.topics })), items: parts.flatMap(p => p.items), examples: parts.flatMap(p => p.examples).slice(0, 6), changes: parts.flatMap(p => p.changes).sort((a, b) => b.observed_at.localeCompare(a.observed_at) || b.id.localeCompare(a.id)).slice(0, 100) };
+      this.store.set('public-catalog-v1', value); this.catalogValue = value; return value;
+    })().finally(() => { this.catalogFlight = null; });
+    return this.catalogFlight;
+  }
   stateView(): any {
     const config = this.store.get('monetization', { mode: this.env.MONETIZATION_MODE || 'observe', pay_per_crawl: 'unverified', pay_per_use: 'unverified', price_usd: null, accepted_buyers: [], provider_evidence: null });
     return { config, bootstrap: this.store.get('bootstrap'), last_cron: this.store.get('last-cron'), discovery: this.store.get('discovery', {}), demand_growth: this.store.get('demand-growth'),
@@ -98,6 +116,8 @@ export class LiveControl {
   async fetch(request: Request): Promise<Response> {
     try {
       const body = await request.json() as Row, { op } = body;
+      if (op === 'catalog') return json({ ...await this.catalog(), last_cron: this.store.get('last-cron') });
+      if (op === 'catalog-invalidate') { await this.catalogFlight?.catch(() => {}); this.catalogValue = null; this.store.set('public-catalog-v1', null); return json({ ok: true }); }
       if (op === 'get') return json(this.store.get(body.key));
       if (op === 'set') { this.store.set(body.key, body.value); return json({ ok: true }); }
       if (op === 'state') return json(this.stateView());

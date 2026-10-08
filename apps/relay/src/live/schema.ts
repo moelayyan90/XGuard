@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 // Additive migration only. Historical observations, changes and evidence are immutable.
 export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS schema_versions(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`,
@@ -11,6 +11,7 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS fact_definitions(id TEXT PRIMARY KEY, entity_id TEXT NOT NULL REFERENCES entities(id), fact_key TEXT NOT NULL, label TEXT NOT NULL, value_type TEXT NOT NULL, unit TEXT, max_age INTEGER NOT NULL, UNIQUE(entity_id,fact_key))`,
   `CREATE TABLE IF NOT EXISTS source_fetches(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, observed_at TEXT NOT NULL, http_status INTEGER, latency_ms INTEGER, bytes INTEGER, source_hash TEXT, error TEXT, method TEXT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS fetch_source_time ON source_fetches(source_id,observed_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS fetch_time ON source_fetches(observed_at)`,
   `CREATE TABLE IF NOT EXISTS evidence(id TEXT PRIMARY KEY, source_hash TEXT NOT NULL, source_url TEXT NOT NULL, source_domain TEXT NOT NULL, source_type TEXT NOT NULL, retrieved_at TEXT NOT NULL, method TEXT NOT NULL, fetch_id TEXT NOT NULL, normalized_json TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS fact_observations(id TEXT PRIMARY KEY, fact_id TEXT NOT NULL REFERENCES fact_definitions(id), value_json TEXT NOT NULL, observed_at TEXT NOT NULL, valid_from TEXT NOT NULL, verification TEXT NOT NULL, evidence_id TEXT NOT NULL REFERENCES evidence(id))`,
   `CREATE INDEX IF NOT EXISTS observation_history ON fact_observations(fact_id,observed_at DESC,id)`,
