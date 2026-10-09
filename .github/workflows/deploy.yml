@@ -69,6 +69,12 @@ jobs:
             echo '::warning::No usable owner key in repository secrets. Existing Worker secrets are preserved; owner access stays fail-closed if unconfigured.'
           fi
 
+      - name: Initialize missing owner access with encrypted delivery
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/live-owner-bootstrap.mjs
+
       - name: Deploy Worker
         id: deploy
         env:

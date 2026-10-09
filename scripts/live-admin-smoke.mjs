@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-const key = process.env.LIVE_ADMIN_KEY;
+const key = process.env.LIVE_ADMIN_KEY || process.env.LIVE_BOOTSTRAPPED_ADMIN_KEY;
 if (!key || key.length < 24) {
   console.log('Owner credential unavailable in CI; authenticated admin check not performed. Existing Worker secrets are retained.');
 } else {

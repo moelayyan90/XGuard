@@ -22,6 +22,7 @@ jobs:
         run: |
           npm run check
           npm test
+          node --test scripts/live-owner-bootstrap-test.mjs
       - name: Build and exercise actual workerd SQLite storage
         env:
           WRANGLER_SEND_METRICS: "false"
