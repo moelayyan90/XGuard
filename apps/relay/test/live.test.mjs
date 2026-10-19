@@ -320,6 +320,19 @@ test('pricing adapters normalize version punctuation and require explicit USD pe
   assert.throws(()=>parseSource(sourceSpec('pricing','anthropic'),table.replaceAll('USD / MTok','EUR / MTok')),/pricing_table_unverified/);
 });
 
+test('revalidation cannot freshen an older fact omitted from a later partial extraction', () => {
+  const db = storage(), store = new Store(db), spec = sourceSpec('pricing','openai');
+  try {
+    store.enqueue(spec);
+    store.observe({ spec, facts:[{key:'older-price',label:'Older price',value:1}], observedAt:'2020-01-01T00:00:00Z', hash:'a'.repeat(64), fetchId:'old', method:'fixture', exhaustive:false },0);
+    store.observe({ spec, facts:[{key:'current-price',label:'Current price',value:2}], observedAt:new Date().toISOString(), hash:'b'.repeat(64), fetchId:'new', method:'fixture', exhaustive:false },0);
+    store.revalidated(store.one('SELECT * FROM sources WHERE id=?',spec.id),new Date().toISOString(),Date.now()+10000);
+    assert.equal(store.fact('pricing/openai/older-price').verification,'STALE'); assert.equal(store.fact('pricing/openai/older-price').current_value,null);
+    assert.equal(store.fact('pricing/openai/current-price').verification,'VERIFIED'); assert.equal(store.stats().verified,1);
+    assert.equal(store.one('SELECT count(*) AS n FROM fact_observations').n,2);
+  } finally { db.db.close(); }
+});
+
 test('aggregate snapshots age expired examples and invalidate suppressed entities', async () => {
   const h = environment(), originalNow = Date.now;
   try {

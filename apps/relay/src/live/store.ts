@@ -64,9 +64,10 @@ export class Store {
     });
   }
   revalidated(source: Row, observedAt: string, next: number): void {
-    if (!source.last_hash || !this.one('SELECT id FROM current_facts WHERE id IN (SELECT id FROM fact_definitions WHERE entity_id=?) LIMIT 1', source.id)) throw new Error('304_without_verified_observation');
+    const matching = 'SELECT c.id FROM current_facts c JOIN fact_definitions d ON d.id=c.id JOIN fact_observations o ON o.id=c.observation_id JOIN evidence v ON v.id=o.evidence_id WHERE d.entity_id=? AND v.source_hash=?';
+    if (!source.last_hash || !this.one(matching + ' LIMIT 1', source.id, source.last_hash)) throw new Error('304_without_verified_observation');
     this.storage.transactionSync(() => {
-      this.run("UPDATE current_facts SET verified_at=?,verification=CASE WHEN verification='removed' THEN 'removed' ELSE 'verified' END WHERE id IN (SELECT id FROM fact_definitions WHERE entity_id=?)", observedAt, source.id);
+      this.run(`UPDATE current_facts SET verified_at=?,verification=CASE WHEN verification='removed' THEN 'removed' ELSE 'verified' END WHERE id IN (${matching})`, observedAt, source.id, source.last_hash);
       this.run('UPDATE sources SET failures=0,last_error=NULL,last_success=?,next_fetch=?,lease_until=0 WHERE id=?', observedAt, next, source.id);
       this.run('INSERT INTO source_reliability VALUES(?,1,0,0) ON CONFLICT(source_id) DO UPDATE SET successes=successes+1', source.id);
     });
