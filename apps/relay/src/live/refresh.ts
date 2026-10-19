@@ -34,7 +34,10 @@ export async function refreshOne(store: Store, env: Env, source: Row): Promise<v
     if (!response.ok) { await response.body?.cancel(); throw new Error(`source_http_${status}`); }
     const body = await boundedBody(response);
     const parsed = parseSource(spec, body), digest = await hash(body);
-    store.observe({ spec, facts: parsed.facts, observedAt: verified, hash: digest, fetchId, method: 'conditional-https',
+    if (digest === source.last_hash && store.matchesCurrent({ spec, facts: parsed.facts })) {
+      store.revalidated(source, verified, next);
+      store.run('UPDATE sources SET etag=?,last_modified=? WHERE id=?', response.headers.get('etag') || null, response.headers.get('last-modified') || null, spec.id);
+    } else store.observe({ spec, facts: parsed.facts, observedAt: verified, hash: digest, fetchId, method: 'conditional-https',
       etag: response.headers.get('etag') || undefined, lastModified: response.headers.get('last-modified') || undefined,
       related: parsed.related, exhaustive: parsed.exhaustive }, next);
     store.fetchLog(source, fetchId, status, new TextEncoder().encode(body).length, performance.now() - started, digest, null);

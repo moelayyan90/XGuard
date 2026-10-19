@@ -36,6 +36,12 @@ try {
   const second=await waitForValue('2.0.0'); assert.equal(second.previous_value,'1.0.0');
   const history=await rpc('history',{id:'npm/react/latest-version',page:1}); assert.equal(history.length,2);
   assert.equal(history[1].value,'1.0.0'); assert.equal(sourceCalls,2);
+  await rpc('refresh',{id:'npm/react'});
+  let third;
+  for(let i=0;i<80;i++) { third=await rpc('fact',{id:'npm/react/latest-version'}); if(third.verified_at>second.verified_at) break; await new Promise(resolve=>setTimeout(resolve,250)); }
+  assert.equal(sourceCalls,3);
+  assert.ok(third.verified_at>second.verified_at);
+  assert.equal((await rpc('history',{id:'npm/react/latest-version',page:1})).length,2,'identical HTTP 200 responses revalidate existing evidence without duplicate observations');
   assert.equal((await mf.dispatchFetch('https://xguardgate.com/', { headers: { accept: 'application/json' } })).headers.get('content-type'), 'application/json; charset=utf-8');
   assert.match(await (await mf.dispatchFetch('https://xguardgate.com/', { headers: { accept: 'text/html' } })).text(), /The live facts/);
   console.log('workerd integration: 32 SQLite shards, durable alarms, source collection, changed-value history, auth and format cache verified; isolated source fixtures only.');

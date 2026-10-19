@@ -1,4 +1,4 @@
-import { SCHEMA, SCHEMA_VERSION } from './schema.ts';
+import { FACT_INDEX_BACKFILL, SCHEMA, SCHEMA_VERSION } from './schema.ts';
 import { TOPICS } from './types.ts';
 import type { Json, ObservationInput, Row, SourceSpec, Storage } from './types.ts';
 import { changeType, iso, publicFact, stable } from './util.ts';
@@ -9,19 +9,21 @@ const FACT_SELECT = `SELECT d.*,e.title,e.topic,e.suppressed,(SELECT min(h.obser
  JOIN fact_observations o ON o.id=c.observation_id JOIN evidence v ON v.id=o.evidence_id`;
 export class Store {
   storage: Storage;
+  rowsRead = 0; rowsWritten = 0;
   constructor(storage: Storage) {
     this.storage = storage;
     const initialized = this.one("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_versions'");
     if (initialized && this.one('SELECT version FROM schema_versions WHERE version=?', SCHEMA_VERSION)) return;
     storage.transactionSync(() => {
       for (const sql of SCHEMA) storage.sql.exec(sql);
+      storage.sql.exec(FACT_INDEX_BACKFILL);
       storage.sql.exec('INSERT OR IGNORE INTO schema_versions VALUES(?,?)', SCHEMA_VERSION, iso());
       for (const [id, title] of Object.entries(TOPICS)) storage.sql.exec('INSERT OR IGNORE INTO topics VALUES(?,?)', id, title);
     });
   }
-  rows(sql: string, ...values: any[]): Row[] { return this.storage.sql.exec(sql, ...values).toArray(); }
+  rows(sql: string, ...values: any[]): Row[] { const cursor = this.storage.sql.exec(sql, ...values), rows = cursor.toArray(); this.rowsRead += Number(cursor.rowsRead || 0); this.rowsWritten += Number(cursor.rowsWritten || 0); return rows; }
   one(sql: string, ...values: any[]): Row | null { return this.rows(sql, ...values)[0] || null; }
-  run(sql: string, ...values: any[]): void { this.storage.sql.exec(sql, ...values); }
+  run(sql: string, ...values: any[]): void { this.rows(sql, ...values); }
   get(key: string, fallback: any = null): any { const row = this.one('SELECT value FROM settings WHERE key=?', key); return row ? JSON.parse(row.value) : fallback; }
   set(key: string, value: any): void { this.run('INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify(value)); }
   audit(action: string, detail: any, actor = 'system'): void { this.run('INSERT INTO audit_log VALUES(?,?,?,?,?)', crypto.randomUUID(), iso(), actor, action, JSON.stringify(detail)); }
@@ -34,8 +36,10 @@ export class Store {
   }
   claimDue(now = Date.now()): Row | null {
     return this.storage.transactionSync(() => {
-      const source = this.one('SELECT * FROM sources WHERE enabled=1 AND next_fetch<=? AND lease_until<? AND COALESCE((SELECT until_ms FROM domain_leases WHERE domain=sources.domain),0)<=? ORDER BY (last_interval<=600) DESC,next_fetch,id LIMIT 1', now, now, now);
+      const selected = this.one("SELECT s.* FROM settings q JOIN sources s ON s.id=substr(q.key,length('manual-refresh:')+1) WHERE q.key GLOB 'manual-refresh:*' AND s.enabled=1 AND s.lease_until<? ORDER BY q.key LIMIT 1", now);
+      const source = selected || this.one('SELECT * FROM sources WHERE enabled=1 AND next_fetch<=? AND lease_until<? AND COALESCE((SELECT until_ms FROM domain_leases WHERE domain=sources.domain),0)<=? ORDER BY (last_interval<=600) DESC,next_fetch,id LIMIT 1', now, now, now);
       if (source) this.run('UPDATE sources SET lease_until=? WHERE id=?', now + 120000, source.id);
+      if (selected) this.run('DELETE FROM settings WHERE key=?', `manual-refresh:${selected.id}`);
       return source;
     });
   }
@@ -46,6 +50,10 @@ export class Store {
   defer(id: string, delay: number): void { this.run('UPDATE sources SET lease_until=0,next_fetch=? WHERE id=?', Date.now() + delay, id); }
   deferDomain(domain: string, delay: number): void {
     this.run('INSERT INTO domain_leases VALUES(?,?,?) ON CONFLICT(domain) DO UPDATE SET until_ms=max(until_ms,excluded.until_ms)', domain, 'local-backoff', Date.now() + delay);
+  }
+  matchesCurrent(input: Pick<ObservationInput, 'spec' | 'facts'>): boolean {
+    const current = new Map(this.rows('SELECT d.fact_key,d.label,d.unit,d.max_age,c.value_json FROM fact_definitions d JOIN current_facts c ON c.id=d.id WHERE d.entity_id=?', input.spec.id).map(row => [row.fact_key, row]));
+    return input.facts.every(fact => { const row = current.get(fact.key); return row && row.value_json === stable(fact.value) && row.label === fact.label && (row.unit || '') === (fact.unit || '') && row.max_age === input.spec.maxAge; });
   }
   failed(source: Row, error: string, delay: number): void {
     this.storage.transactionSync(() => {
@@ -135,7 +143,7 @@ export class Store {
   stats(): any {
     const now = iso(), start = now.slice(0, 10), cutoff = iso(Date.now() - 86400000);
     return {
-      ...this.one(`SELECT count(*) AS facts,COALESCE(sum(CASE WHEN c.verification='verified' AND (julianday(?) - julianday(c.verified_at))*86400<=d.max_age THEN 1 ELSE 0 END),0) AS verified,COALESCE(sum(CASE WHEN c.verification='stale' OR (julianday(?) - julianday(c.verified_at))*86400>d.max_age THEN 1 ELSE 0 END),0) AS stale,max(c.verified_at) AS last_update FROM current_facts c JOIN fact_definitions d ON d.id=c.id JOIN entities e ON e.id=d.entity_id WHERE e.published=1 AND e.suppressed=0`, now, now),
+      ...this.one(`SELECT count(*) AS facts,COALESCE(sum(CASE WHEN verification='verified' AND expires_ms>=? THEN 1 ELSE 0 END),0) AS verified,COALESCE(sum(CASE WHEN verification='stale' OR expires_ms<? THEN 1 ELSE 0 END),0) AS stale,max(verified_at) AS last_update FROM public_fact_index WHERE visible=1`, Date.now(), Date.now()),
       entities: this.one('SELECT count(*) AS n FROM entities WHERE published=1 AND suppressed=0')!.n,
       sources: this.one('SELECT count(*) AS n FROM sources')!.n,
       changes_today: this.one('SELECT count(*) AS n FROM fact_changes WHERE observed_at>=?', start)!.n,
@@ -147,9 +155,11 @@ export class Store {
     };
   }
   publicSummary(): any {
-    const items = this.list(null, 1, 4);
+    const before = this.rowsRead;
+    const items = this.list(null, 1, 1000);
     const examples = items.slice(0, 2).map(item => { const facts = this.entity(item.id)?.facts || []; return facts.find((fact: any) => /latest-version|service-status|latest-release/.test(fact.fact)) || facts[0]; }).filter(Boolean);
-    return { stats: this.stats(), items, examples, changes: this.changes(), topics: this.rows('SELECT topic,count(*) AS count FROM entities WHERE published=1 AND suppressed=0 GROUP BY topic') };
+    const result = { stats: this.stats(), items, examples, changes: this.changes(), topics: this.rows('SELECT topic,count(*) AS count FROM entities WHERE published=1 AND suppressed=0 GROUP BY topic') };
+    return { ...result, profile: { rows_read: this.rowsRead - before } };
   }
   telemetry(event: Row): void {
     const day = event.timestamp.slice(0, 10);
@@ -163,6 +173,7 @@ export class Store {
   }
   metrics(): any {
     return { requests: this.rows('SELECT day,classification,operator,status,cache,sum(requests) AS requests,sum(bytes) AS bytes FROM request_metrics WHERE day>=? GROUP BY day,classification,operator,status,cache ORDER BY day DESC', iso(Date.now() - 30 * 86400000).slice(0, 10)),
+      hot_paths: this.rows('SELECT path,sum(requests) AS requests FROM request_metrics WHERE day=? GROUP BY path ORDER BY requests DESC LIMIT 20', iso().slice(0, 10)),
       top_pages: this.rows("SELECT path,sum(requests) AS requests FROM request_metrics WHERE day>=? AND classification='verified-ai' GROUP BY path ORDER BY requests DESC LIMIT 20", iso(Date.now() - 7 * 86400000).slice(0, 10)),
       repeat: this.one('SELECT count(*) AS crawlers,COALESCE(sum(CASE WHEN requests>1 THEN 1 ELSE 0 END),0) AS repeat_crawlers FROM crawler_visitors WHERE day=?', iso().slice(0, 10)),
       referrals: this.rows('SELECT platform,sum(requests) AS requests FROM ai_referrals WHERE day>=? GROUP BY platform', iso(Date.now() - 7 * 86400000).slice(0, 10)) };

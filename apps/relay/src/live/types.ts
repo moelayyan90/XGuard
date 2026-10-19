@@ -1,7 +1,7 @@
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type Row = Record<string, any>;
-export interface Sql { exec(query: string, ...values: any[]): { toArray(): Row[] }; }
-export interface Storage { sql: Sql; transactionSync<T>(fn: () => T): T; setAlarm(time: number): Promise<void>; }
+export interface Sql { exec(query: string, ...values: any[]): { toArray(): Row[]; rowsRead?: number; rowsWritten?: number }; }
+export interface Storage { sql: Sql; transactionSync<T>(fn: () => T): T; getAlarm(): Promise<number | null>; setAlarm(time: number): Promise<void>; }
 export interface State { storage: Storage; blockConcurrencyWhile<T>(fn: () => Promise<T>): Promise<T>; }
 export interface Stub { fetch(request: Request): Promise<Response>; }
 export interface Namespace { idFromName(name: string): any; get(id: any): Stub; }
