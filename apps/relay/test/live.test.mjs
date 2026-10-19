@@ -236,6 +236,8 @@ test('vendor tiered pricing cannot mix context bands or undocumented units', () 
   assert.equal(facts.find(x=>x.key==='example-model-standard-short-context-input-price').value,1);
   assert.equal(facts.find(x=>x.key==='example-model-standard-long-context-input-price').value,2);
   assert.throws(()=>parseSource(spec,document.replace('Prices per 1M tokens.','Undocumented unit')),/pricing_table_unverified/);
+  const versioned = parseSource(spec, document.replaceAll('example-model', 'model.1')).facts;
+  assert.equal(versioned.find(x=>x.key==='model-1-standard-short-context-input-price').value,1);
 });
 
 test('public indexes share one durable snapshot across concurrent requests and object restarts', async () => {
@@ -250,6 +252,7 @@ test('public indexes share one durable snapshot across concurrent requests and o
     assert.ok(health.every(r => r.status === 200)); assert.equal(reads, 32);
     const stats = await health[0].json(); assert.equal(stats.facts, 4); assert.ok(stats.catalog_as_of);
     for (const path of ['/', '/topics', '/changes', '/sitemap.xml', '/sitemaps/site.xml']) assert.equal((await request(path)).status, 200);
+    const search = await (await request('/search?q=ReAcT')).json(); assert.equal(search.items[0].id, 'npm/react');
     assert.equal(reads, 32, 'repeated global pages must not fan out across all shards');
     const previous = h.controls.get(controlName);
     const { LiveControl } = await import('../src/live/objects.ts');
@@ -259,6 +262,75 @@ test('public indexes share one durable snapshot across concurrent requests and o
     const fact = await (await request('/fact/npm/react/latest-version')).json();
     assert.equal(fact.fact.current_value, '2.0.0'); assert.equal(reads, 1, 'a fact and its history use one storage request');
   } finally { await h.drain(); h.close(); }
+});
+
+test('edge entries cannot outlive the application freshness deadline when zone headers expand TTL', async () => {
+  const h = environment(), originalNow = Date.now, originalCaches = globalThis.caches, entries = new Map();
+  globalThis.caches = { default: { async put(key, value) { entries.set(key.url, value.clone()); }, async match(key) { const value = entries.get(key.url); if (!value) return undefined; const headers = new Headers(value.headers); headers.set('cache-control', 'public, max-age=14400'); return new Response(await value.clone().arrayBuffer(), { status: value.status, headers }); } } };
+  try {
+    await seed(h); const start = originalNow();
+    const get = () => worker.fetch(new Request('https://xguardgate.com/fact/npm/react/latest-version', { headers: { accept: 'application/json', 'user-agent': 'XGuardLive-regression' } }), h.env, h.ctx);
+    const first = await get(); assert.equal(first.headers.get('x-xguard-cache'), 'MISS'); await h.drain();
+    await seed(h, '2.0.0');
+    const cached = await get(); assert.equal(cached.headers.get('x-xguard-cache'), 'HIT'); assert.equal((await cached.json()).fact.current_value, '1.0.0'); assert.ok(Number(cached.headers.get('cache-control').match(/max-age=(\d+)/)[1]) <= 60);
+    Date.now = () => start + 61000;
+    const renewed = await get(); assert.equal(renewed.headers.get('x-xguard-cache'), 'MISS'); assert.equal((await renewed.json()).fact.current_value, '2.0.0');
+  } finally { Date.now = originalNow; globalThis.caches = originalCaches; await h.drain(); h.close(); }
+});
+
+test('fact-count index backfills old storage and tracks writes, expiry and publication without editing history', async () => {
+  const h = environment();
+  try {
+    const { store } = await seed(h), db = store.storage;
+    for (const { name } of store.rows("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'public_fact_index_%'")) store.run(`DROP TRIGGER ${name}`);
+    store.run('DROP TABLE public_fact_index'); store.run('UPDATE schema_versions SET version=2');
+    const migrated = new Store(db); assert.equal(migrated.stats().verified, 4);
+    migrated.run("UPDATE current_facts SET verification='stale'"); assert.equal(migrated.stats().stale, 4);
+    migrated.revalidated(migrated.one('SELECT * FROM sources WHERE id=?', 'npm/react'), new Date().toISOString(), Date.now()+1000); assert.equal(migrated.stats().verified, 4);
+    migrated.run('UPDATE entities SET suppressed=1'); assert.equal(migrated.stats().facts, 0);
+    migrated.run('UPDATE entities SET suppressed=0'); assert.equal(migrated.stats().facts, 4);
+    migrated.run('UPDATE fact_definitions SET max_age=-1 WHERE id=?', 'npm/react/latest-version'); assert.equal(migrated.stats().stale, 1);
+    assert.equal(migrated.one('SELECT count(*) AS n FROM fact_observations').n, 4);
+    assert.throws(() => migrated.run('DELETE FROM fact_observations'), /immutable_history/);
+  } finally { h.close(); }
+});
+
+test('trusted category metadata verifies AI traffic while spoofed headers remain claims', () => {
+  const claimed = new Request('https://xguardgate.com/', { headers: { 'user-agent': 'OAI-SearchBot', 'x-verified-bot-category': 'AI Search' } });
+  assert.equal(classify(claimed).classification, 'claimed-ai');
+  Object.defineProperty(claimed, 'cf', { value: { verifiedBotCategory: 'AI Search' } }); assert.equal(classify(claimed).classification, 'verified-ai');
+  const other = new Request('https://xguardgate.com/'); Object.defineProperty(other, 'cf', { value: { verifiedBotCategory: 'AI Assistant' } }); assert.equal(classify(other).classification, 'verified-ai');
+});
+
+test('manual source refresh takes priority over a pre-existing candidate backlog', async () => {
+  const h = environment();
+  try {
+    const { store, object } = await seed(h);
+    store.enqueue(sourceSpec('npm', 'aaa-backlog')); store.enqueue(sourceSpec('npm', 'zzz-selected'));
+    const response = await object.fetch(new Request('https://internal/', { method: 'POST', body: JSON.stringify({ op: 'refresh', id: 'npm/zzz-selected' }) }));
+    assert.equal(response.status, 200); assert.equal(store.claimDue().id, 'npm/zzz-selected');
+    store.run("UPDATE sources SET enabled=0 WHERE id='npm/zzz-selected'");
+    const disabled = await object.fetch(new Request('https://internal/', { method: 'POST', body: JSON.stringify({ op: 'refresh', id: 'npm/zzz-selected' }) })); assert.equal(disabled.status, 409);
+  } finally { h.close(); }
+});
+
+test('pricing adapters normalize version punctuation and require explicit USD per-token units', () => {
+  const table='<section><table><tr><th>Model</th><th>Input</th><th>Output</th></tr><tr><td>Model 1.2</td><td>$8 USD / MTok</td><td>$40 USD / MTok</td></tr></table></section>';
+  const facts=parseSource(sourceSpec('pricing','anthropic'),table).facts; assert.equal(facts[0].key,'model-1-2-input-price'); assert.equal(facts[0].value,8);
+  assert.throws(()=>parseSource(sourceSpec('pricing','anthropic'),table.replaceAll('USD / MTok','EUR / MTok')),/pricing_table_unverified/);
+});
+
+test('revalidation cannot freshen an older fact omitted from a later partial extraction', () => {
+  const db = storage(), store = new Store(db), spec = sourceSpec('pricing','openai');
+  try {
+    store.enqueue(spec);
+    store.observe({ spec, facts:[{key:'older-price',label:'Older price',value:1}], observedAt:'2020-01-01T00:00:00Z', hash:'a'.repeat(64), fetchId:'old', method:'fixture', exhaustive:false },0);
+    store.observe({ spec, facts:[{key:'current-price',label:'Current price',value:2}], observedAt:new Date().toISOString(), hash:'b'.repeat(64), fetchId:'new', method:'fixture', exhaustive:false },0);
+    store.revalidated(store.one('SELECT * FROM sources WHERE id=?',spec.id),new Date().toISOString(),Date.now()+10000);
+    assert.equal(store.fact('pricing/openai/older-price').verification,'STALE'); assert.equal(store.fact('pricing/openai/older-price').current_value,null);
+    assert.equal(store.fact('pricing/openai/current-price').verification,'VERIFIED'); assert.equal(store.stats().verified,1);
+    assert.equal(store.one('SELECT count(*) AS n FROM fact_observations').n,2);
+  } finally { db.db.close(); }
 });
 
 test('aggregate snapshots age expired examples and invalidate suppressed entities', async () => {

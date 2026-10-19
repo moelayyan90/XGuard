@@ -1,7 +1,7 @@
 name: Diagnose Live storage availability
 on:
   push:
-    branches: [codex/live-recovery]
+    branches: [codex/live-recovery, codex/live-capacity-recovery]
     paths: [.github/workflows/live-diagnostics.yml, scripts/live-diagnostics.mjs]
   workflow_dispatch:
 permissions:

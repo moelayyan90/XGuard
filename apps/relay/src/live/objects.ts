@@ -15,14 +15,20 @@ export class LiveShard {
     const last = Date.parse(this.store.get('last-tick') || '') || 0;
     // Alarm invocations also consume the provider request quota. Bound automatic
     // work even when thousands of sources compete for one upstream domain lease.
-    if (next !== null) await this.state.storage.setAlarm(Math.max(Date.now() + 1000 + Math.random() * 10000, next, urgent ? 0 : last + 600000));
+    if (next === null) return;
+    const existing = await this.state.storage.getAlarm(), now = Date.now();
+    // Cron ticks must not pull future alarms into the same ten-second burst or
+    // repeatedly postpone them. Keep the earliest pending automatic alarm.
+    if (!urgent && existing !== null && existing > now) return;
+    const spread = urgent || !last ? Math.random() * 10000 : Math.random() * 180000;
+    await this.state.storage.setAlarm(Math.max(now + 1000, next, urgent ? 0 : last + 600000) + spread);
   }
   async alarm(): Promise<void> {
     if (this.running || this.env.LIVE_SOURCE_FETCHES === 'off') return;
     this.running = true;
     try {
       this.store.set('last-tick', iso());
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 4; i++) {
         const source = this.store.claimDue(); if (!source) break;
         await refreshOne(this.store, this.env, source);
       }
@@ -72,8 +78,10 @@ export class LiveShard {
       if (op === 'telemetry') { this.store.telemetry(body.event); return json({ ok: true }); }
       if (op === 'sources') return json(this.store.rows('SELECT id,domain,enabled,failures,last_error,last_success,next_fetch,last_interval FROM sources ORDER BY failures DESC,id LIMIT 200'));
       if (op === 'refresh') {
-        if (!this.store.one('SELECT id FROM sources WHERE id=?', body.id)) return json({ error: 'source_not_found' }, 404);
-        this.store.run('UPDATE sources SET next_fetch=0 WHERE id=? AND enabled=1', body.id); this.store.audit('manual-refresh', { id: body.id }, 'owner'); await this.wake(true); return json({ queued: true });
+        const source = this.store.one('SELECT enabled FROM sources WHERE id=?', body.id);
+        if (!source) return json({ error: 'source_not_found' }, 404);
+        if (!source.enabled) return json({ error: 'source_disabled' }, 409);
+        this.store.run('UPDATE sources SET next_fetch=0 WHERE id=? AND enabled=1', body.id); this.store.set(`manual-refresh:${body.id}`, true); this.store.audit('manual-refresh', { id: body.id }, 'owner'); await this.wake(true); return json({ queued: true });
       }
       if (op === 'source-enabled') {
         this.store.run('UPDATE sources SET enabled=? WHERE id=?', body.enabled ? 1 : 0, body.id); this.store.audit('source-enabled', { id: body.id, enabled: body.enabled }, 'owner'); await this.wake(); return json({ ok: true });
@@ -92,17 +100,19 @@ export class LiveControl {
   constructor(state: State, env: Env) { this.state = state; this.env = env; this.store = new Store(state.storage); }
   async catalog(): Promise<any> {
     if (!this.catalogValue) this.catalogValue = this.store.get('public-catalog-v1');
-    if (this.catalogValue && this.catalogValue.as_of.slice(0, 10) === iso().slice(0, 10) && Date.now() - Date.parse(this.catalogValue.as_of) < 900000) return this.catalogValue;
+    if (this.catalogValue && Array.isArray(this.catalogValue.search_items) && this.catalogValue.as_of.slice(0, 10) === iso().slice(0, 10) && Date.now() - Date.parse(this.catalogValue.as_of) < 900000) return this.catalogValue;
     if (!this.catalogFlight) this.catalogFlight = (async () => {
       const parts = await Promise.all(Array.from({ length: SHARDS }, (_, i) => rpc(this.env.LIVE_SHARDS, shardName(i), 'summary')));
-      const value = { as_of: iso(), shards: parts.map(p => ({ stats: p.stats, topics: p.topics })), items: parts.flatMap(p => p.items), examples: parts.flatMap(p => p.examples).slice(0, 6), changes: parts.flatMap(p => p.changes).sort((a, b) => b.observed_at.localeCompare(a.observed_at) || b.id.localeCompare(a.id)).slice(0, 100) };
+      const value = { as_of: iso(), profile: { rows_read: parts.reduce((n, p) => n + Number(p.profile?.rows_read || 0), 0) }, shards: parts.map(p => ({ stats: p.stats, topics: p.topics })), items: parts.flatMap(p => p.items.slice(0, 4)), search_items: parts.flatMap(p => p.items), examples: parts.flatMap(p => p.examples).slice(0, 6), changes: parts.flatMap(p => p.changes).sort((a, b) => b.observed_at.localeCompare(a.observed_at) || b.id.localeCompare(a.id)).slice(0, 100) };
       this.store.set('public-catalog-v1', value); this.catalogValue = value; return value;
     })().finally(() => { this.catalogFlight = null; });
     return this.catalogFlight;
   }
   stateView(): any {
     const config = this.store.get('monetization', { mode: this.env.MONETIZATION_MODE || 'observe', pay_per_crawl: 'unverified', pay_per_use: 'unverified', price_usd: null, accepted_buyers: [], provider_evidence: null });
-    return { config, bootstrap: this.store.get('bootstrap'), last_cron: this.store.get('last-cron'), discovery: this.store.get('discovery', {}), demand_growth: this.store.get('demand-growth'),
+    const profile = this.store.get('public-catalog-v1')?.profile || null;
+    const cost_alerts = profile?.rows_read * 96 > 4000000 ? [{ code: 'catalog_read_budget', severity: 'warning', measured_rows_per_refresh: profile.rows_read, projected_rows_per_day_at_15_minute_refreshes: profile.rows_read * 96, scope: 'Projection for catalog reads only, not measured account-wide usage or an invoice. Review Cloudflare usage before expanding coverage.' }] : [];
+    return { config, bootstrap: this.store.get('bootstrap'), last_cron: this.store.get('last-cron'), discovery: this.store.get('discovery', {}), demand_growth: this.store.get('demand-growth'), catalog_profile: profile, cost_alerts,
       revenue: this.store.rows('SELECT program,currency,substr(occurred_at,1,10) AS day,sum(amount_micros) AS amount_micros,sum(uses) AS uses FROM monetization_events GROUP BY program,currency,day ORDER BY day DESC LIMIT 180'),
       top_earning_pages: this.store.rows('SELECT path,program,sum(amount_micros) AS amount_micros,sum(uses) AS uses FROM monetization_events GROUP BY path,program ORDER BY amount_micros DESC LIMIT 20'),
       category_revenue: this.store.rows('SELECT path,sum(amount_micros) AS amount_micros FROM monetization_events WHERE occurred_at>=? GROUP BY path', iso().slice(0, 7) + '-01'),

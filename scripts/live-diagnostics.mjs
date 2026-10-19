@@ -5,6 +5,18 @@ import { setTimeout as delay } from 'node:timers/promises';
 // request bodies, or raw tail records. No deployment or configuration changes.
 const token = (process.env.CLOUDFLARE_API_TOKEN || '').replace(/[\r\n]/g, '').trim().replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '').trim();
 if (!token) throw new Error('Cloudflare credential unavailable');
+const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || '';
+if (/^[a-f0-9]{32}$/i.test(accountId)) {
+  try {
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const query = `{ viewer { accounts(filter: {accountTag: "${accountId}"}) { durableObjectsInvocationsAdaptiveGroups(filter: {date_gt: "${yesterday}"}, limit: 1000) { sum { requests } } } } }`;
+    const response = await fetch('https://api.cloudflare.com/client/v4/graphql', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ query }), signal: AbortSignal.timeout(15000), redirect: 'error' });
+    const result = await response.json();
+    const accounts = result.data?.viewer?.accounts;
+    if (response.ok && accounts && !result.errors?.length) console.log(JSON.stringify({ provider_metrics: 'available', utc_day: new Date().toISOString().slice(0, 10), account_durable_requests: accounts.flatMap(a => a.durableObjectsInvocationsAdaptiveGroups || []).reduce((n, x) => n + Number(x.sum?.requests || 0), 0) }));
+    else console.log(JSON.stringify({ provider_metrics: 'unavailable', http_status: response.status, errors: (result.errors || []).map(e => String(e.message).replaceAll(token, '[redacted]').replaceAll(accountId, '[account]').slice(0, 250)).slice(0, 3) }));
+  } catch { console.log(JSON.stringify({ provider_metrics: 'unavailable' })); }
+}
 const child = spawn('apps/relay/node_modules/.bin/wrangler', ['tail', 'xguard-mainnet', '--format=json', '--config', 'apps/relay/wrangler.jsonc'], {
   env: { ...process.env, CLOUDFLARE_API_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe']
 });

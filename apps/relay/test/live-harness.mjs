@@ -14,6 +14,7 @@ export function storage(filename = ':memory:') {
       return { toArray: () => rows };
     } },
     transactionSync(fn) { db.exec('SAVEPOINT live_tx'); try { const result = fn(); db.exec('RELEASE live_tx'); return result; } catch (error) { db.exec('ROLLBACK TO live_tx'); db.exec('RELEASE live_tx'); throw error; } },
+    async getAlarm() { return state.alarm; },
     async setAlarm(time) { state.alarm = time; },
   }; return state;
 }

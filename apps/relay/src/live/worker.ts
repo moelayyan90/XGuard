@@ -178,8 +178,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (path === '/search') {
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
-    const items = q.length >= 2 ? (await all(env, 'search', { q })).flat().slice(0, 100) : [];
-    return pageResponse(request, 'index', { title: `Search: ${q}`, items }, path, true);
+    const catalog = q.length >= 2 ? await control(env, 'catalog') : null, term = q.toLowerCase();
+    const items = (catalog?.search_items || []).filter((item: any) => item.id.toLowerCase().includes(term) || item.title.toLowerCase().includes(term)).slice(0, 100);
+    return pageResponse(request, 'index', { title: `Search: ${q}`, items, catalog_as_of: catalog?.as_of }, path, true);
   }
   if (path === '/changes') {
     const { changes, as_of } = await control(env, 'catalog');
@@ -209,8 +210,10 @@ export function classify(request: Request): any {
   const ua = request.headers.get('user-agent') || '', cf = (request as any).cf || {};
   const known: [RegExp, string][] = [[/OAI-SearchBot|ChatGPT-User|GPTBot/i, 'OpenAI'], [/Claude-SearchBot|Claude-User|ClaudeBot/i, 'Anthropic'], [/PerplexityBot|Perplexity-User/i, 'Perplexity'], [/cohere-ai/i, 'Cohere'], [/Google-CloudVertexBot/i, 'Google']];
   const operator = known.find(([re]) => re.test(ua))?.[1] || '';
-  const verified = cf.botManagement?.verifiedBot === true;
-  return { operator, classification: operator ? verified ? 'verified-ai' : 'claimed-ai' : verified ? 'verified-bot' : /bot|crawler|spider|curl|wget/i.test(ua) ? 'unverified-bot' : 'unclassified', synthetic: /^XGuard(?:Live|[-/])/i.test(ua), user_agent: ua.slice(0, 240) };
+  const category = typeof cf.verifiedBotCategory === 'string' ? cf.verifiedBotCategory : '';
+  const verified = cf.botManagement?.verifiedBot === true || Boolean(category && !['Unknown', 'Not Computed'].includes(category));
+  const aiCategory = ['AI Assistant', 'AI Crawler', 'AI Search'].includes(category);
+  return { operator, classification: operator ? verified ? 'verified-ai' : 'claimed-ai' : aiCategory ? 'verified-ai' : verified ? 'verified-bot' : /bot|crawler|spider|curl|wget/i.test(ua) ? 'unverified-bot' : 'unclassified', synthetic: /^XGuard(?:Live|[-/])/i.test(ua), user_agent: ua.slice(0, 240) };
 }
 async function telemetry(request: Request, response: Response, env: Env, duration: number, cache: string): Promise<void> {
   const url = new URL(request.url); if (/^\/(admin|healthz|assets)/.test(url.pathname)) return;
@@ -291,14 +294,28 @@ export default {
       const cacheKey = new Request(`${url.origin}${url.pathname}?__live_format=${format || 'none'}&__live_build=${env.CF_VERSION_METADATA?.id || VERSION}`);
       const edgeCache = (globalThis as any).caches?.default;
       const cached = cacheable && edgeCache ? await edgeCache.match(cacheKey) : null;
-      if (cached) { response = cached; cacheStatus = 'HIT'; }
+      const expires = cached ? Number(cached.headers.get('x-xguard-cache-until')) : 0;
+      if (cached && expires > Date.now()) {
+        const headers = new Headers(cached.headers), ttl = Math.max(0, Math.floor((expires - Date.now()) / 1000));
+        headers.set('cache-control', `public, max-age=${ttl}, must-revalidate`);
+        headers.set('cdn-cache-control', `public, max-age=${ttl}, must-revalidate`);
+        response = new Response(cached.body, { status: cached.status, headers }); cacheStatus = 'HIT';
+      }
       else {
         response = await route(request, env);
         const bytes = new Uint8Array(await response.arrayBuffer());
         const headers = new Headers(response.headers); headers.set('content-length', String(bytes.length));
         response = new Response([204, 205, 304].includes(response.status) ? null : bytes, { status: response.status, headers });
         if (cacheable && response.status === 200 && !response.headers.get('cache-control')?.includes('no-store') && edgeCache) {
-          cacheStatus = 'MISS'; ctx.waitUntil(edgeCache.put(cacheKey, response.clone()).catch((err: any) => console.warn(JSON.stringify({ event: 'cache_write_failed', code: String(err) }))));
+          const ttl = Number(response.headers.get('cache-control')?.match(/(?:^|[,\s])max-age=(\d+)/)?.[1] || 0);
+          if (ttl > 0) {
+            const headers = new Headers(response.headers);
+            headers.set('x-xguard-cache-until', String(Date.now() + ttl * 1000));
+            headers.set('cache-control', `public, max-age=${ttl}, must-revalidate`);
+            headers.set('cdn-cache-control', `public, max-age=${ttl}, must-revalidate`);
+            response = new Response(response.body, { status: response.status, headers });
+            cacheStatus = 'MISS'; ctx.waitUntil(edgeCache.put(cacheKey, response.clone()).catch((err: any) => console.warn(JSON.stringify({ event: 'cache_write_failed', code: String(err) }))));
+          }
         }
       }
     } catch (error) {

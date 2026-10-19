@@ -129,7 +129,8 @@ export function parseSource(spec: SourceSpec, body: string): ParsedSource {
           for (const [band, start] of [['short-context', 1], ['long-context', 5]] as const) {
             for (const [field, offset] of [['input', 0], ['output', 3]] as const) {
               const raw = cells[start + offset]; if (!/^\$\d+(?:\.\d+)?$/.test(raw)) continue;
-              add(`${cells[0].toLowerCase()}-${tier}-${band}-${field}-price`, `${cells[0]} · ${tier} · ${band.replace('-', ' ')} · ${field} price`, Number(raw.slice(1)), 'USD / 1 million tokens');
+              const modelKey = cells[0].toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+              add(`${modelKey}-${tier}-${band}-${field}-price`, `${cells[0]} · ${tier} · ${band.replace('-', ' ')} · ${field} price`, Number(raw.slice(1)), 'USD / 1 million tokens');
             }
           }
         }
@@ -150,7 +151,7 @@ export function parseSource(spec: SourceSpec, body: string): ParsedSource {
         const name = cells[nameIndex];
         if (!validString(name, 80) || !/^[a-zA-Z0-9 ._():-]+$/.test(name)) continue;
         for (const [field, idx] of [['input', inputIndex], ['output', outputIndex]] as const) {
-          const raw = cells[idx]?.replace(/\s*\/\s*MTok\s*$/i, '').trim();
+          const raw = cells[idx]?.replace(/\s*(?:USD\s*)?\/\s*MTok\s*$/i, '').trim();
           if (!/^\$\d+(?:\.\d+)?$/.test(raw || '')) continue;
           const key = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '')}-${field}-price`;
           if (!facts.some(x => x.key === key)) add(key, `${name} · ${field} token list price`, Number(raw.slice(1)), 'USD / 1 million tokens');

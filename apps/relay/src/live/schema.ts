@@ -1,4 +1,5 @@
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
+export const FACT_INDEX_BACKFILL = `INSERT OR REPLACE INTO public_fact_index SELECT c.id,c.verification,CAST(round((julianday(c.verified_at)-2440587.5)*86400000) AS INTEGER)+d.max_age*1000,c.verified_at,CASE WHEN e.published=1 AND e.suppressed=0 THEN 1 ELSE 0 END FROM current_facts c JOIN fact_definitions d ON d.id=c.id JOIN entities e ON e.id=d.entity_id`;
 // Additive migration only. Historical observations, changes and evidence are immutable.
 export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS schema_versions(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`,
@@ -16,6 +17,12 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS fact_observations(id TEXT PRIMARY KEY, fact_id TEXT NOT NULL REFERENCES fact_definitions(id), value_json TEXT NOT NULL, observed_at TEXT NOT NULL, valid_from TEXT NOT NULL, verification TEXT NOT NULL, evidence_id TEXT NOT NULL REFERENCES evidence(id))`,
   `CREATE INDEX IF NOT EXISTS observation_history ON fact_observations(fact_id,observed_at DESC,id)`,
   `CREATE TABLE IF NOT EXISTS current_facts(id TEXT PRIMARY KEY REFERENCES fact_definitions(id), observation_id TEXT NOT NULL REFERENCES fact_observations(id), value_json TEXT NOT NULL, previous_json TEXT, verified_at TEXT NOT NULL, changed_at TEXT NOT NULL, change_type TEXT NOT NULL, verification TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS public_fact_index(id TEXT PRIMARY KEY,verification TEXT NOT NULL,expires_ms INTEGER NOT NULL,verified_at TEXT NOT NULL,visible INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS public_fact_counts ON public_fact_index(visible,verification,expires_ms,verified_at)`,
+  ...['INSERT', 'UPDATE'].map(action => `CREATE TRIGGER IF NOT EXISTS public_fact_index_${action.toLowerCase()} AFTER ${action} ON current_facts BEGIN INSERT INTO public_fact_index SELECT NEW.id,NEW.verification,CAST(round((julianday(NEW.verified_at)-2440587.5)*86400000) AS INTEGER)+d.max_age*1000,NEW.verified_at,CASE WHEN e.published=1 AND e.suppressed=0 THEN 1 ELSE 0 END FROM fact_definitions d JOIN entities e ON e.id=d.entity_id WHERE d.id=NEW.id ON CONFLICT(id) DO UPDATE SET verification=excluded.verification,expires_ms=excluded.expires_ms,verified_at=excluded.verified_at,visible=excluded.visible; END`),
+  `CREATE TRIGGER IF NOT EXISTS public_fact_index_delete AFTER DELETE ON current_facts BEGIN DELETE FROM public_fact_index WHERE id=OLD.id; END`,
+  `CREATE TRIGGER IF NOT EXISTS public_fact_index_visibility AFTER UPDATE OF published,suppressed ON entities WHEN NEW.published!=OLD.published OR NEW.suppressed!=OLD.suppressed BEGIN UPDATE public_fact_index SET visible=CASE WHEN NEW.published=1 AND NEW.suppressed=0 THEN 1 ELSE 0 END WHERE id IN (SELECT id FROM fact_definitions WHERE entity_id=NEW.id); END`,
+  `CREATE TRIGGER IF NOT EXISTS public_fact_index_expiry AFTER UPDATE OF max_age,entity_id ON fact_definitions WHEN NEW.max_age!=OLD.max_age OR NEW.entity_id!=OLD.entity_id BEGIN INSERT INTO public_fact_index SELECT c.id,c.verification,CAST(round((julianday(c.verified_at)-2440587.5)*86400000) AS INTEGER)+NEW.max_age*1000,c.verified_at,CASE WHEN e.published=1 AND e.suppressed=0 THEN 1 ELSE 0 END FROM current_facts c JOIN entities e ON e.id=NEW.entity_id WHERE c.id=NEW.id ON CONFLICT(id) DO UPDATE SET verification=excluded.verification,expires_ms=excluded.expires_ms,verified_at=excluded.verified_at,visible=excluded.visible; END`,
   `CREATE TABLE IF NOT EXISTS fact_changes(id TEXT PRIMARY KEY, fact_id TEXT NOT NULL REFERENCES fact_definitions(id), entity_id TEXT NOT NULL, previous_json TEXT, value_json TEXT NOT NULL, observed_at TEXT NOT NULL, change_type TEXT NOT NULL, observation_id TEXT NOT NULL REFERENCES fact_observations(id))`,
   `CREATE INDEX IF NOT EXISTS change_time ON fact_changes(observed_at DESC,id)`,
   `CREATE INDEX IF NOT EXISTS change_entity ON fact_changes(entity_id,observed_at DESC,id)`,
