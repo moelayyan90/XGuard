@@ -29,6 +29,18 @@ jobs:
         run: |
           npm run build
           npm run --prefix apps/relay live:test-runtime
+      - name: Compare public compatibility and warmed latency with the exact base
+        env:
+          BASELINE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_dir="$RUNNER_TEMP/xguard-live-baseline"
+          git worktree add --detach "$baseline_dir" "$BASELINE_SHA"
+          ln -s "$GITHUB_WORKSPACE/apps/relay/node_modules" "$baseline_dir/apps/relay/node_modules"
+          (cd "$baseline_dir" && npm run build)
+          LIVE_BASELINE_BUNDLE="$baseline_dir/.live-build/live-entry.js" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/live-compatibility-workerd.mjs
       - name: Preserve financial state and recovery invariants
         run: |
           node --test scripts/durable-object-deploy-guard-test.mjs

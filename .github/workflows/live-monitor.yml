@@ -18,3 +18,6 @@ jobs:
           node-version: 24
       - name: Check canonical public facts and collection heartbeat
         run: node scripts/live-smoke.mjs
+      - name: Check isolated paid availability without a transaction
+        if: always()
+        run: node scripts/live-paid-smoke.mjs

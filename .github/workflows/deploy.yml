@@ -103,12 +103,18 @@ jobs:
           exit 1
 
       - name: Verify owner access and start curated collection
+        if: success()
         env:
           LIVE_ADMIN_KEY: ${{ secrets.LIVE_ADMIN_KEY || secrets.XGUARD_OPERATOR_KEY }}
         run: node scripts/live-admin-smoke.mjs
 
+      - name: Verify isolated paid contract without signing or spending
+        id: paid_smoke
+        if: always() && steps.deploy.outcome == 'success'
+        run: EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node scripts/live-paid-smoke.mjs
+
       - name: Roll back compatible code-only deployment after failed verification
-        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true' && steps.production_smoke.outputs.quota_exhausted != 'true'
+        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -121,7 +127,7 @@ jobs:
           curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 3 --max-time 12 https://xguardgate.com/healthz >/dev/null
 
       - name: Require forward recovery after incompatible durable state change
-        if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true' && steps.production_smoke.outputs.quota_exhausted != 'true'
+        if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure')
         shell: bash
         run: |
           set -euo pipefail
@@ -130,6 +136,6 @@ jobs:
           exit 1
 
       - name: Keep storage-quota recovery deployed and report incomplete verification
-        if: failure() && steps.deploy.outcome == 'success' && steps.production_smoke.outputs.quota_exhausted == 'true'
+        if: failure() && steps.deploy.outcome == 'success' && steps.production_smoke.outputs.quota_exhausted == 'true' && steps.paid_smoke.outcome == 'success'
         run: |
           echo '::error title=Provider storage quota exhausted::The tested recovery build is deployed, but public data verification is incomplete. Durable Objects free limits reset at 00:00 UTC. The scheduled Live monitor will check service recovery. No subscription or billing changes were made.'

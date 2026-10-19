@@ -1,4 +1,4 @@
 {
-  "payment_state_version": 2,
-  "description": "Includes lifecycle-v1 payment guards plus seller fee allocations, seller receivables, payout reservations, separate traffic-class ledgers and non-replayable upstream writes. Older deployments do not process these financial outboxes and must not receive automatic rollback traffic."
+  "payment_state_version": 3,
+  "description": "Preserves lifecycle-v1 and seller financial state; additionally understands Live bounded-data payment inputs, Live idempotency reservations, result recovery and separately deduplicated Live commerce. Deploy support with Live purchases off, then enable in a separate code-compatible release. Roll back activation to the supporting release, never to a reader that cannot fulfill or recover Live payment records."
 }

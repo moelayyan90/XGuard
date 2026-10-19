@@ -40,7 +40,7 @@ function pageResponse(request: Request, kind: string, data: any, path: string, n
   const url = new URL(request.url), explicit = url.searchParams.get('format');
   const format = explicit && ['json', 'markdown', 'html'].includes(explicit) ? explicit : negotiate(request.headers.get('accept'));
   if (!format) return json({ error: 'not_acceptable', supported: ['text/html', 'text/markdown', 'application/json'] }, 406);
-  const visibleFacts = data.fact ? [data.fact] : data.facts || data.examples || [];
+  const visibleFacts = data.fact ? [data.fact] : Array.isArray(data.facts) ? data.facts : data.examples || [];
   const remaining = visibleFacts.filter((f: any) => f.verification === 'VERIFIED').map((f: any) => Math.max(0, Math.floor((Date.parse(f.verified_at) + f.max_age_seconds * 1000 - Date.now()) / 1000)));
   const ttl = Math.min(60, ...remaining);
   const common: Record<string, string> = { vary: 'Accept', link: `<${ORIGIN}${path}>; rel="canonical"`, 'cache-control': status === 200 && !noindex && ttl > 0 ? `public, max-age=${ttl}` : 'no-store' };
@@ -56,6 +56,15 @@ async function parseInput(request: Request): Promise<any> {
   return Object.fromEntries(new URLSearchParams(text));
 }
 function sourceRoute(id: string): string | null { const parts = id.split('/'); return entityId(parts); }
+async function paidOwnerState(env: Env, path = '/live/summary'): Promise<any> {
+  if (!env.PAID_GATEWAY) return { status: 'UNKNOWN', reason: 'financial_storage_unavailable' };
+  try {
+    const stub = env.PAID_GATEWAY.get(env.PAID_GATEWAY.idFromName('xguard-paid-gateway-index-v1'));
+    const response = await stub.fetch(new Request(`https://paid-gateway${path}`, { method: 'POST', body: '{}' }));
+    if (!response.ok) throw new Error('paid_summary_unavailable');
+    return await response.json();
+  } catch { return { status: 'UNKNOWN', reason: 'financial_storage_unavailable' }; }
+}
 
 async function admin(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url), path = url.pathname;
@@ -76,6 +85,7 @@ async function admin(request: Request, env: Env): Promise<Response> {
   if (!identity) return READ.has(request.method) ? pageResponse(request, 'login', {}, '/admin', true, 401) : json({ error: 'owner_authentication_required' }, 401);
   const cookie = request.headers.get('cookie')?.match(/(?:^|;\s*)__Host-xguard-live=([^;]+)/)?.[1] || '';
   const csrf = await hash(`${cookie}:csrf`);
+  if (READ.has(request.method) && path === '/admin/paid-revenue') return json(await paidOwnerState(env), 200, { 'cache-control': 'no-store' });
   if (request.method === 'POST') {
     const body = await parseInput(request);
     if (identity === 'session' && (request.headers.get('origin') !== ORIGIN || !await equalSecret(String(body.csrf || ''), csrf))) return json({ error: 'csrf_rejected' }, 403);
@@ -86,7 +96,8 @@ async function admin(request: Request, env: Env): Promise<Response> {
       const id = sourceRoute(body.id || ''); if (!id) return json({ error: 'invalid_entity' }, 400);
       result = await shard(env, id, action, { id, enabled: body.enabled === true || body.enabled === 'true', suppressed: body.suppressed === true || body.suppressed === 'true' });
       if (action === 'suppress') await control(env, 'catalog-invalidate');
-    } else if (['monetization-config', 'report-import', 'correction-review', 'cost'].includes(action)) {
+    } else if (action === 'paid-circuit-reset') result = await paidOwnerState(env, '/live/circuit-reset');
+    else if (['monetization-config', 'report-import', 'correction-review', 'cost'].includes(action)) {
       const payload = body.payload ? JSON.parse(body.payload) : body;
       result = await control(env, action, action === 'monetization-config' ? { config: payload } : action === 'cost' ? { ...payload, amount_micros: Number(payload.amount_micros) } : payload);
       if (action === 'monetization-config') monetizationCache = null;
@@ -97,7 +108,7 @@ async function admin(request: Request, env: Env): Promise<Response> {
   }
   if (!READ.has(request.method)) return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, HEAD, POST' });
   const [state, stats, metrics, sources] = await Promise.all([control(env, 'state'), all(env, 'stats'), all(env, 'metrics'), all(env, 'sources')]);
-  return pageResponse(request, 'admin', { state, stats: sumStats(stats), metrics, sources: sources.flat().sort((a, b) => b.failures - a.failures), business: businessMetrics(state, metrics), csrf }, '/admin', true);
+  return pageResponse(request, 'admin', { state, stats: sumStats(stats), metrics, sources: sources.flat().sort((a, b) => b.failures - a.failures), business: businessMetrics(state, metrics), paid_services: await paidOwnerState(env), csrf }, '/admin', true);
 }
 
 const ARTICLES: Record<string, { title: string; html: string }> = {
@@ -332,6 +343,7 @@ export default {
     for (const [key, value] of Object.entries(securityHeaders())) if (!headers.has(key)) headers.set(key, value);
     headers.set('x-xguard-product', 'XGuard Live'); headers.set('x-xguard-version', VERSION); headers.set('x-xguard-cache', cacheStatus);
     if (env.CF_VERSION_METADATA?.tag) headers.set('x-xguard-worker-version-tag', env.CF_VERSION_METADATA.tag);
+    if (request.method === 'GET' && response.ok && !url.pathname.startsWith('/admin')) headers.append('link', '<https://api.xguardgate.com/api/paid/v1/catalog>; rel="service-desc"; type="application/json"');
     // Pricing is a response hint for Cloudflare's verified, opted-in in-band layer.
     // It is never evidence of a payment and never creates a revenue event.
     if (request.headers.get('cf-pay-per-crawl')?.includes('pricing=in-band')) {

@@ -5,6 +5,8 @@ import { secretlessCapability } from "./egress-entry.js";
 import { outcomeAmount, outcomeDefinition, outcomeRequest, EXECUTE_SCHEMA, RESULT_SCHEMA } from "./outcome-catalog.js";
 import { readPublicJson, parsePublicJson } from "./core/public-contract.js";
 import { executeOutcome } from "./outcome-engine.js";
+import { livePaidDefinition, paidInputSchema, paidResultSchema, PAID_BASE, executeLivePaid, livePaidCapacity } from "./live/paid-data.ts";
+import { applyLivePaidMetric, applyLivePaidCommerce, livePaidLedgerRoute } from "./live-paid-ledger.js";
 import { applyOutcomeMetric, applyOutcomeCommerce, outcomeMetrics } from "./outcome-metrics.js";
 import { readBoundedBody } from "./core/execution-contract.js";
 import { advanceLifecycle, financialLifecycle } from "./core/payment-lifecycle.js";
@@ -246,11 +248,12 @@ export function gatewayConfig(env, testnet = false, outcomeInput = null) {
   const environment = testnet ? PAYMENT_ENVIRONMENTS.TEST : String(env.XGUARD_PAYMENT_ENVIRONMENT || PAYMENT_ENVIRONMENTS.PRODUCTION).toLowerCase();
   const payTo = String(testnet ? env.XGUARD_TESTNET_PAY_TO || "" : env.XGUARD_TREASURY_USDC_ADDRESS || "");
   const marketplace = outcomeInput?.marketplace;
-  const amount = marketplace ? marketplace.split.gross_atomic : outcomeInput ? outcomeAmount(env, outcomeInput.capability) : String(testnet ? env.XGUARD_TESTNET_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC : env.XGUARD_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC);
+  const live = livePaidDefinition(outcomeInput?.capability);
+  const amount = live ? live.amount : marketplace ? marketplace.split.gross_atomic : outcomeInput ? outcomeAmount(env, outcomeInput.capability) : String(testnet ? env.XGUARD_TESTNET_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC : env.XGUARD_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC);
   const facilitator = String(testnet ? env.XGUARD_TESTNET_FACILITATOR || "" : env.XGUARD_PAID_FACILITATOR || env.X402_BASE_PRIMARY || "").replace(/\/+$/, "");
   const marginMicros = outcomeInput ? Number(amount) : Number(testnet ? env.XGUARD_TESTNET_MARGIN_USD_MICROS || amount : env.XGUARD_MARGIN_USD_MICROS || amount);
   const railValidation = validatePaymentRailConfig({ environment, network, asset, payTo, amount, facilitator });
-  const budgetEnv = outcomeInput ? { ...env, XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: String(Number(env.XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS) * 6) } : env;
+  const budgetEnv = live ? { ...env, XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: String(env.XGUARD_LIVE_PAID_COST_BUDGET_USD_MICROS || '1500') } : outcomeInput ? { ...env, XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: String(Number(env.XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS) * 6) } : env;
   const economics = pricingEconomics(budgetEnv, Number(marketplace?.split.platform_fee_atomic ?? amount));
   const economicsValid = Number.isSafeInteger(marginMicros) && marginMicros >= 0 && marginMicros === Number(amount) && economics.available;
   const payoutReady = !marketplace || (!testnet && sellerPayoutConfiguration(env, marketplace.payout_destination, marketplace.split.seller_proceeds_atomic).ready);
@@ -286,7 +289,7 @@ export function gatewayConfig(env, testnet = false, outcomeInput = null) {
     upstreamCostMaxUsdMicros: 0,
     marginUsdMicros: marginMicros,
     customerPriceUsdMicros: Number(amount),
-    resource: marketplace ? marketplace.resource : outcomeInput ? `${API}/v1/execute` : `${API}/v1/tools/web.fetch${testnet ? "/testnet" : ""}`,
+    resource: live ? `${PAID_BASE}/${live.route}` : marketplace ? marketplace.resource : outcomeInput ? `${API}/v1/execute` : `${API}/v1/tools/web.fetch${testnet ? "/testnet" : ""}`,
   };
 }
 
@@ -1053,6 +1056,7 @@ export class PaidGatewayState {
       try { return await sellerStateRoute(this.state, this.env, path, body); }
       catch (cause) { return doJson({ error: /^[a-z_]{1,80}$/.test(cause.code || "") ? cause.code : "seller_state_unavailable" }, cause.status || 503); }
     }
+    if (path.startsWith('/live/')) return livePaidLedgerRoute(this.state, path, body);
     if (path === "/journal/append") {
       if (!JOURNEY_EVENTS.has(body.event) || !/^xgr_[A-Za-z0-9_-]{1,124}$/.test(body.request_id || "")) return doJson({ error: "invalid_journal_event" }, 400);
       await this.state.storage.transaction(async tx => {
@@ -1112,6 +1116,7 @@ export class PaidGatewayState {
         }
         aggregate.updated_at = new Date().toISOString();
         await applyOutcomeCommerce(txn, body, previous, snapshot);
+        await applyLivePaidCommerce(txn, body, previous, snapshot);
         aggregate.revenue_per_successful_execution_usd_micros = aggregate.successful_paid_executions ? aggregate.recognized_revenue_usd_micros / aggregate.successful_paid_executions : null;
         aggregate.observed_revenue_per_paying_wallet_usd_micros = aggregate.paying_wallets ? aggregate.recognized_revenue_usd_micros / aggregate.paying_wallets : null;
         await txn.put(key, snapshot);
@@ -1193,6 +1198,7 @@ export class PaidGatewayState {
       }
       current.updated_at = new Date().toISOString();
       applyOutcomeMetric(current, body);
+      applyLivePaidMetric(current, body);
       await this.state.storage.put("metrics:v1", current);
       return doJson({ ok: true });
     }
@@ -1419,11 +1425,15 @@ async function observeStage(env, event, id, details = {}) {
     ...(details.payment_state ? { payment_state: safeLabel(details.payment_state) } : {}),
   };
   console.log(JSON.stringify(safe));
-  if (env.PAID_GATEWAY && /^xgr_[A-Za-z0-9_-]{1,124}$/.test(id)) {
+  const liveService = Boolean(livePaidDefinition(String(details.tool || '').replace(/^xguard\./, '')));
+  // Financial operation/settlement records remain durable. Live additionally
+  // keeps compact funnel counters, without a second per-stage durable journal.
+  if (!liveService && env.PAID_GATEWAY && /^xgr_[A-Za-z0-9_-]{1,124}$/.test(id)) {
     const journal = env.PAID_GATEWAY.get(env.PAID_GATEWAY.idFromName(`journey:${id}`));
     await postStub(journal, "/journal/append", safe).catch(() => {});
   }
   if (traffic === "external") {
+    if (liveService && !['request_received', 'payment_required', 'payment_attempt', 'payment_verified', 'payment_rejected', 'settlement_success', 'settlement_failed', 'execution_success', 'execution_failed'].includes(event)) return;
     const metric = { ...(details.metric || {}) };
     if (details.outcome) metric.outcome = safeReason(details.outcome, "unknown");
     if (details.drop_reason) metric.drop_reason = safeReason(details.drop_reason, "unknown");
@@ -1480,13 +1490,14 @@ function paymentRequirements(config, quote) {
 
 async function paymentRequired(env, config, quoteToken, quote, id, reason = "payment_required", observation = {}) {
   const requirements = paymentRequirements(config, quote);
-  const outcome = outcomeDefinition(quote.input?.capability);
+  const live = livePaidDefinition(quote.input?.capability);
+  const outcome = live ? { ...live, delivery: live.description } : outcomeDefinition(quote.input?.capability);
   // Discovery must contain public examples, never the caller's URLs or quote.
   // The payable resource is HTTP /v1/execute even when called through MCP.
   const discovery = outcome ? declareDiscoveryExtension({
     method: "POST", bodyType: "json", input: { ...outcome.example, capability: outcome.id },
-    inputSchema: { ...EXECUTE_SCHEMA, required: ["capability"], properties: { ...EXECUTE_SCHEMA.properties, capability: { const: outcome.id } } },
-    output: { schema: RESULT_SCHEMA, example: {
+    inputSchema: live ? paidInputSchema(live.route) : { ...EXECUTE_SCHEMA, required: ["capability"], properties: { ...EXECUTE_SCHEMA.properties, capability: { const: outcome.id } } },
+    output: { schema: live ? paidResultSchema : RESULT_SCHEMA, example: {
       ok: true, intent: { capability: outcome.id }, capability: outcome.id,
       result: { example_only: true }, verification: { content_truth_verified: false },
       cost: { amount_atomic: config.amount, currency: "USDC" }, receipt: null,
@@ -1506,15 +1517,15 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
   const challenge = {
     ...(quote.input?.capability ? { status: "payment_required", capability: quote.input.capability,
       price: { amount_atomic: config.amount, amount: (Number(config.amount) / 1e6).toFixed(6), currency: "USDC", exact: true },
-      will_return: outcomeDefinition(quote.input.capability)?.delivery,
+      will_return: outcome?.delivery,
       expires_at: new Date(quote.expires_at * 1000).toISOString(), target_contacted: false,
-      retry: { method: quote.input?.marketplace?.method || "POST", url: config.resource, preserve_body: true, preserve_headers: ["X-XGuard-Quote", ...(quote.input?.marketplace ? ["Idempotency-Key"] : [])], payment_header: "Payment-Signature" },
+      retry: { method: quote.input?.marketplace?.method || "POST", url: config.resource, preserve_body: true, preserve_headers: ["X-XGuard-Quote", ...(quote.input?.marketplace || live ? ["Idempotency-Key"] : [])], payment_header: "Payment-Signature" },
     } : {}),
     x402Version: 2,
     error: reason,
     resource: {
       url: config.resource,
-      description: quote.input?.marketplace ? "Paid seller API request with metered delivery and a signed receipt" : quote.input?.capability ? outcomeDefinition(quote.input.capability)?.delivery : "Fetch one bounded public HTTPS resource through XGuard with SSRF protection, source evidence, idempotent settlement and a signed receipt.",
+      description: live ? live.description : quote.input?.marketplace ? "Paid seller API request with metered delivery and a signed receipt" : quote.input?.capability ? outcomeDefinition(quote.input.capability)?.delivery : "Fetch one bounded public HTTPS resource through XGuard with SSRF protection, source evidence, idempotent settlement and a signed receipt.",
       mimeType: "application/json",
       serviceName: "XGuard",
       tags: outcome ? [outcome.id, "public-sources", "x402"] : ["ai-agent", "web-fetch", "x402", "secretless"],
@@ -1540,7 +1551,7 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
         paymentRail: config.rail.id,
         inputDigest: quote.input_digest,
         ...(quote.input?.marketplace ? { seller: quote.input.marketplace.seller_id, service: quote.input.marketplace.service_id, allocation: quote.input.marketplace.split } : {}),
-        proofKey: `${API}/.well-known/xguard-proof-key.json`,
+        proofKey: live ? `${PAID_BASE}/proof-key` : `${API}/.well-known/xguard-proof-key.json`,
         next: {
           action: "sign_and_retry",
           payment_header: "Payment-Signature",
@@ -1577,7 +1588,7 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
       "x-xguard-quote": quoteToken,
       "x-xguard-payment-environment": config.environment,
       "x-xguard-payment-rail": config.rail.id,
-      "link": `<${API}/v1/pricing/quote>; rel="pricing", <${API}/.well-known/xguard-proof-key.json>; rel="verification-key"`,
+      "link": live ? `<${PAID_BASE}/catalog>; rel="pricing", <${PAID_BASE}/proof-key>; rel="verification-key"` : `<${API}/v1/pricing/quote>; rel="pricing", <${API}/.well-known/xguard-proof-key.json>; rel="verification-key"`,
     }),
   });
 }
@@ -1659,6 +1670,7 @@ async function deliveryArtifacts(env, record, settlement, result) {
     executed_at: new Date().toISOString(),
   };
   const proof = await signProof(env, proofPayload);
+  if (livePaidDefinition(record.input?.capability) && !proof?.proof) throw new Error('delivery_proof_unavailable');
   return { receipt, proof, paymentResponse, paymentResponseHeader: encodePaymentResponseHeader(paymentResponse) };
 }
 
@@ -1739,7 +1751,7 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
   await sellerStage(env, record, "upstream_execution_started");
   let result;
   try {
-    result = record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
+    result = livePaidDefinition(record.input?.capability) ? await executeLivePaid(record.input, env) : record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
   } catch (cause) {
     const code = cause?.code || "upstream_failed";
@@ -1913,6 +1925,10 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   const normalizedInput = outcomeInput ? { ok: true, input: outcomeInput } : normalizeFetchInputDetailed(rawInput);
   if (!normalizedInput.ok) return validationError("invalid_input", id, normalizedInput.issues);
   const input = normalizedInput.input;
+  if (livePaidDefinition(input.capability)) {
+    try { await livePaidCapacity(env, input); }
+    catch (cause) { return error(cause.code || 'live_data_unavailable', cause.status || 503, id, { retryable: cause.status !== 404 }); }
+  }
   if (input.marketplace && request.headers.has("x-xguard-credit")) return error("seller_execution_credit_not_supported", 400, id);
   await observeStage(env, "operation_resolved", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production", outcome: "normalized" });
   await observeStage(env, "tool_call_valid", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production" });
@@ -2090,6 +2106,14 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
       await postStub(stub, "/operation/transition", { status: "failed", patch: { failure_stage: "request_reservation", failure_reason: "seller_idempotency_conflict" } });
       await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "failed" });
       return error("seller_idempotency_conflict", 409, id, { details: { new_payment_required: false, retry_same_authorization_only: true } });
+    }
+  }
+  if (livePaidDefinition(input.capability)) {
+    const reserved = await postStub(gatewayIndex(env), '/live/reserve-request', { key_hash: await sha256(`${input.capability}:${identity.from}:${input.idempotency_key}`), operation_hash: authorizationFingerprint, request_digest: digest });
+    if (!reserved.ok) {
+      await postStub(stub, '/operation/transition', { status: 'failed', patch: { failure_stage: 'request_reservation', failure_reason: 'live_idempotency_conflict' } });
+      await postStub(gatewayIndex(env), '/index/finalize', { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: 'failed' });
+      return error('live_idempotency_conflict', 409, id, { details: { new_payment_required: false, retry_same_authorization_only: true } });
     }
   }
   const reservation = await postStub(stub, "/operation/reserve-settlement", {});
@@ -2592,7 +2616,9 @@ export async function recoverOutcome(env, paymentIdentifier, quoteToken, id) {
   if (!env.PAID_GATEWAY || !env.PROOF_AUTHORITY || !isValidPaymentId(paymentIdentifier)) return error("not_found", 404, id);
   const quote = await verifyJws(env, quoteToken);
   const sellerQuote = quote?.input?.marketplace && quote.aud === quote.input.marketplace.resource && quote.aud.startsWith(`${API}/p/`);
-  if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || (quote.aud !== `${API}/v1/execute` && !sellerQuote) || quote.payment_identifier !== paymentIdentifier) return error("quote_invalid", 403, id);
+  const liveQuote = livePaidDefinition(quote?.input?.capability);
+  const validLiveQuote = liveQuote && quote.aud === `${PAID_BASE}/${liveQuote.route}`;
+  if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || (quote.aud !== `${API}/v1/execute` && !sellerQuote && !validLiveQuote) || quote.payment_identifier !== paymentIdentifier) return error("quote_invalid", 403, id);
   const lookup = await postStub(gatewayIndex(env), "/index/lookup", { payment_identifier: paymentIdentifier });
   if (!lookup.ok) return error("not_found", 404, id);
   const operation = await postStub(operationStub(env, lookup.body.record.authorization_fingerprint), "/operation/get", {});
@@ -2602,6 +2628,34 @@ export async function recoverOutcome(env, paymentIdentifier, quoteToken, id) {
   return json({ ok: false, status: record.status, payment_identifier: paymentIdentifier,
     ...(record.credit_token ? { execution_credit: record.credit_token } : {}),
     next: { action: record.input?.marketplace && record.status === "credited" ? "seller_delivery_requires_review" : record.status === "credited" ? "retry_same_intent_with_execution_credit" : "retry_status", retry_after_seconds: 5 }, new_payment_required: false }, 202);
+}
+
+// Narrow reusable financial operations for the isolated Live service surface.
+// No public route exposes signing or arbitrary Durable Object operations.
+export async function livePaidState(env, path, body = {}) {
+  const response = await postStub(gatewayIndex(env), path, body);
+  if (!response.ok) throw new Error(response.body?.error || 'paid_state_unavailable');
+  return response.body;
+}
+export async function livePaidProofKey(env) {
+  const response = await proofStub(env).fetch('https://proofrail/public');
+  if (!response.ok) throw new Error('proof_authority_unavailable');
+  const key = await response.json();
+  return { ...key, verify_endpoint: `${PAID_BASE}/verify-receipt` };
+}
+export async function livePaidVerifyReceipt(env, receipt, proof) {
+  const payload = await verifyJws(env, receipt);
+  const response = await proofStub(env).fetch('https://proofrail/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ proof }) });
+  const evidence = await response.json();
+  const linked = payload && evidence.valid && evidence.payload?.receipt_signature_sha256 === await sha256(receipt);
+  return { valid: Boolean(linked), receipt: linked ? payload : null, proof: linked ? evidence.payload : null, scope: 'Issuer signatures and receipt-to-result digest binding. This endpoint does not independently query blockchain finality or certify source truth.' };
+}
+export async function recordLivePaidDiscovery(request, env) {
+  const traffic = trafficClass(request);
+  if (traffic === 'external') await recordMetric(env, 'discovery', { tool: 'xguard.live-catalog', traffic_class: traffic, environment: 'production' });
+}
+export async function recordLivePaidResponse(request, env, service, status, duration) {
+  if (trafficClass(request) === 'external') await livePaidState(env, '/live/response', { service, status, duration_ms: duration });
 }
 
 export { jsonBody, rateLimit, validateMcpRequest, mcpTransportResponse };

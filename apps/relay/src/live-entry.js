@@ -4,11 +4,14 @@ export * from './canonical-entry.js';
 export { LiveShard, LiveControl } from './live/objects.ts';
 import live from './live/worker.ts';
 import { recoverOutcome } from './paid-agent-entry.js';
+import { livePaidFetch } from './live-paid-entry.js';
 export default {
   ...live,
   async fetch(request, env, ctx) {
+    const path = new URL(request.url).pathname;
+    if (/^\/api\/paid\/v1(?:\/|$)/.test(path)) return livePaidFetch(request, env, ctx);
     // Preserve access to results already paid for, without new execution or settlement.
-    const match = new URL(request.url).pathname.match(/^\/v1\/(?:marketplace\/)?results\/(pay_[A-Za-z0-9_-]+)$/);
+    const match = path.match(/^\/v1\/(?:marketplace\/)?results\/(pay_[A-Za-z0-9_-]+)$/);
     if (match && ['GET', 'HEAD'].includes(request.method)) {
       const response = await recoverOutcome(env, match[1], request.headers.get('x-xguard-quote') || '', `xgr_${crypto.randomUUID().replaceAll('-', '')}`);
       const headers = new Headers(response.headers);

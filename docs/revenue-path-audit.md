@@ -1,3 +1,7 @@
+# Current Live audit
+
+The gateway analysis below is historical. XGuard Live retains its financial state but retired its old public sales routes. The 2026-10-19 additive implementation and evidence limits are documented in [Live paid services](live/PAID-SERVICES.md): new batch/history/comparison routes, unchanged free access, Cloudflare observe mode, provider quota blockers and no unproven revenue claims.
+
 # Revenue-path audit and shortest credible first fee
 
 Baseline: main commit `693b7529549ae1444a93a311e696a3bbdbd1d394`, deployed
