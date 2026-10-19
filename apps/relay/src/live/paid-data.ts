@@ -17,7 +17,8 @@ export function canonicalFact(value: unknown): string | null {
 }
 function timestamp(value: unknown): string | null {
   if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(value) || !Number.isFinite(Date.parse(value))) return null;
-  return new Date(value).toISOString();
+  const normalized = new Date(value).toISOString();
+  return normalized.slice(0, 19) === value.slice(0, 19) ? normalized : null;
 }
 export function normalizeLivePaid(route: string, raw: any): Row {
   const def = LIVE_PAID.find(d => d.route === route);

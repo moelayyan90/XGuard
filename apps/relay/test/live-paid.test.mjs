@@ -82,6 +82,8 @@ test('buyer budgets, canonical inputs, body size and request identifiers fail be
   for (const body of [{ facts: ['npm/react/latest-version'], max_amount_atomic: '9999' }, { facts: ['https://127.0.0.1/'], max_amount_atomic: '10000' }, { facts: Array(21).fill('npm/react/latest-version'), max_amount_atomic: '10000' }, { ...LIVE_PAID[0].example, op: 'set' }]) assert.equal((await h.request('/batch', body, { 'idempotency-key': 'bounded-test-1' })).status, 400);
   assert.equal((await h.request('/batch', LIVE_PAID[0].example)).status, 400);
   assert.throws(() => normalizeLivePaid('history', { ...LIVE_PAID[1].example, limit: 301 }));
+  assert.throws(() => normalizeLivePaid('history', { ...LIVE_PAID[1].example, from: '2026-02-30T00:00:00Z' }));
+  assert.throws(() => normalizeLivePaid('compare', { ...LIVE_PAID[2].example, from: '2026-10-01T24:00:00Z' }));
   assert.equal((await h.request('/batch', { facts: ['x'.repeat(17000)], max_amount_atomic: '10000' }, { 'idempotency-key': 'bounded-test-1' })).status, 413);
   assert.equal(h.counts.settle, 0);
 });
@@ -125,7 +127,9 @@ test('a simulated settled Live failure redeems its credit and recovers a signed 
   const pending = await livePaidState(h.env, '/live/summary');
   assert.equal(pending.confirmed_cash_usdc_atomic, 10000); assert.equal(pending.unfulfilled_usdc_atomic, 10000); assert.equal(pending.recognized_revenue_usdc_atomic, 0);
   for (const [store, reader] of readers) store.paidRead = reader;
-  const headers = { 'idempotency-key': 'credit-recovery-001', 'x-xguard-quote': q.quote, 'x-xguard-credit': credit, 'x-xguard-traffic-class': 'external' };
+  const oldNow = Date.now; Date.now = () => oldNow() + 600000; t.after(() => { Date.now = oldNow; });
+  const renewed = await h.challenge('batch', 'credit-recovery-001');
+  const headers = { 'idempotency-key': 'credit-recovery-001', 'x-xguard-quote': renewed.quote, 'x-xguard-credit': credit, 'x-xguard-traffic-class': 'external' };
   const redeemed = await h.request('/batch', q.body, headers); assert.equal(redeemed.status, 200, await redeemed.clone().text());
   const delivery = await redeemed.json(); assert.equal(delivery.used_execution_credit, true); assert.equal(delivery.cost.new_charge, false);
   const key = await (await h.request('/proof-key')).json(); assert.equal(await verifyLiveDelivery(delivery, key.jwk), true);
@@ -134,6 +138,7 @@ test('a simulated settled Live failure redeems its credit and recovers a signed 
   const final = await livePaidState(h.env, '/live/summary');
   assert.equal(final.confirmed_cash_usdc_atomic, 10000); assert.equal(final.recognized_revenue_usdc_atomic, 10000); assert.equal(final.unfulfilled_usdc_atomic, 0); assert.equal(final.signed_results_delivered, 1);
   assert.equal(h.counts.settle, 1);
+  assert.equal(h.counts.verify, 1, 'Credit fulfillment must not verify a new payment authorization');
 });
 test('wrong amount, destination, nonce reuse and cross-service quotes cannot buy data', async t => {
   const h = await fixture(t); const q = await h.challenge();
