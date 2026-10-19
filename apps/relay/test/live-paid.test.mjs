@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { encodePaymentSignatureHeader } from '@x402/core/http';
+import { validateDiscoveryExtension } from '@x402/extensions/bazaar';
 import app from '../src/live-entry.js';
 import live from '../src/live/worker.ts';
 import { PaidGatewayState, ProofAuthority, livePaidState } from '../src/paid-agent-entry.js';
@@ -38,7 +39,7 @@ async function fixture(t, options = {}) {
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input instanceof Request ? input.url : input);
     assert.equal(url.hostname, 'facilitator.test', 'Fixtures must never call a live payment or source provider');
-    if (url.pathname === '/supported') return Response.json({ kinds: [{ x402Version: 2, scheme: 'exact', network: 'eip155:8453' }] });
+    if (url.pathname === '/supported') { if (options.supportedUnavailable) throw new Error('fixture provider support outage'); return Response.json({ kinds: [{ x402Version: 2, scheme: 'exact', network: 'eip155:8453' }] }); }
     const body = JSON.parse(init.body);
     if (url.pathname === '/verify') { counts.verify++; if (options.verifyUnavailable) throw new Error('fixture outage'); return Response.json({ isValid: !options.invalidSignature, payer: PAYER }); }
     assert.equal(url.pathname, '/settle'); counts.settle++;
@@ -81,6 +82,8 @@ test('buyer budgets, canonical inputs, body size and request identifiers fail be
   for (const body of [{ facts: ['npm/react/latest-version'], max_amount_atomic: '9999' }, { facts: ['https://127.0.0.1/'], max_amount_atomic: '10000' }, { facts: Array(21).fill('npm/react/latest-version'), max_amount_atomic: '10000' }, { ...LIVE_PAID[0].example, op: 'set' }]) assert.equal((await h.request('/batch', body, { 'idempotency-key': 'bounded-test-1' })).status, 400);
   assert.equal((await h.request('/batch', LIVE_PAID[0].example)).status, 400);
   assert.throws(() => normalizeLivePaid('history', { ...LIVE_PAID[1].example, limit: 301 }));
+  assert.throws(() => normalizeLivePaid('history', { ...LIVE_PAID[1].example, from: '2026-02-30T00:00:00Z' }));
+  assert.throws(() => normalizeLivePaid('compare', { ...LIVE_PAID[2].example, from: '2026-10-01T24:00:00Z' }));
   assert.equal((await h.request('/batch', { facts: ['x'.repeat(17000)], max_amount_atomic: '10000' }, { 'idempotency-key': 'bounded-test-1' })).status, 413);
   assert.equal(h.counts.settle, 0);
 });
@@ -88,6 +91,13 @@ test('unpaid calls issue standard x402 v2 challenges and expose no purchased res
   const h = await fixture(t); const q = await h.challenge();
   assert.equal(q.c.x402Version, 2); assert.equal(q.c.accepts[0].amount, '10000'); assert.equal(q.c.resource.url, `${BASE}/batch`); assert.equal(q.c.result, undefined);
   assert.ok(q.quote); assert.equal(q.c.extensions.xguard.proofKey, `${BASE}/proof-key`);
+  for (const service of ['batch', 'history', 'compare']) {
+    const challenge = service === 'batch' ? q : await h.challenge(service);
+    const metadata = challenge.c.extensions.bazaar;
+    assert.equal(validateDiscoveryExtension(metadata).valid, true);
+    assert.equal(normalizeLivePaid(service, metadata.info.input.body).capability, `live-${service}`);
+    assert.equal(metadata.info.output.example.receipt.example_only, true);
+  }
   assert.equal(h.counts.verify, 0); assert.equal(h.counts.settle, 0);
 });
 test('concurrent retries settle once, return signed source evidence, and recover without another charge', async t => {
@@ -107,6 +117,31 @@ test('concurrent retries settle once, return signed source evidence, and recover
 test('a fresh authorization cannot charge again for an already reserved buyer idempotency key', async t => {
   const h = await fixture(t); const key = 'same-purchase-001'; const q = await h.challenge('batch', key); assert.equal((await q.send()).status, 200);
   const other = await h.challenge('batch', key); const r = await other.send(); assert.equal(r.status, 409); assert.equal(h.counts.settle, 1);
+});
+test('a simulated Live failure redeems its credit after rollback and quote expiry without a provider or new charge', async t => {
+  const scenario = {}, h = await fixture(t, scenario); const q = await h.challenge('batch', 'credit-recovery-001');
+  const readers = [...h.objects.values()].map(object => [object.store, object.store.paidRead]);
+  for (const [store] of readers) store.paidRead = () => { throw new Error('temporary fixture read failure'); };
+  const failed = await q.send({ 'x-xguard-traffic-class': 'external' }); assert.equal(failed.status, 502);
+  const credit = (await failed.json()).error.details.execution_credit; assert.ok(credit);
+  const pending = await livePaidState(h.env, '/live/summary');
+  assert.equal(pending.confirmed_cash_usdc_atomic, 10000); assert.equal(pending.unfulfilled_usdc_atomic, 10000); assert.equal(pending.recognized_revenue_usdc_atomic, 0);
+  for (const [store, reader] of readers) store.paidRead = reader;
+  const oldNow = Date.now; Date.now = () => oldNow() + 600000; t.after(() => { Date.now = oldNow; });
+  h.env.LIVE_PAID_SERVICES = 'off'; scenario.supportedUnavailable = true;
+  assert.equal((await h.request('/batch', q.body, { 'idempotency-key': 'credit-recovery-001' })).status, 503);
+  assert.equal((await h.request('/batch', q.body, { 'idempotency-key': 'credit-recovery-001', 'x-xguard-credit': credit })).status, 400);
+  const headers = { 'idempotency-key': 'credit-recovery-001', 'x-xguard-quote': q.quote, 'x-xguard-credit': credit, 'x-xguard-traffic-class': 'external' };
+  assert.equal((await h.request('/batch', q.body, { ...headers, 'x-xguard-credit': 'invalid-credit' })).status, 409);
+  const redeemed = await h.request('/batch', q.body, headers); assert.equal(redeemed.status, 200, await redeemed.clone().text());
+  const delivery = await redeemed.json(); assert.equal(delivery.used_execution_credit, true); assert.equal(delivery.cost.new_charge, false);
+  const key = await (await h.request('/proof-key')).json(); assert.equal(await verifyLiveDelivery(delivery, key.jwk), true);
+  assert.equal((await h.request('/batch', q.body, headers)).status, 200);
+  const recovered = await h.request(`/results/${q.c.extensions.xguard.paymentIdentifier}`, undefined, { 'x-xguard-quote': q.quote }); assert.equal(recovered.status, 200);
+  const final = await livePaidState(h.env, '/live/summary');
+  assert.equal(final.confirmed_cash_usdc_atomic, 10000); assert.equal(final.recognized_revenue_usdc_atomic, 10000); assert.equal(final.unfulfilled_usdc_atomic, 0); assert.equal(final.signed_results_delivered, 1);
+  assert.equal(h.counts.settle, 1);
+  assert.equal(h.counts.verify, 1, 'Credit fulfillment must not verify a new payment authorization');
 });
 test('wrong amount, destination, nonce reuse and cross-service quotes cannot buy data', async t => {
   const h = await fixture(t); const q = await h.challenge();
