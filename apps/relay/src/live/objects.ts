@@ -2,7 +2,7 @@ import { Store } from './store.ts';
 import { refreshOne } from './refresh.ts';
 import { sourceSpec } from './adapters.ts';
 import { SOURCE_HOSTS } from './security.ts';
-import { iso, json, integer, rpc, shardName, isRequestQuotaError } from './util.ts';
+import { iso, json, integer, rpc, shardName, storageQuotaCode } from './util.ts';
 import { SHARDS } from './types.ts';
 import type { Env, Row, State } from './types.ts';
 
@@ -44,7 +44,7 @@ export class LiveShard {
         for (const input of (body.sources || []).slice(0, 1500)) if (this.store.enqueue(sourceSpec(input.adapter, input.identifier), body.provenance)) queued++;
         await this.wake(); return json({ queued });
       }
-      if (op === 'tick') { this.store.set('cron-seen', iso()); await this.wake(); return json({ scheduled: true }); }
+      if (op === 'tick') { await this.wake(); return json({ scheduled: true }); }
       if (op === 'entity') return json(this.store.entity(body.id));
       if (op === 'entity-page') { const entity = this.store.entity(body.id); return json(entity ? { ...entity, changes: this.store.changes(body.id).slice(0, 8) } : null); }
       if (op === 'fact') return json(this.store.fact(body.id));
@@ -90,7 +90,7 @@ export class LiveShard {
         this.store.run('UPDATE entities SET suppressed=? WHERE id=?', body.suppressed ? 1 : 0, body.id); this.store.audit('suppress-entity', { id: body.id, suppressed: body.suppressed }, 'owner'); return json({ ok: true });
       }
       return json({ error: 'unknown_operation' }, 400);
-    } catch (error) { console.error(JSON.stringify({ event: 'shard_error', message: String(error) })); return json({ error: isRequestQuotaError(error) ? 'storage_request_quota_exhausted' : 'storage_operation_failed' }, 500); }
+    } catch (error) { console.error(JSON.stringify({ event: 'shard_error', message: String(error) })); return json({ error: storageQuotaCode(error) || 'storage_operation_failed' }, 500); }
   }
 }
 

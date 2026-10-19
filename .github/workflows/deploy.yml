@@ -129,7 +129,7 @@ jobs:
           curl --silent --show-error --retry 3 --retry-all-errors --retry-delay 2 --max-time 12 https://xguardgate.com/healthz || true
           exit 1
 
-      - name: Keep request-quota recovery deployed and report incomplete verification
+      - name: Keep storage-quota recovery deployed and report incomplete verification
         if: failure() && steps.deploy.outcome == 'success' && steps.production_smoke.outputs.quota_exhausted == 'true'
         run: |
-          echo '::error title=Provider request quota exhausted::The tested recovery build is deployed, but public data verification is incomplete. Durable Objects free limits reset at 00:00 UTC. The scheduled Live monitor will check service recovery. No subscription or billing changes were made.'
+          echo '::error title=Provider storage quota exhausted::The tested recovery build is deployed, but public data verification is incomplete. Durable Objects free limits reset at 00:00 UTC. The scheduled Live monitor will check service recovery. No subscription or billing changes were made.'

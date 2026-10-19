@@ -81,8 +81,12 @@ export function agePublicFact(fact: Record<string, any>, now = Date.now()): Reco
   if (fact.verification !== 'VERIFIED' || now - Date.parse(fact.verified_at) <= fact.max_age_seconds * 1000) return fact;
   return { ...fact, current_value: null, normalized_value: null, verification: 'STALE', confidence: 'unconfirmed-current-value' };
 }
-export function isRequestQuotaError(error: unknown): boolean {
-  return /Exceeded allowed volume of requests in Durable Objects free tier|storage_request_quota_exhausted/.test(String(error));
+export function storageQuotaCode(error: unknown): string | null {
+  const message = String(error);
+  if (/Exceeded allowed rows written in Durable Objects free tier|storage_write_quota_exhausted/.test(message)) return 'storage_write_quota_exhausted';
+  if (/Exceeded allowed rows read in Durable Objects free tier|storage_read_quota_exhausted/.test(message)) return 'storage_read_quota_exhausted';
+  if (/Exceeded allowed volume of requests in Durable Objects free tier|storage_request_quota_exhausted/.test(message)) return 'storage_request_quota_exhausted';
+  return null;
 }
 export function retryDelay(failures: number, interval: number, retryAfter: string | null = null, now = Date.now()): number {
   const parsed = retryAfter == null ? 0 : /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : Math.max(0, Date.parse(retryAfter) - now);

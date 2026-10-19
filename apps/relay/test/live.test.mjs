@@ -407,3 +407,22 @@ test('provider request exhaustion stays an honest 503 while static documentation
     assert.equal((await worker.fetch(new Request('https://xguardgate.com/methodology', { headers }), h.env, h.ctx)).status, 200);
   } finally { await h.drain(); h.close(); }
 });
+
+test('provider write-quota exhaustion reports the actual allowance and preserves fail-closed access', async () => {
+  const h=environment();
+  try {
+    h.env.LIVE_CONTROL={idFromName:x=>x,get:()=>({fetch:async()=>{throw new Error('Exceeded allowed rows written in Durable Objects free tier.');}})};
+    const response=await worker.fetch(new Request('https://xguardgate.com/healthz',{headers:{accept:'application/json','user-agent':'XGuardLive-regression'}}),h.env,h.ctx);
+    assert.equal(response.status,503);const body=await response.json();assert.equal(body.error,'storage_write_quota_exhausted');assert.equal(body.owner_access,'configured');assert.ok(Date.parse(body.quota_reset_at)>Date.now());
+    assert.equal((await worker.fetch(new Request('https://xguardgate.com/admin'),h.env,h.ctx)).status,401);
+  } finally {await h.drain();h.close();}
+});
+
+test('anonymous traffic keeps accurate aggregates without duplicating raw crawler records', () => {
+  const db=storage(),store=new Store(db),event={id:'anonymous-fixture',timestamp:new Date().toISOString(),path:'/topics',status:200,content_type:'text/html',cache:'HIT',classification:'unclassified',user_agent:'Example browser',bytes:10,latency_ms:1,synthetic:false};
+  try {
+    store.telemetry(event);assert.equal(store.one('SELECT count(*) AS n FROM crawler_requests').n,0);assert.equal(store.metrics().requests[0].requests,1);
+    store.telemetry({...event,id:'crawler-fixture',classification:'claimed-ai',operator:'OpenAI',user_agent:'OAI-SearchBot'});
+    assert.equal(store.one('SELECT count(*) AS n FROM crawler_requests').n,1);assert.equal(store.metrics().requests.reduce((n,x)=>n+x.requests,0),2);
+  } finally {db.db.close();}
+});

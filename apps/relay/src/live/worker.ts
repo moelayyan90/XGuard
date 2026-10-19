@@ -2,7 +2,7 @@ import type { Context, Env, Row } from './types.ts';
 import { ORIGIN, SHARDS, TOPICS, VERSION } from './types.ts';
 import { DISCOVERY_QUERIES, SEED_SOURCES, sourceSpec } from './adapters.ts';
 import { adminIdentity, boundedBody, checkRobots, equalSecret, safeFetch, securityHeaders, sessionToken } from './security.ts';
-import { agePublicFact, controlName, escape, hash, integer, iso, isRequestQuotaError, json, negotiate, rpc, shardName, shardOf } from './util.ts';
+import { agePublicFact, controlName, escape, hash, integer, iso, storageQuotaCode, json, negotiate, rpc, shardName, shardOf } from './util.ts';
 import { CSS, markdown, render } from './presentation.ts';
 import { businessMetrics } from './metrics.ts';
 
@@ -320,10 +320,11 @@ export default {
       }
     } catch (error) {
       console.error(JSON.stringify({ event: 'live_request_failed', path: url.pathname, message: String(error) }));
-      const quota = isRequestQuotaError(error), reset = new Date(new Date().setUTCHours(24, 0, 0, 0)).toISOString();
-      const detail = { error: quota ? 'storage_request_quota_exhausted' : 'service_temporarily_unavailable', request_id: crypto.randomUUID(), ...(quota ? { quota_reset_at: reset } : {}) };
+      const quota = storageQuotaCode(error), reset = new Date(new Date().setUTCHours(24, 0, 0, 0)).toISOString();
+      const allowance = quota === 'storage_write_quota_exhausted' ? 'write' : quota === 'storage_read_quota_exhausted' ? 'read' : 'request';
+      const detail = { error: quota || 'service_temporarily_unavailable', request_id: crypto.randomUUID(), ...(quota ? { quota_reset_at: reset, service: 'XGuard Live', version: VERSION, owner_access: (env.LIVE_ADMIN_KEY || env.XGUARD_OPERATOR_KEY || '').length >= 24 ? 'configured' : 'unconfigured' } : {}) };
       response = negotiate(request.headers.get('accept')) === 'html'
-        ? errorPage(503, 'Live data is temporarily unavailable', quota ? `The daily data-service request allowance has been reached. It resets at ${reset}. Previously published facts are preserved. Please try again after the reset.` : 'We could not read the published facts. Please try again shortly.')
+        ? errorPage(503, 'Live data is temporarily unavailable', quota ? `The daily data-service ${allowance} allowance has been reached. It resets at ${reset}. Previously published facts are preserved. Please try again after the reset.` : 'We could not read the published facts. Please try again shortly.')
         : json(detail, 503);
       response.headers.set('retry-after', quota ? '300' : '30');
     }

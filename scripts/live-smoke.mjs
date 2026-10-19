@@ -6,9 +6,9 @@ async function get(path, accept = 'application/json') {
   const response = await fetch(origin + path, { headers: { ...headers, accept }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
   if (response.status === 503 && response.headers.get('content-type')?.includes('application/json')) {
     const body = await response.clone().json();
-    if (body.error === 'storage_request_quota_exhausted' && process.env.EXPECTED_XGUARD_TAG && response.headers.get('x-xguard-worker-version-tag') === process.env.EXPECTED_XGUARD_TAG) {
+    if (['storage_request_quota_exhausted', 'storage_write_quota_exhausted', 'storage_read_quota_exhausted'].includes(body.error) && process.env.EXPECTED_XGUARD_TAG && response.headers.get('x-xguard-worker-version-tag') === process.env.EXPECTED_XGUARD_TAG) {
       if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'quota_exhausted=true\n');
-      console.error(`Provider request quota exhausted; verification is incomplete until ${body.quota_reset_at}. Keep the tested request-reduction deployment; do not restore the version that exhausted the quota.`);
+      console.error(`Provider storage quota exhausted (${body.error}); verification is incomplete until ${body.quota_reset_at}. Keep the tested quota-reduction deployment; do not restore the version that exhausted the quota.`);
     }
   }
   assert.equal(response.status, 200, `${path}: HTTP ${response.status}`); return response;
