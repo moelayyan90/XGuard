@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { encodePaymentSignatureHeader } from '@x402/core/http';
+import { validateDiscoveryExtension } from '@x402/extensions/bazaar';
 import app from '../src/live-entry.js';
 import live from '../src/live/worker.ts';
 import { PaidGatewayState, ProofAuthority, livePaidState } from '../src/paid-agent-entry.js';
@@ -88,6 +89,13 @@ test('unpaid calls issue standard x402 v2 challenges and expose no purchased res
   const h = await fixture(t); const q = await h.challenge();
   assert.equal(q.c.x402Version, 2); assert.equal(q.c.accepts[0].amount, '10000'); assert.equal(q.c.resource.url, `${BASE}/batch`); assert.equal(q.c.result, undefined);
   assert.ok(q.quote); assert.equal(q.c.extensions.xguard.proofKey, `${BASE}/proof-key`);
+  for (const service of ['batch', 'history', 'compare']) {
+    const challenge = service === 'batch' ? q : await h.challenge(service);
+    const metadata = challenge.c.extensions.bazaar;
+    assert.equal(validateDiscoveryExtension(metadata).valid, true);
+    assert.equal(normalizeLivePaid(service, metadata.info.input.body).capability, `live-${service}`);
+    assert.equal(metadata.info.output.example.receipt.example_only, true);
+  }
   assert.equal(h.counts.verify, 0); assert.equal(h.counts.settle, 0);
 });
 test('concurrent retries settle once, return signed source evidence, and recover without another charge', async t => {
@@ -107,6 +115,25 @@ test('concurrent retries settle once, return signed source evidence, and recover
 test('a fresh authorization cannot charge again for an already reserved buyer idempotency key', async t => {
   const h = await fixture(t); const key = 'same-purchase-001'; const q = await h.challenge('batch', key); assert.equal((await q.send()).status, 200);
   const other = await h.challenge('batch', key); const r = await other.send(); assert.equal(r.status, 409); assert.equal(h.counts.settle, 1);
+});
+test('a simulated settled Live failure redeems its credit and recovers a signed result without a new charge', async t => {
+  const h = await fixture(t); const q = await h.challenge('batch', 'credit-recovery-001');
+  const readers = [...h.objects.values()].map(object => [object.store, object.store.paidRead]);
+  for (const [store] of readers) store.paidRead = () => { throw new Error('temporary fixture read failure'); };
+  const failed = await q.send({ 'x-xguard-traffic-class': 'external' }); assert.equal(failed.status, 502);
+  const credit = (await failed.json()).error.details.execution_credit; assert.ok(credit);
+  const pending = await livePaidState(h.env, '/live/summary');
+  assert.equal(pending.confirmed_cash_usdc_atomic, 10000); assert.equal(pending.unfulfilled_usdc_atomic, 10000); assert.equal(pending.recognized_revenue_usdc_atomic, 0);
+  for (const [store, reader] of readers) store.paidRead = reader;
+  const headers = { 'idempotency-key': 'credit-recovery-001', 'x-xguard-quote': q.quote, 'x-xguard-credit': credit, 'x-xguard-traffic-class': 'external' };
+  const redeemed = await h.request('/batch', q.body, headers); assert.equal(redeemed.status, 200, await redeemed.clone().text());
+  const delivery = await redeemed.json(); assert.equal(delivery.used_execution_credit, true); assert.equal(delivery.cost.new_charge, false);
+  const key = await (await h.request('/proof-key')).json(); assert.equal(await verifyLiveDelivery(delivery, key.jwk), true);
+  assert.equal((await h.request('/batch', q.body, headers)).status, 200);
+  const recovered = await h.request(`/results/${q.c.extensions.xguard.paymentIdentifier}`, undefined, { 'x-xguard-quote': q.quote }); assert.equal(recovered.status, 200);
+  const final = await livePaidState(h.env, '/live/summary');
+  assert.equal(final.confirmed_cash_usdc_atomic, 10000); assert.equal(final.recognized_revenue_usdc_atomic, 10000); assert.equal(final.unfulfilled_usdc_atomic, 0); assert.equal(final.signed_results_delivered, 1);
+  assert.equal(h.counts.settle, 1);
 });
 test('wrong amount, destination, nonce reuse and cross-service quotes cannot buy data', async t => {
   const h = await fixture(t); const q = await h.challenge();

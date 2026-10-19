@@ -1493,11 +1493,14 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
   const live = livePaidDefinition(quote.input?.capability);
   const outcome = live ? { ...live, delivery: live.description } : outcomeDefinition(quote.input?.capability);
   // Discovery must contain public examples, never the caller's URLs or quote.
-  // The payable resource is HTTP /v1/execute even when called through MCP.
+  // Legacy outcomes use /v1/execute; Live examples follow their isolated contract.
   const discovery = outcome ? declareDiscoveryExtension({
-    method: "POST", bodyType: "json", input: { ...outcome.example, capability: outcome.id },
+    method: "POST", bodyType: "json", input: live ? live.example : { ...outcome.example, capability: outcome.id },
     inputSchema: live ? paidInputSchema(live.route) : { ...EXECUTE_SCHEMA, required: ["capability"], properties: { ...EXECUTE_SCHEMA.properties, capability: { const: outcome.id } } },
-    output: { schema: live ? paidResultSchema : RESULT_SCHEMA, example: {
+    output: { schema: live ? paidResultSchema : RESULT_SCHEMA, example: live ? {
+      ok: true, result: { example_only: true }, receipt: { example_only: true },
+      settlement: { example_only: true }, proofrail: { example_only: true },
+    } : {
       ok: true, intent: { capability: outcome.id }, capability: outcome.id,
       result: { example_only: true }, verification: { content_truth_verified: false },
       cost: { amount_atomic: config.amount, currency: "USDC" }, receipt: null,
@@ -1888,7 +1891,7 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
     if (!originalRecord || (input.capability && originalRecord.request_digest !== quote.input_digest)) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
     const attempt = await postStub(originalStub, "/operation/credit-attempt", { credit_id: payload.credit_id, request_id: id });
     if (!attempt.ok || attempt.body.delivered) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
-    const result = input.capability ? await executeOutcome(input, env, performWebFetch) : await performWebFetch(input);
+    const result = livePaidDefinition(input.capability) ? await executeLivePaid(input, env) : input.capability ? await executeOutcome(input, env, performWebFetch) : await performWebFetch(input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
     const proof = await signProof(env, {
       v: 1, typ: "xguard-credited-execution", iss: API, request_id: id, credit_id: payload.credit_id, tool,
