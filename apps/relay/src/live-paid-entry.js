@@ -64,7 +64,9 @@ async function route(request, env, ctx) {
   const definition = LIVE_PAID.find(d => relative === `/${d.route}`);
   if (!definition) return response({ error: 'paid_route_not_found', catalog: `${PAID_BASE}/catalog` }, 404);
   if (request.method !== 'POST') return response({ error: 'method_not_allowed', method: 'POST', input_schema: paidInputSchema(definition.route) }, 405);
-  if (env.LIVE_PAID_SERVICES === 'off') return response({ error: 'paid_services_paused', free_facts: 'https://xguardgate.com/topics' }, 503);
+  const creditAttempt = Boolean(request.headers.get('x-xguard-credit'));
+  if (env.LIVE_PAID_SERVICES === 'off' && !creditAttempt) return response({ error: 'paid_services_paused', free_facts: 'https://xguardgate.com/topics' }, 503);
+  if (creditAttempt && !request.headers.get('x-xguard-quote')) return response({ error: 'quote_required', new_payment_required: false }, 400);
   if (!request.headers.get('content-type')?.includes('application/json')) return response({ error: 'json_required' }, 415);
   const { value, error } = await jsonBody(request);
   if (error) return response({ error }, error === 'payload_too_large' ? 413 : 400);
@@ -74,7 +76,11 @@ async function route(request, env, ctx) {
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(key)) return response({ error: 'idempotency_key_required' }, 400);
   input.idempotency_key = key;
   const readiness = await livePaidReadiness(env);
-  if (!readiness.ready) return response({ error: 'paid_service_not_ready', checks: readiness.checks, reasons: readiness.errors, new_payment_required: false }, 503);
+  // An existing settled obligation needs data/signing/storage, not a new payment
+  // provider call or new-purchase enablement. The financial engine validates the
+  // signed credit before any execution and cannot settle on a credit attempt.
+  const ready = creditAttempt ? ['payment_configuration', 'source_data', 'proof_authority', 'financial_storage'].every(k => readiness.checks[k]) && !readiness.errors.includes('paid_circuit_open') : readiness.ready;
+  if (!ready) return response({ error: 'paid_service_not_ready', checks: readiness.checks, reasons: readiness.errors, new_payment_required: false }, 503);
   const circuit = await livePaidState(env, '/live/circuit');
   if (circuit.paused_until > Date.now()) return response({ error: 'paid_circuit_open', retry_at: new Date(circuit.paused_until).toISOString(), new_payment_required: false }, 503);
   const result = await handlePaidWebFetch(request, env, `xgr_${crypto.randomUUID().replaceAll('-', '')}`, value, false, 'live-http', input);

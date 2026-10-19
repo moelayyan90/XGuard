@@ -1967,7 +1967,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   }
   quote = await verifyJws(env, quoteToken);
   if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || quote.tool !== tool) return error("quote_invalid", 400, id);
-  if (quote.expires_at <= Math.floor(Date.now() / 1000)) return error("quote_expired", 400, id);
+  if (quote.expires_at <= Math.floor(Date.now() / 1000) && !(livePaidDefinition(input.capability) && request.headers.get('x-xguard-credit'))) return error("quote_expired", 400, id);
   const config = gatewayConfig(env, quote.network === TESTNET, outcomeInput);
   const requestPath = new URL(request.url).pathname;
   const directRouteMismatch = (requestPath === "/v1/tools/web.fetch/testnet" && quote.network !== TESTNET)

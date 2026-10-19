@@ -39,7 +39,7 @@ async function fixture(t, options = {}) {
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input instanceof Request ? input.url : input);
     assert.equal(url.hostname, 'facilitator.test', 'Fixtures must never call a live payment or source provider');
-    if (url.pathname === '/supported') return Response.json({ kinds: [{ x402Version: 2, scheme: 'exact', network: 'eip155:8453' }] });
+    if (url.pathname === '/supported') { if (options.supportedUnavailable) throw new Error('fixture provider support outage'); return Response.json({ kinds: [{ x402Version: 2, scheme: 'exact', network: 'eip155:8453' }] }); }
     const body = JSON.parse(init.body);
     if (url.pathname === '/verify') { counts.verify++; if (options.verifyUnavailable) throw new Error('fixture outage'); return Response.json({ isValid: !options.invalidSignature, payer: PAYER }); }
     assert.equal(url.pathname, '/settle'); counts.settle++;
@@ -118,8 +118,8 @@ test('a fresh authorization cannot charge again for an already reserved buyer id
   const h = await fixture(t); const key = 'same-purchase-001'; const q = await h.challenge('batch', key); assert.equal((await q.send()).status, 200);
   const other = await h.challenge('batch', key); const r = await other.send(); assert.equal(r.status, 409); assert.equal(h.counts.settle, 1);
 });
-test('a simulated settled Live failure redeems its credit and recovers a signed result without a new charge', async t => {
-  const h = await fixture(t); const q = await h.challenge('batch', 'credit-recovery-001');
+test('a simulated Live failure redeems its credit after rollback and quote expiry without a provider or new charge', async t => {
+  const scenario = {}, h = await fixture(t, scenario); const q = await h.challenge('batch', 'credit-recovery-001');
   const readers = [...h.objects.values()].map(object => [object.store, object.store.paidRead]);
   for (const [store] of readers) store.paidRead = () => { throw new Error('temporary fixture read failure'); };
   const failed = await q.send({ 'x-xguard-traffic-class': 'external' }); assert.equal(failed.status, 502);
@@ -128,8 +128,11 @@ test('a simulated settled Live failure redeems its credit and recovers a signed 
   assert.equal(pending.confirmed_cash_usdc_atomic, 10000); assert.equal(pending.unfulfilled_usdc_atomic, 10000); assert.equal(pending.recognized_revenue_usdc_atomic, 0);
   for (const [store, reader] of readers) store.paidRead = reader;
   const oldNow = Date.now; Date.now = () => oldNow() + 600000; t.after(() => { Date.now = oldNow; });
-  const renewed = await h.challenge('batch', 'credit-recovery-001');
-  const headers = { 'idempotency-key': 'credit-recovery-001', 'x-xguard-quote': renewed.quote, 'x-xguard-credit': credit, 'x-xguard-traffic-class': 'external' };
+  h.env.LIVE_PAID_SERVICES = 'off'; scenario.supportedUnavailable = true;
+  assert.equal((await h.request('/batch', q.body, { 'idempotency-key': 'credit-recovery-001' })).status, 503);
+  assert.equal((await h.request('/batch', q.body, { 'idempotency-key': 'credit-recovery-001', 'x-xguard-credit': credit })).status, 400);
+  const headers = { 'idempotency-key': 'credit-recovery-001', 'x-xguard-quote': q.quote, 'x-xguard-credit': credit, 'x-xguard-traffic-class': 'external' };
+  assert.equal((await h.request('/batch', q.body, { ...headers, 'x-xguard-credit': 'invalid-credit' })).status, 409);
   const redeemed = await h.request('/batch', q.body, headers); assert.equal(redeemed.status, 200, await redeemed.clone().text());
   const delivery = await redeemed.json(); assert.equal(delivery.used_execution_credit, true); assert.equal(delivery.cost.new_charge, false);
   const key = await (await h.request('/proof-key')).json(); assert.equal(await verifyLiveDelivery(delivery, key.jwk), true);
