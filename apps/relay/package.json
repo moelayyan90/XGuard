@@ -6,9 +6,9 @@
     "check": "node --check src/index.js && node --check src/gateway.js && node --check src/site-entry.js && node --check src/control-plane.js && node --check src/control-entry.js && node --check src/paid-agent-entry.js && node --check src/discovery-entry.js && node --check src/webmcp-entry.js && node --check src/a2a-entry.js && node --check src/canonical-entry.js",
     "live:check": "node ../../scripts/live-check.mjs",
     "live:typecheck": "tsc -p tsconfig.live.json",
-    "live:test": "node --test test/live.test.mjs",
+    "live:test": "node --test test/live.test.mjs test/live-paid.test.mjs",
     "live:build": "wrangler deploy src/live-entry.js --config wrangler.live-local.jsonc --dry-run --outdir ../../.live-build",
-    "live:test-runtime": "node test/live-workerd.mjs",
+    "live:test-runtime": "node test/live-workerd.mjs && node test/live-paid-workerd.mjs",
     "live:dev": "wrangler dev --config wrangler.live-local.jsonc --test-scheduled",
     "live:smoke": "node ../../scripts/live-smoke.mjs"
   },

@@ -7,7 +7,7 @@ const API = 'https://api.xguardgate.com';
 const ASSET = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 function paidUrl(value) {
   const url = new URL(value);
-  if (url.origin !== API || !url.pathname.startsWith('/p/') || url.username || url.password || url.hash) throw new Error('Use an XGuard paid API endpoint.');
+  if (url.origin !== API || !(url.pathname.startsWith('/p/') || /^\/api\/paid\/v1\/(batch|history|compare)$/.test(url.pathname)) || url.username || url.password || url.hash) throw new Error('Use an XGuard paid API endpoint.');
   return url.href;
 }
 // One spending decision and one authorization per invocation. No automatic
@@ -41,9 +41,10 @@ export function createPaidAPIClient({ payer, maxAmountAtomic, fetchImpl = global
       try { return await fetchImpl(url, { ...options, headers }); }
       catch { const error = new Error('Delivery is uncertain. Recover this payment; do not start another purchase.'); error.recovery = recovery; throw error; }
     },
-    async recover({ payment_identifier, quote }) {
+    async recover({ payment_identifier, quote, endpoint }) {
       if (!/^pay_[A-Za-z0-9_-]+$/.test(payment_identifier || '') || typeof quote !== 'string' || !quote) throw new Error('Original payment identifier and quote are required.');
-      return fetchImpl(`${API}/v1/marketplace/results/${payment_identifier}`, { headers: { 'x-xguard-quote': quote, ...(trafficClass ? { 'x-xguard-traffic-class': trafficClass } : {}) }, redirect: 'error' });
+      const live = endpoint && new URL(paidUrl(endpoint)).pathname.startsWith('/api/paid/v1/');
+      return fetchImpl(`${API}${live ? '/api/paid/v1/results/' : '/v1/marketplace/results/'}${payment_identifier}`, { headers: { 'x-xguard-quote': quote, ...(trafficClass ? { 'x-xguard-traffic-class': trafficClass } : {}) }, redirect: 'error' });
     },
   };
 }

@@ -18,5 +18,10 @@
 | Public facts/history/topic/change pages | New | HTML, Markdown, JSON, robots, segmented sitemaps, JSON-LD and Atom |
 | Owner controls and analytics | New | Protected operations, correction review, claimed vs verified crawlers |
 | Cloudflare monetization | Prepared, observe mode | Account eligibility and actual buyer participation are external facts |
+| Additive Live paid data API | Isolated `/api/paid/v1` namespace | Bounded reads of existing observations; public GET contracts stay free |
+| Existing x402 financial engine | Reuse for new Live services | Preserve settlement, idempotency, recovery, receipts and reconciliation |
+| Live paid activation | Two releases, payment-state version 3 | Ship recovery support with purchases off before activating; rollback retains support |
 
 The deployment does not erase existing records or falsely backfill observation history. New counts start from actual successful collection. Large-scale capacity and commercial demand are not claimed from fixtures. Invoices, independent crawler demand and provider revenue must be observed after launch.
+
+The new namespace does not restore retired `/pricing`, `/mcp`, marketplace, extraction or `/v1/payment/readiness` routes. Its catalog/readiness/results live under `/api/paid/v1` and use separate Live financial counters. See [PAID-SERVICES.md](PAID-SERVICES.md) for contracts, limits, test evidence and the safe support/activation rollback sequence. No new Durable Object migration or binding is needed.

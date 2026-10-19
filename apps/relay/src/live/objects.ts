@@ -5,6 +5,7 @@ import { SOURCE_HOSTS } from './security.ts';
 import { iso, json, integer, rpc, shardName, storageQuotaCode } from './util.ts';
 import { SHARDS } from './types.ts';
 import type { Env, Row, State } from './types.ts';
+import { canonicalFact } from './paid-data.ts';
 
 export class LiveShard {
   state: State; env: Env; store: Store; running = false;
@@ -48,6 +49,10 @@ export class LiveShard {
       if (op === 'entity') return json(this.store.entity(body.id));
       if (op === 'entity-page') { const entity = this.store.entity(body.id); return json(entity ? { ...entity, changes: this.store.changes(body.id).slice(0, 8) } : null); }
       if (op === 'fact') return json(this.store.fact(body.id));
+      if (op === 'paid-read') {
+        if (!['batch', 'history', 'compare'].includes(body.kind) || !Array.isArray(body.facts) || body.facts.length < 1 || body.facts.length > (body.kind === 'batch' ? 20 : 1) || body.facts.some((id: any) => !canonicalFact(id))) return json({ error: 'invalid_paid_read' }, 400);
+        return json(body.facts.map((id: string) => this.store.paidRead(id, body)));
+      }
       if (op === 'fact-page') { const fact = this.store.fact(body.id); return json(fact ? { fact, history: this.store.history(body.id, 1).slice(0, 10) } : null); }
       if (op === 'history') return json(this.store.history(body.id, integer(body.page, 1, 1, 1000000)));
       if (op === 'evidence') return json(this.store.evidence(body.entity, body.observation));

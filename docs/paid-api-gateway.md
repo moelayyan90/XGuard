@@ -1,3 +1,7 @@
+# Current Live scope
+
+This document describes the preserved earlier gateway. Its marketplace/public sales routes remain retired in XGuard Live. The independently implemented Live data services use `/api/paid/v1`; see [Live paid services](live/PAID-SERVICES.md) for current contracts, readiness and rollout. Historical financial obligations and recovery are preserved.
+
 # XGuard paid API gateway
 
 Turn an existing HTTPS API into a priced endpoint at

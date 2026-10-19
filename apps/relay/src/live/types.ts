@@ -8,6 +8,7 @@ export interface Namespace { idFromName(name: string): any; get(id: any): Stub; 
 export interface Env {
   LIVE_SHARDS: Namespace;
   LIVE_CONTROL: Namespace;
+  PAID_GATEWAY?: Namespace;
   XGUARD_OPERATOR_KEY?: string;
   LIVE_ADMIN_KEY?: string;
   LIVE_SESSION_KEY?: string;

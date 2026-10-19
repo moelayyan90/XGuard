@@ -7,3 +7,4 @@ xguard-response-*.json
 .live-build/
 .live-local/
 .production-build/
+live-paid-*.private.json

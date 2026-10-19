@@ -122,6 +122,24 @@ export class Store {
       related: this.rows('SELECT related_id FROM entity_relationships WHERE parent_id=? LIMIT 20', id).map(x => x.related_id) };
   }
   fact(id: string): any { const row = this.one(`${FACT_SELECT} WHERE d.id=? AND e.published=1 AND e.suppressed=0`, id); return row ? publicFact(row) : null; }
+  paidRead(id: string, input: Row): any {
+    const fact = this.fact(id);
+    if (!fact) return { id, status: 'UNKNOWN', fact: null };
+    if (input.kind === 'batch') return { id, fact };
+    const select = 'SELECT o.id,o.fact_id,o.value_json,o.observed_at,o.valid_from,o.verification,v.source_url,v.source_hash,v.method FROM fact_observations o JOIN evidence v ON v.id=o.evidence_id WHERE o.fact_id=?';
+    const convert = (x: Row | null) => x ? { ...x, value: JSON.parse(x.value_json), value_json: undefined } : null;
+    if (input.kind === 'compare') {
+      const at = (time: string) => convert(this.one(`${select} AND o.observed_at<=? ORDER BY o.observed_at DESC,o.id DESC LIMIT 1`, id, time));
+      const before = at(input.from), after = at(input.to);
+      return { id, from: input.from, to: input.to, before, after, changed: before && after ? JSON.stringify(before.value) !== JSON.stringify(after.value) : null, historical_scope: 'Last observation at or before each time; not proof of the value at an unobserved instant.' };
+    }
+    const cursor = input.cursor, limit = Math.max(1, Math.min(300, Number(input.limit) || 300));
+    const rows = this.rows(`${select} AND o.observed_at>=? AND o.observed_at<=? ${cursor ? 'AND (o.observed_at<? OR (o.observed_at=? AND o.id<?))' : ''} ORDER BY o.observed_at DESC,o.id DESC LIMIT ?`, id, input.from, input.to, ...cursor ? [cursor.observed_at, cursor.observed_at, cursor.id] : [], limit + 1).map(x => convert(x)!);
+    const observations: Row[] = []; let bytes = 0;
+    for (const row of rows.slice(0, limit)) { const size = new TextEncoder().encode(JSON.stringify(row)).length; if (bytes + size > 90000) break; observations.push(row); bytes += size; }
+    const last = observations.at(-1), more = rows.length > observations.length;
+    return { id, from: input.from, to: input.to, observations, has_more: more, next_cursor: more && last ? { observed_at: last.observed_at, id: last.id } : null, source_scope: 'Stored immutable observations only; maximum 300 rows and 90 KB per export.' };
+  }
   history(id: string, page: number): any[] {
     return this.rows('SELECT o.*,v.source_url,v.source_hash,v.method FROM fact_observations o JOIN evidence v ON v.id=o.evidence_id JOIN fact_definitions d ON d.id=o.fact_id JOIN entities e ON e.id=d.entity_id WHERE o.fact_id=? AND e.suppressed=0 ORDER BY o.observed_at DESC,o.id DESC LIMIT 100 OFFSET ?', id, (page - 1) * 100)
       .map(x => ({ ...x, value: JSON.parse(x.value_json), value_json: undefined }));
