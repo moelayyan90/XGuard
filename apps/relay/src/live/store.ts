@@ -165,7 +165,7 @@ export class Store {
   telemetry(event: Row): void {
     const day = event.timestamp.slice(0, 10);
     this.storage.transactionSync(() => {
-      this.run('INSERT INTO crawler_requests VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', event.id, event.timestamp, event.path, event.status, event.content_type, event.cache, event.classification, event.operator || '', event.user_agent, event.referrer || '', event.country || '', event.bytes, event.latency_ms, event.visitor_hash || '', event.synthetic ? 1 : 0);
+      if (event.classification !== 'unclassified' && !event.synthetic) this.run('INSERT INTO crawler_requests VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', event.id, event.timestamp, event.path, event.status, event.content_type, event.cache, event.classification, event.operator || '', event.user_agent, event.referrer || '', event.country || '', event.bytes, event.latency_ms, event.visitor_hash || '', 0);
       if (event.synthetic) return;
       this.run(`INSERT INTO request_metrics VALUES(?,?,?,?,?,?,1,?,?) ON CONFLICT(day,path,operator,classification,status,cache) DO UPDATE SET requests=requests+1,bytes=bytes+excluded.bytes,latency_ms=latency_ms+excluded.latency_ms`, day, event.path, event.operator || '', event.classification, event.status, event.cache, event.bytes, event.latency_ms);
       if (event.visitor_hash && event.classification === 'verified-ai') this.run('INSERT INTO crawler_visitors VALUES(?,?,?,1) ON CONFLICT(day,visitor_hash,operator) DO UPDATE SET requests=requests+1', day, event.visitor_hash, event.operator || '');
