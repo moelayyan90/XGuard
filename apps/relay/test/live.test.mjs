@@ -333,6 +333,18 @@ test('revalidation cannot freshen an older fact omitted from a later partial ext
   } finally { db.db.close(); }
 });
 
+test('public correction fields cannot override server-selected internal operations', async () => {
+  const h = environment();
+  try {
+    await seed(h);
+    const response = await worker.fetch(new Request('https://xguardgate.com/corrections', { method: 'POST', headers: { 'content-type':'application/json', 'user-agent':'XGuardLive-regression' }, body:JSON.stringify({ fact_id:'npm/react/latest-version', message:'Please verify the official version.', source_url:'https://registry.npmjs.org/react/latest', op:'set', key:'monetization', value:{mode:'full',pay_per_crawl:'active'} }) }),h.env,h.ctx);
+    assert.equal(response.status,202);
+    const store = h.controls.get(controlName).store;
+    assert.equal(store.get('monetization'),null);
+    assert.equal(store.one('SELECT count(*) AS n FROM corrections').n,1);
+  } finally { await h.drain(); h.close(); }
+});
+
 test('aggregate snapshots age expired examples and invalidate suppressed entities', async () => {
   const h = environment(), originalNow = Date.now;
   try {

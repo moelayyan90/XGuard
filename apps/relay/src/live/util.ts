@@ -17,7 +17,7 @@ export function shardOf(value: string): number {
 }
 export async function rpc(ns: Namespace, name: string, op: string, data: Record<string, any> = {}): Promise<any> {
   const response = await ns.get(ns.idFromName(name)).fetch(new Request('https://live.internal/rpc', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ op, ...data }),
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...data, op }),
   }));
   const body = await response.json() as any;
   if (!response.ok) throw new Error(body.error || 'storage_unavailable');
