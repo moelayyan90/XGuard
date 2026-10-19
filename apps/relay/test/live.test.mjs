@@ -141,8 +141,10 @@ test('HEAD and conditional responses preserve representation metadata', async ()
     const response = await worker.fetch(new Request(url, { headers }), h.env, h.ctx), etag = response.headers.get('etag');
     const head = await worker.fetch(new Request(url, { method: 'HEAD', headers }), h.env, h.ctx);
     assert.equal(await head.text(), ''); assert.equal(head.status, 200);
-    const conditional = await worker.fetch(new Request(url, { headers: { ...headers, 'if-none-match': etag } }), h.env, h.ctx);
-    assert.equal(conditional.status, 304); assert.equal(await conditional.text(), '');
+    for (const value of [etag, `W/${etag}`, `"other", W/${etag}`, '*']) {
+      const conditional = await worker.fetch(new Request(url, { headers: { ...headers, 'if-none-match': value } }), h.env, h.ctx);
+      assert.equal(conditional.status, 304); assert.equal(await conditional.text(), '');
+    }
     await h.drain();
   } finally { h.close(); }
 });

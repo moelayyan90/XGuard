@@ -344,7 +344,7 @@ export default {
     }
     const etag = response.status === 200 && !response.headers.get('cache-control')?.includes('no-store') ? `"${await hash(await response.clone().text())}"` : null;
     if (etag) headers.set('etag', etag);
-    const notModified = etag && request.headers.get('if-none-match')?.split(',').map(x => x.trim()).includes(etag) && READ.has(request.method);
+    const notModified = etag && request.headers.get('if-none-match')?.split(',').some(value => value.trim() === '*' || value.trim().replace(/^W\//, '') === etag) && READ.has(request.method);
     if (notModified) headers.delete('content-length');
     response = new Response(request.method === 'HEAD' || notModified ? null : response.body, { status: notModified ? 304 : response.status, headers });
     ctx.waitUntil(telemetry(request, response.clone(), env, performance.now() - started, cacheStatus).catch(error => console.error(JSON.stringify({ event: 'telemetry_failed', message: String(error) }))));
