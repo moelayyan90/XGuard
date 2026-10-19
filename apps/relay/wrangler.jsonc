@@ -12,7 +12,7 @@
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "vars": {
     "MONETIZATION_MODE": "observe",
-    "LIVE_PAID_SERVICES": "off",
+    "LIVE_PAID_SERVICES": "on",
     "XGUARD_LIVE_PAID_COST_BUDGET_USD_MICROS": "1500",
     "LIVE_BOOTSTRAP": "on",
     "LIVE_SOURCE_FETCHES": "on",
