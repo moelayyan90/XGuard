@@ -120,11 +120,22 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_SEND_METRICS: "false"
           PREVIOUS_VERSION: ${{ steps.previous.outputs.version_id }}
+          PREVIOUS_GIT_REF: ${{ steps.previous.outputs.git_ref }}
+          PUBLIC_QUOTA_EXHAUSTED: ${{ steps.production_smoke.outputs.quota_exhausted }}
         shell: bash
         run: |
           set -euo pipefail
           npx --yes wrangler@4.147.0 rollback "$PREVIOUS_VERSION" --yes --config apps/relay/wrangler.jsonc --message "Automatic rollback after failed XGuard ${DEPLOY_SHA} verification"
-          curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 3 --max-time 12 https://xguardgate.com/healthz >/dev/null
+          EXPECTED_XGUARD_TAG="git-${PREVIOUS_GIT_REF:0:12}" node scripts/live-paid-smoke.mjs
+          if [[ "$PUBLIC_QUOTA_EXHAUSTED" == 'true' ]]; then
+            echo '::warning::Rollback revision and paid contract verified. Public data verification remains failed on the previously observed provider quota; no recovery is claimed.'
+            exit 0
+          fi
+          for attempt in {1..4}; do
+            if curl --fail --silent --show-error --max-time 10 https://xguardgate.com/healthz >/dev/null; then exit 0; fi
+            sleep 3
+          done
+          exit 1
 
       - name: Require forward recovery after incompatible durable state change
         if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure')
