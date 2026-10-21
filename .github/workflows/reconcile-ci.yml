@@ -1,0 +1,35 @@
+name: XGuard Reconcile CI
+
+on:
+  pull_request:
+    paths: ["apps/reconcile/**", ".github/workflows/reconcile-ci.yml"]
+  push:
+    branches: [main]
+    paths: ["apps/reconcile/**", ".github/workflows/reconcile-ci.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/reconcile/package-lock.json
+      - run: npm ci --prefix apps/reconcile --no-audit --no-fund
+      - run: npm run --prefix apps/reconcile check
+      - run: npm run --prefix apps/reconcile test:workerd
+      - name: Compare discovery and x402 challenges with the exact base in workerd
+        env:
+          BASELINE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node apps/reconcile/test/compatibility-workerd.mjs "$BASELINE_SHA"
