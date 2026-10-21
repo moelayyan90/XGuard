@@ -137,6 +137,19 @@ test('readable but unwritable financial storage blocks new purchases while free 
   const free = await app.fetch(new Request('https://xguardgate.com/fact/npm/react/latest-version', { headers: { accept: 'application/json', 'user-agent': 'XGuardLive-regression' } }), h.env, h.ctx);
   assert.equal(free.status, 200); assert.equal(free.headers.has('payment-required'), false);
 });
+
+test('cached dependency readiness cannot skip the financial write gate before a new challenge', async t => {
+  const h = await fixture(t);
+  const first = await h.request('/batch', LIVE_PAID[0].example, { 'idempotency-key': 'before-capacity-loss' });
+  assert.equal(first.status, 402);
+  const storage = new Storage();
+  storage.put = async () => { throw new Error('Exceeded allowed rows written in Durable Objects free tier.'); };
+  const object = new PaidGatewayState({ storage }, h.env);
+  h.env.PAID_GATEWAY = { idFromName: x => x, get: () => ({ fetch: (input, init) => object.fetch(input instanceof Request ? input : new Request(input, init)) }) };
+  const after = await h.request('/batch', LIVE_PAID[0].example, { 'idempotency-key': 'after-capacity-loss' });
+  assert.equal(after.status, 503); assert.equal(after.headers.has('payment-required'), false);
+  assert.equal((await after.json()).new_payment_required, false); assert.deepEqual(h.counts, { verify: 0, settle: 0 });
+});
 test('concurrent retries settle once, return signed source evidence, and recover without another charge', async t => {
   const h = await fixture(t); const q = await h.challenge();
   const results = await Promise.all(Array.from({ length: 8 }, () => q.send()));
