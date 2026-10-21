@@ -18,7 +18,7 @@ export async function livePaidReadiness(env) {
     await Promise.all([
       livePaidCapacity(env, { facts: ['npm/react/latest-version'] }).then(() => { checks.source_data = true; }).catch(e => errors.push(storageQuotaCode(e) || 'live_data_unavailable')),
       livePaidProofKey(env).then(() => { checks.proof_authority = true; }).catch(() => errors.push('proof_authority_unavailable')),
-      livePaidState(env, '/live/circuit').then(c => { checks.financial_storage = true; if (c.paused_until > Date.now()) errors.push('paid_circuit_open'); }).catch(e => errors.push(storageQuotaCode(e) || 'financial_storage_unavailable')),
+      livePaidState(env, '/live/readiness').then(c => { checks.financial_storage = c.writable === true; if (c.paused_until > Date.now()) errors.push('paid_circuit_open'); }).catch(e => errors.push(storageQuotaCode(e) || 'financial_storage_unavailable')),
       (async () => {
         if (!config.configured) return;
         try { const r = await fetch(`${config.facilitator}/supported`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(5000) }); const b = await r.json(); checks.facilitator = r.ok && b?.kinds?.some(k => k.x402Version === 2 && k.scheme === 'exact' && k.network === config.network) === true; } catch {}
@@ -81,7 +81,10 @@ async function route(request, env, ctx) {
   // signed credit before any execution and cannot settle on a credit attempt.
   const ready = creditAttempt ? ['payment_configuration', 'source_data', 'proof_authority', 'financial_storage'].every(k => readiness.checks[k]) && !readiness.errors.includes('paid_circuit_open') : readiness.ready;
   if (!ready) return response({ error: 'paid_service_not_ready', checks: readiness.checks, reasons: readiness.errors, new_payment_required: false }, 503);
-  const circuit = await livePaidState(env, '/live/circuit');
+  // Repeat the shared write-capacity and circuit gate even when the broader
+  // dependency snapshot came from this Worker's readiness cache.
+  const circuit = await livePaidState(env, '/live/readiness');
+  if (circuit.writable !== true) return response({ error: 'paid_service_not_ready', reasons: ['financial_storage_unavailable'], new_payment_required: false }, 503);
   if (circuit.paused_until > Date.now()) return response({ error: 'paid_circuit_open', retry_at: new Date(circuit.paused_until).toISOString(), new_payment_required: false }, 503);
   const result = await handlePaidWebFetch(request, env, `xgr_${crypto.randomUUID().replaceAll('-', '')}`, value, false, 'live-http', input);
   if (result.status >= 500) ctx?.waitUntil?.(livePaidState(env, '/live/health', { failed: true }).catch(() => {}));

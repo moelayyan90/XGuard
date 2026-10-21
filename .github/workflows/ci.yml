@@ -42,6 +42,7 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/apps/relay/node_modules" "$baseline_dir/apps/relay/node_modules"
           (cd "$baseline_dir" && npm run build)
           LIVE_BASELINE_BUNDLE="$baseline_dir/.live-build/live-entry.js" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/live-compatibility-workerd.mjs
+          LIVE_BASELINE_ROOT="$baseline_dir" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/live-capacity-workerd.mjs
       - name: Preserve financial state and recovery invariants
         run: |
           node --test scripts/durable-object-deploy-guard-test.mjs

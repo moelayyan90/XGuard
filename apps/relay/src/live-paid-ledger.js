@@ -1,4 +1,22 @@
 const SERVICES = ['live-batch', 'live-history', 'live-compare'];
+const writableByState = new WeakMap();
+
+async function checkWritable(state) {
+  let slot = writableByState.get(state);
+  if (!slot) { slot = {}; writableByState.set(state, slot); }
+  const fresh = at => Number.isFinite(at) && at <= Date.now() && Date.now() - at < 60000;
+  if (fresh(slot.checkedAt)) return slot.checkedAt;
+  if (!slot.flight) slot.flight = (async () => {
+    const previous = await state.storage.get('live-storage-readiness:v1');
+    if (fresh(previous?.checked_at)) { slot.checkedAt = previous.checked_at; return slot.checkedAt; }
+    const checkedAt = Date.now();
+    // One bounded probe per minute for this shared financial object, across
+    // all Worker locations and object restarts. Never a sale or reservation.
+    await state.storage.put('live-storage-readiness:v1', { checked_at: checkedAt });
+    slot.checkedAt = checkedAt; return checkedAt;
+  })().finally(() => { slot.flight = null; });
+  return slot.flight;
+}
 export function applyLivePaidMetric(current, body) {
   const service = String(body.tool || '').replace(/^xguard\./, '');
   if (!SERVICES.includes(service) && body.tool !== 'xguard.live-catalog') return;
@@ -64,6 +82,10 @@ export async function livePaidLedgerRoute(state, path, body) {
       await tx.put('live-http:v1', http);
     });
     return json({ ok: true });
+  }
+  if (path === '/live/readiness') {
+    const checkedAt = await checkWritable(state);
+    return json({ ...await state.storage.get('live-circuit:v1') || { paused_until: 0, failures: 0 }, writable: true, storage_checked_at: new Date(checkedAt).toISOString() });
   }
   if (path === '/live/circuit') return json(await state.storage.get('live-circuit:v1') || { paused_until: 0, failures: 0 });
   if (path === '/live/circuit-reset') { await state.storage.delete('live-circuit:v1'); return json({ reset: true }); }

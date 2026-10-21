@@ -15,10 +15,18 @@ export async function refreshOne(store: Store, env: Env, source: Row): Promise<v
   const lease = await rpc(env.LIVE_CONTROL, controlName, 'source-lease', { domain: spec.domain });
   if (!lease.token) {
     const delay = Math.max(300000, Number(lease.retry_after_ms) || 0) + Math.random() * 300000;
-    store.defer(source.id, delay); store.deferDomain(spec.domain, delay); return;
+    // No source has been claimed yet. Persist one domain backoff instead of
+    // writing a source lease and immediately undoing it on every contention.
+    store.deferDomain(spec.domain, delay); return;
   }
   const fetchId = crypto.randomUUID(), started = performance.now(); let status: number | null = null, retryAfter: string | null = null;
+  let claimed = false;
   try {
+    // Recheck after the remote await: an owner action or another pending source
+    // may have changed eligibility. Never fetch an unclaimed/disabled source.
+    const current = store.claimDue(Date.now(), source.id);
+    if (!current) return;
+    source = current; claimed = true;
     await checkRobots(spec.url, env);
     const headers: Record<string, string> = {};
     if (source.etag) headers['if-none-match'] = source.etag;
@@ -44,6 +52,7 @@ export async function refreshOne(store: Store, env: Env, source: Row): Promise<v
     store.run('UPDATE sources SET last_interval=? WHERE id=?', interval, spec.id);
     console.log(JSON.stringify({ event: 'source_refreshed', source: spec.id, facts: parsed.facts.length, bytes: body.length, status }));
   } catch (error) {
+    if (!claimed) throw error;
     const code = error instanceof Error ? error.message.slice(0, 160) : 'fetch_failed';
     const delay = retryDelay(source.failures, spec.interval, retryAfter);
     store.failed(source, code, delay); store.fetchLog(source, fetchId, status, 0, performance.now() - started, null, code);

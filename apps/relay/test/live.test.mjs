@@ -6,6 +6,7 @@ import { allowedUrl, boundedBody, robotsAllows, safeFetch } from '../src/live/se
 import { stable, changeType, negotiate, retryDelay, shardName, shardOf, controlName } from '../src/live/util.ts';
 import { storage, environment, seed } from './live-harness.mjs';
 import { Store } from '../src/live/store.ts';
+import { refreshOne } from '../src/live/refresh.ts';
 import { parseHTML } from 'linkedom';
 
 test('stable normalization, typed comparisons and HTTP negotiation', () => {
@@ -425,4 +426,90 @@ test('anonymous traffic keeps accurate aggregates without duplicating raw crawle
     store.telemetry({...event,id:'crawler-fixture',classification:'claimed-ai',operator:'OpenAI',user_agent:'OAI-SearchBot'});
     assert.equal(store.one('SELECT count(*) AS n FROM crawler_requests').n,1);assert.equal(store.metrics().requests.reduce((n,x)=>n+x.requests,0),2);
   } finally {db.db.close();}
+});
+
+test('a busy upstream domain backs off without claiming or rewriting individual sources', async () => {
+  const h = environment();
+  try {
+    const { store, spec } = await seed(h);
+    store.run('UPDATE sources SET next_fetch=0 WHERE id=?', spec.id);
+    store.set(`manual-refresh:${spec.id}`, true);
+    const control = h.env.LIVE_CONTROL.get(controlName);
+    control.store.run('INSERT INTO domain_leases VALUES(?,?,?)', spec.domain, 'other-shard', Date.now() + 120000);
+    const before = store.one('SELECT * FROM sources WHERE id=?', spec.id);
+    const observations = store.one('SELECT count(*) AS n FROM fact_observations').n;
+    const exec = store.storage.sql.exec; let mutations = 0;
+    store.storage.sql.exec = (query, ...args) => { if (!query.startsWith('SELECT ')) mutations++; return exec(query, ...args); };
+    await refreshOne(store, h.env, store.peekDue());
+    assert.equal(mutations, 1, 'only one domain backoff is persisted, with no claim/defer source writes');
+    assert.deepEqual(store.one('SELECT * FROM sources WHERE id=?', spec.id), before);
+    assert.equal(store.get(`manual-refresh:${spec.id}`), true, 'an unperformed owner refresh remains queued');
+    assert.equal(store.one('SELECT count(*) AS n FROM fact_observations').n, observations);
+    assert.equal(store.peekDue(), null, 'a pending manual refresh also respects the upstream backoff');
+    assert.equal(store.claimDue(Date.now() + 601000).id, spec.id);
+    assert.equal(store.get(`manual-refresh:${spec.id}`), null);
+  } finally { h.close(); }
+});
+
+test('source eligibility is rechecked after acquiring a remote domain lease', async () => {
+  const h = environment();
+  try {
+    const { store, spec } = await seed(h);
+    store.run('UPDATE sources SET next_fetch=0 WHERE id=?', spec.id);
+    const candidate = store.peekDue(); let released = 0;
+    h.env.LIVE_CONTROL = { idFromName: x => x, get: () => ({ async fetch(request) {
+      const body = await request.json();
+      if (body.op === 'source-lease') { store.run('UPDATE sources SET enabled=0 WHERE id=?', spec.id); return Response.json({ token: 'fixture-lease' }); }
+      assert.equal(body.op, 'source-release'); released++; return Response.json({ ok: true });
+    } }) };
+    await refreshOne(store, h.env, candidate);
+    assert.equal(released, 1);
+    assert.equal(store.one('SELECT lease_until FROM sources WHERE id=?', spec.id).lease_until, 0);
+    assert.equal(store.one('SELECT count(*) AS n FROM source_fetches').n, 0, 'a disabled candidate is never fetched');
+  } finally { h.close(); }
+});
+
+test('a catalog cache write allowance failure preserves authoritative free reads and singleflight', async () => {
+  const h = environment();
+  try {
+    await seed(h);
+    const control = h.env.LIVE_CONTROL.get(controlName), exec = control.store.storage.sql.exec;
+    let failedWrites = 0, reads = 0;
+    control.store.storage.sql.exec = (query, ...args) => {
+      if (query.startsWith('INSERT INTO settings')) { failedWrites++; throw new Error('Exceeded allowed rows written in Durable Objects free tier.'); }
+      return exec(query, ...args);
+    };
+    const get = h.env.LIVE_SHARDS.get;
+    h.env.LIVE_SHARDS.get = id => ({ async fetch(request) { reads++; return get(id).fetch(request); } });
+    const request = (path, accept = 'application/json') => worker.fetch(new Request('https://xguardgate.com' + path, { headers: { accept, 'user-agent': 'XGuardLive-regression' } }), h.env, h.ctx);
+    const responses = await Promise.all(Array.from({ length: 8 }, () => request('/healthz')));
+    assert.ok(responses.every(r => r.status === 200));
+    assert.equal((await responses[0].json()).facts, 4); assert.equal(failedWrites, 1); assert.equal(reads, 32);
+    for (const path of ['/', '/topics', '/changes', '/sitemap.xml', '/sitemaps/site.xml', '/search?q=react']) assert.equal((await request(path)).status, 200);
+    assert.equal(reads, 32); assert.equal(failedWrites, 1, 'the valid memory snapshot avoids repeated failing writes');
+    assert.equal(control.store.get('public-catalog-v1'), null, 'no persisted snapshot is fabricated');
+    for (const accept of ['application/json', 'text/html', 'text/markdown']) {
+      const fact = await request('/fact/npm/react/latest-version', accept);
+      assert.equal(fact.status, 200); assert.notEqual(fact.headers.get('cache-control'), 'no-store');
+      assert.equal(fact.headers.has('payment-required'), false);
+    }
+    control.store.storage.sql.exec = exec;
+    const { LiveControl } = await import('../src/live/objects.ts');
+    h.controls.set(controlName, new LiveControl(control.state, h.env));
+    assert.equal((await request('/healthz')).status, 200);
+    assert.ok(control.store.get('public-catalog-v1')?.as_of, 'durable caching resumes when writes recover');
+  } finally { await h.drain(); h.close(); }
+});
+
+test('catalog persistence does not hide read quota or unrecognized storage failures', async () => {
+  for (const message of ['Exceeded allowed rows read in Durable Objects free tier.', 'fixture disk failure']) {
+    const h = environment();
+    try {
+      await seed(h);
+      const control = h.env.LIVE_CONTROL.get(controlName), exec = control.store.storage.sql.exec;
+      control.store.storage.sql.exec = (query, ...args) => { if (query.startsWith('INSERT INTO settings')) throw new Error(message); return exec(query, ...args); };
+      const response = await worker.fetch(new Request('https://xguardgate.com/healthz', { headers: { accept: 'application/json', 'user-agent': 'XGuardLive-regression' } }), h.env, h.ctx);
+      assert.equal(response.status, 503); assert.equal(response.headers.get('cache-control'), 'no-store');
+    } finally { await h.drain(); h.close(); }
+  }
 });
