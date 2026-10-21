@@ -10,6 +10,7 @@ import { normalizeLivePaid, LIVE_PAID, executeLivePaid } from '../src/live/paid-
 import { hash } from '../src/live/util.ts';
 import { parseHTML } from 'linkedom';
 import { verifyLiveDelivery } from '../../../sdk/live-paid.js';
+import { livePaidLedgerRoute } from '../src/live-paid-ledger.js';
 
 class Storage {
   values = new Map();
@@ -19,6 +20,26 @@ class Storage {
   async setAlarm() {}
   async transaction(fn) { return fn(this); }
 }
+
+test('financial readiness proves a bounded write, coalesces probes, and never records a sale', async () => {
+  const state = { storage: new Storage() }, originalPut = state.storage.put.bind(state.storage);
+  let writes = 0, writable = true;
+  state.storage.put = async (key, value) => { writes++; if (!writable) throw new Error('Exceeded allowed rows written in Durable Objects free tier.'); await originalPut(key, value); };
+  const responses = await Promise.all(Array.from({ length: 12 }, () => livePaidLedgerRoute(state, '/live/readiness', {})));
+  assert.equal(writes, 1, 'one probe covers concurrent Worker locations');
+  for (const response of responses) { const body = await response.json(); assert.equal(body.writable, true); assert.ok(body.storage_checked_at); }
+  await livePaidLedgerRoute(state, '/live/readiness', {}); assert.equal(writes, 1);
+  const restarted = await livePaidLedgerRoute({ storage: state.storage }, '/live/readiness', {});
+  assert.equal((await restarted.json()).writable, true); assert.equal(writes, 1, 'object eviction cannot cause another probe write in the same minute');
+  const summary = await (await livePaidLedgerRoute(state, '/live/summary', {})).json();
+  assert.equal(summary.commerce, null); assert.equal(summary.metrics, null); assert.equal(summary.confirmed_cash_usdc_atomic, null);
+  const now = Date.now;
+  try {
+    const later = now() + 61000; Date.now = () => later; writable = false;
+    await assert.rejects(livePaidLedgerRoute(state, '/live/readiness', {}), /rows written/);
+    assert.equal(writes, 2, 'an expired successful probe cannot conceal a new write failure');
+  } finally { Date.now = now; }
+});
 function namespace(Class, env) {
   const objects = new Map();
   return { idFromName: n => n, get(id) {
@@ -99,6 +120,22 @@ test('unpaid calls issue standard x402 v2 challenges and expose no purchased res
     assert.equal(metadata.info.output.example.receipt.example_only, true);
   }
   assert.equal(h.counts.verify, 0); assert.equal(h.counts.settle, 0);
+});
+
+test('readable but unwritable financial storage blocks new purchases while free facts remain readable', async t => {
+  const h = await fixture(t), storage = new Storage();
+  storage.put = async () => { throw new Error('Exceeded allowed rows written in Durable Objects free tier.'); };
+  const object = new PaidGatewayState({ storage }, h.env);
+  h.env.PAID_GATEWAY = { idFromName: x => x, get: () => ({ fetch: (input, init) => object.fetch(input instanceof Request ? input : new Request(input, init)) }) };
+  assert.equal((await livePaidState(h.env, '/live/circuit')).paused_until, 0, 'a successful read alone is insufficient');
+  const readiness = await h.request('/readiness'); assert.equal(readiness.status, 503);
+  const body = await readiness.json(); assert.equal(body.checks.financial_storage, false); assert.ok(body.errors.includes('storage_write_quota_exhausted'));
+  const unpaid = await h.request('/batch', LIVE_PAID[0].example, { 'idempotency-key': 'write-quota-fixture' });
+  assert.equal(unpaid.status, 503); assert.equal(unpaid.headers.has('payment-required'), false);
+  const result = await unpaid.json(); assert.equal(result.result, undefined); assert.equal(result.receipt, undefined);
+  assert.deepEqual(h.counts, { verify: 0, settle: 0 });
+  const free = await app.fetch(new Request('https://xguardgate.com/fact/npm/react/latest-version', { headers: { accept: 'application/json', 'user-agent': 'XGuardLive-regression' } }), h.env, h.ctx);
+  assert.equal(free.status, 200); assert.equal(free.headers.has('payment-required'), false);
 });
 test('concurrent retries settle once, return signed source evidence, and recover without another charge', async t => {
   const h = await fixture(t); const q = await h.challenge();

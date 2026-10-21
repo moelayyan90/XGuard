@@ -18,7 +18,7 @@ export async function livePaidReadiness(env) {
     await Promise.all([
       livePaidCapacity(env, { facts: ['npm/react/latest-version'] }).then(() => { checks.source_data = true; }).catch(e => errors.push(storageQuotaCode(e) || 'live_data_unavailable')),
       livePaidProofKey(env).then(() => { checks.proof_authority = true; }).catch(() => errors.push('proof_authority_unavailable')),
-      livePaidState(env, '/live/circuit').then(c => { checks.financial_storage = true; if (c.paused_until > Date.now()) errors.push('paid_circuit_open'); }).catch(e => errors.push(storageQuotaCode(e) || 'financial_storage_unavailable')),
+      livePaidState(env, '/live/readiness').then(c => { checks.financial_storage = c.writable === true; if (c.paused_until > Date.now()) errors.push('paid_circuit_open'); }).catch(e => errors.push(storageQuotaCode(e) || 'financial_storage_unavailable')),
       (async () => {
         if (!config.configured) return;
         try { const r = await fetch(`${config.facilitator}/supported`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(5000) }); const b = await r.json(); checks.facilitator = r.ok && b?.kinds?.some(k => k.x402Version === 2 && k.scheme === 'exact' && k.network === config.network) === true; } catch {}
