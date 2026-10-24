@@ -44,12 +44,13 @@ export async function refreshOne(store: Store, env: Env, source: Row): Promise<v
     const parsed = parseSource(spec, body), digest = await hash(body);
     if (digest === source.last_hash && store.matchesCurrent({ spec, facts: parsed.facts })) {
       store.revalidated(source, verified, next);
-      store.run('UPDATE sources SET etag=?,last_modified=? WHERE id=?', response.headers.get('etag') || null, response.headers.get('last-modified') || null, spec.id);
+      const etag = response.headers.get('etag') || null, modified = response.headers.get('last-modified') || null;
+      store.run('UPDATE sources SET etag=?,last_modified=? WHERE id=? AND (etag IS NOT ? OR last_modified IS NOT ?)', etag, modified, spec.id, etag, modified);
     } else store.observe({ spec, facts: parsed.facts, observedAt: verified, hash: digest, fetchId, method: 'conditional-https',
       etag: response.headers.get('etag') || undefined, lastModified: response.headers.get('last-modified') || undefined,
       related: parsed.related, exhaustive: parsed.exhaustive }, next);
     store.fetchLog(source, fetchId, status, new TextEncoder().encode(body).length, performance.now() - started, digest, null);
-    store.run('UPDATE sources SET last_interval=? WHERE id=?', interval, spec.id);
+    store.run('UPDATE sources SET last_interval=? WHERE id=? AND last_interval!=?', interval, spec.id, interval);
     console.log(JSON.stringify({ event: 'source_refreshed', source: spec.id, facts: parsed.facts.length, bytes: body.length, status }));
   } catch (error) {
     if (!claimed) throw error;

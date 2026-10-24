@@ -14,9 +14,14 @@ export class Store {
     this.storage = storage;
     const initialized = this.one("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_versions'");
     if (initialized && this.one('SELECT version FROM schema_versions WHERE version=?', SCHEMA_VERSION)) return;
+    const existingFactIndex = initialized && this.one('SELECT version FROM schema_versions WHERE version=3');
     storage.transactionSync(() => {
       for (const sql of SCHEMA) storage.sql.exec(sql);
-      storage.sql.exec(FACT_INDEX_BACKFILL);
+      // The v3 derived fact rows are already complete. Do not rewrite them just
+      // to replace indexes; old readers still use these unchanged table shapes.
+      if (!existingFactIndex) storage.sql.exec(FACT_INDEX_BACKFILL);
+      storage.sql.exec('DROP INDEX IF EXISTS source_due');
+      storage.sql.exec('DROP INDEX IF EXISTS public_fact_counts');
       storage.sql.exec('INSERT OR IGNORE INTO schema_versions VALUES(?,?)', SCHEMA_VERSION, iso());
       for (const [id, title] of Object.entries(TOPICS)) storage.sql.exec('INSERT OR IGNORE INTO topics VALUES(?,?)', id, title);
     });
@@ -102,7 +107,7 @@ export class Store {
         const didChange = !previous || previous.value_json !== value;
         const kind = didChange ? changeType(fact.key, previous ? JSON.parse(previous.value_json) : undefined, fact.value) : previous.change_type;
         const observationId = crypto.randomUUID();
-        this.run('INSERT INTO fact_definitions VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,value_type=excluded.value_type,unit=excluded.unit,max_age=excluded.max_age',
+        this.run('INSERT INTO fact_definitions VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,value_type=excluded.value_type,unit=excluded.unit,max_age=excluded.max_age WHERE label IS NOT excluded.label OR value_type IS NOT excluded.value_type OR unit IS NOT excluded.unit OR max_age IS NOT excluded.max_age',
           id, spec.id, fact.key, fact.label, fact.valueType || typeof fact.value, fact.unit || '', spec.maxAge);
         this.run('INSERT INTO fact_observations VALUES(?,?,?,?,?,?,?)', observationId, id, value, observedAt, didChange ? observedAt : previous.changed_at, fact.value === null ? 'removed' : 'verified', evidenceId);
         this.run('INSERT INTO current_facts VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET observation_id=excluded.observation_id,value_json=excluded.value_json,previous_json=excluded.previous_json,verified_at=excluded.verified_at,changed_at=excluded.changed_at,change_type=excluded.change_type,verification=excluded.verification',
@@ -115,7 +120,7 @@ export class Store {
       for (const related of input.related || []) this.run('INSERT OR IGNORE INTO entity_relationships VALUES(?,?,?)', spec.id, related, 'declared-dependency');
       this.run('UPDATE sources SET last_hash=?,etag=?,last_modified=?,last_success=?,failures=0,last_error=NULL,lease_until=0,next_fetch=? WHERE id=?',
         sourceHash, input.etag || null, input.lastModified || null, observedAt, nextFetch, spec.id);
-      this.run("UPDATE discovery_candidates SET status='published',error=NULL WHERE id=?", spec.id);
+      this.run("UPDATE discovery_candidates SET status='published',error=NULL WHERE id=? AND (status!='published' OR error IS NOT NULL)", spec.id);
       this.run('INSERT INTO source_reliability VALUES(?,1,0,?) ON CONFLICT(source_id) DO UPDATE SET successes=successes+1,changes=changes+excluded.changes', spec.id, changed);
       return changed;
     });
@@ -158,7 +163,16 @@ export class Store {
     if (id) { where += ' AND c.id=?'; args.push(id); }
     return this.rows(`SELECT c.*,d.label,v.source_url,v.source_hash FROM fact_changes c JOIN fact_definitions d ON d.id=c.fact_id JOIN entities e ON e.id=c.entity_id JOIN fact_observations o ON o.id=c.observation_id JOIN evidence v ON v.id=o.evidence_id ${where} ORDER BY c.observed_at DESC,c.id DESC LIMIT 100 OFFSET ?`, ...args, (page - 1) * 100).map(x => ({ ...x, previous_value: x.previous_json == null ? null : JSON.parse(x.previous_json), current_value: JSON.parse(x.value_json), previous_json: undefined, value_json: undefined }));
   }
+  changeHeads(limit = 8): Row[] {
+    return this.rows('SELECT c.id,c.observed_at FROM fact_changes c JOIN entities e ON e.id=c.entity_id WHERE e.suppressed=0 ORDER BY c.observed_at DESC,c.id DESC LIMIT ?', limit);
+  }
+  selectedChanges(ids: string[]): Row[] {
+    if (!ids.length) return [];
+    return this.rows(`SELECT c.*,d.label,v.source_url,v.source_hash FROM fact_changes c JOIN fact_definitions d ON d.id=c.fact_id JOIN entities e ON e.id=c.entity_id JOIN fact_observations o ON o.id=c.observation_id JOIN evidence v ON v.id=o.evidence_id WHERE e.suppressed=0 AND c.id IN (${ids.map(() => '?').join(',')}) ORDER BY c.observed_at DESC,c.id DESC`, ...ids)
+      .map(x => ({ ...x, previous_value: x.previous_json == null ? null : JSON.parse(x.previous_json), current_value: JSON.parse(x.value_json), previous_json: undefined, value_json: undefined }));
+  }
   list(topic: string | null, page = 1, size = 100): Row[] {
+    if (!topic) return this.rows('SELECT e.id,e.title,e.topic,e.updated_at,f.facts FROM entities e JOIN (SELECT entity_id,count(*) AS facts FROM fact_definitions GROUP BY entity_id) f ON f.entity_id=e.id WHERE e.published=1 AND e.suppressed=0 ORDER BY e.id LIMIT ? OFFSET ?', size, (page - 1) * size);
     return this.rows(`SELECT e.id,e.title,e.topic,e.updated_at,count(d.id) AS facts FROM entities e JOIN fact_definitions d ON d.entity_id=e.id WHERE e.published=1 AND e.suppressed=0 ${topic ? 'AND e.topic=?' : ''} GROUP BY e.id ORDER BY e.id LIMIT ? OFFSET ?`, ...topic ? [topic, size, (page - 1) * size] : [size, (page - 1) * size]);
   }
   sitemap(offset: number, size = 1000): Row[] {
@@ -168,21 +182,19 @@ export class Store {
     const now = iso(), start = now.slice(0, 10), cutoff = iso(Date.now() - 86400000);
     return {
       ...this.one(`SELECT count(*) AS facts,COALESCE(sum(CASE WHEN verification='verified' AND expires_ms>=? THEN 1 ELSE 0 END),0) AS verified,COALESCE(sum(CASE WHEN verification='stale' OR expires_ms<? THEN 1 ELSE 0 END),0) AS stale,max(verified_at) AS last_update FROM public_fact_index WHERE visible=1`, Date.now(), Date.now()),
+      ...this.one('SELECT count(*) AS sources,COALESCE(sum(last_error IS NOT NULL),0) AS fetch_errors,COALESCE(sum(enabled=1 AND next_fetch<?),0) AS due FROM sources', Date.now()),
       entities: this.one('SELECT count(*) AS n FROM entities WHERE published=1 AND suppressed=0')!.n,
-      sources: this.one('SELECT count(*) AS n FROM sources')!.n,
       changes_today: this.one('SELECT count(*) AS n FROM fact_changes WHERE observed_at>=?', start)!.n,
-      fetch_errors: this.one('SELECT count(*) AS n FROM sources WHERE last_error IS NOT NULL')!.n,
       pending: this.one("SELECT count(*) AS n FROM discovery_candidates WHERE status='pending'")!.n,
-      due: this.one('SELECT count(*) AS n FROM sources WHERE enabled=1 AND next_fetch<?', Date.now())!.n,
       fetches_24h: this.one('SELECT count(*) AS n FROM source_fetches WHERE observed_at>=?', cutoff)!.n,
       last_tick: this.get('last-tick'), schema_version: SCHEMA_VERSION,
     };
   }
-  publicSummary(): any {
+  publicSummary(compactChanges = false): any {
     const before = this.rowsRead;
     const items = this.list(null, 1, 1000);
     const examples = items.slice(0, 2).map(item => { const facts = this.entity(item.id)?.facts || []; return facts.find((fact: any) => /latest-version|service-status|latest-release/.test(fact.fact)) || facts[0]; }).filter(Boolean);
-    const result = { stats: this.stats(), items, examples, changes: this.changes(), topics: this.rows('SELECT topic,count(*) AS count FROM entities WHERE published=1 AND suppressed=0 GROUP BY topic') };
+    const result = { stats: this.stats(), items, examples, ...(compactChanges ? { change_heads: this.changeHeads(), change_head_limit: 8 } : { changes: this.changes() }), topics: this.rows('SELECT topic,count(*) AS count FROM entities WHERE published=1 AND suppressed=0 GROUP BY topic') };
     return { ...result, profile: { rows_read: this.rowsRead - before } };
   }
   telemetry(event: Row): void {

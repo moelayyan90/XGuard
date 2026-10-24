@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import worker, { classify } from '../src/live/worker.ts';
 import { sourceSpec, parseSource } from '../src/live/adapters.ts';
 import { allowedUrl, boundedBody, robotsAllows, safeFetch } from '../src/live/security.ts';
-import { stable, changeType, negotiate, retryDelay, shardName, shardOf, controlName } from '../src/live/util.ts';
+import { stable, changeType, negotiate, retryDelay, shardName, shardOf, controlName, hash } from '../src/live/util.ts';
 import { storage, environment, seed } from './live-harness.mjs';
 import { Store } from '../src/live/store.ts';
 import { refreshOne } from '../src/live/refresh.ts';
@@ -252,15 +252,15 @@ test('public indexes share one durable snapshot across concurrent requests and o
     h.env.LIVE_SHARDS.get = id => ({ ...get(id), async fetch(request) { reads++; return get(id).fetch(request); } });
     const request = path => worker.fetch(new Request('https://xguardgate.com' + path, { headers: { accept: 'application/json', 'user-agent': 'XGuardLive-regression' } }), h.env, h.ctx);
     const health = await Promise.all(Array.from({ length: 8 }, () => request('/healthz')));
-    assert.ok(health.every(r => r.status === 200)); assert.equal(reads, 32);
+    assert.ok(health.every(r => r.status === 200)); assert.equal(reads, 33, '32 compact shard summaries plus one selected-detail request');
     const stats = await health[0].json(); assert.equal(stats.facts, 4); assert.ok(stats.catalog_as_of);
     for (const path of ['/', '/topics', '/changes', '/sitemap.xml', '/sitemaps/site.xml']) assert.equal((await request(path)).status, 200);
     const search = await (await request('/search?q=ReAcT')).json(); assert.equal(search.items[0].id, 'npm/react');
-    assert.equal(reads, 32, 'repeated global pages must not fan out across all shards');
+    assert.equal(reads, 33, 'repeated global pages must not fan out across all shards');
     const previous = h.controls.get(controlName);
     const { LiveControl } = await import('../src/live/objects.ts');
     h.controls.set(controlName, new LiveControl(previous.state, h.env));
-    assert.equal((await request('/healthz')).status, 200); assert.equal(reads, 32, 'the catalog survives object eviction');
+    assert.equal((await request('/healthz')).status, 200); assert.equal(reads, 33, 'the catalog survives object eviction');
     await seed(h, '2.0.0'); reads = 0;
     const fact = await (await request('/fact/npm/react/latest-version')).json();
     assert.equal(fact.fact.current_value, '2.0.0'); assert.equal(reads, 1, 'a fact and its history use one storage request');
@@ -484,9 +484,9 @@ test('a catalog cache write allowance failure preserves authoritative free reads
     const request = (path, accept = 'application/json') => worker.fetch(new Request('https://xguardgate.com' + path, { headers: { accept, 'user-agent': 'XGuardLive-regression' } }), h.env, h.ctx);
     const responses = await Promise.all(Array.from({ length: 8 }, () => request('/healthz')));
     assert.ok(responses.every(r => r.status === 200));
-    assert.equal((await responses[0].json()).facts, 4); assert.equal(failedWrites, 1); assert.equal(reads, 32);
+    assert.equal((await responses[0].json()).facts, 4); assert.equal(failedWrites, 1); assert.equal(reads, 33);
     for (const path of ['/', '/topics', '/changes', '/sitemap.xml', '/sitemaps/site.xml', '/search?q=react']) assert.equal((await request(path)).status, 200);
-    assert.equal(reads, 32); assert.equal(failedWrites, 1, 'the valid memory snapshot avoids repeated failing writes');
+    assert.equal(reads, 33); assert.equal(failedWrites, 1, 'the valid memory snapshot avoids repeated failing writes');
     assert.equal(control.store.get('public-catalog-v1'), null, 'no persisted snapshot is fabricated');
     for (const accept of ['application/json', 'text/html', 'text/markdown']) {
       const fact = await request('/fact/npm/react/latest-version', accept);
@@ -512,4 +512,85 @@ test('catalog persistence does not hide read quota or unrecognized storage failu
       assert.equal(response.status, 503); assert.equal(response.headers.get('cache-control'), 'no-store');
     } finally { await h.drain(); h.close(); }
   }
+});
+
+test('v3 index migration preserves facts, metadata and immutable history without a fact backfill', async () => {
+  const h = environment();
+  try {
+    const { store } = await seed(h), db = store.storage;
+    store.run('DELETE FROM schema_versions'); store.run('INSERT INTO schema_versions VALUES(3,?)', new Date().toISOString());
+    store.run('DROP INDEX source_due_v4'); store.run('CREATE INDEX source_due ON sources(enabled,next_fetch,lease_until)');
+    store.run('CREATE INDEX public_fact_counts ON public_fact_index(visible,verification,expires_ms,verified_at)');
+    const before = { facts: store.rows('SELECT * FROM current_facts'), history: store.rows('SELECT * FROM fact_observations'), evidence: store.rows('SELECT * FROM evidence'), index: store.rows('SELECT * FROM public_fact_index') };
+    const exec = db.sql.exec;
+    db.sql.exec = (query, ...args) => { assert.ok(!query.startsWith('INSERT OR REPLACE INTO public_fact_index'), 'complete v3 fact rows must not be rewritten'); return exec(query, ...args); };
+    const migrated = new Store(db);
+    assert.deepEqual({ facts: migrated.rows('SELECT * FROM current_facts'), history: migrated.rows('SELECT * FROM fact_observations'), evidence: migrated.rows('SELECT * FROM evidence'), index: migrated.rows('SELECT * FROM public_fact_index') }, before);
+    assert.equal(migrated.one('SELECT count(*) AS n FROM schema_versions').n, 2);
+    assert.equal(migrated.one("SELECT count(*) AS n FROM sqlite_master WHERE name IN ('source_due','public_fact_counts')").n, 0);
+    assert.ok(migrated.one("SELECT name FROM sqlite_master WHERE name='source_due_v4'"));
+    const oldCounts = migrated.one("SELECT count(*) AS facts,sum(verification='verified' AND expires_ms>=?) AS verified FROM public_fact_index WHERE visible=1", Date.now());
+    assert.equal(oldCounts.facts, migrated.stats().facts); assert.equal(oldCounts.verified, migrated.stats().verified, 'old reader queries remain valid');
+  } finally { h.close(); }
+});
+
+test('changed values append history without rewriting unchanged fact definitions or publication metadata', async () => {
+  const h = environment();
+  try {
+    const { store, spec } = await seed(h), previous = store.rows('SELECT * FROM fact_observations');
+    store.run('CREATE TABLE fixture_updates(kind TEXT)');
+    store.run("CREATE TRIGGER fixture_definition_update AFTER UPDATE ON fact_definitions BEGIN INSERT INTO fixture_updates VALUES('definition'); END");
+    store.run("CREATE TRIGGER fixture_candidate_update AFTER UPDATE ON discovery_candidates BEGIN INSERT INTO fixture_updates VALUES('candidate'); END");
+    const body = JSON.stringify({ name: 'react', version: '2.0.0', license: 'MIT', engines: { node: '>=18' } });
+    const parsed = parseSource(spec, body);
+    store.observe({ spec, ...parsed, observedAt: new Date().toISOString(), hash: await hash(body), fetchId: crypto.randomUUID(), method: 'test-fixture' }, Date.now() + 10000);
+    assert.equal(store.one('SELECT count(*) AS n FROM fixture_updates').n, 0);
+    assert.equal(store.fact('npm/react/latest-version').current_value, '2.0.0');
+    assert.equal(store.one('SELECT count(*) AS n FROM fact_observations').n, previous.length + parsed.facts.length);
+    for (const row of previous) assert.deepEqual(store.one('SELECT * FROM fact_observations WHERE id=?', row.id), row);
+    parsed.facts[0].label = 'Updated source label';
+    store.observe({ spec, ...parsed, observedAt: new Date().toISOString(), hash: 'a'.repeat(64), fetchId: crypto.randomUUID(), method: 'test-fixture' }, Date.now() + 10000);
+    assert.deepEqual(store.rows('SELECT * FROM fixture_updates').map(row => ({ ...row })), [{ kind: 'definition' }]);
+  } finally { h.close(); }
+});
+
+test('compact catalog selects the identical global latest 100 changes across dense and suppressed shards', async () => {
+  const h = environment();
+  try {
+    const now = Date.now();
+    for (let i = 0; i < 35; i++) {
+      const spec = sourceSpec('npm', `selection-${i}`), body = JSON.stringify({ name: spec.identifier, version: '1.0.0', license: 'MIT', engines: { node: '>=18' } });
+      const store = h.env.LIVE_SHARDS.get(shardName(shardOf(spec.id))).store;
+      store.enqueue(spec); store.observe({ spec, ...parseSource(spec, body), observedAt: new Date(now - 3600000 - i * 1000).toISOString(), hash: await hash(body), fetchId: crypto.randomUUID(), method: 'test-fixture' }, now + 10000);
+    }
+    for (let i = 0; i < 130; i++) await seed(h, `2.0.${i}`, new Date(now - 130000 + i * 1000).toISOString());
+    const control = h.env.LIVE_CONTROL.get(controlName);
+    const expected = () => JSON.parse(JSON.stringify([...h.objects.values()].flatMap(object => object.store.changes()).sort((a, b) => b.observed_at.localeCompare(a.observed_at) || b.id.localeCompare(a.id)).slice(0, 100)));
+    const first = await control.catalog(); assert.deepEqual(first.changes, expected()); assert.equal(first.changes.length, 100);
+    h.env.LIVE_SHARDS.get(shardName(shardOf('npm/react'))).store.run('UPDATE entities SET suppressed=1 WHERE id=?', 'npm/react');
+    control.catalogValue = null; control.store.set('public-catalog-v1', null);
+    const second = await control.catalog(); assert.deepEqual(second.changes, expected()); assert.equal(second.changes.length, 100);
+    const get = h.env.LIVE_SHARDS.get;
+    h.env.LIVE_SHARDS.get = id => ({ async fetch(request) {
+      const body = await request.json();
+      assert.notEqual(body.op, 'changes-selected', 'a complete legacy summary supplies its own details');
+      return get(id).fetch(new Request(request.url, { method: 'POST', body: JSON.stringify({ ...body, compact_changes: false }) }));
+    } });
+    control.catalogValue = null; control.store.set('public-catalog-v1', null);
+    assert.deepEqual((await control.catalog()).changes, expected(), 'a mixed-version deployment retains the same records');
+  } finally { h.close(); }
+});
+
+test('selected-change RPC limits and aggregate entity listings retain existing filtering', async () => {
+  const h = environment();
+  try {
+    const { store, object } = await seed(h);
+    for (const ids of [Array(101).fill('x'), ['duplicate', 'duplicate'], [{}]]) {
+      const response = await object.fetch(new Request('https://internal/', { method: 'POST', body: JSON.stringify({ op: 'changes-selected', ids }) }));
+      assert.equal(response.status, 400);
+    }
+    store.run('INSERT INTO entities(id,title,topic,published,created_at,updated_at) VALUES(?,?,?,1,?,?)', 'npm/empty', 'Empty entity', 'javascript-packages', new Date().toISOString(), new Date().toISOString());
+    const old = store.rows('SELECT e.id,e.title,e.topic,e.updated_at,count(d.id) AS facts FROM entities e JOIN fact_definitions d ON d.entity_id=e.id WHERE e.published=1 AND e.suppressed=0 GROUP BY e.id ORDER BY e.id LIMIT 100 OFFSET 0');
+    assert.deepEqual(store.list(null), old); assert.equal(store.stats().entities, 2); assert.equal(store.list(null).length, 1);
+  } finally { h.close(); }
 });
