@@ -1,13 +1,13 @@
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const FACT_INDEX_BACKFILL = `INSERT OR REPLACE INTO public_fact_index SELECT c.id,c.verification,CAST(round((julianday(c.verified_at)-2440587.5)*86400000) AS INTEGER)+d.max_age*1000,c.verified_at,CASE WHEN e.published=1 AND e.suppressed=0 THEN 1 ELSE 0 END FROM current_facts c JOIN fact_definitions d ON d.id=c.id JOIN entities e ON e.id=d.entity_id`;
-// Additive migration only. Historical observations, changes and evidence are immutable.
+// Historical rows and tables are retained. Version 4 only replaces derived indexes.
 export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS schema_versions(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS entities(id TEXT PRIMARY KEY, title TEXT NOT NULL, topic TEXT NOT NULL, published INTEGER NOT NULL DEFAULT 0, suppressed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS entity_topic ON entities(topic,published,suppressed,id)`,
   `CREATE TABLE IF NOT EXISTS topics(id TEXT PRIMARY KEY, title TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY, spec_json TEXT NOT NULL, domain TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, etag TEXT, last_modified TEXT, last_hash TEXT, last_success TEXT, next_fetch INTEGER NOT NULL DEFAULT 0, failures INTEGER NOT NULL DEFAULT 0, last_error TEXT, lease_until INTEGER NOT NULL DEFAULT 0, last_interval INTEGER NOT NULL DEFAULT 86400)`,
-  `CREATE INDEX IF NOT EXISTS source_due ON sources(enabled,next_fetch,lease_until)`,
+  `CREATE INDEX IF NOT EXISTS source_due_v4 ON sources(enabled,(last_interval<=600) DESC,next_fetch,id)`,
   `CREATE TABLE IF NOT EXISTS source_reliability(source_id TEXT PRIMARY KEY, successes INTEGER NOT NULL DEFAULT 0, failures INTEGER NOT NULL DEFAULT 0, changes INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS fact_definitions(id TEXT PRIMARY KEY, entity_id TEXT NOT NULL REFERENCES entities(id), fact_key TEXT NOT NULL, label TEXT NOT NULL, value_type TEXT NOT NULL, unit TEXT, max_age INTEGER NOT NULL, UNIQUE(entity_id,fact_key))`,
   `CREATE TABLE IF NOT EXISTS source_fetches(id TEXT PRIMARY KEY, source_id TEXT NOT NULL, observed_at TEXT NOT NULL, http_status INTEGER, latency_ms INTEGER, bytes INTEGER, source_hash TEXT, error TEXT, method TEXT NOT NULL)`,
@@ -18,7 +18,6 @@ export const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS observation_history ON fact_observations(fact_id,observed_at DESC,id)`,
   `CREATE TABLE IF NOT EXISTS current_facts(id TEXT PRIMARY KEY REFERENCES fact_definitions(id), observation_id TEXT NOT NULL REFERENCES fact_observations(id), value_json TEXT NOT NULL, previous_json TEXT, verified_at TEXT NOT NULL, changed_at TEXT NOT NULL, change_type TEXT NOT NULL, verification TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS public_fact_index(id TEXT PRIMARY KEY,verification TEXT NOT NULL,expires_ms INTEGER NOT NULL,verified_at TEXT NOT NULL,visible INTEGER NOT NULL)`,
-  `CREATE INDEX IF NOT EXISTS public_fact_counts ON public_fact_index(visible,verification,expires_ms,verified_at)`,
   ...['INSERT', 'UPDATE'].map(action => `CREATE TRIGGER IF NOT EXISTS public_fact_index_${action.toLowerCase()} AFTER ${action} ON current_facts BEGIN INSERT INTO public_fact_index SELECT NEW.id,NEW.verification,CAST(round((julianday(NEW.verified_at)-2440587.5)*86400000) AS INTEGER)+d.max_age*1000,NEW.verified_at,CASE WHEN e.published=1 AND e.suppressed=0 THEN 1 ELSE 0 END FROM fact_definitions d JOIN entities e ON e.id=d.entity_id WHERE d.id=NEW.id ON CONFLICT(id) DO UPDATE SET verification=excluded.verification,expires_ms=excluded.expires_ms,verified_at=excluded.verified_at,visible=excluded.visible; END`),
   `CREATE TRIGGER IF NOT EXISTS public_fact_index_delete AFTER DELETE ON current_facts BEGIN DELETE FROM public_fact_index WHERE id=OLD.id; END`,
   `CREATE TRIGGER IF NOT EXISTS public_fact_index_visibility AFTER UPDATE OF published,suppressed ON entities WHEN NEW.published!=OLD.published OR NEW.suppressed!=OLD.suppressed BEGIN UPDATE public_fact_index SET visible=CASE WHEN NEW.published=1 AND NEW.suppressed=0 THEN 1 ELSE 0 END WHERE id IN (SELECT id FROM fact_definitions WHERE entity_id=NEW.id); END`,

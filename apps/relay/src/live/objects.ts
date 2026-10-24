@@ -64,7 +64,17 @@ export class LiveShard {
       }
       if (op === 'sitemap') return json(this.store.sitemap(integer(body.offset, 0), 1000));
       if (op === 'stats') return json(this.store.stats());
-      if (op === 'summary') return json(this.store.publicSummary());
+      if (op === 'summary') return json(this.store.publicSummary(body.compact_changes === true));
+      if (op === 'change-heads') {
+        if (!Number.isSafeInteger(body.limit) || body.limit < 1 || body.limit > 100) return json({ error: 'invalid_change_limit' }, 400);
+        const before = this.store.rowsRead, heads = this.store.changeHeads(body.limit);
+        return json({ heads, profile: { rows_read: this.store.rowsRead - before } });
+      }
+      if (op === 'changes-selected') {
+        if (!Array.isArray(body.ids) || body.ids.length > 100 || new Set(body.ids).size !== body.ids.length || body.ids.some((id: any) => typeof id !== 'string' || !id.length || id.length > 100)) return json({ error: 'invalid_change_selection' }, 400);
+        const before = this.store.rowsRead, items = this.store.selectedChanges(body.ids);
+        return json({ items, profile: { rows_read: this.store.rowsRead - before } });
+      }
       if (op === 'topic-counts') return json(this.store.rows('SELECT topic,count(*) AS count FROM entities WHERE published=1 AND suppressed=0 GROUP BY topic'));
       if (op === 'metrics') return json(this.store.metrics());
       if (op === 'growth-candidates') {
@@ -105,10 +115,33 @@ export class LiveControl {
   constructor(state: State, env: Env) { this.state = state; this.env = env; this.store = new Store(state.storage); }
   async catalog(): Promise<any> {
     if (!this.catalogValue) this.catalogValue = this.store.get('public-catalog-v1');
-    if (this.catalogValue && Array.isArray(this.catalogValue.search_items) && this.catalogValue.as_of.slice(0, 10) === iso().slice(0, 10) && Date.now() - Date.parse(this.catalogValue.as_of) < 900000) return this.catalogValue;
+    if (this.catalogValue?.profile_version === 2 && Array.isArray(this.catalogValue.search_items) && this.catalogValue.as_of.slice(0, 10) === iso().slice(0, 10) && Date.now() - Date.parse(this.catalogValue.as_of) < 900000) return this.catalogValue;
     if (!this.catalogFlight) this.catalogFlight = (async () => {
-      const parts = await Promise.all(Array.from({ length: SHARDS }, (_, i) => rpc(this.env.LIVE_SHARDS, shardName(i), 'summary')));
-      const value = { as_of: iso(), profile: { rows_read: parts.reduce((n, p) => n + Number(p.profile?.rows_read || 0), 0) }, shards: parts.map(p => ({ stats: p.stats, topics: p.topics })), items: parts.flatMap(p => p.items.slice(0, 4)), search_items: parts.flatMap(p => p.items), examples: parts.flatMap(p => p.examples).slice(0, 6), changes: parts.flatMap(p => p.changes).sort((a, b) => b.observed_at.localeCompare(a.observed_at) || b.id.localeCompare(a.id)).slice(0, 100) };
+      const parts = await Promise.all(Array.from({ length: SHARDS }, (_, i) => rpc(this.env.LIVE_SHARDS, shardName(i), 'summary', { compact_changes: true })));
+      const order = (a: any, b: any) => b.observed_at.localeCompare(a.observed_at) || b.id.localeCompare(a.id);
+      const candidates = parts.map(part => ({ heads: part.change_heads || part.changes || [], limit: part.change_head_limit || 100, complete: !part.change_heads || part.change_heads.length < part.change_head_limit }));
+      let latest: any[] = [], headReads = 0;
+      // Expand only shards whose last fetched head can precede the current
+      // global cutoff. Doubling bounds rounds while retaining the exact top 100.
+      for (;;) {
+        latest = candidates.flatMap((part, shard) => part.heads.map((head: any) => ({ ...head, shard }))).sort(order).slice(0, 100);
+        const cutoff = latest.at(-1);
+        const pending = candidates.map((part, shard) => ({ ...part, shard })).filter(part => !part.complete && part.limit < 100 && (latest.length < 100 || order(part.heads.at(-1), cutoff) <= 0));
+        if (!pending.length) break;
+        const expanded = await Promise.all(pending.map(async part => {
+          const limit = Math.min(100, part.limit * 2), result = await rpc(this.env.LIVE_SHARDS, shardName(part.shard), 'change-heads', { limit });
+          return { shard: part.shard, heads: result.heads, limit, complete: result.heads.length < limit, rows: Number(result.profile?.rows_read || 0) };
+        }));
+        for (const part of expanded) { candidates[part.shard] = part; headReads += part.rows; }
+      }
+      const selected = await Promise.all(parts.map(async (part, shard) => {
+        const ids = latest.filter(head => head.shard === shard).map(head => head.id);
+        if (!ids.length) return { items: [], profile: { rows_read: 0 } };
+        // Accept the old full summary during a compatible rolling deployment.
+        if (part.changes) return { items: part.changes.filter((change: any) => ids.includes(change.id)), profile: { rows_read: 0 } };
+        return rpc(this.env.LIVE_SHARDS, shardName(shard), 'changes-selected', { ids });
+      }));
+      const value = { as_of: iso(), profile_version: 2, profile: { rows_read: headReads + [...parts, ...selected].reduce((n, p) => n + Number(p.profile?.rows_read || 0), 0) }, shards: parts.map(p => ({ stats: p.stats, topics: p.topics })), items: parts.flatMap(p => p.items.slice(0, 4)), search_items: parts.flatMap(p => p.items), examples: parts.flatMap(p => p.examples).slice(0, 6), changes: selected.flatMap(p => p.items).sort(order) };
       try { this.store.set('public-catalog-v1', value); }
       catch (error) {
         // This is an optional cache write after successful authoritative reads.

@@ -1,0 +1,26 @@
+name: Audit Live provider capacity without changes
+on:
+  push:
+    branches: [codex/live-capacity-20261024]
+    paths: [scripts/live-provider-audit.mjs, .github/workflows/live-provider-audit.yml]
+  schedule:
+    - cron: '55 23 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Read provider quota and configuration status without exposing private counts
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/live-provider-audit.mjs
