@@ -57,7 +57,7 @@ export function bareChallenge(env) {
   });
 }
 
-export default {
+const worker = {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/v1/reconcile" && request.method === "GET") {
@@ -77,5 +77,16 @@ export default {
       }
     }
     return app.fetch(request, env, ctx);
+  },
+};
+
+export default {
+  async fetch(request, env, ctx) {
+    const response = await worker.fetch(request, env, ctx);
+    const tag = env.CF_VERSION_METADATA?.tag;
+    if (!tag) return response;
+    const headers = new Headers(response.headers);
+    headers.set("x-xguard-worker-version-tag", tag);
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   },
 };

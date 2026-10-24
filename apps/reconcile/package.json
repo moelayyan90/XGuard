@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "generate:validators": "node scripts/generate-validators.mjs",
-    "check": "node --check src/index.js && node --check src/discovery-entry.js && node scripts/generate-validators.mjs --check && node --test test/discovery-entry.mjs test/standalone-validators.mjs",
+    "check": "node --check src/index.js && node --check src/discovery-entry.js && node scripts/generate-validators.mjs --check && node --test test/discovery-entry.mjs test/standalone-validators.mjs test/production-smoke.mjs",
     "build": "wrangler deploy --dry-run --outdir .wrangler/build --config wrangler.jsonc",
     "test:workerd": "npm run build && node --test test/reconcile-workerd.mjs"
   },

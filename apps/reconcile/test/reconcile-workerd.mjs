@@ -11,6 +11,7 @@ import { bazaarResourceServerExtension, validateDiscoveryExtension, validateDisc
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, parseAbi, verifyTypedData } from "viem";
 import discovery from "../src/discovery.js";
+import { runReconcileSmoke } from "../scripts/production-smoke.mjs";
 
 const config = JSON.parse(await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
 const bundle = fileURLToPath(new URL("../.wrangler/build/discovery-entry.js", import.meta.url));
@@ -342,4 +343,14 @@ test("workerd: static validators run while dynamic evaluation is blocked", { tim
   const unknown = await mf.dispatchFetch("https://validator.test", { method: "POST", body: JSON.stringify({ schema: {}, info: {} }) });
   assert.equal(unknown.status, 400);
   assert.match((await unknown.json()).error, /Unknown Bazaar schema/);
+});
+
+test("workerd: production smoke verifies the exact revision without executing or settling", { timeout: 30000 }, async t => {
+  const tag = "git-0123456789ab";
+  const { state, fetch, noCompilerErrors } = await fixture(t, { bindings: { CF_VERSION_METADATA: { id: "fixture", tag } } });
+  const result = await runReconcileSmoke({ expectedTag: tag, fetchImpl: fetch });
+  assert.equal(result.reconcile_production_smoke, "passed");
+  assert.equal(result.checks, 15);
+  assert.equal(state.verify + state.settle + state.rpc, 0);
+  noCompilerErrors();
 });
