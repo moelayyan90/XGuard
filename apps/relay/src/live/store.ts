@@ -34,12 +34,17 @@ export class Store {
       this.run('INSERT INTO sources(id,spec_json,domain,last_interval) VALUES(?,?,?,?)', spec.id, JSON.stringify(spec), spec.domain, spec.interval);
     }); return true;
   }
-  claimDue(now = Date.now()): Row | null {
+  peekDue(now = Date.now()): Row | null {
+    const available = 's.enabled=1 AND s.lease_until<? AND COALESCE((SELECT until_ms FROM domain_leases WHERE domain=s.domain),0)<=?';
+    return this.one(`SELECT s.*,q.key AS manual_key FROM settings q JOIN sources s ON s.id=substr(q.key,length('manual-refresh:')+1) WHERE q.key GLOB 'manual-refresh:*' AND ${available} ORDER BY q.key LIMIT 1`, now, now)
+      || this.one(`SELECT s.* FROM sources s WHERE ${available} AND s.next_fetch<=? ORDER BY (s.last_interval<=600) DESC,s.next_fetch,s.id LIMIT 1`, now, now, now);
+  }
+  claimDue(now = Date.now(), expectedId?: string): Row | null {
     return this.storage.transactionSync(() => {
-      const selected = this.one("SELECT s.* FROM settings q JOIN sources s ON s.id=substr(q.key,length('manual-refresh:')+1) WHERE q.key GLOB 'manual-refresh:*' AND s.enabled=1 AND s.lease_until<? ORDER BY q.key LIMIT 1", now);
-      const source = selected || this.one('SELECT * FROM sources WHERE enabled=1 AND next_fetch<=? AND lease_until<? AND COALESCE((SELECT until_ms FROM domain_leases WHERE domain=sources.domain),0)<=? ORDER BY (last_interval<=600) DESC,next_fetch,id LIMIT 1', now, now, now);
+      const source = this.peekDue(now);
+      if (expectedId && source?.id !== expectedId) return null;
       if (source) this.run('UPDATE sources SET lease_until=? WHERE id=?', now + 120000, source.id);
-      if (selected) this.run('DELETE FROM settings WHERE key=?', `manual-refresh:${selected.id}`);
+      if (source?.manual_key) this.run('DELETE FROM settings WHERE key=?', source.manual_key);
       return source;
     });
   }

@@ -30,7 +30,7 @@ export class LiveShard {
     try {
       this.store.set('last-tick', iso());
       for (let i = 0; i < 4; i++) {
-        const source = this.store.claimDue(); if (!source) break;
+        const source = this.store.peekDue(); if (!source) break;
         await refreshOne(this.store, this.env, source);
       }
       if (this.store.get('cleanup-day') !== iso().slice(0, 10)) { this.store.cleanOperationalData(); this.store.set('cleanup-day', iso().slice(0, 10)); }
@@ -109,7 +109,14 @@ export class LiveControl {
     if (!this.catalogFlight) this.catalogFlight = (async () => {
       const parts = await Promise.all(Array.from({ length: SHARDS }, (_, i) => rpc(this.env.LIVE_SHARDS, shardName(i), 'summary')));
       const value = { as_of: iso(), profile: { rows_read: parts.reduce((n, p) => n + Number(p.profile?.rows_read || 0), 0) }, shards: parts.map(p => ({ stats: p.stats, topics: p.topics })), items: parts.flatMap(p => p.items.slice(0, 4)), search_items: parts.flatMap(p => p.items), examples: parts.flatMap(p => p.examples).slice(0, 6), changes: parts.flatMap(p => p.changes).sort((a, b) => b.observed_at.localeCompare(a.observed_at) || b.id.localeCompare(a.id)).slice(0, 100) };
-      this.store.set('public-catalog-v1', value); this.catalogValue = value; return value;
+      try { this.store.set('public-catalog-v1', value); }
+      catch (error) {
+        // This is an optional cache write after successful authoritative reads.
+        // A write-only allowance failure must not discard the readable catalog.
+        if (storageQuotaCode(error) !== 'storage_write_quota_exhausted') throw error;
+        console.warn(JSON.stringify({ event: 'catalog_cache_not_persisted', code: 'storage_write_quota_exhausted' }));
+      }
+      this.catalogValue = value; return value;
     })().finally(() => { this.catalogFlight = null; });
     return this.catalogFlight;
   }
