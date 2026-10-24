@@ -29,6 +29,9 @@ jobs:
       - run: npm ci --prefix apps/reconcile --no-audit --no-fund
       - run: npm run --prefix apps/reconcile check
       - run: npm run --prefix apps/reconcile test:workerd
+      - name: Dry-run the exact deployment command and working directory
+        working-directory: apps/reconcile
+        run: node_modules/.bin/wrangler deploy --dry-run --config wrangler.jsonc --tag "git-${GITHUB_SHA:0:12}"
       - name: Compare discovery and x402 challenges with the exact base in workerd
         env:
           BASELINE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -78,9 +81,10 @@ jobs:
           NODE
       - name: Deploy the tested Reconcile commit
         id: deploy
+        working-directory: apps/reconcile
         run: |
           set -euo pipefail
-          apps/reconcile/node_modules/.bin/wrangler deploy --config apps/reconcile/wrangler.jsonc --tag "git-${GITHUB_SHA:0:12}" --message "Deploy tested XGuard Reconcile ${GITHUB_SHA}"
+          node_modules/.bin/wrangler deploy --config wrangler.jsonc --tag "git-${GITHUB_SHA:0:12}" --message "Deploy tested XGuard Reconcile ${GITHUB_SHA}"
       - name: Verify the exact public revision and unchanged payment contract
         id: smoke
         run: |
