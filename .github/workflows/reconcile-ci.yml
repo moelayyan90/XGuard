@@ -1,0 +1,93 @@
+name: XGuard Reconcile CI
+
+on:
+  pull_request:
+    paths: ["apps/reconcile/**", ".github/workflows/reconcile-ci.yml"]
+  push:
+    branches: [main]
+    paths: ["apps/reconcile/**", ".github/workflows/reconcile-ci.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/reconcile/package-lock.json
+      - run: npm ci --prefix apps/reconcile --no-audit --no-fund
+      - run: npm run --prefix apps/reconcile check
+      - run: npm run --prefix apps/reconcile test:workerd
+      - name: Compare discovery and x402 challenges with the exact base in workerd
+        env:
+          BASELINE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node apps/reconcile/test/compatibility-workerd.mjs "$BASELINE_SHA"
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: reconcile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: xguard-reconcile-production
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --prefix apps/reconcile --no-audit --no-fund
+      - name: Prepare existing Cloudflare credentials
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const token = String(process.env.CLOUDFLARE_API_TOKEN || '').replace(/[\r\n]/g, '').trim().replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '');
+          const account = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+          if (!token || !/^[0-9a-f]{32}$/i.test(account)) throw new Error('Cloudflare repository credentials are missing or invalid');
+          appendFileSync(process.env.GITHUB_ENV, `CLOUDFLARE_API_TOKEN=${token}\nCLOUDFLARE_ACCOUNT_ID=${account}\n`);
+          NODE
+      - name: Snapshot the active Reconcile version for recovery
+        id: previous
+        run: |
+          set -euo pipefail
+          apps/reconcile/node_modules/.bin/wrangler deployments list --json --config apps/reconcile/wrangler.jsonc > "$RUNNER_TEMP/reconcile-deployments.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const deployments = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/reconcile-deployments.json`, 'utf8'));
+          const versions = deployments.at(-1)?.versions || [];
+          if (versions.length !== 1 || Number(versions[0].percentage) !== 100 || !/^[0-9a-f-]{36}$/i.test(versions[0].version_id || '')) throw new Error('Cannot safely snapshot a single active production version');
+          appendFileSync(process.env.GITHUB_OUTPUT, `version_id=${versions[0].version_id}\n`);
+          NODE
+      - name: Deploy the tested Reconcile commit
+        id: deploy
+        run: |
+          set -euo pipefail
+          apps/reconcile/node_modules/.bin/wrangler deploy --config apps/reconcile/wrangler.jsonc --tag "git-${GITHUB_SHA:0:12}" --message "Deploy tested XGuard Reconcile ${GITHUB_SHA}"
+      - name: Verify the exact public revision and unchanged payment contract
+        id: smoke
+        run: |
+          EXPECTED_RECONCILE_TAG="git-${GITHUB_SHA:0:12}" node apps/reconcile/scripts/production-smoke.mjs
+      - name: Restore the prior version after failed deployment verification
+        if: failure() && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure') && steps.previous.outputs.version_id != ''
+        env:
+          PREVIOUS_VERSION: ${{ steps.previous.outputs.version_id }}
+        run: |
+          apps/reconcile/node_modules/.bin/wrangler rollback "$PREVIOUS_VERSION" --yes --config apps/reconcile/wrangler.jsonc --message "Restore Reconcile after failed ${GITHUB_SHA} verification"

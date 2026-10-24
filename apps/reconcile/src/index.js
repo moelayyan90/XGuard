@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { registerExactEvmScheme as registerServerEvmScheme } from "@x402/evm/exact/server";
-import { declareDiscoveryExtension, bazaarResourceServerExtension, withBazaar } from "@x402/extensions/bazaar";
+import { bazaarResourceServerExtension, withBazaar } from "@x402/extensions/bazaar";
+import discovery from "./discovery.js";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { base } from "viem/chains";
@@ -22,29 +23,6 @@ const AUTH_STATE = [{ type: "function", name: "authorizationState", stateMutabil
 const isAddress = value => /^0x[0-9a-fA-F]{40}$/.test(String(value || ""));
 const isNonce = value => /^0x[0-9a-fA-F]{64}$/.test(String(value || ""));
 const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...extra } });
-
-const discovery = declareDiscoveryExtension({
-  input: {
-    from: "0x1111111111111111111111111111111111111111",
-    nonce: "0x1111111111111111111111111111111111111111111111111111111111111111"
-  },
-  inputSchema: {
-    properties: {
-      from: { type: "string", description: "EVM authorizer address", pattern: "^0x[0-9a-fA-F]{40}$" },
-      nonce: { type: "string", description: "EIP-3009 bytes32 authorization nonce", pattern: "^0x[0-9a-fA-F]{64}$" }
-    },
-    required: ["from", "nonce"]
-  },
-  output: {
-    example: {
-      network: NETWORK,
-      authorization_used: true,
-      settlement: "observed",
-      transaction: "0x…",
-      safe_to_retry_same_authorization: false
-    }
-  }
-});
 
 function facilitatorState(env) {
   const cdpId = String(env.CDP_API_KEY_ID || "").trim();
@@ -73,16 +51,6 @@ function appFor(env) {
   const app = new Hono();
   const payTo = String(env.XGUARD_TREASURY_USDC_ADDRESS || "");
   if (!isAddress(payTo)) throw new Error("invalid_treasury_address");
-
-  app.use("/v1/reconcile", async (c, next) => {
-    if (c.req.method !== "GET") return next();
-    const authorizer = String(c.req.query("from") || c.req.query("authorizer") || "");
-    const nonce = String(c.req.query("nonce") || "");
-    if (!isAddress(authorizer) || !isNonce(nonce)) {
-      return json({ error: "invalid_input", required: { from: "0x + 40 hex EVM address", nonce: "0x + 64 hex bytes32" } }, 400);
-    }
-    return next();
-  });
 
   const server = new x402ResourceServer(makeFacilitatorClient(env));
   registerServerEvmScheme(server);
@@ -226,6 +194,14 @@ export default {
     if (url.pathname === "/robots.txt" && request.method === "GET") return new Response("User-agent: *\nAllow: /\nSitemap: https://reconcile.xguardgate.com/sitemap.xml\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
     if (url.pathname === "/sitemap.xml" && request.method === "GET") return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://reconcile.xguardgate.com/</loc></url><url><loc>https://reconcile.xguardgate.com/docs</loc></url><url><loc>https://reconcile.xguardgate.com/openapi.json</loc></url><url><loc>https://reconcile.xguardgate.com/.well-known/x402.json</loc></url></urlset>`, { headers: { "content-type": "application/xml; charset=utf-8" } });
     if (url.pathname === "/llms.txt" && request.method === "GET") return new Response(`XGuard Reconcile\nPost-timeout x402 settlement reconciliation on Base mainnet.\nPaid endpoint: GET ${RESOURCE_URL}?from=<EVM_ADDRESS>&nonce=<BYTES32>\nPrice: $0.002 USDC via x402 exact on eip155:8453.\nReturns EIP-3009 authorization state and transaction hash when observed.\nOpenAPI: https://reconcile.xguardgate.com/openapi.json\nx402 discovery: https://reconcile.xguardgate.com/.well-known/x402.json\nMain relay: https://api.xguardgate.com\n`, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=120" } });
+    // Reject unmatched paths/methods before constructing the payment middleware:
+    // its constructor starts facilitator synchronization and Bazaar validation.
+    if (url.pathname !== "/v1/reconcile" || request.method !== "GET") return json({ error: "not_found" }, 404);
+    const authorizer = String(url.searchParams.get("from") || url.searchParams.get("authorizer") || "");
+    const nonce = String(url.searchParams.get("nonce") || "");
+    if (!isAddress(authorizer) || !isNonce(nonce)) {
+      return json({ error: "invalid_input", required: { from: "0x + 40 hex EVM address", nonce: "0x + 64 hex bytes32" } }, 400);
+    }
     return getApp(env).fetch(request, env, ctx);
   }
 };

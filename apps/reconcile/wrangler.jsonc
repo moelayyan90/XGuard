@@ -6,6 +6,11 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "minify": true,
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  "build": { "command": "node scripts/generate-validators.mjs" },
+  "alias": {
+    "ajv/dist/2020.js": "./src/ajv2020-standalone.js"
+  },
   "vars": {
     "XGUARD_TREASURY_USDC_ADDRESS": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
     "X402_FACILITATOR": "https://facilitator.xpay.sh",
