@@ -3,7 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/index.js && node --check src/discovery-entry.js && node --test test/discovery-entry.mjs"
+    "check": "node --check src/index.js && node --check src/discovery-entry.js && node scripts/generate-validators.mjs --check",
+    "generate": "node scripts/generate-validators.mjs",
+    "build": "npm run generate && node scripts/build.mjs",
+    "test": "node --test test/discovery-entry.mjs test/validator.mjs",
+    "test:workerd": "node test/worker.mjs"
   },
   "dependencies": {
     "@coinbase/x402": "^2.1.0",
@@ -13,5 +17,10 @@
     "@x402/hono": "2.24.0",
     "hono": "^4.12.27",
     "viem": "^2.37.6"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "esbuild": "0.28.1",
+    "miniflare": "5.20261001.0-alpha"
   }
 }

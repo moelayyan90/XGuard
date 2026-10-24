@@ -23,7 +23,7 @@ const isAddress = value => /^0x[0-9a-fA-F]{40}$/.test(String(value || ""));
 const isNonce = value => /^0x[0-9a-fA-F]{64}$/.test(String(value || ""));
 const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...extra } });
 
-const discovery = declareDiscoveryExtension({
+export const discovery = declareDiscoveryExtension({
   input: {
     from: "0x1111111111111111111111111111111111111111",
     nonce: "0x1111111111111111111111111111111111111111111111111111111111111111"
@@ -64,9 +64,9 @@ function facilitatorState(env) {
 function makeFacilitatorClient(env) {
   const state = facilitatorState(env);
   if (state.bazaarPublishReady) {
-    return withBazaar(new HTTPFacilitatorClient(createFacilitatorConfig(state.cdpId, state.cdpSecret)));
+    return withBazaar(new HTTPFacilitatorClient({ ...createFacilitatorConfig(state.cdpId, state.cdpSecret), timeoutMs: 8000 }));
   }
-  return withBazaar(new HTTPFacilitatorClient({ url: state.url }));
+  return withBazaar(new HTTPFacilitatorClient({ url: state.url, timeoutMs: 8000 }));
 }
 
 function appFor(env) {
@@ -172,13 +172,7 @@ function discoveryDocument(env) {
               }
             }
           },
-          schema: {
-            properties: {
-              from: { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" },
-              nonce: { type: "string", pattern: "^0x[0-9a-fA-F]{64}$" }
-            },
-            required: ["from", "nonce"]
-          }
+          schema: discovery.bazaar.schema
         }
       }
     }]
@@ -226,6 +220,19 @@ export default {
     if (url.pathname === "/robots.txt" && request.method === "GET") return new Response("User-agent: *\nAllow: /\nSitemap: https://reconcile.xguardgate.com/sitemap.xml\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
     if (url.pathname === "/sitemap.xml" && request.method === "GET") return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://reconcile.xguardgate.com/</loc></url><url><loc>https://reconcile.xguardgate.com/docs</loc></url><url><loc>https://reconcile.xguardgate.com/openapi.json</loc></url><url><loc>https://reconcile.xguardgate.com/.well-known/x402.json</loc></url></urlset>`, { headers: { "content-type": "application/xml; charset=utf-8" } });
     if (url.pathname === "/llms.txt" && request.method === "GET") return new Response(`XGuard Reconcile\nPost-timeout x402 settlement reconciliation on Base mainnet.\nPaid endpoint: GET ${RESOURCE_URL}?from=<EVM_ADDRESS>&nonce=<BYTES32>\nPrice: $0.002 USDC via x402 exact on eip155:8453.\nReturns EIP-3009 authorization state and transaction hash when observed.\nOpenAPI: https://reconcile.xguardgate.com/openapi.json\nx402 discovery: https://reconcile.xguardgate.com/.well-known/x402.json\nMain relay: https://api.xguardgate.com\n`, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=120" } });
-    return getApp(env).fetch(request, env, ctx);
+    // Route rejection must precede middleware construction: construction starts
+    // facilitator initialization and Bazaar validation even for an unknown URL.
+    if (url.pathname !== "/v1/reconcile" || request.method !== "GET") return new Response("404 Not Found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+    const authorizer = url.searchParams.get("from") || url.searchParams.get("authorizer") || "";
+    if (!isAddress(authorizer) || !isNonce(url.searchParams.get("nonce"))) return json({ error: "invalid_input", required: { from: "0x + 40 hex EVM address", nonce: "0x + 64 hex bytes32" } }, 400);
+    if (!isAddress(env.XGUARD_TREASURY_USDC_ADDRESS) || /^0x0{40}$/i.test(env.XGUARD_TREASURY_USDC_ADDRESS)) return json({ error: "payment_not_configured" }, 503);
+    try {
+      const result = await getApp(env).fetch(request, env, ctx);
+      if (![500, 502].includes(result.status)) return result;
+      // Preserve any official payment acknowledgement/failure headers. A
+      // provider initialization failure is transient and never a free result.
+      const headers = new Headers(result.headers); headers.delete("content-length"); headers.set("content-type", "application/json; charset=utf-8"); headers.set("cache-control", "no-store");
+      return new Response(JSON.stringify({ error: "payment_dependency_unavailable" }), { status: 503, headers });
+    } catch { return json({ error: "payment_dependency_unavailable" }, 503); }
   }
 };

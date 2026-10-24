@@ -1,0 +1,15 @@
+# Reconcile Worker validation and deployment
+
+The x402 2.24.0 Hono middleware calls `validateBazaarRouteExtensions`, then `validateDiscoveryExtension`, then Ajv 2020 `compile`. Ajv's internal schema compiler uses `new Function` and logs `Error compiling schema, function code` when Workers disallows that construction. The schema failure is caught by upstream discovery validation; its log alone does not establish that every request failed. Middleware construction also eagerly starts facilitator initialization, including for unrelated URLs in the previous entrypoint.
+
+`scripts/generate-validators.mjs` compiles the exact declared schema with Ajv 8.20.0 during the build. The bundled Ajv adapter accepts only that schema and the upstream validation options. Unknown schemas fail closed. Generated validators retain upstream error records and are checked for drift in CI. The Worker bundle is rejected if dynamic Function construction or Ajv's compiler error emitter appears. The SDK's authorization, verification and settlement components remain intact.
+
+Unknown routes return the existing plain 404 before constructing payment middleware. Invalid reconciliation inputs return 400 before payment initialization. The bare discovery challenge remains 402, and a signed retry without reconciliation input remains 400. Dependency failures fail closed; SDK 500/502 initialization responses are represented as temporary 503 responses with financial acknowledgement headers preserved. Facilitator calls have an 8-second timeout. A failed payment acknowledgement is not a successful paid result.
+
+Public discovery uses the same declared schema as the protected offer so that its existing input/output information validates correctly. Price remains $0.002, 2,000 atomic units of Base USDC, exact x402 v2. The receiving address, route, examples, tags and service metadata are retained. No free execution path, subscription or alternate payment provider is added.
+
+Run `npm ci --ignore-scripts`, `npm run check`, `npm test`, `npm run build`, and `npm run test:workerd` in this directory. The workerd suite covers 200/400/402/404/503, unknown-route initialization counts, an unfunded transient official x402 signer with cryptographic authorization validation, simulated settlement, rejected verification/settlement, RPC failures, and discovery. All provider/RPC calls are intercepted; no real funds move.
+
+Reconcile has its own CI and deployment workflows. Production deployment snapshots the existing Worker version, reads and preserves existing schedules, keeps remote variables and secrets, and publishes only after the matching main CI succeeds. Contract verification sends unsigned synthetic requests. Failed verification restores the previous stateless code. There are no Durable Object migrations or financial data deletions. Confirmed production sales and provider enrollment remain separate evidence requirements.
+
+Primary references: [Ajv standalone validation](https://ajv.js.org/standalone.html), [Workers JavaScript restrictions](https://developers.cloudflare.com/workers/runtime-apis/web-standards/).

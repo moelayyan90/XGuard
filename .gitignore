@@ -8,3 +8,5 @@ xguard-response-*.json
 .live-local/
 .production-build/
 live-paid-*.private.json
+apps/reconcile/build/
+apps/reconcile/.deployment-config.json

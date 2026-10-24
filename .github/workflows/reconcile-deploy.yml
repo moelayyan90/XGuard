@@ -1,0 +1,55 @@
+name: Deploy XGuard Reconcile
+on:
+  workflow_run:
+    workflows: ['XGuard Reconcile CI']
+    branches: [main]
+    types: [completed]
+permissions:
+  contents: read
+concurrency:
+  group: xguard-reconcile-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --prefix apps/reconcile --ignore-scripts --no-audit --no-fund
+      - name: Preserve existing schedules and variables
+        run: node apps/reconcile/scripts/deploy-config.mjs
+      - name: Snapshot the deployed stateless version
+        id: previous
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.147.0 deployments list --json --config apps/reconcile/wrangler.jsonc > "$RUNNER_TEMP/reconcile-deployments.json"
+          node --input-type=module - <<'JS'
+          import fs from 'node:fs';
+          const deployments = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/reconcile-deployments.json'));
+          const id = deployments.at(-1)?.versions?.find(v => Number(v.percentage) > 0)?.version_id;
+          if (!/^[a-f0-9-]{36}$/i.test(id || '')) throw new Error('Previous deployment not found');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version_id=${id}\n`);
+          JS
+      - name: Deploy the tested bundle
+        id: deploy
+        run: npx --yes wrangler@4.147.0 deploy --keep-vars --config apps/reconcile/.deployment-config.json --tag "git-${DEPLOY_SHA:0:12}" --message "Deploy tested Reconcile ${DEPLOY_SHA}"
+      - name: Verify discovery, route guards and protected challenge without spending
+        run: EXPECTED_RECONCILE_TAG="git-${DEPLOY_SHA:0:12}" node apps/reconcile/scripts/smoke.mjs
+      - name: Restore the previous stateless code after failed verification
+        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != ''
+        env:
+          PREVIOUS_VERSION: ${{ steps.previous.outputs.version_id }}
+        run: npx --yes wrangler@4.147.0 rollback "$PREVIOUS_VERSION" --yes --config apps/reconcile/.deployment-config.json --message 'Restore previous Reconcile code after failed production contract verification'
