@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>XGuard · غرفة الوكلاء</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.mjs"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#overview" aria-label="XGuard غرفة الوكلاء"><span class="brand-mark">XG</span><span dir="ltr">XGUARD<span class="brand-sub">AGENT FLEET</span></span></a>
+    <div class="workspace-label">مساحة العمل</div>
+    <nav class="nav" aria-label="التنقل الرئيسي">
+      <button class="nav-item selected" type="button" data-view="overview" aria-current="page"><span aria-hidden="true">◫</span>نظرة عامة</button>
+      <button class="nav-item" type="button" data-view="agents"><span aria-hidden="true">◉</span>الوكلاء</button>
+      <button class="nav-item" type="button" data-view="jobs"><span aria-hidden="true">≡</span>المهام والنتائج</button>
+    </nav>
+    <div class="sidebar-note"><span class="small-dot"></span><strong>العمل الفعلي أولًا</strong><p>عدد المسجّلين يختلف عن عدد الوكلاء الذين ينفّذون مهمة الآن.</p></div>
+    <div class="sidebar-footer"><span class="connection-dot" id="connection-dot"></span><span id="connection-text">جارٍ الاتصال محليًا</span></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar"><span class="breadcrumb">مساحة العمل <span>/</span> <strong id="page-label">نظرة عامة</strong></span><span class="local-tag">جلسة محلية</span></header>
+    <section class="page-heading">
+      <div><p class="eyebrow">XGUARD OPERATIONS</p><h1 id="page-title">غرفة الوكلاء</h1><p id="page-description">أسند العمل، تابع التنفيذ، وراجع النتيجة في مكان واحد.</p></div>
+      <button class="button primary" id="new-job-shortcut" type="button"><span aria-hidden="true">＋</span>مهمة جديدة</button>
+    </section>
+    <div class="notice error hidden" role="alert" id="global-error"></div>
+    <div class="notice success hidden" role="status" id="global-message"></div>
+
+    <section class="metrics" aria-label="ملخص النشاط">
+      <article class="metric"><div class="metric-label">وكلاء مسجّلون<span class="metric-symbol">◉</span></div><strong id="metric-registered">—</strong><p>متاحون لإسناد المهام</p></article>
+      <article class="metric"><div class="metric-label">وكلاء يعملون الآن<span class="metric-symbol">↗</span></div><strong id="metric-active">—</strong><p>تنفيذ فعلي في هذه اللحظة</p></article>
+      <article class="metric"><div class="metric-label">مهام مكتملة<span class="metric-symbol">✓</span></div><strong id="metric-completed">—</strong><p>حسب سجل التنفيذ</p></article>
+      <article class="metric revenue"><div class="metric-label">إيراد موثّق<span class="metric-symbol">↗</span></div><strong class="revenue-value">غير مثبت</strong><p>إكمال المهمة لا يثبت التحصيل</p></article>
+    </section>
+
+    <section class="view" id="view-overview">
+      <div class="overview-grid">
+        <section class="panel execution-panel">
+          <div class="panel-heading"><div><p class="eyebrow">EXECUTION</p><h2>تشغيل المهام</h2></div><span class="badge neutral" id="runner-state">جارٍ القراءة</span></div>
+          <p class="section-description">تُنفّذ الدفعة المهام الموجودة في قائمة الانتظار ضمن الحدود التي تختارها.</p>
+          <div class="queue-meter"><span>في الانتظار</span><strong id="queued-count">—</strong></div>
+          <form id="run-form" class="run-form">
+            <label>حجم الدفعة<input name="limit" id="batch-limit" type="number" min="1" max="2000" value="10" required inputmode="numeric"></label>
+            <label>مهام متوازية<select name="concurrency" id="batch-concurrency"><option value="1">1</option><option value="2" selected>2</option><option value="4">4</option></select></label>
+            <div class="action-row"><button class="button primary" id="run-button" type="submit">تشغيل الدفعة<span aria-hidden="true">←</span></button><button class="button secondary" id="pause-button" type="button">إيقاف الجدولة</button></div>
+          </form>
+          <p class="muted fine-print">إيقاف الجدولة يمنع بدء مهام أخرى؛ راجع حالة المهام التي بدأت بالفعل.</p>
+          <div class="notice error hidden" id="runner-error" role="status"></div>
+          <div class="execution-meta"><span>آخر دفعة</span><span id="runner-time">لم تبدأ دفعة بعد</span></div>
+        </section>
+        <section class="panel create-panel" id="create-panel">
+          <div class="panel-heading"><div><p class="eyebrow">NEW ASSIGNMENT</p><h2>مهمة واضحة. نتيجة قابلة للمراجعة.</h2></div></div>
+          <form id="job-form" class="job-form">
+            <label>الوكيل<input id="job-agent" name="agentId" list="agent-options" maxlength="100" placeholder="اختر من القائمة أو من صفحة الوكلاء" required autocomplete="off" dir="ltr"><datalist id="agent-options"></datalist></label>
+            <label>ما المطلوب تنفيذه؟<textarea id="job-instruction" name="instruction" rows="4" maxlength="12000" placeholder="اكتب الهدف، المعلومات المتاحة، والشكل المطلوب للنتيجة…" required></textarea></label>
+            <details class="resource-limits"><summary>حدود المهمة</summary><div class="two-fields"><label>الحد الأقصى للخطوات<input id="job-max-steps" type="number" min="1" max="8" value="4" required></label><label>الحد الأقصى لرموز الإجابة<input id="job-max-tokens" type="number" min="32" max="1024" step="1" value="256" required></label></div></details>
+            <div class="form-footer"><span class="muted">تُضاف إلى الانتظار قبل التنفيذ.</span><button class="button primary" id="create-button" type="submit">إسناد المهمة<span aria-hidden="true">←</span></button></div>
+          </form>
+        </section>
+      </div>
+      <section class="panel recent-panel"><div class="panel-heading"><div><p class="eyebrow">RECENT ACTIVITY</p><h2>آخر المهام</h2></div><button class="text-button" type="button" data-view="jobs">عرض السجل ←</button></div><div id="recent-jobs" class="job-list"><p class="empty-state">جارٍ قراءة السجل…</p></div></section>
+    </section>
+
+    <section class="view hidden" id="view-agents" aria-label="الوكلاء">
+      <section class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">AGENT DIRECTORY</p><h2>اختر الوكيل المناسب للمهمة</h2></div><span id="agents-total" class="muted">—</span></div>
+        <form id="agent-filter" class="filter-row"><label>الدور<select id="role-filter"><option value="">كل الأدوار</option></select></label><button class="button secondary" type="submit">تطبيق التصفية</button></form>
+        <div class="table-wrap"><table><thead><tr><th>الوكيل</th><th>الدور</th><th>الحالة</th><th>التكليف</th></tr></thead><tbody id="agents-table"></tbody></table></div>
+        <div class="pagination"><span class="muted" id="agents-range">—</span><div><button class="button secondary small" id="agents-prev" type="button">السابق</button><button class="button secondary small" id="agents-next" type="button">التالي</button></div></div>
+      </section>
+    </section>
+
+    <section class="view hidden" id="view-jobs" aria-label="المهام والنتائج">
+      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">JOB HISTORY</p><h2>سجل العمل والنتائج</h2></div><button class="button secondary small" id="refresh-jobs" type="button">تحديث</button></div><div id="all-jobs" class="job-list"><p class="empty-state">لا توجد مهام بعد.</p></div><div class="pagination"><span class="muted" id="jobs-range">—</span><div><button class="button secondary small" id="jobs-prev" type="button">السابق</button><button class="button secondary small" id="jobs-next" type="button">التالي</button></div></div></section>
+    </section>
+    <footer class="page-footer"><span>وضوح الحالة قبل زيادة عدد الوكلاء.</span><span id="last-updated">—</span></footer>
+  </main>
+
+  <dialog id="job-dialog" class="job-dialog"><div class="dialog-heading"><h2>تفاصيل المهمة</h2><button type="button" class="icon-button" id="close-dialog" aria-label="إغلاق">×</button></div><div id="job-detail"></div></dialog>
+</body>
+</html>

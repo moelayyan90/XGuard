@@ -1,0 +1,28 @@
+name: Agent Fleet CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/agent-fleet/**'
+      - '.github/workflows/agent-fleet-ci.yml'
+  push:
+    paths:
+      - 'apps/agent-fleet/**'
+      - '.github/workflows/agent-fleet-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify agent state, execution boundaries, and local control server
+        run: node --test apps/agent-fleet/test/*.test.mjs
