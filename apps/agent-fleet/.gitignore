@@ -1,7 +1,0 @@
-.state/
-.runtime/
-*.sqlite
-*.sqlite-shm
-*.sqlite-wal
-*.log
-__pycache__/
