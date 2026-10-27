@@ -1,0 +1,69 @@
+name: Inspect owner traffic without production changes
+on:
+  push:
+    branches: [codex/traffic-diagnostic-20261027]
+    paths: [.github/workflows/traffic-owner-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.repository == 'moelayyan90/XGuard'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Read aggregate provider analytics with encrypted output
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { randomBytes, createCipheriv, publicEncrypt, constants } from 'node:crypto';
+          const publicKey = "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAxqxNTH60oY/iRDIPOYDv\nb1e70/r28RVXBmLzyK8q1lyJTNBO/3iP8taeu87i8eTXO5czkfZ9VCewtNC4sf+V\n8jyI5Be3l7FwHoEy4JcEdfovUxex4GYhxJk/WOaMQmq3P62FmcLH6aqbwB7zsnAE\nQEbU4US9mnVmxcVHWJNKDY+0EYaUvsoXZy1Z+GepTX00OCt/GKRt2Eu1Szlwfue5\nfD0gnLCNG3ItUYM5SzPo+7rP8qW3QJqOcGf38vL79GVbhlbpAmmJTYdiF0ore4Fo\ntNCgOusSSR/ESW7LqIpqbyVmWrncG4R9KfWmJd/whfHfS4QUZLuAzvHLFDXk7ANK\noguqvXI9tvTG/HGbQ7KDmWzKu2xN6DSlhdkIYLQHtb5D9aINwlXHL67d8yvvjiym\ntHB6NlXAEs1Z/a8HFrqOJhRQnuBZV7pofosA3Dooh5LhHkcxVB6pmOoKm4EIMsaq\n0Bs6mt4dbFbKo++G+JUPV4q49lNVaN0bSXazERK20C2FAgMBAAE=\n-----END PUBLIC KEY-----";
+          const account = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+          const token = (process.env.CLOUDFLARE_API_TOKEN || '').replace(/[\r\n]/g, '').trim().replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '').trim();
+          if (!/^[a-f0-9]{32}$/i.test(account) || !token) throw new Error('Provider credentials unavailable');
+          const headers = { authorization: 'Bearer ' + token, 'content-type': 'application/json' };
+          async function api(path, query) {
+            try {
+              const response = await fetch('https://api.cloudflare.com/client/v4/' + path, { method: query ? 'POST' : 'GET', headers, ...(query ? { body: JSON.stringify({ query }) } : {}), redirect: 'error', signal: AbortSignal.timeout(15000) });
+              const body = await response.json();
+              return { status: response.status, body };
+            } catch { return { status: 'network-unavailable', body: {} }; }
+          }
+          const report = { checked_at: new Date().toISOString(), mutations: 0, payments: 0, window_timezone: 'UTC', datasets: {}, settings: {} };
+          const zones = await api('zones?name=xguardgate.com');
+          report.zone_lookup_http = zones.status;
+          const zone = Array.isArray(zones.body.result) ? zones.body.result.find(z => z.name === 'xguardgate.com' && z.account?.id === account) : null;
+          if (/^[a-f0-9]{32}$/i.test(zone?.id || '')) {
+            const today = new Date().toISOString().slice(0,10);
+            for (let i = 1; i <= 5; i++) {
+              const day = new Date(Date.parse(today) - i * 86400000).toISOString().slice(0,10);
+              const r = await api('graphql', '{viewer{zones(filter:{zoneTag:"' + zone.id + '"}){httpRequests1dGroups(limit:1,filter:{date_geq:"' + day + '",date_leq:"' + day + '"}){dimensions{date} sum{requests pageViews} uniq{uniques}}}}}');
+              report.datasets[day] = { http: r.status, errors: r.body.errors || [], rows: r.body.data?.viewer?.zones?.[0]?.httpRequests1dGroups ?? null, metric_scope: 'Zone edge requests, page views, unique IPs; not proof of human visitors or purchases.' };
+            }
+            const cutoff = new Date(); cutoff.setUTCMinutes(0,0,0);
+            if (cutoff.getUTCHours() > 0) {
+              for (const offset of [0,1]) {
+                const end = new Date(cutoff.getTime() - offset * 86400000).toISOString(), start = end.slice(0,10) + 'T00:00:00.000Z';
+                const r = await api('graphql', '{viewer{zones(filter:{zoneTag:"' + zone.id + '"}){httpRequests1hGroups(limit:1,filter:{datetime_geq:"' + start + '",datetime_lt:"' + end + '"}){sum{requests pageViews} uniq{uniques}}}}}');
+                report.datasets['matched-window-' + offset] = { start, end, http: r.status, errors: r.body.errors || [], rows: r.body.data?.viewer?.zones?.[0]?.httpRequests1hGroups ?? null };
+              }
+            }
+            for (const setting of ['security_level','browser_check','bot_fight_mode']) {
+              const r = await api('zones/' + zone.id + '/settings/' + setting);
+              report.settings[setting] = { http: r.status, success: r.body.success ?? false, value: r.body.result?.value ?? null };
+            }
+          }
+          const key = randomBytes(32), nonce = randomBytes(12);
+          const cipher = createCipheriv('aes-256-gcm', key, nonce);
+          const data = Buffer.concat([cipher.update(JSON.stringify(report), 'utf8'), cipher.final()]);
+          const encryptedKey = publicEncrypt({key: publicKey, oaepHash: 'sha256', padding: constants.RSA_PKCS1_OAEP_PADDING}, key);
+          const envelope = { algorithm:'RSA-OAEP-SHA256+A256GCM', key: encryptedKey.toString('base64'), nonce:nonce.toString('base64'), tag:cipher.getAuthTag().toString('base64'), data:data.toString('base64') };
+          console.log('XGUARD_PRIVATE_TRAFFIC_AUDIT_V1=' + JSON.stringify(envelope));
+          console.log(JSON.stringify({read_only_audit_finished:true, cloudflare_mutations:0, output:'Encrypted owner-only aggregate report; no credentials or raw traffic counts logged'}));
+          
+          NODE
