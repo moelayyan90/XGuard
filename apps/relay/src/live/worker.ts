@@ -48,7 +48,11 @@ function pageResponse(request: Request, kind: string, data: any, path: string, n
   if (format === 'json') return json(data, status, common);
   if (format === 'markdown') return new Response(markdown(kind, data), { status, headers: { ...common, 'content-type': 'text/markdown; charset=utf-8' } });
   const page = render(kind, data, path, noindex || Boolean(explicit) || hasPage(url));
-  return new Response(page.body, { status, headers: { ...common, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': securityHeaders()['content-security-policy'].replace("script-src 'none'", `script-src 'nonce-${page.nonce}'`) } });
+  const policy = securityHeaders()['content-security-policy'].replace("script-src 'none'", `script-src 'nonce-${page.nonce}'`);
+  // Cloudflare's automatically injected, nonced beacon reports to /cdn-cgi/rum.
+  // Keep private pages and non-HTML representations on the default-deny policy.
+  const publicPolicy = path.startsWith('/admin') ? policy : `${policy}; connect-src 'self'`;
+  return new Response(page.body, { status, headers: { ...common, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': publicPolicy } });
 }
 async function parseInput(request: Request): Promise<any> {
   const text = await boundedBody(new Response(request.body), 180000);

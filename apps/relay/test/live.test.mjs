@@ -9,6 +9,37 @@ import { Store } from '../src/live/store.ts';
 import { refreshOne } from '../src/live/refresh.ts';
 import { parseHTML } from 'linkedom';
 
+test('public HTML permits same-origin analytics while private pages and data stay restricted', async () => {
+  const h = environment();
+  const policy = response => new Map(response.headers.get('content-security-policy').split(';').map(part => {
+    const [name, ...values] = part.trim().split(/\s+/); return [name, values];
+  }));
+  try {
+    await seed(h);
+    for (const path of ['/', '/topics', '/fact/npm/react/latest-version', '/privacy']) {
+      const response = await worker.fetch(new Request(`https://xguardgate.com${path}`, { headers: { accept: 'text/html', 'user-agent': 'XGuardLive-analytics-regression' } }), h.env, h.ctx);
+      assert.equal(response.status, 200);
+      const directives = policy(response);
+      assert.deepEqual(directives.get('connect-src'), ["'self'"]);
+      assert.deepEqual(directives.get('default-src'), ["'none'"]);
+      assert.deepEqual(directives.get('frame-ancestors'), ["'none'"]);
+      assert.equal(directives.get('script-src').length, 1);
+      assert.match(directives.get('script-src')[0], /^'nonce-[a-f0-9]+'$/);
+      const { document } = parseHTML(await response.text());
+      for (const script of document.querySelectorAll('script')) assert.equal(`'nonce-${script.getAttribute('nonce')}'`, directives.get('script-src')[0]);
+    }
+    for (const headers of [{ accept: 'text/html' }, { accept: 'text/html', authorization: `Bearer ${h.env.LIVE_ADMIN_KEY}` }]) {
+      const response = await worker.fetch(new Request('https://xguardgate.com/admin', { headers }), h.env, h.ctx);
+      assert.ok([200, 401].includes(response.status));
+      assert.equal(policy(response).has('connect-src'), false);
+    }
+    for (const accept of ['application/json', 'text/markdown']) {
+      const response = await worker.fetch(new Request('https://xguardgate.com/', { headers: { accept, 'user-agent': 'XGuardLive-analytics-regression' } }), h.env, h.ctx);
+      assert.equal(response.status, 200); assert.equal(policy(response).has('connect-src'), false);
+    }
+  } finally { await h.drain(); h.close(); }
+});
+
 test('stable normalization, typed comparisons and HTTP negotiation', () => {
   assert.equal(stable({ z: 1, a: ['x', false] }), '{"a":["x",false],"z":1}');
   assert.equal(changeType('input-price', 3, 2), 'price_decreased');
