@@ -11,7 +11,11 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
-    if (path === '/mcp' && ['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) return liveMcpFetch(request, env);
+    if (path === '/mcp' && ['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
+      const streamProbe = request.method === 'GET' &&
+        (request.headers.has('mcp-protocol-version') || request.headers.get('accept')?.includes('text/event-stream'));
+      if (['POST', 'OPTIONS', 'DELETE'].includes(request.method) || streamProbe) return liveMcpFetch(request, env);
+    }
     if (path === '/api/gateway/v1' || path.startsWith('/api/gateway/v1/')) {
       if (['www.xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
         // The x402 authorization is bound to the canonical resource.
