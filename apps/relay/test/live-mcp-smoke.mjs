@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { Client as LegacyClient } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport as LegacyTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -14,6 +15,7 @@ const fetcher = async (input, init = {}) => {
   for (const [name, value] of Object.entries(headers)) combined.set(name, value);
   const response = await fetch(input, { ...init, headers: combined, redirect: 'error',
     signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) });
+  assert.match(response.headers.get('strict-transport-security') ?? '', /max-age=31536000/);
   workerId = response.headers.get('x-xguard-worker-version-id');
   tag = response.headers.get('x-xguard-worker-version-tag');
   if (process.env.CANDIDATE_WORKER_ID) assert.equal(workerId, process.env.CANDIDATE_WORKER_ID);
@@ -42,10 +44,13 @@ try {
   const install = await fetcher(new URL('/install', url), { headers: { accept: 'text/html' } });
   assert.equal(install.status, 200);
   assert.match(await install.text(), /vscode:mcp\/install\?/);
+  const manifest = JSON.parse(await readFile(new URL('../../../server.json', import.meta.url), 'utf8'));
   for (const path of ['/server.json', '/mcp/server-card']) {
     const discovery = await fetcher(new URL(path, url));
     assert.equal(discovery.status, 200);
-    assert.equal((await discovery.json()).remotes[0].url, url.href);
+    const card = await discovery.json();
+    assert.equal(card.name, manifest.name);
+    assert.equal(card.remotes[0].url, url.href);
   }
   const free = await client.callTool({ name: 'xguard.capabilities' });
   assert.equal(free.structuredContent.endpoint, url.href);
