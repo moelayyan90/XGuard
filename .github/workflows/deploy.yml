@@ -64,7 +64,7 @@ jobs:
           PREVIOUS_GIT_REF: ${{ steps.previous.outputs.git_ref }}
         shell: bash
         run: |
-          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/mcp.ts apps/relay/src/live/a2a.ts &&
+          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/mcp.ts apps/relay/src/live/a2a.ts server.json &&
              git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/wrangler.jsonc apps/settlement-gateway; then
             echo 'gradual=true' >> "$GITHUB_OUTPUT"
           fi

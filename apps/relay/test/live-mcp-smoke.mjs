@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { Client as LegacyClient } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport as LegacyTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -42,10 +43,13 @@ try {
   const install = await fetcher(new URL('/install', url), { headers: { accept: 'text/html' } });
   assert.equal(install.status, 200);
   assert.match(await install.text(), /vscode:mcp\/install\?/);
+  const manifest = JSON.parse(await readFile(new URL('../../../server.json', import.meta.url), 'utf8'));
   for (const path of ['/server.json', '/mcp/server-card']) {
     const discovery = await fetcher(new URL(path, url));
     assert.equal(discovery.status, 200);
-    assert.equal((await discovery.json()).remotes[0].url, url.href);
+    const card = await discovery.json();
+    assert.equal(card.name, manifest.name);
+    assert.equal(card.remotes[0].url, url.href);
   }
   const free = await client.callTool({ name: 'xguard.capabilities' });
   assert.equal(free.structuredContent.endpoint, url.href);
