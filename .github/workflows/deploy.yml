@@ -57,20 +57,20 @@ jobs:
         shell: bash
         run: node scripts/durable-object-deploy-guard.mjs '${{ steps.previous.outputs.git_ref }}' "$DEPLOY_SHA"
 
-      - name: Select compatible MCP canary deployment
-        id: mcp_release
+      - name: Select compatible protocol canary deployment
+        id: protocol_release
         if: steps.do_guard.outputs.rollback_allowed == 'true'
         env:
           PREVIOUS_GIT_REF: ${{ steps.previous.outputs.git_ref }}
         shell: bash
         run: |
-          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/mcp.ts &&
+          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/mcp.ts apps/relay/src/live/a2a.ts &&
              git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/wrangler.jsonc apps/settlement-gateway; then
             echo 'gradual=true' >> "$GITHUB_OUTPUT"
           fi
 
       - name: Provision owner access from the existing repository secret
-        if: steps.mcp_release.outputs.gradual != 'true'
+        if: steps.protocol_release.outputs.gradual != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -86,14 +86,14 @@ jobs:
           fi
 
       - name: Initialize missing owner credential with encrypted delivery
-        if: steps.mcp_release.outputs.gradual != 'true'
+        if: steps.protocol_release.outputs.gradual != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node scripts/live-owner-bootstrap.mjs
 
       - name: Deploy private settlement Worker before exposing the paid route
-        if: steps.mcp_release.outputs.gradual != 'true' && hashFiles('apps/settlement-gateway/wrangler.jsonc') != ''
+        if: steps.protocol_release.outputs.gradual != 'true' && hashFiles('apps/settlement-gateway/wrangler.jsonc') != ''
         working-directory: apps/settlement-gateway
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -111,7 +111,7 @@ jobs:
       - name: Deploy Worker
         id: deploy
         env:
-          MCP_GRADUAL: ${{ steps.mcp_release.outputs.gradual }}
+          PROTOCOL_GRADUAL: ${{ steps.protocol_release.outputs.gradual }}
           PREVIOUS_VERSION: ${{ steps.previous.outputs.version_id }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -125,31 +125,32 @@ jobs:
           config=apps/relay/wrangler.jsonc
           wrangler=apps/relay/node_modules/.bin/wrangler
           tag="git-${DEPLOY_SHA:0:12}"
-          if [[ "$MCP_GRADUAL" != true ]]; then
+          if [[ "$PROTOCOL_GRADUAL" != true ]]; then
             "$wrangler" deploy --config "$config" --tag "$tag" --message "Deploy XGuard $DEPLOY_SHA"
             exit 0
           fi
 
-          upload_log="$RUNNER_TEMP/xguard-mcp-upload.log"
-          "$wrangler" versions upload --config "$config" --tag "$tag" --message "Deploy XGuard MCP $DEPLOY_SHA" | tee "$upload_log"
+          upload_log="$RUNNER_TEMP/xguard-protocol-upload.log"
+          "$wrangler" versions upload --config "$config" --tag "$tag" --message "Deploy XGuard protocol fix $DEPLOY_SHA" | tee "$upload_log"
           candidate="$(sed -nE 's/.*Worker Version ID: ([0-9a-f-]{36}).*/\1/p' "$upload_log" | tail -1)"
           [[ "$candidate" =~ ^[0-9a-f-]{36}$ && "$PREVIOUS_VERSION" =~ ^[0-9a-f-]{36}$ ]]
           rollback_canary() {
             local result=$?
             trap - EXIT
             if (( result != 0 )); then
-              "$wrangler" rollback "$PREVIOUS_VERSION" --yes --config "$config" --message "Rollback failed XGuard MCP canary $DEPLOY_SHA" || true
+              "$wrangler" rollback "$PREVIOUS_VERSION" --yes --config "$config" --message "Rollback failed XGuard protocol canary $DEPLOY_SHA" || true
             fi
             exit "$result"
           }
           trap rollback_canary EXIT
-          "$wrangler" versions deploy "$PREVIOUS_VERSION@95" "$candidate@5" --yes --config "$config" --message "XGuard MCP canary 5%"
+          "$wrangler" versions deploy "$PREVIOUS_VERSION@95" "$candidate@5" --yes --config "$config" --message "XGuard protocol canary 5%"
           for attempt in {1..3}; do
-            if CANDIDATE_WORKER_ID="$candidate" EXPECTED_XGUARD_TAG="$tag" node apps/relay/test/live-mcp-smoke.mjs; then break; fi
+            if CANDIDATE_WORKER_ID="$candidate" EXPECTED_XGUARD_TAG="$tag" node apps/relay/test/live-a2a-smoke.mjs &&
+               CANDIDATE_WORKER_ID="$candidate" EXPECTED_XGUARD_TAG="$tag" node apps/relay/test/live-mcp-smoke.mjs; then break; fi
             if [[ "$attempt" == 3 ]]; then exit 1; fi
             sleep 5
           done
-          "$wrangler" versions deploy "$candidate@100" --yes --config "$config" --message "Promote verified XGuard MCP release"
+          "$wrangler" versions deploy "$candidate@100" --yes --config "$config" --message "Promote verified XGuard protocol release"
           trap - EXIT
 
       - name: Verify public Live deployment
@@ -200,8 +201,19 @@ jobs:
           done
           exit 1
 
+      - name: Verify production A2A discovery and published fact read
+        id: a2a_smoke
+        if: always() && steps.deploy.outcome == 'success' && hashFiles('apps/relay/test/live-a2a-smoke.mjs') != ''
+        shell: bash
+        run: |
+          for attempt in {1..3}; do
+            if EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node apps/relay/test/live-a2a-smoke.mjs; then exit 0; fi
+            if [[ "$attempt" != 3 ]]; then sleep 5; fi
+          done
+          exit 1
+
       - name: Roll back compatible code-only deployment after failed verification
-        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure' || steps.gateway_smoke.outcome == 'failure' || steps.mcp_smoke.outcome == 'failure')
+        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure' || steps.gateway_smoke.outcome == 'failure' || steps.mcp_smoke.outcome == 'failure' || steps.a2a_smoke.outcome == 'failure')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -225,7 +237,7 @@ jobs:
           exit 1
 
       - name: Require forward recovery after incompatible durable state change
-        if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure' || steps.gateway_smoke.outcome == 'failure' || steps.mcp_smoke.outcome == 'failure')
+        if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure' || steps.gateway_smoke.outcome == 'failure' || steps.mcp_smoke.outcome == 'failure' || steps.a2a_smoke.outcome == 'failure')
         shell: bash
         run: |
           set -euo pipefail
@@ -234,6 +246,6 @@ jobs:
           exit 1
 
       - name: Keep storage-quota recovery deployed and report incomplete verification
-        if: failure() && steps.deploy.outcome == 'success' && steps.production_smoke.outputs.quota_exhausted == 'true' && steps.paid_smoke.outcome == 'success' && steps.gateway_smoke.outcome != 'failure' && steps.mcp_smoke.outcome != 'failure'
+        if: failure() && steps.deploy.outcome == 'success' && steps.production_smoke.outputs.quota_exhausted == 'true' && steps.paid_smoke.outcome == 'success' && steps.gateway_smoke.outcome != 'failure' && steps.mcp_smoke.outcome != 'failure' && steps.a2a_smoke.outcome != 'failure'
         run: |
           echo '::error title=Provider storage quota exhausted::The tested recovery build is deployed, but public data verification is incomplete. Durable Objects free limits reset at 00:00 UTC. The scheduled Live monitor will check service recovery. No subscription or billing changes were made.'
