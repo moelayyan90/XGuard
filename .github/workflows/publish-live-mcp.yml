@@ -1,0 +1,62 @@
+name: Publish XGuard Live to MCP Registry
+
+on:
+  workflow_run:
+    workflows: ["Deploy XGuard Live"]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: xguard-live-mcp-registry
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Verify live release and publish the existing listing
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 \
+            --user-agent 'XGuardLive-smoke/6.0 (operational; not monetizable)' \
+            https://xguardgate.com/server.json -o "$RUNNER_TEMP/live-server.json"
+          diff -u <(jq -S . server.json) <(jq -S . "$RUNNER_TEMP/live-server.json")
+          name="$(jq -r .name server.json)"
+          version="$(jq -r .version server.json)"
+          encoded="$(jq -nr --arg name "$name" '$name|@uri')"
+          lookup="https://registry.modelcontextprotocol.io/v0.1/servers/$encoded/versions/$version"
+          verify_registry() {
+            curl --fail --silent --show-error --max-time 20 "$lookup" | jq -e --slurpfile expected server.json '
+              .server as $server | $expected[0] as $want |
+              $server.name == $want.name and $server.version == $want.version and
+              $server.title == $want.title and $server.websiteUrl == $want.websiteUrl and
+              $server.remotes == $want.remotes' > /dev/null
+          }
+          if verify_registry; then exit 0; fi
+
+          archive="$RUNNER_TEMP/mcp-publisher.tar.gz"
+          curl --fail --location --silent --show-error --max-time 60 --retry 2 \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.7/mcp-publisher_linux_amd64.tar.gz \
+            -o "$archive"
+          printf '%s  %s\n' '00b21004149a4ce66f0782508ae4a2bce67d1bea395a8da0bd8028159fb59579' "$archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP" mcp-publisher
+          "$RUNNER_TEMP/mcp-publisher" validate server.json
+          "$RUNNER_TEMP/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher" publish server.json
+          for attempt in 1 2 3 4 5; do
+            if verify_registry; then exit 0; fi
+            sleep 5
+          done
+          exit 1

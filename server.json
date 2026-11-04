@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.moelayyan90/xguard-control-plane",
+  "title": "XGuard Live",
+  "description": "Read current software facts with primary-source evidence and verification timestamps.",
+  "repository": {
+    "url": "https://github.com/moelayyan90/XGuard",
+    "source": "github"
+  },
+  "websiteUrl": "https://xguardgate.com/install",
+  "version": "6.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://xguardgate.com/mcp"
+    }
+  ]
+}

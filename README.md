@@ -6,7 +6,7 @@ Current facts. Source verified. Change tracked. Machine readable.
 
 XGuard Live observes public primary sources and publishes compact, canonical facts with verification timestamps, source evidence and immutable history. People and machines retrieve the same data through ordinary HTTP. No account, SDK, plugin or paid API key is needed for public facts.
 
-[Live site](https://xguardgate.com) · [Fact index](https://xguardgate.com/topics) · [Methodology](https://xguardgate.com/methodology) · [Changes](https://xguardgate.com/changes)
+[Live site](https://xguardgate.com) · [Fact index](https://xguardgate.com/topics) · [Methodology](https://xguardgate.com/methodology) · [Changes](https://xguardgate.com/changes) · [Connect AI tools](https://xguardgate.com/install)
 
 ```sh
 curl https://xguardgate.com/fact/npm/react/latest-version
@@ -15,6 +15,10 @@ curl -H 'Accept: application/json' https://xguardgate.com/fact/npm/react/latest-
 ```
 
 A published observation includes the current or last observed value, source URL, source hash, observed/verified timestamps, freshness limit, previous value and history. STALE/UNKNOWN never imply a current verified value. Verification means a match to the source at retrieval, not independent certification of every publisher claim. Candidates remain unpublished until schema and source checks pass.
+
+## Connect an AI client
+
+Use [XGuard Live's MCP endpoint](https://xguardgate.com/mcp) with Streamable HTTP and call `xguard.fact.get` with `{"factId":"npm/react/latest-version"}`. Free public fact reads need no account or API key. [Install in your client](https://xguardgate.com/install) or use the [A2A agent card](https://xguardgate.com/.well-known/agent-card.json).
 
 ## Development
 

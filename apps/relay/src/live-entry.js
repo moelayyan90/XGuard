@@ -12,14 +12,15 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+    const readFact = factRequest => live.fetch(factRequest, env, ctx);
     if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
-      if (path === A2A_CARD_PATH && ['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return liveAgentCard(request, env);
-      if (path === A2A_PATH) return liveA2aFetch(request, env, factRequest => live.fetch(factRequest, env, ctx));
+      if ([A2A_CARD_PATH, A2A_PATH + A2A_CARD_PATH].includes(path) && ['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return liveAgentCard(request, env);
+      if (path === A2A_PATH) return liveA2aFetch(request, env, readFact);
     }
     if (path === '/mcp' && ['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
       const streamProbe = request.method === 'GET' &&
         (request.headers.has('mcp-protocol-version') || request.headers.get('accept')?.includes('text/event-stream'));
-      if (['POST', 'OPTIONS', 'DELETE'].includes(request.method) || streamProbe) return liveMcpFetch(request, env);
+      if (['POST', 'OPTIONS', 'DELETE'].includes(request.method) || streamProbe) return liveMcpFetch(request, env, readFact);
     }
     if (path === '/api/gateway/v1' || path.startsWith('/api/gateway/v1/')) {
       if (['www.xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {

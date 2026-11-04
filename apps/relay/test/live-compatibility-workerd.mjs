@@ -38,7 +38,23 @@ try {
     assert.ok(Math.abs(Number(cachePolicy[0].match(/max-age=(\d+)/)?.[1] || 0) - Number(cachePolicy[1].match(/max-age=(\d+)/)?.[1] || 0)) <= 1, 'Only the elapsed one-second cache boundary may differ');
     assert.equal(pair[1].headers.has('payment-required'), false);
     const texts = await Promise.all(pair.map(r => r.text()));
-    if (['/robots.txt', '/llms.txt', '/identity'].includes(path)) assert.equal(texts[0], texts[1]);
+    if (path === '/robots.txt') assert.equal(texts[0], texts[1]);
+    if (path === '/llms.txt') {
+      for (const line of ['Connect an AI client', 'MCP server card', 'A2A agent card']) assert.ok(texts[1].includes(line));
+      const withoutIntegrationLinks = text => text.replace(/^- \[(?:Connect an AI client|MCP server card|A2A agent card)\].*\n/gm, '');
+      assert.equal(withoutIntegrationLinks(texts[1]), withoutIntegrationLinks(texts[0]));
+    }
+    if (path === '/identity') {
+      const original = JSON.parse(texts[0]);
+      const { install, mcp, mcp_server_card, mcp_registry_manifest, a2a_agent_card, ...unchanged } = JSON.parse(texts[1]);
+      assert.deepEqual({ install, mcp, mcp_server_card, mcp_registry_manifest, a2a_agent_card }, {
+        install: 'https://xguardgate.com/install', mcp: 'https://xguardgate.com/mcp',
+        mcp_server_card: 'https://xguardgate.com/mcp/server-card', mcp_registry_manifest: 'https://xguardgate.com/server.json',
+        a2a_agent_card: 'https://xguardgate.com/.well-known/agent-card.json',
+      });
+      for (const key of ['install', 'mcp', 'mcp_server_card', 'mcp_registry_manifest', 'a2a_agent_card']) delete original[key];
+      assert.deepEqual(unchanged, original);
+    }
     if (path.startsWith('/fact/')) { assert.ok(texts.every(t => t.includes('1.2.3'))); assert.ok(texts.every(t => t.includes('registry.npmjs.org/react/latest'))); }
   }
   const samples = { before: [], after: [] }, cache = { before: {}, after: {} };

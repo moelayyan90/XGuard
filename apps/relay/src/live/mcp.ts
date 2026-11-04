@@ -1,9 +1,11 @@
 import { createMcpHandler, Server, type ListToolsResult } from '@modelcontextprotocol/server';
 import { handlePaidWebFetch, handlePreflight, issueQuote, jsonBody, mcpToolsForEnv } from '../paid-agent-entry.js';
+import { factIdSchema, isPublicFactId, readPublicFact } from './public-fact.ts';
 import { ORIGIN, VERSION, type Env } from './types.ts';
 
 const origins = [ORIGIN, 'https://api.xguardgate.com'];
 const paths = ['POST', 'OPTIONS'];
+const factTool = 'xguard.fact.get';
 const toolNames = new Set(['xguard.capabilities', 'xguard.preflight', 'xguard.pricing.quote', 'xguard.web.fetch']);
 const paymentHeaders = ['Payment-Required', 'Payment-Response', 'X-XGuard-Quote', 'X-XGuard-Request-Id',
   'X-XGuard-Payment-Identifier', 'X-XGuard-Replay', 'X-XGuard-Receipt', 'X-XGuard-Proof', 'Retry-After'];
@@ -54,7 +56,7 @@ async function toolFailure({ response, id }: PaymentResponse) {
 }
 
 function list(env: Env): ListToolsResult {
-  return { tools: mcpToolsForEnv(env).map(tool => {
+  const existingTools = mcpToolsForEnv(env).map(tool => {
     // The HTTP payment transport is deliberately distinct from x402's in-band
     // MCP extension. An agent retries this same POST with the returned headers.
     if (tool.name === 'xguard.web.fetch') tool.description =
@@ -66,10 +68,16 @@ function list(env: Env): ListToolsResult {
     if (meta?.['xguard/payment']) delete meta['xguard/payment'].payment_readiness;
     if (meta?.['xguard/next']) delete meta['xguard/next'].quote_url_optional;
     return { ...tool, inputSchema: { ...tool.inputSchema, type: 'object' as const } };
-  }) as ListToolsResult['tools'] };
+  }) as ListToolsResult['tools'];
+  return { tools: [{
+    name: factTool,
+    description: 'Read one free published software fact by canonical ID. Returns the primary source, verification status and timestamp. Use xguard.web.fetch for a separate paid fetch of a public URL.',
+    inputSchema: { type: 'object', properties: { factId: factIdSchema }, required: ['factId'], additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, ...existingTools] };
 }
 
-async function transport(request: Request, env: Env): Promise<Response> {
+async function transport(request: Request, env: Env, readPublishedFact: (request: Request) => Promise<Response>): Promise<Response> {
   const url = new URL(request.url);
   if (!origins.includes(url.origin) || url.search) return rpcError(null, -32600, 'Invalid MCP endpoint', 400);
   const origin = request.headers.get('origin');
@@ -96,7 +104,7 @@ async function transport(request: Request, env: Env): Promise<Response> {
     scope.legacy = era === 'legacy';
     const server = new Server({ name: 'xguard-live', version: VERSION }, {
       capabilities: { tools: { listChanged: false } },
-      instructions: 'Discovery and capability checks are public. Paid tools use x402 v2 HTTP headers and execute only after a verified settlement.',
+      instructions: 'Read published facts for free with xguard.fact.get. Paid web fetch uses x402 v2 HTTP headers and executes only after a verified settlement.',
     });
     server.setRequestHandler('tools/list', () => list(env));
     server.setRequestHandler('tools/call', async ({ params }, ctx) => {
@@ -108,6 +116,23 @@ async function transport(request: Request, env: Env): Promise<Response> {
       };
       const observation = { transport: 'mcp-live', resource: request.url };
       let response: Response;
+      if (name === factTool) {
+        const failure = (text: string) => ({ isError: true, content: [{ type: 'text' as const, text }] });
+        if (!isPublicFactId(args.factId) || Object.keys(args).length !== 1) {
+          return failure('Expected a canonical public fact ID, for example npm/react/latest-version.');
+        }
+        try {
+          const fact = await readPublicFact(args.factId, readPublishedFact);
+          if (!fact) return failure('Published fact not found.');
+          if (!/^XGuard(?:Live|[-/])/i.test(request.headers.get('user-agent') || '') &&
+              request.headers.get('x-xguard-traffic-class') !== 'synthetic') {
+            console.info(JSON.stringify({ event: 'xguard_public_fact_read', transport: 'mcp' }));
+          }
+          return { content: [{ type: 'text' as const, text: JSON.stringify(fact) }], structuredContent: fact };
+        } catch {
+          return failure('Public fact temporarily unavailable.');
+        }
+      }
       if (!toolNames.has(name)) return fail(Response.json({ error: 'unknown_tool' }, { status: 400 }));
       try {
         if (name === 'xguard.capabilities') {
@@ -163,10 +188,10 @@ async function transport(request: Request, env: Env): Promise<Response> {
   return new Response(response.body, { status: response.status, headers });
 }
 
-export async function liveMcpFetch(request: Request, env: Env) {
+export async function liveMcpFetch(request: Request, env: Env, readPublishedFact: (request: Request) => Promise<Response>) {
   let response: Response;
   try {
-    response = await transport(request, env);
+    response = await transport(request, env, readPublishedFact);
   } catch {
     // Never log caller arguments, quote, payment authorization, or headers.
     console.error(JSON.stringify({ event: 'xguard_mcp_dependency_failure' }));

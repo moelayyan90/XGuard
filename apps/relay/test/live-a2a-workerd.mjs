@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Miniflare, convertV4MiniflareOptions, Response as MFResponse } from 'miniflare';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { checkA2a, origin } from './live-a2a-smoke.mjs';
 import { shardName, shardOf } from '../src/live/util.ts';
 
@@ -46,6 +47,41 @@ try {
   const alias = await fetcher('https://api.xguardgate.com/.well-known/agent-card.json');
   assert.equal(alias.status, 200);
   assert.equal((await alias.json()).supportedInterfaces[0].url, origin + '/a2a');
+  const nestedCard = await fetcher(origin + '/a2a/.well-known/agent-card.json');
+  assert.equal(nestedCard.status, 200);
+  assert.equal((await nestedCard.json()).supportedInterfaces[0].url, origin + '/a2a');
+
+  const install = await fetcher(origin + '/install', { headers: { accept: 'text/html' } });
+  assert.equal(install.status, 200);
+  const installHtml = await install.text();
+  assert.match(installHtml, /vscode:mcp\/install\?/);
+  assert.match(installHtml, /cursor:\/\/anysphere\.cursor-deeplink/);
+  assert.match(installHtml, /xguard\.fact\.get/);
+  for (const path of ['/server.json', '/mcp/server-card']) {
+    const response = await fetcher(origin + path);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).remotes[0].url, origin + '/mcp');
+  }
+  for (const path of ['/connect', '/developers']) {
+    const response = await fetcher(origin + path, { redirect: 'manual' });
+    assert.equal(response.status, 308);
+    assert.equal(response.headers.get('location'), origin + '/install');
+  }
+  assert.equal((await fetcher(origin + '/mcp')).status, 405);
+
+  const client = new Client({ name: 'xguard-install-fixture', version: '1.0.0' });
+  await client.connect(new StreamableHTTPClientTransport(new URL(origin + '/mcp'), { fetch: fetcher }));
+  try {
+    const tools = await client.listTools();
+    assert.equal(tools.tools.find(tool => tool.name === 'xguard.fact.get').annotations.readOnlyHint, true);
+    const valid = await client.callTool({ name: 'xguard.fact.get', arguments: { factId } });
+    assert.equal(valid.structuredContent.fact.current_value, '1.2.3');
+    assert.equal(valid.structuredContent.fact.source_url, 'https://registry.npmjs.org/react/latest');
+    assert.equal(valid.structuredContent.canonicalUrl, origin + '/fact/' + factId);
+    for (const args of [{ factId: '../admin/secret' }, { factId, url: 'https://example.com' }]) {
+      assert.equal((await client.callTool({ name: 'xguard.fact.get', arguments: args })).isError, true);
+    }
+  } finally { await client.close(); }
   const headers = { 'content-type': 'application/json', 'a2a-version': '1.0' };
   const send = (data, extra = {}) => fetcher(origin + '/a2a', { method: 'POST', headers: { ...headers, ...extra }, body: JSON.stringify({
     jsonrpc: '2.0', id: 1, method: 'SendMessage',

@@ -1,5 +1,6 @@
 import type { AgentCard } from '@a2a-js/sdk';
 import { readPublicJson, parsePublicJson } from '../core/public-contract.js';
+import { factExample, isPublicFactId, readPublicFact } from './public-fact.ts';
 import { securityHeaders } from './security.ts';
 import { ORIGIN, VERSION, type Env } from './types.ts';
 
@@ -8,7 +9,6 @@ export const A2A_PATH = '/a2a';
 const WIRE_VERSION = '1.0';
 const discoveryAction = 'xguard.discover';
 const factAction = 'xguard.fact.get';
-const factExample = 'npm/react/latest-version';
 const inputModes = ['text/plain', 'application/json'];
 const outputModes = ['text/plain', 'application/json'];
 const maxRequestBytes = 16 * 1024;
@@ -18,7 +18,7 @@ const card: AgentCard = {
   description: 'Discover XGuard Live and read published software facts with primary-source evidence and verification timestamps. This A2A interface is public and read-only.',
   version: VERSION,
   provider: { organization: 'XGuard', url: ORIGIN },
-  documentationUrl: ORIGIN + '/methodology',
+  documentationUrl: ORIGIN + '/install',
   supportedInterfaces: [{
     url: ORIGIN + A2A_PATH, protocolBinding: 'JSONRPC', protocolVersion: WIRE_VERSION,
     tenant: '',
@@ -141,21 +141,13 @@ export async function liveA2aFetch(request: Request, env: Env, readPublishedFact
   if (action.action === discoveryAction) data = discovery();
   else {
     const factId = action.factId;
-    if (typeof factId !== 'string' || factId.length > 350 ||
-        !/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\/[@A-Za-z0-9][A-Za-z0-9_.-]*){2,3}$/.test(factId) ||
+    if (!isPublicFactId(factId) ||
         Object.keys(action).some(key => key !== 'action' && key !== 'factId')) {
       return error(rpcId, -32602, 'Expected a canonical public factId', 200, { example: factExample });
     }
     try {
-      const source = await readPublishedFact(new Request(ORIGIN + '/fact/' + factId + '?format=json', {
-        headers: { accept: 'application/json', 'user-agent': 'XGuardLive-A2A/1.0' },
-      }));
-      if (source.status === 404) return error(rpcId, -32602, 'Published fact not found');
-      if (!source.ok) return error(rpcId, -32603, 'Public fact temporarily unavailable', 503);
-      const value = record(await source.json());
-      const fact = record(value?.fact);
-      if (fact?.id !== factId) return error(rpcId, -32603, 'Public fact temporarily unavailable', 503);
-      data = { fact, canonicalUrl: ORIGIN + '/fact/' + factId };
+      data = await readPublicFact(factId, readPublishedFact);
+      if (!data) return error(rpcId, -32602, 'Published fact not found');
     } catch {
       return error(rpcId, -32603, 'Public fact temporarily unavailable', 503);
     }
