@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "xguard-settlement-gateway",
+  "main": "xguard-gateway.ts",
+  "compatibility_date": "2026-07-30",
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
+  "workers_dev": false,
+  "preview_urls": false,
+  // No custom domains/routes in this safe build config.
+  // Only attach approved hostnames after isolating every origin path.
+  "vars": {
+    "GATEWAY_ENABLED": "false",
+    "PUBLIC_ORIGIN": "https://xguardgate.com",
+    "MERCHANT_ID": "xguard-live",
+    "PAY_TO": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
+    "BASE_CONFIRMATIONS": "12"
+  },
+  "services": [
+    { "binding": "XGUARD_ORIGIN", "service": "xguard-mainnet" }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "XGUARD_STATE", "class_name": "XGuardState" }]
+  },
+  "migrations": [{ "tag": "xguard-state-v1", "new_sqlite_classes": ["XGuardState"] }],
+  "ratelimits": [
+    { "name": "GATEWAY_LIMIT", "namespace_id": "78101", "simple": { "limit": 60, "period": 60 } }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "invocation_logs": false }
+  }
+  // Optional: "analytics_engine_datasets": [
+  //   { "binding": "GATEWAY_TELEMETRY", "dataset": "xguard_gateway" }
+  // ]
+}

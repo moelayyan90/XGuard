@@ -1,0 +1,19 @@
+{
+  "name": "xguard-settlement-gateway",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "engines": {"node": ">=24"},
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "test": "npm run build && node --test test/gateway.test.mjs"
+  },
+  "dependencies": {"viem": "2.57.16"},
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261003.1",
+    "miniflare": "4.20260730.0",
+    "typescript": "5.9.3",
+    "wrangler": "4.147.0"
+  }
+}

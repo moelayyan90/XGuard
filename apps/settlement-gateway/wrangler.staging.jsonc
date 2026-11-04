@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "xguard-settlement-gateway-staging",
+  "main": "staging.ts",
+  "compatibility_date": "2026-07-30",
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "GATEWAY_ENABLED": "true",
+    "PUBLIC_ORIGIN": "https://gateway-stage.invalid",
+    "MERCHANT_ID": "xguard-stage",
+    "PAY_TO": "0x2222222222222222222222222222222222222222",
+    "BASE_RPC_URL": "https://unavailable.invalid"
+  },
+  "services": [{ "binding": "XGUARD_ORIGIN", "service": "xguard-mainnet" }],
+  "durable_objects": {
+    "bindings": [{ "name": "XGUARD_STATE", "class_name": "XGuardState" }]
+  },
+  "migrations": [{ "tag": "xguard-state-v1", "new_sqlite_classes": ["XGuardState"] }]
+}
