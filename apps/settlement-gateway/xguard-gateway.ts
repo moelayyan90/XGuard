@@ -855,8 +855,8 @@ export default {
         rails: [
           { name: "base", price: "0.001 USDC", network: NETWORK, scheme: "exact", version: 2 },
           ...(env.XGUARD_BILLING ? [{ name: "lemon", price: "1 license credit",
-            credential: "Bearer existing XGuard Lemon Squeezy license", receipt: "X-XGuard-Billing-Receipt",
-            checkout: "Existing verified license balances only" }] : []),
+            credential: "Bearer XGuard Lemon Squeezy license", receipt: "X-XGuard-Billing-Receipt",
+            purchase_url: "https://credits.xguardgate.com/", invoice_issuer: "Lemon Squeezy" }] : []),
         ],
       }, 200);
       const r = route(request, cfg, prefix);

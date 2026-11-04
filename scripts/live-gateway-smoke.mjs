@@ -10,7 +10,8 @@ const catalog = await request(root + "/catalog");
 assert.equal(catalog.status, 200);
 const spec = await catalog.json();
 assert.equal(spec.public_facts_remain_free, true);
-assert.ok(spec.rails.some(r => r.name === "lemon" && r.price === "1 license credit"));
+assert.ok(spec.rails.some(r => r.name === "lemon" && r.price === "1 license credit" &&
+  r.purchase_url === "https://credits.xguardgate.com/" && r.invoice_issuer === "Lemon Squeezy"));
 const offer = await request(path);
 assert.equal(offer.status, 402);
 const challenge = JSON.parse(Buffer.from(offer.headers.get("payment-required"), "base64"));

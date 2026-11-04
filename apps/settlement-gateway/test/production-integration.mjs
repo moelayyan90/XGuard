@@ -78,7 +78,11 @@ try {
   const get = (path, headers) => mf.dispatchFetch(site + path, { headers });
   assert.equal((await get(basePath + "?format=json")).status, 200, "Existing facts stay free");
   assert.equal((await get("/")).status, 200);
-  assert.equal((await get("/api/gateway/v1/catalog")).status, 200);
+  const catalog = await get("/api/gateway/v1/catalog");
+  assert.equal(catalog.status, 200);
+  const lemon = (await catalog.json()).rails.find(rail => rail.name === "lemon");
+  assert.equal(lemon.purchase_url, "https://credits.xguardgate.com/");
+  assert.equal(lemon.invoice_issuer, "Lemon Squeezy");
   const ui = await get("/api/gateway/v1/test-base");
   assert.equal(ui.status, 200);
   assert.match(await ui.text(), /0\.001 USDC/);

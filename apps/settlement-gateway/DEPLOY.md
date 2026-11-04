@@ -273,9 +273,13 @@ license credit using its atomic /v1/assure operation. The gateway stores a
 result-bound intent before calling it. The provider's replay response is
 accepted only when its assurance ID matches the exact fingerprint. The
 gateway deliberately never calls the legacy non-idempotent /v1/consume.
-No webhook configuration or provider ledger is replaced. A new license
-requires a working provider checkout; the historical configured checkout
-was observed returning 404, so it is not advertised by this release.
+No webhook configuration or provider ledger is replaced. The catalog directs
+buyers to https://credits.xguardgate.com/, the existing XGuard purchase page
+linked to the published Lemon Squeezy **XGuard Usage Credits** product. Use the
+resulting license as the Bearer credential. Lemon Squeezy issues the purchase
+invoice; `X-XGuard-Billing-Receipt` records an individual use of a credit, not
+a second invoice. Merely opening checkout does not verify payment, invoice
+issuance or webhook delivery for a new purchase.
 
 For a real Base test, open
 https://xguardgate.com/api/gateway/v1/test-base using an authorized wallet
