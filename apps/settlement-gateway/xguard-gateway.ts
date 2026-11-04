@@ -841,8 +841,8 @@ export default {
       const prefix = env.GATEWAY_PATH_PREFIX ?? "";
       if (prefix && prefix !== "/api/gateway/v1") reject(503, "invalid_gateway_prefix");
       const url = new URL(request.url);
-      if (prefix && url.origin === cfg.origin && !url.search && request.method === "GET") {
-        const asset = buyerAsset(url.pathname);
+      if (prefix && url.origin === cfg.origin && request.method === "GET") {
+        const asset = buyerAsset(url.pathname, url.search);
         if (asset) return asset;
       }
       if (prefix && url.origin === cfg.origin && url.pathname === prefix + "/catalog" &&
@@ -850,7 +850,7 @@ export default {
         name: "XGuard paid validation gateway",
         public_facts_remain_free: true,
         sample: cfg.origin + prefix + "/fact/npm/react/latest-version",
-        base_settlement_test: cfg.origin + prefix + "/test-base",
+        checkout_url: cfg.origin + prefix + "/checkout",
         idempotency: "Send an Idempotency-Key; after a 503 retry the same URL, key and credential.",
         rails: [
           { name: "base", price: "0.001 USDC", network: NETWORK, scheme: "exact", version: 2 },

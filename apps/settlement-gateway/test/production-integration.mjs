@@ -5,6 +5,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createRequire } from "node:module";
+import { Script } from "node:vm";
 import { shardOf, shardName } from "../../relay/src/live/util.ts";
 
 const { Miniflare, Response: MFResponse, convertV4MiniflareOptions } =
@@ -77,15 +78,33 @@ try {
   }
   const get = (path, headers) => mf.dispatchFetch(site + path, { headers });
   assert.equal((await get(basePath + "?format=json")).status, 200, "Existing facts stay free");
-  assert.equal((await get("/")).status, 200);
+  const home = await get("/");
+  assert.equal(home.status, 200);
+  assert.match(await home.text(), /href="\/api\/gateway\/v1\/checkout"/);
+  const factPage = await get(basePath);
+  assert.equal(factPage.status, 200);
+  assert.ok((await factPage.text()).includes('/api/gateway/v1/checkout?fact=' + encodeURIComponent(basePath)));
   const catalog = await get("/api/gateway/v1/catalog");
   assert.equal(catalog.status, 200);
-  const lemon = (await catalog.json()).rails.find(rail => rail.name === "lemon");
+  const spec = await catalog.json();
+  const checkout = "/api/gateway/v1/checkout";
+  assert.equal(spec.checkout_url, site + checkout);
+  assert.equal(spec.base_settlement_test, undefined);
+  const lemon = spec.rails.find(rail => rail.name === "lemon");
   assert.equal(lemon.purchase_url, "https://credits.xguardgate.com/");
   assert.equal(lemon.invoice_issuer, "Lemon Squeezy");
-  const ui = await get("/api/gateway/v1/test-base");
+  const ui = await get(checkout + "?fact=" + encodeURIComponent(basePath));
   assert.equal(ui.status, 200);
-  assert.match(await ui.text(), /0\.001 USDC/);
+  const html = await ui.text();
+  assert.match(html, /Pay 0\.001 USDC/);
+  assert.match(html, /Use 1 credit/);
+  assert.match(html, /https:\/\/credits\.xguardgate\.com\//);
+  const browserScript = await get(checkout + ".js");
+  assert.equal(browserScript.status, 200);
+  const checkoutScript = new Script(await browserScript.text());
+  const obsolete = await mf.dispatchFetch(site + "/api/gateway/v1/test-base", { redirect: "manual" });
+  assert.equal(obsolete.status, 308);
+  assert.equal(obsolete.headers.get("location"), checkout);
   const noProof = await get(paidPath);
   assert.equal(noProof.status, 402);
   assert.equal(JSON.parse(Buffer.from(noProof.headers.get("Payment-Required"), "base64")).accepts[0].amount, "1000");
@@ -110,5 +129,38 @@ try {
   assert.equal((await get(paidPath, { ...hdr, "Idempotency-Key": "live-gateway-order-2" })).status, 402);
   const record = await (await ledgerFor(dummy).fetch("https://ledger/balance")).json();
   assert.deepEqual([record.credits, record.consumed], [0, 1]);
+  const buyerLicense = "xguard-local-checkout-license";
+  assert.equal((await ledgerFor(buyerLicense).fetch("https://ledger/provision", { method: "POST",
+    body: JSON.stringify({ credits: 1, order_id: "browser-checkout-fixture", test_mode: false }) })).status, 200);
+  const elements = new Map(), handlers = new Map(), storage = new Map(), browserRequests = [];
+  const selection = site + checkout + "?fact=" + encodeURIComponent(basePath);
+  checkoutScript.runInNewContext({
+    URL, crypto, TextEncoder, AbortSignal,
+    location: new URL(selection), history: { replaceState() {} },
+    document: { getElementById(id) {
+      if (!elements.has(id)) elements.set(id, { hidden: true, value: "",
+        addEventListener(event, handler) { handlers.set(id + ":" + event, handler); }, removeAttribute() {} });
+      return elements.get(id);
+    } },
+    sessionStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value),
+      removeItem: key => storage.delete(key) },
+    async fetch(resource, { headers }) {
+      assert.equal(resource, site + paidPath);
+      browserRequests.push(headers["Idempotency-Key"]);
+      const response = await get(paidPath, headers);
+      if (browserRequests.length === 1) { await response.body?.cancel(); throw new TypeError("Interrupted response"); }
+      return response;
+    },
+  });
+  elements.get("license").value = buyerLicense;
+  await handlers.get("credit:click")();
+  assert.equal(elements.get("result").hidden, true);
+  assert.ok(!JSON.stringify([...storage.values()]).includes(buyerLicense));
+  await handlers.get("credit:click")();
+  assert.equal(browserRequests.length, 2);
+  assert.equal(browserRequests[0], browserRequests[1]);
+  assert.equal(elements.get("result").hidden, false);
+  assert.match(elements.get("details").textContent, /xga_[a-f0-9]{24}/);
+  assert.equal((await (await ledgerFor(buyerLicense).fetch("https://ledger/balance")).json()).consumed, 1);
   console.log("Production route integration: existing free routes, mandatory x402/credits, actual Lemon 0.3 contract, lost acknowledgement recovery and exactly one fixture debit verified.");
 } finally { await mf.dispose(); }

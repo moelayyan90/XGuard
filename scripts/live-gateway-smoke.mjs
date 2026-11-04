@@ -10,6 +10,7 @@ const catalog = await request(root + "/catalog");
 assert.equal(catalog.status, 200);
 const spec = await catalog.json();
 assert.equal(spec.public_facts_remain_free, true);
+assert.equal(spec.checkout_url, host + root + "/checkout");
 assert.ok(spec.rails.some(r => r.name === "lemon" && r.price === "1 license credit" &&
   r.purchase_url === "https://credits.xguardgate.com/" && r.invoice_issuer === "Lemon Squeezy"));
 const offer = await request(path);
@@ -28,7 +29,15 @@ assert.equal(billing.status, 402, "Billing service must reject an unprovisioned 
 const denial = await billing.json();
 assert.equal(denial.error, "lemon_license_not_authorized");
 assert.equal(denial.source, undefined);
-assert.equal((await request(root + "/test-base")).status, 200);
+const [home, checkout, script, css] = await Promise.all([
+  request("/"), request(root + "/checkout"), request(root + "/checkout.js"), request(root + "/checkout.css"),
+]);
+assert.equal(home.status, 200);
+assert.ok((await home.text()).includes(`href="${root}/checkout"`));
+assert.equal(checkout.status, 200);
+assert.match(await checkout.text(), /Buy credits/);
+assert.equal(script.status, 200);
+assert.equal(css.status, 200);
 
 const supported = await fetch("https://facilitator.xpay.sh/supported", { redirect: "error", signal: AbortSignal.timeout(12000) });
 assert.equal(supported.status, 200);
