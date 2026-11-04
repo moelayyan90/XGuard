@@ -127,14 +127,14 @@ try {
   await client.connect(new StreamableHTTPClientTransport(new URL(endpoint), { fetch: trackedFetch }));
   assert.equal(client.getServerVersion()?.name, 'xguard-live');
   assert.equal(client.getNegotiatedProtocolVersion(), version);
-  assert.equal((await client.listTools()).tools.length, 4);
+  assert.equal((await client.listTools()).tools.length, 5);
   const caps = await client.callTool({ name: 'xguard.capabilities' });
   assert.equal(caps.structuredContent.endpoint, endpoint);
   assert.ok(versions.every(r => r.session === null));
   assert.ok(versions.some(r => r.type?.startsWith('application/json') && r.status === 200));
   await old.connect(new LegacyTransport(new URL(endpoint), { fetch: trackedFetch }));
   assert.equal(old.getServerVersion()?.name, 'xguard-live');
-  assert.equal((await old.listTools()).tools.length, 4);
+  assert.equal((await old.listTools()).tools.length, 5);
   assert.ok(versions.some(r => r.type?.startsWith('text/event-stream') && r.status === 200));
   const negotiation = await dispatch(endpoint, { method: 'POST', headers: { ...common, 'mcp-protocol-version': legacy },
     body: JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'initialize',

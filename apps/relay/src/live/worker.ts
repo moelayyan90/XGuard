@@ -4,6 +4,7 @@ import { DISCOVERY_QUERIES, SEED_SOURCES, sourceSpec } from './adapters.ts';
 import { adminIdentity, boundedBody, checkRobots, equalSecret, safeFetch, securityHeaders, sessionToken } from './security.ts';
 import { agePublicFact, controlName, escape, hash, integer, iso, storageQuotaCode, json, negotiate, rpc, shardName, shardOf } from './util.ts';
 import { CSS, markdown, render } from './presentation.ts';
+import { installHtml, installPath, installation, integrationLinks, mcpServerCard, registryManifest } from './integrations.ts';
 import { businessMetrics } from './metrics.ts';
 
 const control = (env: Env, op: string, body = {}) => rpc(env.LIVE_CONTROL, controlName, op, body);
@@ -139,9 +140,21 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (!READ.has(request.method)) return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, HEAD' });
   if (path === '/assets/live-v6.css') return new Response(CSS, { headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
+  if (path === installPath) return pageResponse(request, 'prose', { ...installation, html: installHtml }, path);
+  if (path === '/connect' || path === '/developers') {
+    return new Response(null, { status: 308, headers: { location: ORIGIN + installPath } });
+  }
+  if (path === '/server.json' || path === '/mcp/server-card') {
+    return json(path === '/server.json' ? registryManifest : mcpServerCard, 200, {
+      'cache-control': 'public, max-age=300', 'access-control-allow-origin': '*',
+    });
+  }
+  if (path === '/mcp') return new Response(null, { status: 405, headers: {
+    allow: 'POST, OPTIONS', link: `<${integrationLinks.install}>; rel="describedby", <${integrationLinks.mcp_server_card}>; rel="service-desc"`,
+  } });
   if (path === '/robots.txt') return new Response(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /search\nDisallow: /_legacy\nContent-Signal: search=yes, ai-input=yes, ai-train=no\n\nUser-agent: GPTBot\nDisallow: /\n\nUser-agent: ClaudeBot\nDisallow: /\n\nUser-agent: CCBot\nDisallow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`, { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=300' } });
-  if (path === '/llms.txt') return new Response(`# XGuard Live\n\n> The live facts layer for AI.\n\nPublic primary-source facts with observation timestamps and immutable change history. No API key, plugin or installation required.\n\n## Retrieve\n\nUse ordinary GET. Accept: text/html, text/markdown or application/json. All formats use the same factual records. STALE and UNKNOWN are not current verified values.\n\n- [Topics](${ORIGIN}/topics)\n- [Changes](${ORIGIN}/changes)\n- [Methodology](${ORIGIN}/methodology)\n- [Sources](${ORIGIN}/sources)\n- [Sitemap](${ORIGIN}/sitemap.xml)\n- [Changes feed](${ORIGIN}/changes.atom)\n- [Discovery manifest](${ORIGIN}/.well-known/xguard-live.json)\n\nPaths: /live/{registry}/{entity}, /fact/{registry}/{entity}/{key}, /history/{registry}/{entity}/{key}. Cite the canonical fact URL, official source and verification timestamp.\n`, { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=300' } });
-  if (path === '/.well-known/xguard-live.json' || path === '/identity') return json({ name: 'XGuard Live', version: VERSION, positioning: 'The live facts layer for AI.', canonical: ORIGIN, formats: ['text/html', 'text/markdown', 'application/json'], public_authentication_required: false, topics: `${ORIGIN}/topics`, sitemap: `${ORIGIN}/sitemap.xml`, methodology: `${ORIGIN}/methodology`, changes: `${ORIGIN}/changes.atom`, monetization: 'Cloudflare-account-dependent; ordinary discovery is free.' }, 200, { 'cache-control': 'public, max-age=300' });
+  if (path === '/llms.txt') return new Response(`# XGuard Live\n\n> The live facts layer for AI.\n\nPublic primary-source facts with observation timestamps and immutable change history. No API key, plugin or installation required.\n\n## Retrieve\n\nUse ordinary GET. Accept: text/html, text/markdown or application/json. All formats use the same factual records. STALE and UNKNOWN are not current verified values.\n\n- [Connect an AI client](${integrationLinks.install})\n- [MCP server card](${integrationLinks.mcp_server_card})\n- [A2A agent card](${integrationLinks.a2a_agent_card})\n- [Topics](${ORIGIN}/topics)\n- [Changes](${ORIGIN}/changes)\n- [Methodology](${ORIGIN}/methodology)\n- [Sources](${ORIGIN}/sources)\n- [Sitemap](${ORIGIN}/sitemap.xml)\n- [Changes feed](${ORIGIN}/changes.atom)\n- [Discovery manifest](${ORIGIN}/.well-known/xguard-live.json)\n\nPaths: /live/{registry}/{entity}, /fact/{registry}/{entity}/{key}, /history/{registry}/{entity}/{key}. Cite the canonical fact URL, official source and verification timestamp.\n`, { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=300' } });
+  if (path === '/.well-known/xguard-live.json' || path === '/identity') return json({ name: 'XGuard Live', version: VERSION, positioning: 'The live facts layer for AI.', canonical: ORIGIN, formats: ['text/html', 'text/markdown', 'application/json'], public_authentication_required: false, ...integrationLinks, topics: `${ORIGIN}/topics`, sitemap: `${ORIGIN}/sitemap.xml`, methodology: `${ORIGIN}/methodology`, changes: `${ORIGIN}/changes.atom`, monetization: 'Cloudflare-account-dependent; ordinary discovery is free.' }, 200, { 'cache-control': 'public, max-age=300' });
   if (path === '/healthz' || path === '/status') {
     const catalog = await control(env, 'catalog'), parts = catalog.shards.map((s: any) => s.stats), state = catalog.last_cron;
     const stats = sumStats(parts), overdue = state && Date.now() - Date.parse(state) > 3600000;
@@ -157,7 +170,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (path === '/sitemaps/site.xml') {
     const topics = new Set((await control(env, 'catalog')).shards.flatMap((s: any) => s.topics).filter((x: any) => x.count > 0).map((x: any) => x.topic));
-    return xml(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['/', '/topics', '/changes', '/methodology', '/sources', '/accuracy', '/corrections', ...[...topics].map(x => `/topics/${x}`)].map(x => `<url><loc>${ORIGIN}${x}</loc></url>`).join('')}</urlset>`);
+    return xml(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['/', installPath, '/topics', '/changes', '/methodology', '/sources', '/accuracy', '/corrections', ...[...topics].map(x => `/topics/${x}`)].map(x => `<url><loc>${ORIGIN}${x}</loc></url>`).join('')}</urlset>`);
   }
   const sitemap = path.match(/^\/sitemaps\/(facts|entities)-(\d+)-(\d+)\.xml$/);
   if (sitemap) {

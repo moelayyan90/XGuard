@@ -34,6 +34,19 @@ try {
   assert.equal(client.getNegotiatedProtocolVersion(), version);
   const list = await client.listTools();
   assert.ok(list.tools.some(tool => tool.name === 'xguard.web.fetch'));
+  assert.equal(list.tools.find(tool => tool.name === 'xguard.fact.get')?.annotations.readOnlyHint, true);
+  const factId = 'npm/react/latest-version';
+  const fact = await client.callTool({ name: 'xguard.fact.get', arguments: { factId } });
+  assert.equal(fact.structuredContent?.fact?.id, factId);
+  assert.equal(fact.structuredContent.fact.source_url, 'https://registry.npmjs.org/react/latest');
+  const install = await fetcher(new URL('/install', url), { headers: { accept: 'text/html' } });
+  assert.equal(install.status, 200);
+  assert.match(await install.text(), /vscode:mcp\/install\?/);
+  for (const path of ['/server.json', '/mcp/server-card']) {
+    const discovery = await fetcher(new URL(path, url));
+    assert.equal(discovery.status, 200);
+    assert.equal((await discovery.json()).remotes[0].url, url.href);
+  }
   const free = await client.callTool({ name: 'xguard.capabilities' });
   assert.equal(free.structuredContent.endpoint, url.href);
   await old.connect(new LegacyTransport(url, { fetch: fetcher }));
