@@ -293,6 +293,15 @@ export function gatewayConfig(env, testnet = false, outcomeInput = null) {
   };
 }
 
+// The signed quote audience for this transport is the actual MCP endpoint.
+// No request-controlled arbitrary audience is accepted by the financial engine.
+function transportGatewayConfig(env, testnet, outcomeInput, observation) {
+  const config = gatewayConfig(env, testnet, outcomeInput);
+  if (observation.transport === "mcp-live" && !outcomeInput &&
+      ["https://xguardgate.com/mcp", `${API}/mcp`].includes(observation.resource)) config.resource = observation.resource;
+  return config;
+}
+
 function capabilities(env) {
   const mainnet = gatewayConfig(env, false);
   const testnet = gatewayConfig(env, true);
@@ -830,7 +839,7 @@ export async function issueQuote(env, raw, id, observation = {}, outcomeInput = 
         : "The hostname has no public A or AAAA address, or a private address was returned.",
     }], observation, resolverUnavailable ? 503 : targetCheck.code === "dns_unresolved" ? 422 : 403, resolverUnavailable);
   }
-  const config = gatewayConfig(env, normalized.testnet, outcomeInput);
+  const config = transportGatewayConfig(env, normalized.testnet, outcomeInput, observation);
   if (!config.configured || !env.PROOF_AUTHORITY || !env.PAID_GATEWAY) return quoteRejection(env, "payment_not_configured", id, [{ path: "$", code: "payment_not_configured", message: "The selected network cannot safely issue paid execution quotes right now." }], observation, 503, true);
   const now = Math.floor(Date.now() / 1000);
   const inputDigest = await sha256(canonicalize(input));
@@ -1835,7 +1844,7 @@ async function reconcileStoredOperation(state, env) {
     if (!exhausted) await state.storage.setAlarm(Date.now() + 30000 * (2 ** (record.reconciliation_attempts - 1)));
     return;
   }
-  record = safeFinancialPatch(record, "settled", { transaction: settlement.transaction, network: settlement.network, payer: settlement.payer || record.payer, settlement });
+  record = safeFinancialPatch(record, "settled", { transaction: settlement.transaction, network: settlement.network, payer: settlement.payer || record.payer, settlement, chain_verified: true });
   delete record.payment_payload;
   await state.storage.put("operation", record);
   await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, status: "settled" });
@@ -1920,7 +1929,8 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
 
 export async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = false, transport = "http", outcomeInput = null) {
   const tool = outcomeInput ? `xguard.${outcomeInput.capability}` : TOOL;
-  const observation = { trafficClass: trafficClass(request), transport };
+  const requireChainEvidence = transport === "mcp-live";
+  const observation = { trafficClass: trafficClass(request), transport, ...(requireChainEvidence ? { resource: request.url } : {}) };
   await observeStage(env, "request_received", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production" });
   if (!env.PROOF_AUTHORITY || !env.PAID_GATEWAY) return error("payment_not_configured", 503, id);
   const rate = await rateLimit(request, env, "paid-execution", 30);
@@ -1962,17 +1972,17 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     if (!issued.payload) return issued.response;
     quoteToken = issued.quote;
     quote = issued.payload;
-    const autoConfig = gatewayConfig(env, forceTestnet, outcomeInput);
+    const autoConfig = transportGatewayConfig(env, forceTestnet, outcomeInput, observation);
     return paymentRequired(env, autoConfig, quoteToken, quote, id, "payment_required", observation);
   }
   quote = await verifyJws(env, quoteToken);
   if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || quote.tool !== tool) return error("quote_invalid", 400, id);
   if (quote.expires_at <= Math.floor(Date.now() / 1000) && !(livePaidDefinition(input.capability) && request.headers.get('x-xguard-credit'))) return error("quote_expired", 400, id);
-  const config = gatewayConfig(env, quote.network === TESTNET, outcomeInput);
+  const config = transportGatewayConfig(env, quote.network === TESTNET, outcomeInput, observation);
   const requestPath = new URL(request.url).pathname;
   const directRouteMismatch = (requestPath === "/v1/tools/web.fetch/testnet" && quote.network !== TESTNET)
     || (requestPath === "/v1/tools/web.fetch" && quote.network === TESTNET);
-  if (!config.configured || (forceTestnet && quote.network !== TESTNET) || (outcomeInput && (quote.network === TESTNET) !== forceTestnet) || directRouteMismatch) return error("quote_invalid", 400, id);
+  if (!config.configured || (forceTestnet && quote.network !== TESTNET) || ((outcomeInput || requireChainEvidence) && (quote.network === TESTNET) !== forceTestnet) || directRouteMismatch) return error("quote_invalid", 400, id);
   const digest = await sha256(canonicalize(input));
   if (quote.aud !== config.resource || quote.input_digest !== digest || quote.network !== config.network || quote.payment_environment !== config.environment || quote.payment_rail !== config.rail.id || quote.asset.toLowerCase() !== config.asset.toLowerCase() || quote.pay_to.toLowerCase() !== config.payTo.toLowerCase() || quote.amount !== config.amount || quote.customer_price_usd_micros !== config.customerPriceUsdMicros || quote.upstream_cost_max_usd_micros !== 0 || quote.xguard_margin_usd_micros !== config.marginUsdMicros || quote.payment_identifier == null) return error("quote_invalid", 400, id);
 
@@ -1996,7 +2006,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   const paymentIdentifier = extractPaymentIdentifier(paymentPayload, true);
   const identity = authIdentity(paymentPayload);
   const authorization = paymentPayload?.payload?.authorization;
-  const authorizationMismatch = outcomeInput && authorization && (
+  const authorizationMismatch = (outcomeInput || requireChainEvidence) && authorization && (
     String(authorization.to).toLowerCase() !== config.payTo.toLowerCase()
     || String(authorization.value) !== config.amount
     || !/^\d+$/.test(String(authorization.validBefore)) || Number(authorization.validBefore) <= Date.now() / 1000
@@ -2061,6 +2071,10 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   }
   if (begin.body.replay) {
     const record = begin.body.record;
+    if (requireChainEvidence && ["settled", "succeeded"].includes(record.status) && record.chain_verified !== true &&
+        !await reconcilePayment(env, { ...record, observed_transaction: record.transaction })) {
+      return error("settlement_evidence_pending", 503, record.request_id, { retryable: true });
+    }
     if (record.status === "succeeded" || record.input?.capability && record.credit_redeemed && record.result) {
       await recordMetric(env, "replay");
       return successfulResponse(record, true);
@@ -2150,7 +2164,14 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
     await logFinancialEvent(ambiguous ? "paid_gateway_settlement_ambiguous" : "paid_gateway_settlement_failed", id, paymentIdentifier, { reason: safeReason(settlement?.errorReason, "invalid_settlement_response"), network: config.network, amount_atomic: config.amount });
     return error(ambiguous ? "settlement_ambiguous" : "settlement_failed", ambiguous ? 503 : 402, id, { retryable: true });
   }
-  const settled = await postStub(stub, "/operation/transition", { status: "settled", patch: { transaction: settlement.transaction, network: settlement.network, payer: settlement.payer || identity.from, settlement } });
+  if (requireChainEvidence && !await reconcilePayment(env, { ...begin.body.record, observed_transaction: settlement.transaction })) {
+    // Keep the existing alarm/reconciliation path. Never submit settlement a
+    // second time and never unlock execution solely on a facilitator response.
+    await postStub(stub, "/operation/transition", { status: "ambiguous", patch: { failure_stage: "settle", failure_reason: "settlement_evidence_pending", observed_transaction: settlement.transaction } });
+    await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "ambiguous" });
+    return error("settlement_evidence_pending", 503, id, { retryable: true });
+  }
+  const settled = await postStub(stub, "/operation/transition", { status: "settled", patch: { transaction: settlement.transaction, network: settlement.network, payer: settlement.payer || identity.from, settlement, ...(requireChainEvidence ? { chain_verified: true } : {}) } });
   await observePaymentHealth(env, config, "settle", settleStarted, { ok: true });
   if (!settled.ok) return error("settlement_commit_ambiguous", 503, id, { retryable: true });
   await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "settled" });
@@ -2446,7 +2467,7 @@ async function handlePaidMcp(request, env, id) {
   return { message };
 }
 
-function mcpToolsForEnv(env) {
+export function mcpToolsForEnv(env) {
   const mainnet = gatewayConfig(env, false);
   const testnet = gatewayConfig(env, true);
   return PAID_MCP_TOOLS.map(tool => {
