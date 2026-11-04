@@ -1,0 +1,97 @@
+name: Deploy XGuard Settlement Staging
+on:
+  push:
+    branches: [codex/xguard-gateway-staging-20261104]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xguard-settlement-staging
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    if: github.repository == 'moelayyan90/XGuard' && github.ref == 'refs/heads/codex/xguard-gateway-staging-20261104'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Build and test the gateway with XGuard Live code
+        run: |
+          npm ci --prefix apps/relay --no-audit --no-fund
+          npm ci --prefix apps/settlement-gateway --no-audit --no-fund
+          npm run build
+          npm run check --prefix apps/settlement-gateway
+          npm test --prefix apps/settlement-gateway
+          cd apps/settlement-gateway
+          node_modules/.bin/wrangler deploy --dry-run --config wrangler.staging.jsonc --outdir dist-stage
+          node test/staging-integration.mjs
+
+      - name: Deploy isolated Worker and run authenticated smoke test
+        working-directory: apps/settlement-gateway
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"|"$/ /g; s/^[[:space:]]+|[[:space:]]+$//g')"
+          [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Existing Cloudflare repository secrets are missing'; exit 1; }
+          export CLOUDFLARE_API_TOKEN="$token"
+          echo "::add-mask::$token"
+          umask 077
+          secrets_file="$(mktemp)"
+          deploy_log="$(mktemp)"
+          trap 'rm -f "$secrets_file" "$deploy_log"' EXIT
+          node - "$secrets_file" <<'NODE'
+          const {randomBytes} = require('node:crypto');
+          const {writeFileSync} = require('node:fs');
+          const values = {
+            STAGING_PROBE_KEY: randomBytes(32).toString('hex'),
+            WEB2_TOKEN_SECRET: randomBytes(32).toString('base64url'),
+          };
+          for (const value of Object.values(values)) console.log('::add-mask::' + value);
+          writeFileSync(process.argv[2], JSON.stringify(values), {mode: 0o600});
+          NODE
+          node_modules/.bin/wrangler deploy --config wrangler.staging.jsonc \
+            --secrets-file "$secrets_file" --tag "git-${GITHUB_SHA:0:12}" \
+            --message "XGuard isolated staging ${GITHUB_SHA}" | tee "$deploy_log"
+          node --input-type=module - "$deploy_log" "$secrets_file" <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          import {setTimeout as sleep} from 'node:timers/promises';
+          const log = readFileSync(process.argv[2], 'utf8');
+          const match = log.match(/https:\/\/xguard-settlement-gateway-staging\.[a-z0-9-]+\.workers\.dev\b/);
+          assert.ok(match, 'Wrangler did not report an isolated staging URL');
+          const url = match[0] + '/__xguard_staging_probe';
+          const key = JSON.parse(readFileSync(process.argv[3], 'utf8')).STAGING_PROBE_KEY;
+          const request = (headers) => fetch(url, {method: 'POST', redirect: 'error', headers, signal: AbortSignal.timeout(20_000)});
+          let denyVerified = false;
+          for (let n = 0; n < 8; n++) {
+            const denied = await request({}).catch(() => null);
+            // During route propagation Cloudflare can return its own HTML 404.
+            // Require the Worker response, rather than accepting that status alone.
+            if (denied?.status === 404 && denied.headers.get('x-robots-tag') === 'noindex' &&
+                await denied.text() === '') {
+              denyVerified = true;
+              break;
+            }
+            if (denied?.body && !denied.bodyUsed) await denied.body.cancel().catch(() => {});
+            if (n < 7) await sleep(3000);
+          }
+          assert.ok(denyVerified, 'Staging Worker denial did not become reachable');
+          const paid = await request({'x-xguard-stage-key': key});
+          const body = await paid.json().catch(() => ({}));
+          assert.equal(paid.status, 200, 'Authenticated staging probe failed: ' + JSON.stringify(body));
+          assert.deepEqual(body, {ok: true, origin_fact: true, unpaid: 402, invalid: 402,
+            synthetic_credit_read: 200, replay: 200, exhausted: 402, real_transfers: 0});
+          console.log('Cloudflare staging passed: ' + match[0] + ' (authenticated probe; no real transfers)');
+          NODE

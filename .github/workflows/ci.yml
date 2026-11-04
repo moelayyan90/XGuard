@@ -30,6 +30,14 @@ jobs:
         run: |
           npm run build
           npm run --prefix apps/relay live:test-runtime
+      - name: Verify the paid settlement route and existing Lemon ledger contract
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          npm ci --prefix apps/settlement-gateway --no-audit --no-fund
+          npm run check --prefix apps/settlement-gateway
+          npm test --prefix apps/settlement-gateway
+          node apps/settlement-gateway/test/production-integration.mjs
       - name: Compare public compatibility and warmed latency with the exact base
         env:
           BASELINE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
