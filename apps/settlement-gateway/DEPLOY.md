@@ -281,10 +281,10 @@ invoice; `X-XGuard-Billing-Receipt` records an individual use of a credit, not
 a second invoice. Merely opening checkout does not verify payment, invoice
 issuance or webhook delivery for a new purchase.
 
-For a real Base test, open
-https://xguardgate.com/api/gateway/v1/test-base using an authorized wallet
-with USDC on Base and sign one 0.001 USDC authorization. No wallet private key
-is sent to XGuard. The page retains the same signed request across ambiguous
-responses and displays the transaction only after confirmation. A successful
-self-test is not external paid demand. The deployment workflow checks the
-public gate and billing denial without moving funds.
+Customers can open https://xguardgate.com/api/gateway/v1/checkout from the
+home page or a verified fact page. They choose one license credit or a
+0.001 USDC payment on Base and download the verification receipt after payment.
+No wallet private key is sent to XGuard. The page retries the same order across
+ambiguous responses and displays the Base transaction only after confirmation.
+The old test page redirects to checkout. The deployment workflow verifies
+the public gate, checkout links and billing denial without moving funds.
