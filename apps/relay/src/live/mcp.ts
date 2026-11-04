@@ -1,6 +1,7 @@
 import { createMcpHandler, Server, type ListToolsResult } from '@modelcontextprotocol/server';
 import { handlePaidWebFetch, handlePreflight, issueQuote, jsonBody, mcpToolsForEnv } from '../paid-agent-entry.js';
 import { factIdSchema, isPublicFactId, readPublicFact } from './public-fact.ts';
+import { securityHeaders } from './security.ts';
 import { ORIGIN, VERSION, type Env } from './types.ts';
 
 const origins = [ORIGIN, 'https://api.xguardgate.com'];
@@ -20,6 +21,7 @@ function rpcHeaders(response: Response, request: Request, env: Env) {
   const headers = new Headers(response.headers);
   headers.set('cache-control', 'no-store');
   headers.set('x-content-type-options', 'nosniff');
+  headers.set('strict-transport-security', securityHeaders()['strict-transport-security']);
   headers.set('x-robots-tag', 'noindex');
   headers.set('vary', 'Origin, Accept');
   if (env.CF_VERSION_METADATA) {

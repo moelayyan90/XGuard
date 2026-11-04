@@ -15,6 +15,7 @@ const fetcher = async (input, init = {}) => {
   for (const [name, value] of Object.entries(headers)) combined.set(name, value);
   const response = await fetch(input, { ...init, headers: combined, redirect: 'error',
     signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) });
+  assert.match(response.headers.get('strict-transport-security') ?? '', /max-age=31536000/);
   workerId = response.headers.get('x-xguard-worker-version-id');
   tag = response.headers.get('x-xguard-worker-version-tag');
   if (process.env.CANDIDATE_WORKER_ID) assert.equal(workerId, process.env.CANDIDATE_WORKER_ID);

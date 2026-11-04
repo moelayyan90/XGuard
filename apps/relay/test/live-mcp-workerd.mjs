@@ -96,6 +96,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0,
 const dispatch = (url, init) => mf.dispatchFetch(url instanceof Request ? url.url : String(url), init);
 const trackedFetch = async (url, init) => {
   const response = await dispatch(url, init);
+  assert.match(response.headers.get('strict-transport-security') ?? '', /max-age=31536000/);
   versions.push({ type: response.headers.get('content-type'), status: response.status, session: response.headers.get('mcp-session-id') });
   return response;
 };
