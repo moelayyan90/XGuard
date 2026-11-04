@@ -24,7 +24,7 @@ const page = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <p><a id="chain" hidden rel="noopener noreferrer">View transaction on BaseScan ↗</a></p>
 <p><button type="button" id="download">Download receipt JSON</button></p>
 <pre id="details"></pre></section>
-<p><a href="${prefix}/catalog">API pricing and usage</a></p>
+<p><a href="${prefix}/catalog">API pricing and usage</a> · <a href="/refund-policy">Refund policy</a></p>
 <noscript>Enable JavaScript to use this checkout, or use the API directly.</noscript>
 </main><script src="${checkout}.js" defer></script></body></html>`;
 
