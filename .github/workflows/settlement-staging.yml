@@ -74,14 +74,20 @@ jobs:
           const url = match[0] + '/__xguard_staging_probe';
           const key = JSON.parse(readFileSync(process.argv[3], 'utf8')).STAGING_PROBE_KEY;
           const request = (headers) => fetch(url, {method: 'POST', redirect: 'error', headers, signal: AbortSignal.timeout(20_000)});
-          let privateResponse;
-          for (let n = 0; n < 4; n++) {
-            privateResponse = await request({}).catch(() => null);
-            if (privateResponse?.status === 404) break;
-            await sleep(3000);
+          let denyVerified = false;
+          for (let n = 0; n < 8; n++) {
+            const denied = await request({}).catch(() => null);
+            // During route propagation Cloudflare can return its own HTML 404.
+            // Require the Worker response, rather than accepting that status alone.
+            if (denied?.status === 404 && denied.headers.get('x-robots-tag') === 'noindex' &&
+                await denied.text() === '') {
+              denyVerified = true;
+              break;
+            }
+            if (denied?.body && !denied.bodyUsed) await denied.body.cancel().catch(() => {});
+            if (n < 7) await sleep(3000);
           }
-          assert.equal(privateResponse?.status, 404, 'Unauthenticated staging request not denied');
-          assert.equal(await privateResponse.text(), '', 'Unauthenticated staging response disclosed a body');
+          assert.ok(denyVerified, 'Staging Worker denial did not become reachable');
           const paid = await request({'x-xguard-stage-key': key});
           const body = await paid.json().catch(() => ({}));
           assert.equal(paid.status, 200, 'Authenticated staging probe failed: ' + JSON.stringify(body));
