@@ -1,16 +1,24 @@
 import { createMcpHandler, Server, type ListToolsResult } from '@modelcontextprotocol/server';
 import { handlePaidWebFetch, handlePreflight, issueQuote, jsonBody, mcpToolsForEnv } from '../paid-agent-entry.js';
+import { logNormalization } from '../core/public-contract.js';
+import { integrationLinks, mcpServerCard } from './integrations.ts';
 import { factIdSchema, isPublicFactId, readPublicFact } from './public-fact.ts';
 import { securityHeaders } from './security.ts';
 import { ORIGIN, VERSION, type Env } from './types.ts';
 
 const origins = [ORIGIN, 'https://api.xguardgate.com'];
-const paths = ['POST', 'OPTIONS'];
+const methods = ['GET', 'HEAD', 'POST', 'OPTIONS'];
 const factTool = 'xguard.fact.get';
 const toolNames = new Set(['xguard.capabilities', 'xguard.preflight', 'xguard.pricing.quote', 'xguard.web.fetch']);
 const paymentHeaders = ['Payment-Required', 'Payment-Response', 'X-XGuard-Quote', 'X-XGuard-Request-Id',
   'X-XGuard-Payment-Identifier', 'X-XGuard-Replay', 'X-XGuard-Receipt', 'X-XGuard-Proof', 'Retry-After'];
 const maxBody = 32 * 1024;
+const modernVersion = '2026-07-28';
+const versionKey = 'io.modelcontextprotocol/protocolVersion';
+const capabilitiesKey = 'io.modelcontextprotocol/clientCapabilities';
+const publicMethods = new Set(['server/discover', 'tools/list', 'ping']);
+const publicTools = new Set([factTool, 'xguard.capabilities']);
+const credentialHeaders = ['authorization', 'payment-signature', 'x-payment', 'x-xguard-quote', 'x-xguard-credit'];
 
 type RpcId = number | string | null;
 type PaymentResponse = { id: RpcId; response: Response };
@@ -31,11 +39,11 @@ function rpcHeaders(response: Response, request: Request, env: Env) {
   const origin = request.headers.get('origin');
   if (origin && origins.includes(origin)) {
     headers.set('access-control-allow-origin', origin);
-    headers.set('access-control-allow-methods', paths.join(', '));
+    headers.set('access-control-allow-methods', methods.join(', '));
     headers.set('access-control-allow-headers', 'Accept, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Payment-Signature, X-XGuard-Quote');
     headers.set('access-control-expose-headers', paymentHeaders.join(', '));
   }
-  if (response.status === 405) headers.set('allow', paths.join(', '));
+  if (response.status === 405) headers.set('allow', methods.join(', '));
   return new Response(request.method === 'HEAD' ? null : response.body, { status: response.status, headers });
 }
 
@@ -79,26 +87,89 @@ function list(env: Env): ListToolsResult {
   }, ...existingTools] };
 }
 
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// Fill omissions only when the request identifies one credential-free read.
+// The SDK still checks all explicit header and envelope values for conflicts.
+function recoverPublicRead(request: Request, message: Record<string, unknown>, mediaType: string) {
+  const { id, method, params = {} } = message;
+  if (message.jsonrpc !== '2.0' || (typeof id !== 'string' && typeof id !== 'number') ||
+      typeof method !== 'string' || !record(params) ||
+      credentialHeaders.some(name => request.headers.has(name))) return;
+  const tool = method === 'tools/call' && typeof params.name === 'string' ? params.name : undefined;
+  if (!publicMethods.has(method) && (!tool || !publicTools.has(tool))) return;
+
+  const meta = params._meta === undefined ? {} : params._meta;
+  if (!record(meta)) return;
+  const headers = new Headers(request.headers);
+  const claimed = headers.get('mcp-protocol-version');
+  const accept = headers.get('accept');
+  if ((claimed !== null && claimed !== modernVersion) ||
+      (Object.hasOwn(meta, versionKey) && meta[versionKey] !== modernVersion)) return;
+  // Keep the original legacy negotiation for unversioned Streamable HTTP clients.
+  if (claimed === null && !Object.hasOwn(meta, versionKey) && method !== 'server/discover' &&
+      mediaType === 'application/json' && accept?.includes('text/event-stream')) return;
+
+  const changes: string[] = [];
+  for (const [name, value] of [['mcp-protocol-version', modernVersion], ['mcp-method', method],
+    ...(tool ? [['mcp-name', tool]] : [])]) {
+    if (!headers.has(name)) {
+      headers.set(name, value);
+      changes.push(name);
+    }
+  }
+  if (mediaType !== 'application/json') {
+    headers.set('content-type', 'application/json');
+    changes.push('content-type');
+  }
+  if (accept === null || accept.trim() === '*/*') {
+    headers.set('accept', 'application/json');
+    changes.push('accept');
+  }
+  const missingVersion = !Object.hasOwn(meta, versionKey);
+  const missingCapabilities = !Object.hasOwn(meta, capabilitiesKey);
+  if (missingVersion || missingCapabilities) {
+    message = { ...message, params: { ...params, _meta: {
+      ...meta, ...(missingVersion ? { [versionKey]: modernVersion } : {}),
+      ...(missingCapabilities ? { [capabilitiesKey]: {} } : {}),
+    } } };
+    changes.push('request-metadata');
+  }
+  if (!changes.length) return;
+  logNormalization(request, changes);
+  headers.delete('content-length');
+  return { request: new Request(request.url, { method: request.method, headers, signal: request.signal }), message };
+}
+
 async function transport(request: Request, env: Env, readPublishedFact: (request: Request) => Promise<Response>): Promise<Response> {
   const url = new URL(request.url);
   if (!origins.includes(url.origin) || url.search) return rpcError(null, -32600, 'Invalid MCP endpoint', 400);
   const origin = request.headers.get('origin');
   if (origin !== null && !origins.includes(origin)) return rpcError(null, -32000, 'Origin not allowed', 403);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
-  if (request.method !== 'POST') return rpcError(null, -32000, 'Method not allowed', 405);
-  if (request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
-    return rpcError(null, -32600, 'Content-Type must be application/json', 415);
-  }
+  if ((request.method === 'GET' || request.method === 'HEAD') && !request.headers.has('mcp-protocol-version') &&
+      !request.headers.get('accept')?.toLowerCase().includes('text/event-stream')) return Response.json(mcpServerCard);
+  if (request.method !== 'POST') return rpcError(null, -32000, 'Send MCP JSON-RPC messages with POST', 405, {
+    install: integrationLinks.install, server_card: integrationLinks.mcp_server_card,
+  });
+  const mediaType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() ?? '';
+  const wrongMediaType = () => rpcError(null, -32600, 'Content-Type must be application/json', 415);
+  if (!['application/json', 'text/plain', ''].includes(mediaType)) return wrongMediaType();
 
   // Reject duplicate fields, invalid UTF-8, oversized streams and batches
   // before SDK dispatch. Parsing a single message also keeps HTTP payment
   // headers unambiguously bound to one operation.
   const parsed = await jsonBody(request, maxBody);
-  if (!('value' in parsed)) return rpcError(null, -32700, 'Invalid JSON request body',
-    parsed.error === 'payload_too_large' ? 413 : 400);
-  if (!parsed.value || typeof parsed.value !== 'object' || Array.isArray(parsed.value)) {
-    return rpcError(null, -32600, 'Expected one JSON-RPC message', 400);
-  }
+  if (!('value' in parsed)) return parsed.error === 'payload_too_large'
+    ? rpcError(null, -32700, 'Request body exceeds the 32 KiB limit', 413)
+    : mediaType !== 'application/json' ? wrongMediaType()
+      : rpcError(null, -32700, 'Send one complete UTF-8 JSON-RPC object without duplicate fields', 400);
+  if (!record(parsed.value)) return mediaType !== 'application/json' ? wrongMediaType()
+    : rpcError(null, -32600, 'Expected one JSON-RPC message', 400);
+  const recovered = recoverPublicRead(request, parsed.value, mediaType);
+  if (mediaType !== 'application/json' && !recovered) return wrongMediaType();
 
   const scope: { legacy: boolean; failure?: PaymentResponse; success?: Headers } = { legacy: false };
   const id = 'xgr_' + crypto.randomUUID().replaceAll('-', '');
@@ -166,7 +237,7 @@ async function transport(request: Request, env: Env, readPublishedFact: (request
     return server;
   }, { legacy: 'stateless', maxRequestBodySize: maxBody, keepAliveMs: 0 });
 
-  let response = await handler.fetch(request, { parsedBody: parsed.value });
+  let response = await handler.fetch(recovered?.request ?? request, { parsedBody: recovered?.message ?? parsed.value });
   if (scope.legacy && response.headers.get('content-type')?.startsWith('text/event-stream')) {
     // 2025 clients may get an SSE response scoped to this POST. Read the one
     // terminal exchange before committing headers so an x402 failure stays 402.
