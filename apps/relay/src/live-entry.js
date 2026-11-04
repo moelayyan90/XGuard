@@ -8,7 +8,22 @@ import { livePaidFetch } from './live-paid-entry.js';
 export default {
   ...live,
   async fetch(request, env, ctx) {
-    const path = new URL(request.url).pathname;
+    const url = new URL(request.url);
+    const path = url.pathname;
+    if (path === '/api/gateway/v1' || path.startsWith('/api/gateway/v1/')) {
+      if (['www.xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
+        // The x402 authorization is bound to the canonical resource.
+        return Response.redirect('https://xguardgate.com' + path + url.search, 308);
+      }
+      if (!env.XGUARD_SETTLEMENT) {
+        return Response.json({ error: 'gateway_unavailable' }, { status: 503, headers: { 'cache-control': 'private, no-store' } });
+      }
+      try {
+        return await env.XGUARD_SETTLEMENT.fetch(request);
+      } catch {
+        return Response.json({ error: 'gateway_unavailable' }, { status: 503, headers: { 'cache-control': 'private, no-store' } });
+      }
+    }
     if (/^\/api\/paid\/v1(?:\/|$)/.test(path)) return livePaidFetch(request, env, ctx);
     // Preserve access to results already paid for, without new execution or settlement.
     const match = path.match(/^\/v1\/(?:marketplace\/)?results\/(pay_[A-Za-z0-9_-]+)$/);

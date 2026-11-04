@@ -254,3 +254,33 @@ is synthetic and isolated; Base RPC is deliberately unavailable in this
 deployment. The stage therefore proves source binding, authorization,
 metering, and replay behavior, with no transfer or payment provider
 charge. The production configuration remains separate and disabled.
+
+## Production cutover: mandatory paid validation, free discovery preserved
+
+The current production config publishes the gateway only through the
+xguard-mainnet Service Binding. Paid reads live under
+/api/gateway/v1; canonical public facts, HTML, Markdown, crawler discovery,
+sitemaps and the existing paid product endpoints stay on the original router.
+The paid route never falls back to free output if the gateway or billing fails.
+The /catalog response is public service metadata only. The paid validation
+returns the verified observation and a body hash together with the appropriate
+payment receipt. This does not make an independent factual assertion beyond the
+source evidence or promise verified latency.
+
+The existing Lemon Squeezy 0.3.0 Worker is bound privately. It validates a
+customer's existing non-test, non-revoked license, and debits one existing
+license credit using its atomic /v1/assure operation. The gateway stores a
+result-bound intent before calling it. The provider's replay response is
+accepted only when its assurance ID matches the exact fingerprint. The
+gateway deliberately never calls the legacy non-idempotent /v1/consume.
+No webhook configuration or provider ledger is replaced. A new license
+requires a working provider checkout; the historical configured checkout
+was observed returning 404, so it is not advertised by this release.
+
+For a real Base test, open
+https://xguardgate.com/api/gateway/v1/test-base using an authorized wallet
+with USDC on Base and sign one 0.001 USDC authorization. No wallet private key
+is sent to XGuard. The page retains the same signed request across ambiguous
+responses and displays the transaction only after confirmation. A successful
+self-test is not external paid demand. The deployment workflow checks the
+public gate and billing denial without moving funds.

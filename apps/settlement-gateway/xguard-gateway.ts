@@ -22,11 +22,14 @@ import {
   recoverTypedDataAddress, type Address, type Hex,
 } from "viem";
 import { base } from "viem/chains";
+import { buyerAsset } from "./buyer";
 
 export interface Env {
   XGUARD_STATE: DurableObjectNamespace<XGuardState>;
   XGUARD_ORIGIN: Fetcher;
+  XGUARD_BILLING?: Fetcher;
   GATEWAY_ENABLED: string;
+  GATEWAY_PATH_PREFIX?: string;
   PUBLIC_ORIGIN: string;
   MERCHANT_ID: string;
   PAY_TO: string;
@@ -149,7 +152,7 @@ function json(body: unknown, status: number, headers: Record<string, string> = {
   } });
 }
 
-type Rail = "base" | "credits";
+type Rail = "base" | "credits" | "lemon";
 type Phase = "working" | "settling" | "done" | "retry";
 type Intent = {
   id: string; wallet: Address; merchant: string; account: string; rail: Rail;
@@ -300,17 +303,17 @@ export class XGuardState extends DurableObject<Env> {
   }
 
   /** The only transition that grants permission to call /settle. */
-  startSettlement(id: string, owner: string, body: string, startBlock: string): boolean {
+  startSettlement(id: string, owner: string, body: string, anchor: string, rail: "base" | "lemon" = "base"): boolean {
     return this.ctx.storage.transactionSync(() => {
       const now = Date.now();
       const sql = this.ctx.storage.sql;
       const updated = sql.exec<{ id: string }>(
-        "UPDATE jobs SET phase='settling',body=?,startBlock=?,lease=? WHERE id=? AND owner=? AND rail='base' AND phase='working' AND lease>? AND expires>? RETURNING id",
-        body, startBlock, now + LEASE_MS, id, owner, now, now,
+        "UPDATE jobs SET phase='settling',body=?,startBlock=?,lease=? WHERE id=? AND owner=? AND rail=? AND phase='working' AND lease>? AND expires>? RETURNING id",
+        body, anchor, now + LEASE_MS, id, owner, rail, now, now,
       ).toArray();
       if (!updated.length) return false;
       sql.exec("INSERT INTO journal SELECT id,wallet,merchant,account,rail,idem,binding,?,'settling',?,startBlock,NULL FROM jobs WHERE id=?",
-        PRICE, now, id);
+        rail === "lemon" ? 1 : PRICE, now, id);
       return true;
     });
   }
@@ -327,12 +330,12 @@ export class XGuardState extends DurableObject<Env> {
     });
   }
 
-  finishChain(id: string, owner: string, hash: string): Completed | null {
+  finishChain(id: string, owner: string, hash: string, rail: "base" | "lemon" = "base"): Completed | null {
     return this.ctx.storage.transactionSync(() => {
       const now = Date.now();
       const rows = this.ctx.storage.sql.exec<{ body: string | null }>(
-        "UPDATE jobs SET phase='done',hash=?,lease=0 WHERE id=? AND owner=? AND phase='settling' AND rail='base' AND lease>? AND expires>? RETURNING body",
-        hash, id, owner, now, now,
+        "UPDATE jobs SET phase='done',hash=?,lease=0 WHERE id=? AND owner=? AND phase='settling' AND rail=? AND lease>? AND expires>? RETURNING body",
+        hash, id, owner, rail, now, now,
       ).toArray();
       const row = rows[0];
       if (!row) return null;
@@ -592,22 +595,24 @@ async function reconcile(client: BaseClient, cfg: Config, auth: Auth, hint: stri
   return null;
 }
 
-type Route = { resource: string; upstream: string; group: "fact" | "status" | "index" };
-function route(request: Request, cfg: Config): Route {
+type Route = { resource: string; upstream: string; group: "fact" | "status" | "index"; paid: boolean };
+function route(request: Request, cfg: Config, prefix: string): Route {
   const url = new URL(request.url);
   if (url.origin !== cfg.origin) reject(404, "unknown_host");
   if (request.method !== "GET" || request.body !== null) reject(405, "get_required");
+  if (prefix && !url.pathname.startsWith(prefix + "/")) reject(404, "route_not_allowed");
+  const path = url.pathname.slice(prefix.length);
   // URL normalization is intentionally narrow. No proxy URL, traversal,
   // arbitrary headers, alternate formats, or unrecognized query parameters.
   if (url.pathname.length > 512 || (url.search && url.search !== "?format=json")) reject(400, "unsupported_url");
-  const fact = /^\/(?:fact|live|history|changes|evidence)\/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}(?:\/[@A-Za-z0-9][A-Za-z0-9_.-]{0,95}){1,8}$/.test(url.pathname);
-  const status = ["/healthz", "/status"].includes(url.pathname);
-  const index = ["/topics", "/changes"].includes(url.pathname) ||
-    /^\/topics\/[a-z0-9-]{1,64}(?:\/page\/[1-9][0-9]{0,4})?$/.test(url.pathname);
+  const fact = /^\/(?:fact|live|history|changes|evidence)\/[A-Za-z0-9][A-Za-z0-9_.-]{0,95}(?:\/[@A-Za-z0-9][A-Za-z0-9_.-]{0,95}){1,8}$/.test(path);
+  const status = ["/healthz", "/status"].includes(path);
+  const index = ["/topics", "/changes"].includes(path) ||
+    /^\/topics\/[a-z0-9-]{1,64}(?:\/page\/[1-9][0-9]{0,4})?$/.test(path);
   if (!fact && !status && !index) reject(404, "route_not_allowed");
   return { resource: cfg.origin + url.pathname + url.search,
-    upstream: url.pathname + (url.pathname === "/healthz" ? "" : "?format=json"),
-    group: fact ? "fact" : status ? "status" : "index" };
+    upstream: path + (path === "/healthz" ? "" : "?format=json"),
+    group: fact ? "fact" : status ? "status" : "index", paid: Boolean(prefix) };
 }
 
 async function prepareFacts(env: Env, r: Route): Promise<string> {
@@ -621,21 +626,76 @@ async function prepareFacts(env: Env, r: Route): Promise<string> {
     reject(502, "origin_result_unavailable");
   }
   const body = await readLimited(origin, BODY_LIMIT);
-  try { JSON.parse(body); } catch { reject(502, "origin_invalid_json"); }
-  return body;
+  let source: unknown;
+  try { source = JSON.parse(body); } catch { reject(502, "origin_invalid_json"); }
+  if (!r.paid) return body;
+  const facts = record(source);
+  if (r.upstream.startsWith("/fact/")) {
+    const fact = record(facts.fact);
+    const expected = r.upstream.slice("/fact/".length).split("?")[0];
+    if (fact.id !== expected || fact.verification !== "VERIFIED" ||
+        typeof fact.source_hash !== "string" || !/^(?:sha256:)?[a-f0-9]{64}$/i.test(fact.source_hash) ||
+        typeof fact.verified_at !== "string" || !Number.isFinite(Date.parse(fact.verified_at))) {
+      reject(502, "fact_not_currently_verified");
+    }
+  }
+  return JSON.stringify({ operation: r.upstream.startsWith("/fact/") ? "validate_live_fact" : "metered_live_read",
+    resource: r.resource, source_body_sha256: await sha(body), source });
 }
 
 function deliver(value: Completed, rail: Rail, wallet: Address, requestId: string, replay = false) {
   const headers = new Headers({
     "Content-Type": "application/json; charset=utf-8", "Cache-Control": "private, no-store",
     "X-Content-Type-Options": "nosniff", "X-XGuard-Request": requestId,
-    "X-XGuard-Billing-Rail": rail, "X-XGuard-Amount-Atomic": String(PRICE),
+    "X-XGuard-Billing-Rail": rail, "X-XGuard-Amount-Atomic": String(rail === "lemon" ? 1 : PRICE),
+    "X-XGuard-Billing-Unit": rail === "lemon" ? "lemon-license-credit" : rail === "base" ? "USDC-atomic" : "USD-microcredit",
     "X-XGuard-Replayed": replay ? "1" : "0",
   });
-  if (value.hash) headers.set("Payment-Response", b64JSON({
+  if (value.hash && rail === "base") headers.set("Payment-Response", b64JSON({
     success: true, network: NETWORK, transaction: value.hash, payer: wallet,
   }));
+  if (value.hash && rail === "lemon") headers.set("X-XGuard-Billing-Receipt", value.hash);
   return new Response(value.body, { status: 200, headers });
+}
+
+// The existing Lemon Worker 0.3.0 has an atomic, idempotent /v1/assure
+// debit. /v1/consume on that version is NOT idempotent and is never used.
+async function lemonCall(env: Env, key: string, path: "/v1/balance" | "/v1/assure", data?: object) {
+  if (!env.XGUARD_BILLING) reject(503, "lemon_binding_unavailable");
+  const response = await env.XGUARD_BILLING.fetch(new Request("https://xguard-billing.internal" + path, {
+    method: data ? "POST" : "GET", redirect: "manual", signal: AbortSignal.timeout(8_000),
+    headers: { Authorization: "Bearer " + key, Accept: "application/json", "Content-Type": "application/json" },
+    ...(data ? { body: JSON.stringify(data) } : {}),
+  }));
+  const body = record(JSON.parse(await readLimited(response, 4096)));
+  return { status: response.status, body };
+}
+
+async function lemonBalance(env: Env, key: string): Promise<number> {
+  const response = await lemonCall(env, key, "/v1/balance");
+  if ([401, 403, 404].includes(response.status)) reject(402, "lemon_license_not_authorized");
+  const value = response.body;
+  if (response.status !== 200 || value.provisioned !== true || typeof value.revoked !== "boolean" ||
+      typeof value.test_mode !== "boolean" || typeof value.credits !== "number" ||
+      !Number.isSafeInteger(value.credits) || value.credits < 0) reject(503, "lemon_balance_unconfirmed");
+  if (value.revoked || value.test_mode) reject(402, "lemon_license_not_authorized");
+  return value.credits;
+}
+
+async function lemonSettle(env: Env, key: string, r: Route, intent: Intent, resultHash: string): Promise<string> {
+  const action = "xguard.live.read." + resultHash;
+  const idem = "xguard-live-v1-" + await sha(intent.id + "\n" + intent.binding);
+  const target = r.resource;
+  const fingerprint = await sha(JSON.stringify({ action, target, method: "GET",
+    amount: null, currency: null, idempotency_key: idem, expires_at: null }));
+  const expected = "xga_" + fingerprint.slice(0, 24);
+  const result = await lemonCall(env, key, "/v1/assure", { action, target, method: "GET", idempotency_key: idem });
+  if (result.body.assurance_id === expected &&
+      ((result.status === 200 && result.body.decision === "allow" &&
+        result.body.consumed === 1 && result.body.fingerprint === fingerprint) ||
+       (result.status === 409 && result.body.error === "replay_detected"))) return expected;
+  if ([401, 402, 403, 404].includes(result.status)) reject(402, "lemon_debit_denied");
+  reject(503, "lemon_debit_unconfirmed_retry_original");
 }
 
 async function paidRead(request: Request, env: Env, cfg: Config, r: Route, id: string): Promise<Response> {
@@ -646,28 +706,51 @@ async function paidRead(request: Request, env: Env, cfg: Config, r: Route, id: s
     const bearer = request.headers.get("Authorization");
     if (!!proof === !!bearer) reject(402, "exactly_one_payment_credential_required");
     if (!idemFormat.test(key)) reject(402, "valid_idempotency_key_required");
-    let who: Identity, payment: Payment | undefined;
+    let who: Identity, payment: Payment | undefined, lemonKey: string | undefined;
+    let lemonCredits = 0;
     if (proof) {
       payment = await parsePayment(proof, offer);
       who = { wallet: payment.payload.authorization.from, merchant: cfg.merchant, account: "base" };
     } else {
       if (!bearer?.startsWith("Bearer ") || bearer.length > 2500) reject(402, "invalid_credit_token");
-      who = await authenticate(bearer.slice(7), env, cfg);
+      const token = bearer.slice(7);
+      if (env.XGUARD_BILLING && !token.startsWith("xg1.")) {
+        if (!/^[A-Za-z0-9_-]{20,200}$/.test(token)) reject(402, "invalid_lemon_license");
+        lemonKey = token;
+        lemonCredits = await lemonBalance(env, token);
+        const principal = await sha(token);
+        // A legacy license is its own billing principal, not a Base wallet.
+        who = { wallet: getAddress("0x" + principal.slice(0, 40)), merchant: cfg.merchant, account: principal };
+      } else {
+        who = await authenticate(token, env, cfg);
+      }
     }
-    const rail: Rail = payment ? "base" : "credits";
+    const rail: Rail = payment ? "base" : lemonKey ? "lemon" : "credits";
     const auth = payment?.payload.authorization;
     const intent: Intent = { ...who, rail, idem: key,
-      id: auth ? "base:" + auth.nonce : "credits:" + await sha(cfg.merchant + "\n" + who.account + "\n" + key),
+      id: auth ? "base:" + auth.nonce : rail + ":" + await sha(cfg.merchant + "\n" + who.account + "\n" + key),
       validBefore: auth ? Number(auth.validBefore) : 0,
       binding: await sha(JSON.stringify({ ...who, rail, price: PRICE, resource: r.resource, key, auth })),
     };
-    const state = walletState(env, who.wallet);
+    const state = lemonKey ? env.XGUARD_STATE.getByName("lemon-license:v1:" + who.account) : walletState(env, who.wallet);
     const claim = await state.claim(intent);
     if (claim.kind === "done") return deliver(claim, rail, who.wallet, id, true);
     if (claim.kind === "conflict") reject(409, "payment_binding_conflict");
     if (claim.kind === "expired" || claim.kind === "insufficient") reject(402, claim.kind);
     if (claim.kind === "busy") reject(503, "same_request_in_progress");
     if (claim.kind === "reconcile") {
+      if (lemonKey) {
+        try {
+          const receipt = await lemonSettle(env, lemonKey, r, intent, claim.startBlock);
+          const resolved = await state.finishChain(intent.id, claim.owner, receipt, "lemon");
+          if (resolved) return deliver(resolved, "lemon", who.wallet, id, true);
+        } catch (error) {
+          await state.deferSettlement(intent.id, claim.owner, null);
+          throw error;
+        }
+        await state.deferSettlement(intent.id, claim.owner, null);
+        reject(503, "lemon_debit_unconfirmed_retry_original");
+      }
       if (!auth) reject(503, "settlement_state_inconsistent");
       let resolved: Completed | null = null;
       try {
@@ -684,6 +767,25 @@ async function paidRead(request: Request, env: Env, cfg: Config, r: Route, id: s
 
     let journaled = false;
     try {
+      if (lemonKey) {
+        if (lemonCredits < 1) reject(402, "insufficient");
+        const body = await prepareFacts(env, r);
+        const resultHash = await sha(body);
+        if (!await state.startSettlement(intent.id, claim.owner, body, resultHash, "lemon")) {
+          reject(503, "lemon_debit_reservation_lost");
+        }
+        journaled = true;
+        try {
+          const receipt = await lemonSettle(env, lemonKey, r, intent, resultHash);
+          const resolved = await state.finishChain(intent.id, claim.owner, receipt, "lemon");
+          if (resolved) return deliver(resolved, "lemon", who.wallet, id);
+        } catch (error) {
+          await state.deferSettlement(intent.id, claim.owner, null);
+          throw error;
+        }
+        await state.deferSettlement(intent.id, claim.owner, null);
+        reject(503, "lemon_debit_unconfirmed_retry_original");
+      }
       if (!payment || !auth) {
         const body = await prepareFacts(env, r);
         const result = await state.finishCredits(intent.id, claim.owner, body);
@@ -736,7 +838,28 @@ export default {
     let group = "rejected";
     try {
       const cfg = config(env);
-      const r = route(request, cfg);
+      const prefix = env.GATEWAY_PATH_PREFIX ?? "";
+      if (prefix && prefix !== "/api/gateway/v1") reject(503, "invalid_gateway_prefix");
+      const url = new URL(request.url);
+      if (prefix && url.origin === cfg.origin && !url.search && request.method === "GET") {
+        const asset = buyerAsset(url.pathname);
+        if (asset) return asset;
+      }
+      if (prefix && url.origin === cfg.origin && url.pathname === prefix + "/catalog" &&
+          !url.search && request.method === "GET") return json({
+        name: "XGuard paid validation gateway",
+        public_facts_remain_free: true,
+        sample: cfg.origin + prefix + "/fact/npm/react/latest-version",
+        base_settlement_test: cfg.origin + prefix + "/test-base",
+        idempotency: "Send an Idempotency-Key; after a 503 retry the same URL, key and credential.",
+        rails: [
+          { name: "base", price: "0.001 USDC", network: NETWORK, scheme: "exact", version: 2 },
+          ...(env.XGUARD_BILLING ? [{ name: "lemon", price: "1 license credit",
+            credential: "Bearer existing XGuard Lemon Squeezy license", receipt: "X-XGuard-Billing-Receipt",
+            checkout: "Existing verified license balances only" }] : []),
+        ],
+      }, 200);
+      const r = route(request, cfg, prefix);
       group = r.group;
       if (env.GATEWAY_LIMIT) {
         const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";

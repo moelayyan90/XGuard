@@ -31,6 +31,9 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --prefix apps/relay --no-audit --no-fund
+      - name: Install verified settlement Worker dependencies
+        if: hashFiles('apps/settlement-gateway/package-lock.json') != ''
+        run: npm ci --prefix apps/settlement-gateway --no-audit --no-fund
 
       - name: Snapshot current production version
         id: previous
@@ -75,6 +78,22 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node scripts/live-owner-bootstrap.mjs
 
+      - name: Deploy private settlement Worker before exposing the paid route
+        if: hashFiles('apps/settlement-gateway/wrangler.jsonc') != ''
+        working-directory: apps/settlement-gateway
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '\r\n' | sed -E 's/^[[:space:]]*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^"|"$/ /g; s/^[[:space:]]+|[[:space:]]+$//g')"
+          [[ -n "$token" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'Cloudflare repository secrets are missing'; exit 1; }
+          echo "::add-mask::$token"
+          export CLOUDFLARE_API_TOKEN="$token"
+          node_modules/.bin/wrangler deploy --config wrangler.jsonc --tag "git-${DEPLOY_SHA:0:12}" --message "Deploy XGuard settlement gateway ${DEPLOY_SHA}"
+
       - name: Deploy Worker
         id: deploy
         env:
@@ -113,8 +132,19 @@ jobs:
         if: always() && steps.deploy.outcome == 'success'
         run: EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node scripts/live-paid-smoke.mjs
 
+      - name: Verify production settlement and Lemon Squeezy admission without spending
+        id: gateway_smoke
+        if: always() && steps.deploy.outcome == 'success' && hashFiles('scripts/live-gateway-smoke.mjs') != ''
+        shell: bash
+        run: |
+          for attempt in {1..3}; do
+            if node scripts/live-gateway-smoke.mjs; then exit 0; fi
+            if [[ "$attempt" != 3 ]]; then sleep 5; fi
+          done
+          exit 1
+
       - name: Roll back compatible code-only deployment after failed verification
-        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure')
+        if: failure() && steps.deploy.outcome == 'success' && steps.previous.outputs.version_id != '' && steps.do_guard.outputs.rollback_allowed == 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure' || steps.gateway_smoke.outcome == 'failure')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -138,7 +168,7 @@ jobs:
           exit 1
 
       - name: Require forward recovery after incompatible durable state change
-        if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure')
+        if: failure() && steps.deploy.outcome == 'success' && steps.do_guard.outputs.rollback_allowed != 'true' && (steps.production_smoke.outputs.quota_exhausted != 'true' || steps.paid_smoke.outcome == 'failure' || steps.gateway_smoke.outcome == 'failure')
         shell: bash
         run: |
           set -euo pipefail
@@ -147,6 +177,6 @@ jobs:
           exit 1
 
       - name: Keep storage-quota recovery deployed and report incomplete verification
-        if: failure() && steps.deploy.outcome == 'success' && steps.production_smoke.outputs.quota_exhausted == 'true' && steps.paid_smoke.outcome == 'success'
+        if: failure() && steps.deploy.outcome == 'success' && steps.production_smoke.outputs.quota_exhausted == 'true' && steps.paid_smoke.outcome == 'success' && steps.gateway_smoke.outcome != 'failure'
         run: |
           echo '::error title=Provider storage quota exhausted::The tested recovery build is deployed, but public data verification is incomplete. Durable Objects free limits reset at 00:00 UTC. The scheduled Live monitor will check service recovery. No subscription or billing changes were made.'
