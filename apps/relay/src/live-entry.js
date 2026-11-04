@@ -3,6 +3,7 @@
 export * from './canonical-entry.js';
 export { LiveShard, LiveControl } from './live/objects.ts';
 import live from './live/worker.ts';
+import { A2A_CARD_PATH, A2A_PATH, liveA2aFetch, liveAgentCard } from './live/a2a.ts';
 import { liveMcpFetch } from './live/mcp.ts';
 import { recoverOutcome } from './paid-agent-entry.js';
 import { livePaidFetch } from './live-paid-entry.js';
@@ -11,6 +12,10 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+    if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
+      if (path === A2A_CARD_PATH && ['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return liveAgentCard(request, env);
+      if (path === A2A_PATH) return liveA2aFetch(request, env, factRequest => live.fetch(factRequest, env, ctx));
+    }
     if (path === '/mcp' && ['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
       const streamProbe = request.method === 'GET' &&
         (request.headers.has('mcp-protocol-version') || request.headers.get('accept')?.includes('text/event-stream'));

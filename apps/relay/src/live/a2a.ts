@@ -1,0 +1,169 @@
+import type { AgentCard } from '@a2a-js/sdk';
+import { readPublicJson, parsePublicJson } from '../core/public-contract.js';
+import { securityHeaders } from './security.ts';
+import { ORIGIN, VERSION, type Env } from './types.ts';
+
+export const A2A_CARD_PATH = '/.well-known/agent-card.json';
+export const A2A_PATH = '/a2a';
+const WIRE_VERSION = '1.0';
+const discoveryAction = 'xguard.discover';
+const factAction = 'xguard.fact.get';
+const factExample = 'npm/react/latest-version';
+const inputModes = ['text/plain', 'application/json'];
+const outputModes = ['text/plain', 'application/json'];
+const maxRequestBytes = 16 * 1024;
+
+const card: AgentCard = {
+  name: 'XGuard Live',
+  description: 'Discover XGuard Live and read published software facts with primary-source evidence and verification timestamps. This A2A interface is public and read-only.',
+  version: VERSION,
+  provider: { organization: 'XGuard', url: ORIGIN },
+  documentationUrl: ORIGIN + '/methodology',
+  supportedInterfaces: [{
+    url: ORIGIN + A2A_PATH, protocolBinding: 'JSONRPC', protocolVersion: WIRE_VERSION,
+    tenant: '',
+  }],
+  capabilities: { streaming: false, pushNotifications: false, extendedAgentCard: false, extensions: [] },
+  securitySchemes: {}, securityRequirements: [], signatures: [],
+  defaultInputModes: inputModes, defaultOutputModes: outputModes,
+  skills: [{
+    id: discoveryAction, name: 'Discover XGuard Live',
+    description: 'List the supported A2A actions and the current public XGuard links.',
+    tags: ['discovery', 'a2a'], examples: ['Hello', JSON.stringify({ action: discoveryAction })],
+    inputModes, outputModes, securityRequirements: [],
+  }, {
+    id: factAction, name: 'Read a published fact',
+    description: 'Read one public XGuard fact by its canonical ID, including its source and verification status.',
+    tags: ['facts', 'software', 'provenance'],
+    examples: [JSON.stringify({ action: factAction, factId: factExample })],
+    inputModes, outputModes, securityRequirements: [],
+  }],
+};
+
+type RpcId = string | number | null;
+type JsonObject = Record<string, unknown>;
+const record = (value: unknown): JsonObject | null =>
+  value !== null && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : null;
+
+function headers(env: Env, cache: string) {
+  const result = new Headers(securityHeaders());
+  result.set('content-type', 'application/json; charset=utf-8');
+  result.set('cache-control', cache);
+  result.set('access-control-allow-origin', '*');
+  result.set('access-control-allow-headers', 'Content-Type, A2A-Version, A2A-Extensions');
+  result.set('access-control-expose-headers', 'A2A-Version, X-XGuard-Worker-Version-Id, X-XGuard-Worker-Version-Tag');
+  result.set('a2a-version', WIRE_VERSION);
+  result.set('x-xguard-a2a', 'public-v1');
+  if (env.CF_VERSION_METADATA?.id) result.set('x-xguard-worker-version-id', env.CF_VERSION_METADATA.id);
+  if (env.CF_VERSION_METADATA?.tag) result.set('x-xguard-worker-version-tag', env.CF_VERSION_METADATA.tag);
+  return result;
+}
+
+export function liveAgentCard(request: Request, env: Env) {
+  const responseHeaders = headers(env, 'public, max-age=300');
+  responseHeaders.set('access-control-allow-methods', 'GET, HEAD, OPTIONS');
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: responseHeaders });
+  return new Response(request.method === 'HEAD' ? null : JSON.stringify(card), { headers: responseHeaders });
+}
+
+function discovery() {
+  return {
+    agent: card.name,
+    actions: card.skills.map(({ id }) => id),
+    authentication: 'none',
+    agentCard: ORIGIN + A2A_CARD_PATH,
+    facts: ORIGIN + '/topics',
+    mcp: ORIGIN + '/mcp',
+    paidServices: 'https://api.xguardgate.com/api/paid/v1/catalog',
+    example: { action: factAction, factId: factExample },
+  };
+}
+
+function intent(part: unknown) {
+  const value = record(part);
+  if (!value || ['url', 'raw'].some(key => key in value) || ('data' in value && 'text' in value)) return null;
+  if ('data' in value) return record(value.data);
+  if (typeof value.text !== 'string' || !value.text.trim()) return null;
+  if (value.text.trimStart().startsWith('{')) {
+    const parsed = parsePublicJson(value.text);
+    return 'value' in parsed ? record(parsed.value) : null;
+  }
+  // Plain messages are a discoverability probe. They never execute a
+  // supplied URL, infer an action or invoke any paid operation.
+  return { action: discoveryAction };
+}
+
+export async function liveA2aFetch(request: Request, env: Env, readPublishedFact: (request: Request) => Promise<Response>) {
+  const responseHeaders = headers(env, 'no-store');
+  responseHeaders.set('access-control-allow-methods', 'POST, OPTIONS');
+  const json = (value: unknown, status = 200) => Response.json(value, { status, headers: responseHeaders });
+  const error = (id: RpcId, code: number, message: string, status = 200, data?: JsonObject) =>
+    json({ jsonrpc: '2.0', id, error: { code, message, ...(data ? { data } : {}) } }, status);
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: responseHeaders });
+  if (request.method !== 'POST') {
+    responseHeaders.set('allow', 'POST, OPTIONS');
+    return request.method === 'HEAD' ? new Response(null, { status: 405, headers: responseHeaders })
+      : error(null, -32600, 'Use JSON-RPC POST', 405);
+  }
+  const contentType = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+  if (contentType !== 'application/json' && contentType !== 'application/a2a+json') {
+    return error(null, -32600, 'JSON content type required', 415);
+  }
+  const parsed = await readPublicJson(request, maxRequestBytes);
+  if (!('value' in parsed)) return error(null, -32700, 'Invalid JSON', parsed.error === 'payload_too_large' ? 413 : 400);
+  const rpc = record(parsed.value);
+  const id = rpc?.id;
+  if (!rpc || rpc.jsonrpc !== '2.0' || (typeof id !== 'string' && !Number.isSafeInteger(id)) ||
+      typeof rpc.method !== 'string') return error(null, -32600, 'Invalid Request', 400);
+  const rpcId = id as string | number;
+  const queryVersion = new URL(request.url).searchParams.get('A2A-Version');
+  const version = request.headers.get('a2a-version') ?? queryVersion;
+  if (version !== null && ![WIRE_VERSION, '1.0.0'].includes(version)) {
+    return error(rpcId, -32009, 'Version not supported', 200, { supported: [WIRE_VERSION] });
+  }
+  if (rpc.method !== 'SendMessage') return error(rpcId, -32004, 'Operation not supported', 200, { supported: ['SendMessage'] });
+  const message = record(record(rpc.params)?.message);
+  if (!message || message.role !== 'ROLE_USER' || typeof message.messageId !== 'string' ||
+      !message.messageId || message.messageId.length > 128 || !Array.isArray(message.parts) ||
+      message.parts.length !== 1) return error(rpcId, -32602, 'Expected one user message part');
+  if (message.taskId) return error(rpcId, -32001, 'Task not found');
+  const action = intent(message.parts[0]);
+  if (!action) return error(rpcId, -32602, 'Unsupported message part');
+  if (['payment-signature', 'x-xguard-quote', 'x-xguard-credit'].some(key => request.headers.has(key)) ||
+      (action.action !== discoveryAction && action.action !== factAction)) {
+    // A2A exposes only existing free reads. Do not forward payment proofs or
+    // dispatch to a paid endpoint, even if an arbitrary URL was supplied.
+    return error(rpcId, -32004, 'Action not available on the public A2A interface', 200,
+      { actions: [discoveryAction, factAction], paidServices: discovery().paidServices });
+  }
+
+  let data: unknown;
+  if (action.action === discoveryAction) data = discovery();
+  else {
+    const factId = action.factId;
+    if (typeof factId !== 'string' || factId.length > 350 ||
+        !/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\/[@A-Za-z0-9][A-Za-z0-9_.-]*){2,3}$/.test(factId) ||
+        Object.keys(action).some(key => key !== 'action' && key !== 'factId')) {
+      return error(rpcId, -32602, 'Expected a canonical public factId', 200, { example: factExample });
+    }
+    try {
+      const source = await readPublishedFact(new Request(ORIGIN + '/fact/' + factId + '?format=json', {
+        headers: { accept: 'application/json', 'user-agent': 'XGuardLive-A2A/1.0' },
+      }));
+      if (source.status === 404) return error(rpcId, -32602, 'Published fact not found');
+      if (!source.ok) return error(rpcId, -32603, 'Public fact temporarily unavailable', 503);
+      const value = record(await source.json());
+      const fact = record(value?.fact);
+      if (fact?.id !== factId) return error(rpcId, -32603, 'Public fact temporarily unavailable', 503);
+      data = { fact, canonicalUrl: ORIGIN + '/fact/' + factId };
+    } catch {
+      return error(rpcId, -32603, 'Public fact temporarily unavailable', 503);
+    }
+  }
+  return json({ jsonrpc: '2.0', id: rpcId, result: { message: {
+    messageId: crypto.randomUUID(), role: 'ROLE_AGENT',
+    contextId: typeof message.contextId === 'string' && message.contextId.length <= 128 && message.contextId
+      ? message.contextId : crypto.randomUUID(),
+    parts: [{ text: JSON.stringify(data) }, { data }],
+  } } });
+}
