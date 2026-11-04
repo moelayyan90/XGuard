@@ -359,6 +359,7 @@ export default {
     const headers = new Headers(response.headers);
     for (const [key, value] of Object.entries(securityHeaders())) if (!headers.has(key)) headers.set(key, value);
     headers.set('x-xguard-product', 'XGuard Live'); headers.set('x-xguard-version', VERSION); headers.set('x-xguard-cache', cacheStatus);
+    if (env.CF_VERSION_METADATA?.id) headers.set('x-xguard-worker-version-id', env.CF_VERSION_METADATA.id);
     if (env.CF_VERSION_METADATA?.tag) headers.set('x-xguard-worker-version-tag', env.CF_VERSION_METADATA.tag);
     if (request.method === 'GET' && response.ok && !url.pathname.startsWith('/admin')) headers.append('link', '<https://api.xguardgate.com/api/paid/v1/catalog>; rel="service-desc"; type="application/json"');
     // Pricing is a response hint for Cloudflare's verified, opted-in in-band layer.
