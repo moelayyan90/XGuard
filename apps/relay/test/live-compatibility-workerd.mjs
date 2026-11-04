@@ -9,7 +9,7 @@ assert.ok(process.env.LIVE_BASELINE_BUNDLE, 'Build the exact pre-change revision
 const bundles = { before: resolve(process.env.LIVE_BASELINE_BUNDLE), after: current };
 const worker = (name, scriptPath) => ({ name, modules: true, modulesRoot: resolve(scriptPath, '..'), scriptPath, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: { LIVE_SHARDS: { className: 'LiveShard', useSQLite: true }, LIVE_CONTROL: { className: 'LiveControl', useSQLite: true } },
-  bindings: { LIVE_BOOTSTRAP: 'off', LIVE_SOURCE_FETCHES: 'on', MONETIZATION_MODE: 'observe' },
+  bindings: { LIVE_BOOTSTRAP: 'off', LIVE_SOURCE_FETCHES: 'on', MONETIZATION_MODE: 'observe', CF_VERSION_METADATA: { id: name } },
   outboundService: async request => { const u = new URL(request.url);
     if (['cloudflare-dns.com', 'one.one.one.one', 'dns.google'].includes(u.hostname)) return MFResponse.json({ Status: 0, Answer: u.searchParams.get('type') === 'A' ? [{ type: 1, data: '93.184.216.34' }] : [] });
     if (u.hostname === 'registry.npmjs.org' && u.pathname === '/robots.txt') return new MFResponse('', { status: 404 });
