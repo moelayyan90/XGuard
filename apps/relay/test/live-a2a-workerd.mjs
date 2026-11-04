@@ -15,7 +15,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0,
     LIVE_SHARDS: { className: 'LiveShard', useSQLite: true },
     LIVE_CONTROL: { className: 'LiveControl', useSQLite: true },
   },
-  bindings: { LIVE_BOOTSTRAP: 'off', LIVE_SOURCE_FETCHES: 'on', MONETIZATION_MODE: 'observe' },
+  bindings: { LIVE_BOOTSTRAP: 'off', LIVE_SOURCE_FETCHES: 'on', MONETIZATION_MODE: 'observe', CF_VERSION_METADATA: { id: 'fixture-version' } },
   outboundService: async request => {
     const u = new URL(request.url);
     if (['cloudflare-dns.com', 'one.one.one.one', 'dns.google'].includes(u.hostname)) {
@@ -53,6 +53,7 @@ try {
 
   const install = await fetcher(origin + '/install', { headers: { accept: 'text/html' } });
   assert.equal(install.status, 200);
+  assert.equal(install.headers.get('x-xguard-worker-version-id'), 'fixture-version');
   const installHtml = await install.text();
   assert.match(installHtml, /vscode:mcp\/install\?/);
   assert.match(installHtml, /cursor:\/\/anysphere\.cursor-deeplink/);
@@ -60,6 +61,7 @@ try {
   for (const path of ['/server.json', '/mcp/server-card']) {
     const response = await fetcher(origin + path);
     assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-xguard-worker-version-id'), 'fixture-version');
     assert.equal((await response.json()).remotes[0].url, origin + '/mcp');
   }
   for (const path of ['/connect', '/developers']) {
