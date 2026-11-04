@@ -142,6 +142,31 @@ try {
       params: { protocolVersion: legacy, capabilities: {}, clientInfo: { name: 'legacy', version: '1' } } }) });
   assert.equal(negotiation.status, 200);
   assert.match(await negotiation.text(), /"protocolVersion":"2025-11-25"/);
+  const recoveredDiscovery = await dispatch(endpoint, { method: 'POST',
+    body: JSON.stringify({ jsonrpc: '2.0', id: 12, method: 'server/discover' }) });
+  assert.equal(recoveredDiscovery.status, 200, await recoveredDiscovery.clone().text());
+  assert.ok((await recoveredDiscovery.json()).result.supportedVersions.includes(version));
+  const recoveredTools = await dispatch(endpoint, { method: 'POST',
+    headers: { accept: 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 13, method: 'tools/list' }) });
+  assert.equal(recoveredTools.status, 200, await recoveredTools.clone().text());
+  assert.equal((await recoveredTools.json()).result.tools.length, 5);
+  const recoveredCaps = await dispatch(endpoint, { method: 'POST',
+    headers: { 'content-type': 'application/json', 'mcp-protocol-version': version },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 14, method: 'tools/call', params: { name: 'xguard.capabilities' } }) });
+  assert.equal(recoveredCaps.status, 200, await recoveredCaps.clone().text());
+  assert.equal((await recoveredCaps.json()).result.structuredContent.endpoint, endpoint);
+  const badPaidTransport = await dispatch(endpoint, { method: 'POST',
+    body: JSON.stringify({ jsonrpc: '2.0', id: 15, method: 'tools/call', params: paid({ url: 'https://source.example.org/item' }) }) });
+  assert.equal(badPaidTransport.status, 415);
+  const apiCard = await dispatch('https://api.xguardgate.com/mcp');
+  assert.equal(apiCard.status, 200);
+  assert.equal((await apiCard.json()).remotes[0].url, endpoint);
+  const cardHead = await dispatch(endpoint, { method: 'HEAD' });
+  assert.equal(cardHead.status, 200);
+  assert.equal(await cardHead.text(), '');
+  const unsupportedStream = await dispatch(endpoint, { headers: { accept: 'text/event-stream' } });
+  assert.equal(unsupportedStream.status, 405);
+  assert.match((await unsupportedStream.json()).error.data.server_card, /\/mcp\/server-card$/);
   const discover = await rpc('server/discover');
   assert.equal(discover.status, 200, await discover.clone().text());
   assert.ok((await discover.json()).result.supportedVersions.includes(version));

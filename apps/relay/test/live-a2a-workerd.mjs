@@ -69,7 +69,9 @@ try {
     assert.equal(response.status, 308);
     assert.equal(response.headers.get('location'), origin + '/install');
   }
-  assert.equal((await fetcher(origin + '/mcp')).status, 405);
+  const mcpCard = await fetcher(origin + '/mcp');
+  assert.equal(mcpCard.status, 200);
+  assert.equal((await mcpCard.json()).remotes[0].url, origin + '/mcp');
 
   const client = new Client({ name: 'xguard-install-fixture', version: '1.0.0' });
   await client.connect(new StreamableHTTPClientTransport(new URL(origin + '/mcp'), { fetch: fetcher }));

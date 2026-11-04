@@ -80,9 +80,9 @@ async function fixture(t, options = {}) {
   return { ...h, request, counts, challenge };
 }
 
-test('all existing public GET representations delegate to the original Live router', async t => {
+test('public content GET representations delegate to the original Live router', async t => {
   const h = await fixture(t);
-  const paths = ['/', '/topics', '/topics/javascript-packages', '/search?q=react', '/live/npm/react', '/fact/npm/react/latest-version', '/history/npm/react/latest-version', '/changes', '/changes/npm/react', '/changes.atom', '/sitemap.xml', '/sitemaps/site.xml', '/sitemaps/facts-0-1.xml', '/robots.txt', '/llms.txt', '/identity', '/.well-known/xguard-live.json', '/methodology', '/accuracy', '/sources', '/privacy', '/terms', '/corrections', '/status', '/healthz', '/pricing', '/mcp', '/v1/payment/readiness'];
+  const paths = ['/', '/topics', '/topics/javascript-packages', '/search?q=react', '/live/npm/react', '/fact/npm/react/latest-version', '/history/npm/react/latest-version', '/changes', '/changes/npm/react', '/changes.atom', '/sitemap.xml', '/sitemaps/site.xml', '/sitemaps/facts-0-1.xml', '/robots.txt', '/llms.txt', '/identity', '/.well-known/xguard-live.json', '/methodology', '/accuracy', '/sources', '/privacy', '/terms', '/corrections', '/status', '/healthz', '/pricing', '/v1/payment/readiness'];
   for (const path of paths) for (const accept of ['application/json', 'text/html', 'text/markdown']) {
     const request = () => new Request(`https://xguardgate.com${path}`, { headers: { accept, 'user-agent': 'XGuardLiveSmoke/1.0' } });
     const before = await live.fetch(request(), h.env, h.ctx), after = await app.fetch(request(), h.env, h.ctx);

@@ -18,9 +18,7 @@ export default {
       if (path === A2A_PATH) return liveA2aFetch(request, env, readFact);
     }
     if (path === '/mcp' && ['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
-      const streamProbe = request.method === 'GET' &&
-        (request.headers.has('mcp-protocol-version') || request.headers.get('accept')?.includes('text/event-stream'));
-      if (['POST', 'OPTIONS', 'DELETE'].includes(request.method) || streamProbe) return liveMcpFetch(request, env, readFact);
+      if (['GET', 'HEAD', 'POST', 'OPTIONS', 'DELETE'].includes(request.method)) return liveMcpFetch(request, env, readFact);
     }
     if (path === '/api/gateway/v1' || path.startsWith('/api/gateway/v1/')) {
       if (['www.xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
