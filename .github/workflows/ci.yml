@@ -30,6 +30,7 @@ jobs:
         run: |
           npm run build
           npm run --prefix apps/relay live:test-runtime
+          node apps/relay/test/live-mcp-workerd.mjs
       - name: Verify the paid settlement route and existing Lemon ledger contract
         env:
           WRANGLER_SEND_METRICS: "false"
