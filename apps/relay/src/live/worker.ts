@@ -3,6 +3,7 @@ import { ORIGIN, SHARDS, TOPICS, VERSION } from './types.ts';
 import { DISCOVERY_QUERIES, SEED_SOURCES, sourceSpec } from './adapters.ts';
 import { adminIdentity, boundedBody, checkRobots, equalSecret, safeFetch, securityHeaders, sessionToken } from './security.ts';
 import { agePublicFact, controlName, escape, hash, integer, iso, storageQuotaCode, json, negotiate, rpc, shardName, shardOf } from './util.ts';
+import { DESIGN_CSS, DESIGN_PATH } from './design.ts';
 import { CSS, markdown, render } from './presentation.ts';
 import { installHtml, installPath, installation, integrationLinks, mcpServerCard, registryManifest } from './integrations.ts';
 import { liveOpenApi } from './openapi.ts';
@@ -155,7 +156,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     return pageResponse(request, 'prose', { title: 'Correction received', message: `Report ${result.id} is pending review. Verified data remains unchanged until a source check supports a correction.` }, '/corrections', true, 202);
   }
   if (!READ.has(request.method)) return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, HEAD' });
-  if (path === '/assets/live-v6.css') return new Response(CSS, { headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
+  if (path === DESIGN_PATH || path === '/assets/live-v6.css') return new Response(path === DESIGN_PATH ? CSS + DESIGN_CSS : CSS, { headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
   if (path === installPath) return pageResponse(request, 'prose', { ...installation, html: installHtml }, path);
   if (path === '/connect' || path === '/developers') {
     return new Response(null, { status: 308, headers: { location: ORIGIN + installPath } });
