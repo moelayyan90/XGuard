@@ -21,6 +21,7 @@ test('OpenAPI discovery describes active paid routes using the catalog schemas',
     const get = path => app.fetch(new Request(origin + path, { headers }), h.env, h.ctx);
     const manifest = await (await get('/.well-known/xguard-live.json')).json();
     assert.equal(manifest.openapi, origin + '/openapi.json');
+    assert.equal((await (await get('/identity')).json()).openapi, undefined);
     const response = await get('/openapi.json');
     assert.equal(response.status, 200);
     const spec = await SwaggerParser.validate(await response.json());

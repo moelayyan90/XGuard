@@ -15,7 +15,6 @@ const cursor = 'cursor://anysphere.cursor-deeplink/mcp/install?name=' + name +
 export const integrationLinks = {
   install: ORIGIN + installPath,
   mcp: mcpUrl,
-  openapi: ORIGIN + '/openapi.json',
   mcp_server_card: mcpUrl + '/server-card',
   mcp_registry_manifest: ORIGIN + '/server.json',
   a2a_agent_card: ORIGIN + '/.well-known/agent-card.json',
