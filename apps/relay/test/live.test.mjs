@@ -405,11 +405,18 @@ test('automatic alarms and domain contention cannot create a seconds-long retry 
     store.set('last-tick', new Date(now).toISOString());
     store.run('UPDATE sources SET next_fetch=0');
     await object.wake(); assert.ok(object.state.storage.alarm >= now + 600000);
+    let dueScans = 0;
+    const nextDue = store.nextDue.bind(store);
+    store.nextDue = () => { dueScans++; return nextDue(); };
+    await object.wake();
+    assert.equal(dueScans, 0, 'an already scheduled tick does not scan source rows');
     await object.fetch(new Request('https://internal/', { method: 'POST', body: JSON.stringify({ op: 'seed', sources: [{ adapter: 'npm', identifier: 'undici' }] }) }));
     assert.ok(object.state.storage.alarm >= now + 600000, 'new candidates do not bypass the automatic alarm budget');
     store.deferDomain('registry.npmjs.org', 600000);
     assert.equal(store.claimDue(), null); assert.ok(store.nextDue() >= now + 600000);
     assert.ok(store.claimDue(now + 601000), 'the source becomes eligible after backoff');
+    await object.wake(true);
+    assert.equal(dueScans, 2, 'an urgent refresh still checks the due sources');
   } finally { h.close(); }
 });
 

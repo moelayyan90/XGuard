@@ -12,15 +12,14 @@ export class LiveShard {
   constructor(state: State, env: Env) { this.state = state; this.env = env; this.store = new Store(state.storage); }
   async wake(urgent = false): Promise<void> {
     if (this.env.LIVE_SOURCE_FETCHES === 'off') return;
-    const next = this.store.nextDue();
-    const last = Date.parse(this.store.get('last-tick') || '') || 0;
+    const existing = await this.state.storage.getAlarm(), now = Date.now();
+    // A pending automatic alarm already owns the next scheduling decision.
+    if (!urgent && existing !== null && existing > now) return;
     // Alarm invocations also consume the provider request quota. Bound automatic
     // work even when thousands of sources compete for one upstream domain lease.
+    const next = this.store.nextDue();
     if (next === null) return;
-    const existing = await this.state.storage.getAlarm(), now = Date.now();
-    // Cron ticks must not pull future alarms into the same ten-second burst or
-    // repeatedly postpone them. Keep the earliest pending automatic alarm.
-    if (!urgent && existing !== null && existing > now) return;
+    const last = Date.parse(this.store.get('last-tick') || '') || 0;
     const spread = urgent || !last ? Math.random() * 10000 : Math.random() * 180000;
     await this.state.storage.setAlarm(Math.max(now + 1000, next, urgent ? 0 : last + 600000) + spread);
   }
@@ -47,13 +46,13 @@ export class LiveShard {
       }
       if (op === 'tick') { await this.wake(); return json({ scheduled: true }); }
       if (op === 'entity') return json(this.store.entity(body.id));
-      if (op === 'entity-page') { const entity = this.store.entity(body.id); return json(entity ? { ...entity, changes: this.store.changes(body.id).slice(0, 8) } : null); }
+      if (op === 'entity-page') { const entity = this.store.entity(body.id); return json(entity ? { ...entity, changes: this.store.changes(body.id, null, 1, 8) } : null); }
       if (op === 'fact') return json(this.store.fact(body.id));
       if (op === 'paid-read') {
         if (!['batch', 'history', 'compare'].includes(body.kind) || !Array.isArray(body.facts) || body.facts.length < 1 || body.facts.length > (body.kind === 'batch' ? 20 : 1) || body.facts.some((id: any) => !canonicalFact(id))) return json({ error: 'invalid_paid_read' }, 400);
         return json(body.facts.map((id: string) => this.store.paidRead(id, body)));
       }
-      if (op === 'fact-page') { const fact = this.store.fact(body.id); return json(fact ? { fact, history: this.store.history(body.id, 1).slice(0, 10) } : null); }
+      if (op === 'fact-page') { const fact = this.store.fact(body.id); return json(fact ? { fact, history: this.store.history(body.id, 1, 10) } : null); }
       if (op === 'history') return json(this.store.history(body.id, integer(body.page, 1, 1, 1000000)));
       if (op === 'evidence') return json(this.store.evidence(body.entity, body.observation));
       if (op === 'changes') return json(this.store.changes(body.entity, body.id, integer(body.page, 1, 1, 1000000)));

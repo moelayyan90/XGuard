@@ -27,3 +27,24 @@ test('unknown dependency errors and non-JSON responses fail with bounded diagnos
   await assert.rejects(runPaidSmoke({ fetchImpl: fetcher(response({ error: 'unexpected_failure' }, 503)) }));
   await assert.rejects(runPaidSmoke({ fetchImpl: fetcher(new Response('Provider page', { status: 500, headers: { 'content-type': 'text/html' } })) }), /non-JSON: HTTP 500/);
 });
+test('scheduled monitoring flags a fail-closed purchase outage', async () => {
+  const fetchImpl = async url => url.endsWith('/catalog') ? response(catalog) :
+    response({ error: 'paid_service_not_ready', reasons: ['storage_read_quota_exhausted'] }, 503);
+  assert.equal((await runPaidSmoke({ fetchImpl })).purchase_availability, 'blocked-no-payment-accepted');
+  await assert.rejects(runPaidSmoke({ fetchImpl, requireReady: true }), /HTTP 503.*storage_read_quota_exhausted/);
+});
+
+test('canary verification pins both API calls to the candidate and rejects a mixed revision', async () => {
+  const candidate = '12345678-1234-1234-1234-123456789abc';
+  const check = postTag => runPaidSmoke({
+    candidate, expectedTag: 'git-current', requireReady: true,
+    fetchImpl: async (url, init) => {
+      assert.equal(init.headers['cloudflare-workers-version-overrides'], `xguard-mainnet="${candidate}"`);
+      assert.equal(init.headers['payment-signature'], undefined);
+      if (url.endsWith('/catalog')) return response(catalog);
+      return response({ x402Version: 2, accepts: [{ amount: '10000' }] }, 402, postTag, { 'payment-required': 'fixture' });
+    },
+  });
+  assert.equal((await check('git-current')).payments_submitted, 0);
+  await assert.rejects(check('git-previous'), /response revision differs/);
+});
