@@ -1,0 +1,24 @@
+name: XGuard Titan private read-only audit
+on:
+  push:
+    branches: [xguard-titan-audit]
+    paths: [.github/workflows/titan-private-audit.yml, scripts/titan-private-audit.mjs, scripts/titan-audit-recipient.pem]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Query analytics and owner ledger with encrypted output
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          LIVE_ADMIN_KEY: ${{ secrets.LIVE_ADMIN_KEY || secrets.XGUARD_OPERATOR_KEY }}
+        run: node scripts/titan-private-audit.mjs
