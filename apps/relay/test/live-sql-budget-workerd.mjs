@@ -38,6 +38,28 @@ try {
           this.store.observe({ spec, ...parseSource(spec, raw), observedAt: new Date().toISOString(), hash: await hash(raw), fetchId: crypto.randomUUID(), method: 'isolated-fixture' }, Date.now() + 10000000);
           return Response.json({ revalidation_writes: revalidation, candidate_reads: peek, changed_observation_writes: this.store.rowsWritten - beforeObserve, history_added: this.store.history(spec.id + '/latest-version', 1).length - previousHistory, value: this.store.fact(spec.id + '/latest-version').current_value });
         }
+        if (body.op === 'fixture-previews') {
+          const spec = sourceSpec('npm', 'budget-preview'), factId = spec.id + '/latest-version';
+          this.store.enqueue(spec);
+          for (let i = 0; i < 115; i++) {
+            const observedAt = new Date(Number(this.env.FIXTURE_AT) - (115 - i) * 1000).toISOString();
+            this.store.observe({ spec, facts: [{ key: 'latest-version', label: 'Latest release', value: String(i) }], related: [], exhaustive: true, observedAt, hash: await hash(String(i)), fetchId: crypto.randomUUID(), method: 'isolated-fixture' }, 0);
+          }
+          const measure = async (op, id) => {
+            const start = this.store.rowsRead;
+            const preview = await (await super.fetch(new Request(request.url, { method: 'POST', body: JSON.stringify({ op, id }) }))).json();
+            return [preview, this.store.rowsRead - start];
+          };
+          const [fact, factReads] = await measure('fact-page', factId);
+          const [entity, entityReads] = await measure('entity-page', spec.id);
+          const history = this.store.history(factId, 1), changes = this.store.changes(spec.id);
+          return Response.json({
+            fact_preview_reads: factReads, entity_preview_reads: entityReads,
+            fact_preview_matches: JSON.stringify(fact.history.map(row => row.id)) === JSON.stringify(history.slice(0, 10).map(row => row.id)),
+            entity_preview_matches: JSON.stringify(entity.changes.map(row => row.id)) === JSON.stringify(changes.slice(0, 8).map(row => row.id)),
+            history_page_sizes: [history.length, this.store.history(factId, 2).length],
+          });
+        }
         return super.fetch(request);
       }
     }
@@ -62,13 +84,18 @@ try {
     assert.equal(response.status, 200); const catalog = await response.json(); catalogues[name] = catalog;
     const stub = namespace.get(namespace.idFromName(shardName(0)));
     const workload = await stub.fetch('https://fixture.test/', { method: 'POST', body: JSON.stringify({ op: 'fixture-workload' }) });
-    measured[name] = { catalog_rows_read: catalog.profile.rows_read, schema_version: catalog.shards[0].stats.schema_version, ...await workload.json() };
+    const previews = await stub.fetch('https://fixture.test/', { method: 'POST', body: JSON.stringify({ op: 'fixture-previews' }) });
+    measured[name] = { catalog_rows_read: catalog.profile.rows_read, schema_version: catalog.shards[0].stats.schema_version, ...await workload.json(), ...await previews.json() };
     assert.equal(measured[name].history_added, 1); assert.equal(measured[name].value, '2.0.0');
+    assert.equal(measured[name].fact_preview_matches, true);
+    assert.equal(measured[name].entity_preview_matches, true);
+    assert.deepEqual(measured[name].history_page_sizes, [100, 15]);
   }
   const changes = catalog => catalog.changes.map(({ fact_id, entity_id, observed_at, previous_value, current_value, label, source_url, source_hash, change_type }) => ({ fact_id, entity_id, observed_at, previous_value, current_value, label, source_url, source_hash, change_type })).sort((a, b) => a.fact_id.localeCompare(b.fact_id));
   assert.deepEqual(changes(catalogues.after), changes(catalogues.before)); assert.equal(catalogues.after.changes.length, 100);
   assert.deepEqual(catalogues.after.search_items, catalogues.before.search_items);
   for (const metric of ['catalog_rows_read', 'revalidation_writes', 'candidate_reads', 'changed_observation_writes']) assert.ok(measured.after[metric] <= measured.before[metric], JSON.stringify({ metric, measured }));
+  for (const metric of ['fact_preview_reads', 'entity_preview_reads']) assert.ok(measured.after[metric] <= measured.before[metric], JSON.stringify({ metric, measured }));
   if (measured.before.schema_version < 4) for (const metric of ['catalog_rows_read', 'revalidation_writes', 'candidate_reads', 'changed_observation_writes']) assert.ok(measured.after[metric] < measured.before[metric], JSON.stringify({ metric, measured }));
   const report = { baseline_sha: process.env.LIVE_BASELINE_SHA || null, scope: 'Paired real workerd SQLite: 32 shards, 2,560 sources and 10,240 facts per build. Same global latest 100 changes and entity catalog. Application SQL counters only; not account-wide billing or a daily availability guarantee.', before: measured.before, after: measured.after, source_fetches: 0, payments: 0 };
   console.log(JSON.stringify(report)); if (process.env.LIVE_SQL_REPORT) await writeFile(process.env.LIVE_SQL_REPORT, JSON.stringify(report, null, 2));

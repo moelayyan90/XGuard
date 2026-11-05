@@ -150,18 +150,18 @@ export class Store {
     const last = observations.at(-1), more = rows.length > observations.length;
     return { id, from: input.from, to: input.to, observations, has_more: more, next_cursor: more && last ? { observed_at: last.observed_at, id: last.id } : null, source_scope: 'Stored immutable observations only; maximum 300 rows and 90 KB per export.' };
   }
-  history(id: string, page: number): any[] {
-    return this.rows('SELECT o.*,v.source_url,v.source_hash,v.method FROM fact_observations o JOIN evidence v ON v.id=o.evidence_id JOIN fact_definitions d ON d.id=o.fact_id JOIN entities e ON e.id=d.entity_id WHERE o.fact_id=? AND e.suppressed=0 ORDER BY o.observed_at DESC,o.id DESC LIMIT 100 OFFSET ?', id, (page - 1) * 100)
+  history(id: string, page: number, limit = 100): any[] {
+    return this.rows('SELECT o.*,v.source_url,v.source_hash,v.method FROM fact_observations o JOIN evidence v ON v.id=o.evidence_id JOIN fact_definitions d ON d.id=o.fact_id JOIN entities e ON e.id=d.entity_id WHERE o.fact_id=? AND e.suppressed=0 ORDER BY o.observed_at DESC,o.id DESC LIMIT ? OFFSET ?', id, limit, (page - 1) * 100)
       .map(x => ({ ...x, value: JSON.parse(x.value_json), value_json: undefined }));
   }
   evidence(entity: string, observation: string): any {
     return this.one('SELECT v.*,o.fact_id,o.value_json,o.observed_at,o.verification FROM evidence v JOIN fact_observations o ON o.evidence_id=v.id JOIN fact_definitions d ON d.id=o.fact_id JOIN entities e ON e.id=d.entity_id WHERE o.id=? AND d.entity_id=? AND e.suppressed=0', observation, entity);
   }
-  changes(entity: string | null = null, id: string | null = null, page = 1): any[] {
+  changes(entity: string | null = null, id: string | null = null, page = 1, limit = 100): any[] {
     let where = 'WHERE e.suppressed=0'; const args: any[] = [];
     if (entity) { where += ' AND c.entity_id=?'; args.push(entity); }
     if (id) { where += ' AND c.id=?'; args.push(id); }
-    return this.rows(`SELECT c.*,d.label,v.source_url,v.source_hash FROM fact_changes c JOIN fact_definitions d ON d.id=c.fact_id JOIN entities e ON e.id=c.entity_id JOIN fact_observations o ON o.id=c.observation_id JOIN evidence v ON v.id=o.evidence_id ${where} ORDER BY c.observed_at DESC,c.id DESC LIMIT 100 OFFSET ?`, ...args, (page - 1) * 100).map(x => ({ ...x, previous_value: x.previous_json == null ? null : JSON.parse(x.previous_json), current_value: JSON.parse(x.value_json), previous_json: undefined, value_json: undefined }));
+    return this.rows(`SELECT c.*,d.label,v.source_url,v.source_hash FROM fact_changes c JOIN fact_definitions d ON d.id=c.fact_id JOIN entities e ON e.id=c.entity_id JOIN fact_observations o ON o.id=c.observation_id JOIN evidence v ON v.id=o.evidence_id ${where} ORDER BY c.observed_at DESC,c.id DESC LIMIT ? OFFSET ?`, ...args, limit, (page - 1) * 100).map(x => ({ ...x, previous_value: x.previous_json == null ? null : JSON.parse(x.previous_json), current_value: JSON.parse(x.value_json), previous_json: undefined, value_json: undefined }));
   }
   changeHeads(limit = 8): Row[] {
     return this.rows('SELECT c.id,c.observed_at FROM fact_changes c JOIN entities e ON e.id=c.entity_id WHERE e.suppressed=0 ORDER BY c.observed_at DESC,c.id DESC LIMIT ?', limit);

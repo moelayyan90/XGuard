@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 const base = 'https://api.xguardgate.com/api/paid/v1';
 const headers = { accept: 'application/json', 'user-agent': 'XGuardLiveSmoke/1.0', 'x-xguard-traffic-class': 'synthetic' };
-export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag = process.env.EXPECTED_XGUARD_TAG, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag = process.env.EXPECTED_XGUARD_TAG, requireReady = false, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   const get = (path, init = {}, timeout = 15000) => fetchImpl(`${base}${path}`, { ...init, headers: { ...headers, ...init.headers }, redirect: 'error', signal: AbortSignal.timeout(timeout) });
   let catalogResponse;
   // A Worker upload can reach the apex before the API hostname. Wait only for
@@ -26,6 +26,9 @@ export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag =
   assert.ok([402, 503].includes(unpaid.status), JSON.stringify(result));
   if (unpaid.status === 402) { assert.equal(result.x402Version, 2); assert.equal(result.accepts[0].amount, '10000'); assert.ok(unpaid.headers.get('payment-required')); }
   else assert.ok(['paid_services_paused', 'paid_service_not_ready', 'paid_circuit_open', 'storage_request_quota_exhausted', 'storage_read_quota_exhausted', 'storage_write_quota_exhausted', 'paid_dependency_unavailable'].includes(result.error), JSON.stringify(result));
+  if (requireReady && unpaid.status === 503) {
+    throw new Error(`Paid purchase unavailable (HTTP 503): ${JSON.stringify({ revision: unpaid.headers.get('x-xguard-worker-version-tag'), ray: unpaid.headers.get('cf-ray'), reason: result.reasons || result.error })}`);
+  }
   return { paid_contract: 'passed', purchase_availability: unpaid.status === 402 ? 'challenge-ready-no-sale-proven' : 'blocked-no-payment-accepted', blocked_reason: result.reasons || result.error || null, payments_submitted: 0, production_sale_proven: false };
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) console.log(JSON.stringify(await runPaidSmoke()));
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) console.log(JSON.stringify(await runPaidSmoke({ requireReady: process.argv.includes('--require-ready') })));

@@ -20,4 +20,4 @@ jobs:
         run: node scripts/live-smoke.mjs
       - name: Check isolated paid availability without a transaction
         if: always()
-        run: node scripts/live-paid-smoke.mjs
+        run: node scripts/live-paid-smoke.mjs --require-ready

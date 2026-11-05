@@ -1,15 +1,19 @@
 import assert from 'node:assert/strict';
 import { appendFileSync } from 'node:fs';
 const origin = process.env.LIVE_ORIGIN || 'https://xguardgate.com';
-const headers = { 'user-agent': 'XGuardLive-smoke/6.0 (operational; not monetizable)', 'cache-control': 'no-cache' };
+const headers = { 'user-agent': 'XGuardLive-smoke/6.0 (operational; not monetizable)', 'cache-control': 'no-cache', 'x-xguard-traffic-class': 'synthetic' };
 async function get(path, accept = 'application/json') {
   const response = await fetch(origin + path, { headers: { ...headers, accept }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
-  if (response.status === 503 && response.headers.get('content-type')?.includes('application/json')) {
-    const body = await response.clone().json();
-    if (['storage_request_quota_exhausted', 'storage_write_quota_exhausted', 'storage_read_quota_exhausted'].includes(body.error) && process.env.EXPECTED_XGUARD_TAG && response.headers.get('x-xguard-worker-version-tag') === process.env.EXPECTED_XGUARD_TAG) {
-      if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'quota_exhausted=true\n');
-      console.error(`Provider storage quota exhausted (${body.error}); verification is incomplete until ${body.quota_reset_at}. Keep the tested quota-reduction deployment; do not restore the version that exhausted the quota.`);
+  if (!response.ok) {
+    const body = response.headers.get('content-type')?.includes('application/json')
+      ? await response.clone().json().catch(() => null) : null;
+    const revision = response.headers.get('x-xguard-worker-version-tag');
+    const quota = ['storage_request_quota_exhausted', 'storage_write_quota_exhausted', 'storage_read_quota_exhausted'].includes(body?.error);
+    if (response.status === 503 && quota && process.env.EXPECTED_XGUARD_TAG && revision === process.env.EXPECTED_XGUARD_TAG && process.env.GITHUB_OUTPUT) {
+      appendFileSync(process.env.GITHUB_OUTPUT, 'quota_exhausted=true\n');
     }
+    console.error(JSON.stringify({ path, status: response.status, revision, ray: response.headers.get('cf-ray'),
+      reason: body?.error ?? (body?.collector === 'overdue' ? 'collector_overdue' : null), quota_reset_at: body?.quota_reset_at ?? null }));
   }
   assert.equal(response.status, 200, `${path}: HTTP ${response.status}`); return response;
 }

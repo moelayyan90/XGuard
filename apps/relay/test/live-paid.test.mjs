@@ -11,6 +11,32 @@ import { hash } from '../src/live/util.ts';
 import { parseHTML } from 'linkedom';
 import { verifyLiveDelivery } from '../../../sdk/live-paid.js';
 import { livePaidLedgerRoute } from '../src/live-paid-ledger.js';
+import SwaggerParser from '@apidevtools/swagger-parser';
+
+test('OpenAPI discovery describes active paid routes using the catalog schemas', async () => {
+  const h = environment();
+  try {
+    const origin = 'https://xguardgate.com';
+    const headers = { accept: 'application/json', 'x-xguard-traffic-class': 'synthetic' };
+    const get = path => app.fetch(new Request(origin + path, { headers }), h.env, h.ctx);
+    const manifest = await (await get('/.well-known/xguard-live.json')).json();
+    assert.equal(manifest.openapi, origin + '/openapi.json');
+    const response = await get('/openapi.json');
+    assert.equal(response.status, 200);
+    const spec = await SwaggerParser.validate(await response.json());
+    const catalog = await (await get('/api/paid/v1/catalog')).json();
+    for (const service of catalog.services) {
+      const endpoint = new URL(service.endpoint);
+      const route = spec.paths[endpoint.pathname].post;
+      assert.equal(route.servers[0].url, endpoint.origin);
+      assert.deepEqual(route.requestBody.content['application/json'].schema, service.input_schema);
+      assert.deepEqual(route.responses['200'].content['application/json'].schema, service.output_schema);
+      assert.equal(route.parameters.find(p => p.name === 'Idempotency-Key').required, true);
+      assert.ok(route.responses['402'].headers['Payment-Required']);
+    }
+    assert.equal((await get('/v1/pricing/quote')).status, 410);
+  } finally { await h.drain(); h.close(); }
+});
 
 class Storage {
   values = new Map();

@@ -27,3 +27,9 @@ test('unknown dependency errors and non-JSON responses fail with bounded diagnos
   await assert.rejects(runPaidSmoke({ fetchImpl: fetcher(response({ error: 'unexpected_failure' }, 503)) }));
   await assert.rejects(runPaidSmoke({ fetchImpl: fetcher(new Response('Provider page', { status: 500, headers: { 'content-type': 'text/html' } })) }), /non-JSON: HTTP 500/);
 });
+test('scheduled monitoring flags a fail-closed purchase outage', async () => {
+  const fetchImpl = async url => url.endsWith('/catalog') ? response(catalog) :
+    response({ error: 'paid_service_not_ready', reasons: ['storage_read_quota_exhausted'] }, 503);
+  assert.equal((await runPaidSmoke({ fetchImpl })).purchase_availability, 'blocked-no-payment-accepted');
+  await assert.rejects(runPaidSmoke({ fetchImpl, requireReady: true }), /HTTP 503.*storage_read_quota_exhausted/);
+});

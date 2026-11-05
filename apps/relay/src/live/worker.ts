@@ -5,6 +5,7 @@ import { adminIdentity, boundedBody, checkRobots, equalSecret, safeFetch, securi
 import { agePublicFact, controlName, escape, hash, integer, iso, storageQuotaCode, json, negotiate, rpc, shardName, shardOf } from './util.ts';
 import { CSS, markdown, render } from './presentation.ts';
 import { installHtml, installPath, installation, integrationLinks, mcpServerCard, registryManifest } from './integrations.ts';
+import { liveOpenApi } from './openapi.ts';
 import { businessMetrics } from './metrics.ts';
 
 const control = (env: Env, op: string, body = {}) => rpc(env.LIVE_CONTROL, controlName, op, body);
@@ -125,7 +126,7 @@ const ARTICLES: Record<string, { title: string; description?: string; html: stri
 <p><a class="button" href="/api/gateway/v1/checkout">Get a verified fact receipt</a></p>
 <h2>For developers and AI agents</h2>
 <p>Use the <a href="/api/gateway/v1/catalog">verification gateway API</a> to request a quote and verify the returned receipt. An unpaid request gets an HTTP 402 offer. An authorized retry uses the same URL and idempotency key.</p>
-<p><a href="/api/paid/v1/catalog">See separate pricing for fact bundles and history exports.</a> · <a href="/refund-policy">Refund policy</a></p>`,
+<p><a href="/api/paid/v1/catalog">See separate pricing for fact bundles and history exports.</a> · <a href="/openapi.json">OpenAPI</a> · <a href="/refund-policy">Refund policy</a></p>`,
   },
   '/refund-policy': {
     title: 'Refund policy for XGuard Usage Credits',
@@ -159,6 +160,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (path === '/connect' || path === '/developers') {
     return new Response(null, { status: 308, headers: { location: ORIGIN + installPath } });
   }
+  if (path === '/openapi.json') return json(liveOpenApi, 200, {
+    'cache-control': 'public, max-age=300', 'access-control-allow-origin': '*',
+  });
   if (path === '/server.json' || path === '/mcp/server-card') {
     return json(path === '/server.json' ? registryManifest : mcpServerCard, 200, {
       'cache-control': 'public, max-age=300', 'access-control-allow-origin': '*',
