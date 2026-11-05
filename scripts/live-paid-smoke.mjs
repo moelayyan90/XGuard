@@ -2,8 +2,13 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 const base = 'https://api.xguardgate.com/api/paid/v1';
 const headers = { accept: 'application/json', 'user-agent': 'XGuardLiveSmoke/1.0', 'x-xguard-traffic-class': 'synthetic' };
-export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag = process.env.EXPECTED_XGUARD_TAG, requireReady = false, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
-  const get = (path, init = {}, timeout = 15000) => fetchImpl(`${base}${path}`, { ...init, headers: { ...headers, ...init.headers }, redirect: 'error', signal: AbortSignal.timeout(timeout) });
+export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag = process.env.EXPECTED_XGUARD_TAG, candidate = process.env.CANDIDATE_WORKER_ID, requireReady = false, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+  if (candidate) {
+    assert.match(candidate, /^[0-9a-f-]{36}$/);
+    assert.ok(expectedTag, 'A candidate override requires its expected revision');
+  }
+  const override = candidate ? { 'cloudflare-workers-version-overrides': `xguard-mainnet="${candidate}"` } : {};
+  const get = (path, init = {}, timeout = 15000) => fetchImpl(`${base}${path}`, { ...init, headers: { ...headers, ...override, ...init.headers }, redirect: 'error', signal: AbortSignal.timeout(timeout) });
   let catalogResponse;
   // A Worker upload can reach the apex before the API hostname. Wait only for
   // the expected revision; genuine contract failures still fail verification.

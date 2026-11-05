@@ -33,3 +33,18 @@ test('scheduled monitoring flags a fail-closed purchase outage', async () => {
   assert.equal((await runPaidSmoke({ fetchImpl })).purchase_availability, 'blocked-no-payment-accepted');
   await assert.rejects(runPaidSmoke({ fetchImpl, requireReady: true }), /HTTP 503.*storage_read_quota_exhausted/);
 });
+
+test('canary verification pins both API calls to the candidate and rejects a mixed revision', async () => {
+  const candidate = '12345678-1234-1234-1234-123456789abc';
+  const check = postTag => runPaidSmoke({
+    candidate, expectedTag: 'git-current', requireReady: true,
+    fetchImpl: async (url, init) => {
+      assert.equal(init.headers['cloudflare-workers-version-overrides'], `xguard-mainnet="${candidate}"`);
+      assert.equal(init.headers['payment-signature'], undefined);
+      if (url.endsWith('/catalog')) return response(catalog);
+      return response({ x402Version: 2, accepts: [{ amount: '10000' }] }, 402, postTag, { 'payment-required': 'fixture' });
+    },
+  });
+  assert.equal((await check('git-current')).payments_submitted, 0);
+  await assert.rejects(check('git-previous'), /response revision differs/);
+});
