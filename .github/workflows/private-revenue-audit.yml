@@ -1,0 +1,23 @@
+name: Read encrypted XGuard revenue summary
+on:
+  push:
+    branches: [revenue/private-audit-20261106]
+    paths: [.github/workflows/private-revenue-audit.yml, scripts/private-revenue-audit.mjs]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Read the existing private summary with encrypted output only
+        env:
+          LIVE_ADMIN_KEY: ${{ secrets.LIVE_ADMIN_KEY || secrets.XGUARD_OPERATOR_KEY }}
+        run: node scripts/private-revenue-audit.mjs
