@@ -1,5 +1,5 @@
 import { handlePaidWebFetch, recoverOutcome, gatewayConfig, jsonBody, rateLimit, livePaidState, livePaidProofKey, livePaidVerifyReceipt, recordLivePaidDiscovery, recordLivePaidResponse } from './paid-agent-entry.js';
-import { LIVE_PAID, PAID_BASE, paidInputSchema, paidResultSchema, normalizeLivePaid, livePaidCapacity } from './live/paid-data.ts';
+import { LIVE_PAID, EXTRACT_SERVICE, PAID_BASE, paidInputSchema, paidResultSchema, normalizeLivePaid, livePaidCapacity } from './live/paid-data.ts';
 import { securityHeaders } from './live/security.ts';
 import { storageQuotaCode, escape } from './live/util.ts';
 
@@ -61,7 +61,7 @@ async function route(request, env, ctx) {
     if (!(await rateLimit(request, env, 'live-receipt-verification', 30)).allowed) return response({ error: 'rate_limited' }, 429);
     return response(await livePaidVerifyReceipt(env, value.receipt, value.proof));
   }
-  const definition = LIVE_PAID.find(d => relative === `/${d.route}`);
+  const definition = LIVE_PAID.find(d => relative === `/${d.route}`) || (relative === '/extract' && request.headers.has('x-xguard-credit') ? EXTRACT_SERVICE : null);
   if (!definition) return response({ error: 'paid_route_not_found', catalog: `${PAID_BASE}/catalog` }, 404);
   if (request.method !== 'POST') return response({ error: 'method_not_allowed', method: 'POST', input_schema: paidInputSchema(definition.route) }, 405);
   const creditAttempt = Boolean(request.headers.get('x-xguard-credit'));
@@ -104,7 +104,7 @@ export async function livePaidFetch(request, env, ctx) {
   }
   const headers = new Headers(result.headers);
   const service = new URL(request.url).pathname.split('/').at(-1);
-  if (request.method === 'POST' && ['batch', 'history', 'compare'].includes(service)) {
+  if (request.method === 'POST' && ['batch', 'history', 'compare', 'extract'].includes(service)) {
     const duration = Date.now() - started;
     ctx?.waitUntil?.(recordLivePaidResponse(request, env, service, result.status, duration).catch(() => {}));
     if (duration > 30000) {

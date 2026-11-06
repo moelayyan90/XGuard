@@ -1,14 +1,18 @@
 import type { Env, Row } from './types.ts';
 import { sourceSpec } from './adapters.ts';
 import { hash, iso, rpc, shardName, shardOf } from './util.ts';
+import { normalizeOutcome } from '../outcome-catalog.js';
+import { executeOutcome } from '../outcome-engine.js';
 
 export const PAID_BASE = 'https://api.xguardgate.com/api/paid/v1';
+// Deploy the compatible reader first. Activation adds this service to LIVE_PAID.
+export const EXTRACT_SERVICE = { id: 'live-extract', route: 'extract', name: 'Web evidence extraction', amount: '12000', description: 'Extract main text, titles, metadata and links from 1–3 public HTTPS pages into one deduplicated, attributed result. No JavaScript rendering, private pages or web search. Up to 6,000 text characters per page; partial source coverage is explicit.', example: { urls: ['https://example.com/'], max_amount_atomic: '12000' } } as const;
 export const LIVE_PAID = [
   { id: 'live-batch', route: 'batch', name: 'Evidence-backed fact bundle', amount: '10000', description: 'Retrieve up to 20 existing public facts in one attributed, timestamped, signed result. Missing facts are explicit; no new source fetches.', example: { facts: ['npm/react/latest-version', 'npm/typescript/latest-version'], max_amount_atomic: '10000' } },
   { id: 'live-history', route: 'history', name: 'Bounded historical export', amount: '20000', description: 'Export up to 300 stored observations of one fact in an explicit time range, with source hashes. No observations before collection began are invented.', example: { fact: 'npm/react/latest-version', from: '2026-10-01T00:00:00Z', to: '2026-10-19T00:00:00Z', limit: 300, max_amount_atomic: '20000' } },
   { id: 'live-compare', route: 'compare', name: 'Observed-value comparison', amount: '20000', description: 'Compare the last stored observation at or before each of two times. Reports observation times and evidence; unavailable historical values remain UNKNOWN.', example: { fact: 'npm/react/latest-version', from: '2026-10-01T00:00:00Z', to: '2026-10-19T00:00:00Z', max_amount_atomic: '20000' } },
 ] as const;
-export function livePaidDefinition(id: string): any { return LIVE_PAID.find(d => d.id === id) || null; }
+export function livePaidDefinition(id: string): any { return LIVE_PAID.find(d => d.id === id) || (id === EXTRACT_SERVICE.id ? EXTRACT_SERVICE : null); }
 export function canonicalFact(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 300 || /[%?#\\\s]/.test(value)) return null;
   const parts = value.split('/'), key = parts.pop() || '';
@@ -21,13 +25,19 @@ function timestamp(value: unknown): string | null {
   return normalized.slice(0, 19) === value.slice(0, 19) ? normalized : null;
 }
 export function normalizeLivePaid(route: string, raw: any): Row {
-  const def = LIVE_PAID.find(d => d.route === route);
+  const def = LIVE_PAID.find(d => d.route === route) || (route === 'extract' ? EXTRACT_SERVICE : null);
   const fail = (code: string): never => { throw Object.assign(new Error(code), { code, status: 400 }); };
   if (!def || !raw || typeof raw !== 'object' || Array.isArray(raw)) return fail('invalid_paid_request');
-  const allowed = route === 'batch' ? ['facts', 'max_amount_atomic'] : ['fact', 'from', 'to', 'max_amount_atomic', ...(route === 'history' ? ['limit', 'cursor'] : [])];
+  const allowed = route === 'extract' ? ['urls', 'max_amount_atomic'] : route === 'batch' ? ['facts', 'max_amount_atomic'] : ['fact', 'from', 'to', 'max_amount_atomic', ...(route === 'history' ? ['limit', 'cursor'] : [])];
   if (Object.keys(raw).some(k => !allowed.includes(k))) return fail('unsupported_paid_field');
   if (typeof raw.max_amount_atomic !== 'string' || !/^\d{1,12}$/.test(raw.max_amount_atomic) || BigInt(raw.max_amount_atomic) < BigInt(def.amount)) return fail('buyer_budget_too_small');
   const base = { capability: def.id, max_amount_atomic: raw.max_amount_atomic };
+  if (route === 'extract') {
+    if (!Array.isArray(raw.urls) || raw.urls.length < 1 || raw.urls.length > 3 || new Set(raw.urls).size !== raw.urls.length) return fail('invalid_extraction_urls');
+    const normalized: any = normalizeOutcome({ capability: 'web-extraction', urls: raw.urls });
+    if (!normalized.ok) return fail(normalized.error);
+    return { ...normalized.input, ...base };
+  }
   if (route === 'batch') {
     if (!Array.isArray(raw.facts) || raw.facts.length < 1 || raw.facts.length > 20 || raw.facts.some((id: unknown) => !canonicalFact(id)) || new Set(raw.facts).size !== raw.facts.length) return fail('invalid_fact_bundle');
     return { ...base, facts: raw.facts };
@@ -43,6 +53,7 @@ export function normalizeLivePaid(route: string, raw: any): Row {
   return { ...base, fact, from, to, ...(route === 'history' ? { limit: raw.limit ?? 300, cursor } : {}) };
 }
 export function paidInputSchema(route: string): Row {
+  if (route === 'extract') return { type: 'object', additionalProperties: false, required: ['urls', 'max_amount_atomic'], properties: { urls: { type: 'array', minItems: 1, maxItems: 3, uniqueItems: true, items: { type: 'string', format: 'uri', pattern: '^https://', maxLength: 2048 } }, max_amount_atomic: { type: 'string', pattern: '^\\d{1,12}$', description: 'Explicit spending cap in 6-decimal USDC atomic units.' } } };
   const fact = { type: 'string', maxLength: 300, description: 'Canonical public fact ID, e.g. npm/react/latest-version; never an arbitrary URL.' };
   return { type: 'object', additionalProperties: false, required: route === 'batch' ? ['facts', 'max_amount_atomic'] : ['fact', 'from', 'to', 'max_amount_atomic'], properties: {
     max_amount_atomic: { type: 'string', pattern: '^\\d{1,12}$', description: 'Buyer-authorized maximum in 6-decimal USDC atomic units. No payment occurs merely by supplying a cap.' },
@@ -51,11 +62,19 @@ export function paidInputSchema(route: string): Row {
 }
 export const paidResultSchema = { type: 'object', required: ['ok', 'result', 'receipt', 'settlement', 'proofrail'], properties: { ok: { const: true }, result: { type: 'object' }, receipt: { type: 'object' }, settlement: { type: 'object' }, proofrail: { type: 'object' } } };
 export async function livePaidCapacity(env: Env, input: Row): Promise<void> {
+  if (input.capability === EXTRACT_SERVICE.id) return; // Never access a buyer's source before settlement.
   const id = input.facts?.[0] || input.fact, entity = id.slice(0, id.lastIndexOf('/'));
   const fact = await rpc(env.LIVE_SHARDS, shardName(shardOf(entity)), 'fact', { id });
   if (!fact) throw Object.assign(new Error('fact_not_published'), { code: 'fact_not_published', status: 404 });
 }
-export async function executeLivePaid(input: Row, env: Env): Promise<any> {
+export async function executeLivePaid(input: Row, env: Env, fetchSource?: any): Promise<any> {
+  if (input.capability === EXTRACT_SERVICE.id) {
+    if (typeof fetchSource !== 'function') throw new Error('extraction_provider_unavailable');
+    const result = await executeOutcome({ ...input, capability: 'web-extraction' }, env, fetchSource);
+    // This API signs the exact JSON representation delivered to its clients.
+    const body = JSON.stringify(result.data);
+    return { ...result, body_sha256: await hash(body), body_bytes: new TextEncoder().encode(body).length, content_type: 'application/json' };
+  }
   const start = Date.now(), def = livePaidDefinition(input.capability);
   if (!def) throw new Error('unsupported_live_service');
   const ids: string[] = input.facts || [input.fact], groups = new Map<number, string[]>();

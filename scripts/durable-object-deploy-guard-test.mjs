@@ -52,3 +52,11 @@ test("blocks a deployment that removes durable payment state safeguards", () => 
   assert.equal(result.rollbackAllowed, false);
   assert.equal(result.reason, "payment_state_downgrade_forbidden");
 });
+
+test('reader-first release preserves rollback, then activation requires that reader', () => {
+  const current = config([{ tag: 'v1', new_sqlite_classes: ['State'] }]);
+  assert.equal(evaluate(current, current, [], { previous: 3, previousWrite: 3, current: 4, currentWrite: 3 }).rollbackAllowed, true);
+  assert.equal(evaluate(current, current, [], { previous: 4, previousWrite: 3, current: 4, currentWrite: 4 }).rollbackAllowed, true);
+  assert.equal(evaluate(current, current, [], { previous: 3, previousWrite: 3, current: 4, currentWrite: 4 }).rollbackAllowed, false);
+  assert.equal(evaluate(current, current, [], { previous: 4, previousWrite: 4, current: 3, currentWrite: 3 }).isolated, false);
+});

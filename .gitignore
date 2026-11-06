@@ -8,3 +8,5 @@ xguard-response-*.json
 .live-local/
 .production-build/
 live-paid-*.private.json
+.live-build/
+apps/relay/src/live/extract-client.generated.js

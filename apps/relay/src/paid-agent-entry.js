@@ -1763,7 +1763,7 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
   await sellerStage(env, record, "upstream_execution_started");
   let result;
   try {
-    result = livePaidDefinition(record.input?.capability) ? await executeLivePaid(record.input, env) : record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
+    result = livePaidDefinition(record.input?.capability) ? await executeLivePaid(record.input, env, performWebFetch) : record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
   } catch (cause) {
     const code = cause?.code || "upstream_failed";
@@ -1900,7 +1900,7 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
     if (!originalRecord || (input.capability && originalRecord.request_digest !== quote.input_digest)) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
     const attempt = await postStub(originalStub, "/operation/credit-attempt", { credit_id: payload.credit_id, request_id: id });
     if (!attempt.ok || attempt.body.delivered) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
-    const result = livePaidDefinition(input.capability) ? await executeLivePaid(input, env) : input.capability ? await executeOutcome(input, env, performWebFetch) : await performWebFetch(input);
+    const result = livePaidDefinition(input.capability) ? await executeLivePaid(input, env, performWebFetch) : input.capability ? await executeOutcome(input, env, performWebFetch) : await performWebFetch(input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
     const proof = await signProof(env, {
       v: 1, typ: "xguard-credited-execution", iss: API, request_id: id, credit_id: payload.credit_id, tool,

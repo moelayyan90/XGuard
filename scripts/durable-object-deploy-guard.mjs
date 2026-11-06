@@ -16,10 +16,12 @@ function readAt(ref) {
 
 function paymentStateVersionAt(ref) {
   const present = execFileSync("git", ["ls-tree", "--name-only", ref, "--", STATE_VERSION_PATH], { encoding: "utf8" }).trim();
-  if (!present) return 0;
+  if (!present) return { reader: 0, writer: 0 };
   const manifest = JSON.parse(execFileSync("git", ["show", `${ref}:${STATE_VERSION_PATH}`], { encoding: "utf8" }));
   if (!Number.isSafeInteger(manifest.payment_state_version) || manifest.payment_state_version < 0) throw new Error("Invalid payment state compatibility version");
-  return manifest.payment_state_version;
+  const writer = manifest.payment_state_write_version ?? manifest.payment_state_version;
+  if (!Number.isSafeInteger(writer) || writer < 0 || writer > manifest.payment_state_version) throw new Error('Invalid payment state write compatibility version');
+  return { reader: manifest.payment_state_version, writer };
 }
 
 function stripJsonComments(source) {
@@ -89,8 +91,11 @@ export function evaluate(previousText, currentText, files = [], paymentState = {
   const previous = lifecycle(previousText);
   const current = lifecycle(currentText);
   const lifecycleChanged = JSON.stringify(previous) !== JSON.stringify(current);
-  const paymentStateChanged = paymentState.previous !== paymentState.current;
-  const paymentStateDowngrade = paymentState.current < paymentState.previous;
+  const previousWriter = paymentState.previousWrite ?? paymentState.previous;
+  const currentWriter = paymentState.currentWrite ?? paymentState.current;
+  const paymentStateChanged = paymentState.previous !== paymentState.current || previousWriter !== currentWriter;
+  const paymentStateDowngrade = paymentState.current < previousWriter;
+  const financialRollbackCompatible = paymentState.previous >= currentWriter && paymentState.current >= previousWriter;
   const runtimeChanges = files.filter(
     (file) => file !== CONFIG_PATH && !file.startsWith("docs/") && file !== "CHANGELOG.md",
   );
@@ -98,7 +103,7 @@ export function evaluate(previousText, currentText, files = [], paymentState = {
     lifecycleChanged,
     paymentStateChanged,
     paymentStateDowngrade,
-    rollbackAllowed: !lifecycleChanged && !paymentStateChanged,
+    rollbackAllowed: !lifecycleChanged && financialRollbackCompatible,
     isolated: !paymentStateDowngrade && (!lifecycleChanged || runtimeChanges.length === 0),
     runtimeChanges,
     reason: paymentStateDowngrade ? "payment_state_downgrade_forbidden" : lifecycleChanged ? "durable_object_lifecycle_changed" : paymentStateChanged ? "payment_state_forward_recovery_required" : "same_durable_object_lifecycle",
@@ -123,8 +128,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(2);
   }
   try {
+    const previousState = paymentStateVersionAt(previousRef), currentState = paymentStateVersionAt(currentRef);
     const result = evaluate(readAt(previousRef), readAt(currentRef), changedFiles(previousRef, currentRef), {
-      previous: paymentStateVersionAt(previousRef), current: paymentStateVersionAt(currentRef),
+      previous: previousState.reader, current: currentState.reader,
+      previousWrite: previousState.writer, currentWrite: currentState.writer,
     });
     emit(result);
     if (!result.isolated) {
