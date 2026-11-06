@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeLivePaid, EXTRACT_SERVICE } from '../src/live/paid-data.ts';
 import { validateExtractOffer, EXTRACT_ENDPOINT } from '../src/live/extract-checkout.js';
+import { applyLivePaidCommerce } from '../src/live-paid-ledger.js';
 const recipient = '0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07';
 const offer = () => ({ x402Version: 2, resource: { url: EXTRACT_ENDPOINT }, accepts: [{ scheme: 'exact', network: 'eip155:8453', asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', payTo: recipient, amount: '12000' }], extensions: { xguard: { paymentIdentifier: 'pay_fixture' } } });
 test('checkout rejects changed financial destination, network, asset, price and resource', () => {
@@ -12,4 +13,16 @@ test('extraction normalization bounds and binds exact public URLs and explicit b
   const n = normalizeLivePaid('extract', EXTRACT_SERVICE.example);
   assert.equal(n.capability, 'live-extract'); assert.equal(n.sources[0].url, 'https://example.com/');
   for (const urls of [[], Array(4).fill('https://example.com/'), ['https://127.0.0.1/'], ['https://a.local/'], ['https://user:pass@example.com/'], ['https://example.com/#fragment'], ['https://example.com/', 'https://example.com/']]) assert.throws(() => normalizeLivePaid('extract', { urls, max_amount_atomic: '12000' }));
+});
+test('daily extraction accounting applies deduplicated deltas and separates cash from delivery', async () => {
+  let stored;
+  const tx = { get: async () => structuredClone(stored), put: async (_, value) => { stored = structuredClone(value); } };
+  const body = { capability: 'live-extract' }, cash = { settled_cash_usd_micros: 12000, unfulfilled_liability_usd_micros: 12000 };
+  await applyLivePaidCommerce(tx, body, null, cash);
+  await applyLivePaidCommerce(tx, body, cash, cash);
+  const delivered = { ...cash, unfulfilled_liability_usd_micros: 0, recognized_revenue_usd_micros: 12000, successful_paid_executions: 1 };
+  await applyLivePaidCommerce(tx, body, cash, delivered);
+  const day = stored.days[new Date().toISOString().slice(0, 10)].services['live-extract'];
+  assert.equal(day.settled_cash_usd_micros, 12000); assert.equal(day.recognized_revenue_usd_micros, 12000);
+  assert.equal(day.unfulfilled_liability_usd_micros, 0); assert.equal(day.successful_paid_executions, 1);
 });

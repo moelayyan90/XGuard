@@ -5,11 +5,14 @@ import { integrationLinks, mcpServerCard } from './integrations.ts';
 import { factIdSchema, isPublicFactId, readPublicFact } from './public-fact.ts';
 import { securityHeaders } from './security.ts';
 import { ORIGIN, VERSION, type Env } from './types.ts';
+import { extractEnabled } from './extract-page.ts';
+import { EXTRACT_SERVICE, PAID_BASE, paidInputSchema } from './paid-data.ts';
+import { livePaidFetch } from '../live-paid-entry.js';
 
 const origins = [ORIGIN, 'https://api.xguardgate.com'];
 const methods = ['GET', 'HEAD', 'POST', 'OPTIONS'];
 const factTool = 'xguard.fact.get';
-const toolNames = new Set(['xguard.capabilities', 'xguard.preflight', 'xguard.pricing.quote', 'xguard.web.fetch']);
+const toolNames = new Set(['xguard.capabilities', 'xguard.preflight', 'xguard.pricing.quote', 'xguard.web.fetch', 'xguard.extract']);
 const paymentHeaders = ['Payment-Required', 'Payment-Response', 'X-XGuard-Quote', 'X-XGuard-Request-Id',
   'X-XGuard-Payment-Identifier', 'X-XGuard-Replay', 'X-XGuard-Receipt', 'X-XGuard-Proof', 'Retry-After'];
 const maxBody = 32 * 1024;
@@ -84,7 +87,7 @@ function list(env: Env): ListToolsResult {
     description: 'Read one free published software fact by canonical ID. Returns the primary source, verification status and timestamp. Use xguard.web.fetch for a separate paid fetch of a public URL.',
     inputSchema: { type: 'object', properties: { factId: factIdSchema }, required: ['factId'], additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, ...existingTools] };
+  }, ...existingTools, ...(extractEnabled() ? [{ name: 'xguard.extract', description: EXTRACT_SERVICE.description + ' Price: 0.012 USDC on Base. Uses x402 v2 HTTP payment headers: retry identical arguments and idempotency key with Payment-Signature and X-XGuard-Quote; the authorization is for the canonical HTTP API resource. No source is fetched before payment.', inputSchema: { ...paidInputSchema('extract'), type: 'object' as const, properties: { ...paidInputSchema('extract').properties, idempotency_key: { type: 'string', minLength: 8, maxLength: 128 } }, required: ['urls', 'max_amount_atomic', 'idempotency_key'] }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } }] : [])] };
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -208,7 +211,14 @@ async function transport(request: Request, env: Env, readPublishedFact: (request
       }
       if (!toolNames.has(name)) return fail(Response.json({ error: 'unknown_tool' }, { status: 400 }));
       try {
-        if (name === 'xguard.capabilities') {
+        if (name === 'xguard.extract' && extractEnabled()) {
+          const { idempotency_key, ...input } = args;
+          const headers = new Headers(request.headers); headers.set('content-type', 'application/json');
+          if (typeof idempotency_key === 'string') headers.set('idempotency-key', idempotency_key);
+          const pending: Promise<any>[] = [];
+          response = await livePaidFetch(new Request(PAID_BASE + '/extract', { method: 'POST', headers, body: JSON.stringify(input) }), env, { waitUntil: (p: Promise<any>) => pending.push(p) }) || Response.json({ error: 'paid_route_unavailable' }, { status: 503 });
+          await Promise.all(pending);
+        } else if (name === 'xguard.capabilities') {
           if (Object.keys(args).length) return fail(Response.json({ error: 'invalid_arguments' }, { status: 400 }));
           response = Response.json({ name: 'XGuard Live', endpoint: request.url,
             payment: 'x402-v2-http', discovery_requires_payment: false,

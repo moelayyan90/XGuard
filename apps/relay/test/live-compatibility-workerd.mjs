@@ -41,7 +41,7 @@ try {
     if (path === '/robots.txt') assert.equal(texts[0], texts[1]);
     if (path === '/llms.txt') {
       for (const line of ['Connect an AI client', 'MCP server card', 'A2A agent card']) assert.ok(texts[1].includes(line));
-      const withoutIntegrationLinks = text => text.replace(/^- \[(?:Connect an AI client|MCP server card|A2A agent card)\].*\n/gm, '');
+      const withoutIntegrationLinks = text => text.split('\n## Paid web extraction\n')[0].replace(/^- \[(?:Connect an AI client|MCP server card|A2A agent card)\].*\n/gm, '');
       assert.equal(withoutIntegrationLinks(texts[1]), withoutIntegrationLinks(texts[0]));
     }
     if (path === '/identity') {
