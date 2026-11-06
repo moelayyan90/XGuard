@@ -39,6 +39,10 @@ const PROVIDERS = Object.freeze({
   notion: { header: "authorization", prefix: "Bearer ", hosts: ["api.notion.com"] },
   cloudflare: { header: "authorization", prefix: "Bearer ", hosts: ["api.cloudflare.com"] },
   gemini: { header: "x-goog-api-key", prefix: "", hosts: ["generativelanguage.googleapis.com"] },
+  token_kiosk: { header: "authorization", prefix: "Bearer ", hosts: ["api-token-kiosk.gaib.ai"], routes: [
+    { path: "/v1/chat/completions", method: "POST" },
+    { path: "/v1/models", method: "GET" },
+  ] },
 });
 
 function b64url(bytes) {
@@ -204,12 +208,17 @@ function normalizeMethods(values) {
 function providerPolicy(provider, body) {
   const preset = PROVIDERS[provider];
   if (preset) {
+    const paths = normalizePaths(body?.allowed_paths ?? preset.routes?.map(route => route.path));
+    const allowedMethods = normalizeMethods(body?.allowed_methods ?? preset.routes?.map(route => route.method));
+    if (preset.routes && (!paths || !allowedMethods
+      || paths.some(path => !preset.routes.some(route => route.path === path))
+      || allowedMethods.some(method => !preset.routes.some(route => route.method === method)))) return null;
     return {
       provider,
       injection: { header: preset.header, prefix: preset.prefix },
       allowed_hosts: preset.hosts,
-      allowed_paths: normalizePaths(body?.allowed_paths),
-      allowed_methods: normalizeMethods(body?.allowed_methods),
+      allowed_paths: paths,
+      allowed_methods: allowedMethods,
     };
   }
   if (provider !== "custom") return null;
@@ -230,6 +239,8 @@ function targetAllowed(record, target, method) {
   if (!record.allowed_hosts?.includes(low(target.hostname))) return false;
   if (!record.allowed_methods?.includes(String(method || "GET").toUpperCase())) return false;
   if (!record.allowed_paths?.some(prefix => pathMatches(prefix, target.pathname))) return false;
+  const exactRoutes = PROVIDERS[record.provider]?.routes;
+  if (exactRoutes && !exactRoutes.some(route => route.path === target.pathname && route.method === String(method || "GET").toUpperCase())) return false;
   return true;
 }
 
@@ -447,6 +458,8 @@ async function issueCapability(request, env) {
   if (!pathPrefix || !credential.allowed_paths.some(prefix => pathMatches(prefix, pathPrefix))) return json({ error: "path_scope_not_allowed" }, 403);
   const capMethods = normalizeMethods(body?.allowed_methods || credential.allowed_methods);
   if (!capMethods || capMethods.some(method => !credential.allowed_methods.includes(method))) return json({ error: "method_scope_not_allowed" }, 403);
+  const exactRoutes = PROVIDERS[credential.provider]?.routes;
+  if (exactRoutes && capMethods.some(method => !exactRoutes.some(route => route.path === pathPrefix && route.method === method))) return json({ error: "provider_route_scope_not_allowed" }, 403);
 
   const ttlSeconds = Number(body?.ttl_seconds ?? 300);
   const maxCalls = Number(body?.max_calls ?? 1);
@@ -1027,7 +1040,7 @@ export default {
       return request.method === "HEAD" ? new Response(null, { status: response.status, headers: response.headers }) : response;
     }
     if (path === "/v1/egress/providers" && request.method === "GET") {
-      return json({ providers: Object.fromEntries(Object.entries(PROVIDERS).map(([name, value]) => [name, { hosts: value.hosts, injection_header: value.header }])), custom: { requires: ["header_name", "allowed_hosts"] } });
+      return json({ providers: Object.fromEntries(Object.entries(PROVIDERS).map(([name, value]) => [name, { hosts: value.hosts, injection_header: value.header, ...(value.routes ? { exact_routes: value.routes } : {}) }])), custom: { requires: ["header_name", "allowed_hosts"] } });
     }
     if (path === "/v1/egress/credentials" && request.method === "POST") return createCredential(request, env);
     if (path === "/v1/egress/credentials" && request.method === "GET") return listCredentials(request, env);
