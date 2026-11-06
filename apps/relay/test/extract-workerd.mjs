@@ -21,6 +21,7 @@ await writeFile(fixture, code);
 const treasury = '0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07';
 const account = privateKeyToAccount(generatePrivateKey()); // Ephemeral, never funded or printed.
 const counts = { settle: 0, verify: 0, source: 0, signature: 0 };
+let sourceUnavailable = false;
 const types = { TransferWithAuthorization: ['from:address', 'to:address', 'value:uint256', 'validAfter:uint256', 'validBefore:uint256', 'nonce:bytes32'].map(x => { const [name, type] = x.split(':'); return { name, type }; }) };
 const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, workers: [{ name: 'extract-test', modules: true, modulesRoot: dirname(fixture), scriptPath: fixture, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: Object.fromEntries(Object.entries({ LiveShard: 'LIVE_SHARDS', LiveControl: 'LIVE_CONTROL', PaidGatewayState: 'PAID_GATEWAY', ProofAuthority: 'PROOF_AUTHORITY' }).map(([className, name]) => [name, { className, useSQLite: true }])),
@@ -32,6 +33,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0,
     if (u.hostname === 'example.com') {
       assert.ok(counts.settle > 0, 'No buyer-source access before confirmed settlement'); counts.source++;
       if (u.pathname === '/robots.txt') return new MFResponse('', { status: 404 });
+      if (sourceUnavailable) return new MFResponse('Source unavailable', { status: 503, headers: { 'content-type': 'text/plain' } });
       return new MFResponse('<html><head><title>Fixture page</title></head><body><nav>Skip me</nav><main><h1>Hello</h1><p>Useful source content.</p></main></body></html>', { headers: { 'content-type': 'text/html' } });
     }
     assert.equal(u.hostname, 'facilitator.test', 'Real payment and source providers are forbidden in this test');
@@ -76,8 +78,20 @@ try {
   assert.deepEqual(counts, before, 'Recovery cannot fetch sources, sign, verify or settle again'); assert.equal(saved, null);
   const key = await (await mf.dispatchFetch('https://api.xguardgate.com/api/paid/v1/proof-key')).json();
   assert.equal(await verifyLiveDelivery(delivery, key.jwk), true);
+  sourceUnavailable = true;
+  await client.quote(['https://example.com/']);
+  await assert.rejects(client.authorize(provider));
+  assert.equal(saved.state, 'credited');
+  const paidBeforeCredit = { settle: counts.settle, signature: counts.signature };
+  sourceUnavailable = false;
+  const retried = await client.redeemCredit();
+  assert.equal(retried.ok, true); assert.equal(saved, null);
+  assert.deepEqual({ settle: counts.settle, signature: counts.signature }, paidBeforeCredit, 'A failed-source retry uses its credit without signing or paying again');
+  const beforeMcp = { ...counts };
+  const mcp = await mf.dispatchFetch('https://xguardgate.com/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-11-25', 'x-xguard-traffic-class': 'synthetic' }, body: JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'xguard.extract', arguments: { urls: ['https://example.com/'], max_amount_atomic: '12000', idempotency_key: crypto.randomUUID() } } }) });
+  assert.equal(mcp.status, 402, await mcp.clone().text()); assert.deepEqual(counts, beforeMcp, 'MCP challenge cannot execute or collect payment');
   const page = await mf.dispatchFetch('https://xguardgate.com/extract', { headers: { accept: 'text/html' } });
   assert.equal(page.status, 200); assert.match(await page.text(), /Get exact price/);
   assert.match(page.headers.get('content-security-policy'), /connect-src 'self' https:\/\/api.xguardgate.com/);
-  console.log(JSON.stringify({ extraction_workerd: 'passed', source_access_before_payment: 0, signed_authorizations: counts.signature, simulated_settlements: counts.settle, lost_response_recovered_without_second_payment: true, signed_delivery_verified: true, production_money_moved: false }));
+  console.log(JSON.stringify({ extraction_workerd: 'passed', source_access_before_payment: 0, signed_authorizations: counts.signature, simulated_settlements: counts.settle, lost_response_recovered_without_second_payment: true, failed_source_credit_retry_without_payment: true, mcp_unpaid_challenge: true, signed_delivery_verified: true, production_money_moved: false }));
 } finally { await mf.dispose(); await rm(fixture, { force: true }); }

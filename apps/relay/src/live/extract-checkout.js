@@ -26,12 +26,14 @@ export function createExtractionCheckout({ recipient, cap = '12000', fetchImpl =
       persist(null); return value;
     }
     const error = new Error(value.error?.message || value.error_code || value.error || 'Delivery is uncertain. Recover the existing purchase.');
+    const credit = value.error?.details?.execution_credit;
+    if (typeof credit === 'string' && pending) persist({ ...pending, state: 'credited', credit });
     error.response = value; throw error;
   }
   return {
     pending: () => pending,
     async quote(urls) {
-      if (pending?.state === 'prepared') throw new Error('Recover or resend the existing authorization before starting another purchase.');
+      if (pending && pending.state !== 'quoted') throw new Error('Recover or retry the existing paid operation before starting another purchase.');
       if (!Array.isArray(urls) || urls.length < 1 || urls.length > 3 || new Set(urls).size !== urls.length) throw new Error('Enter 1–3 different public HTTPS URLs.');
       for (const raw of urls) { const u = new URL(raw); if (u.protocol !== 'https:' || u.username || u.password || u.hash) throw new Error('Use public HTTPS URLs without credentials or fragments.'); }
       const body = JSON.stringify({ urls, max_amount_atomic: String(cap) }), key = crypto.randomUUID();
@@ -64,6 +66,10 @@ export function createExtractionCheckout({ recipient, cap = '12000', fetchImpl =
     async recover() {
       if (!pending || !/^pay_[A-Za-z0-9_-]+$/.test(pending.payment_identifier || '')) throw new Error('No saved purchase to recover.');
       return deliver(await fetchImpl(`https://api.xguardgate.com/api/paid/v1/results/${pending.payment_identifier}`, { headers: { 'x-xguard-quote': pending.quote }, redirect: 'error' }));
+    },
+    async redeemCredit() {
+      if (pending?.state !== 'credited' || typeof pending.credit !== 'string') throw new Error('No saved execution credit.');
+      return deliver(await fetchImpl(EXTRACT_ENDPOINT, { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': pending.key, 'x-xguard-quote': pending.quote, 'x-xguard-credit': pending.credit }, body: pending.body, redirect: 'error' }));
     },
   };
 }

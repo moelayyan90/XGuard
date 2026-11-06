@@ -31,7 +31,15 @@ export async function applyLivePaidCommerce(tx, body, previous, snapshot) {
   if (!SERVICES.includes(body.capability)) return;
   const live = await tx.get('live-commerce:v1') || { since: new Date().toISOString(), services: {} };
   const item = live.services[body.capability] ||= { settled_cash_usd_micros: 0, recognized_revenue_usd_micros: 0, unfulfilled_liability_usd_micros: 0, successful_paid_executions: 0, estimated_contribution_usd_micros: 0 };
-  for (const key of Object.keys(item)) item[key] += Number(snapshot[key] || 0) - Number(previous?.[key] || 0);
+  const day = new Date().toISOString().slice(0, 10);
+  const days = live.days ||= {};
+  const daily = ((days[day] ||= { services: {} }).services[body.capability] ||= Object.fromEntries(Object.keys(item).map(k => [k, 0])));
+  for (const key of Object.keys(item)) {
+    const delta = Number(snapshot[key] || 0) - Number(previous?.[key] || 0);
+    item[key] += delta; daily[key] += delta;
+  }
+  for (const old of Object.keys(days).sort().slice(0, -31)) delete days[old];
+  live.daily_scope = 'UTC accounting deltas since this instrumentation; USDC atomic units, not measured USD profit. Cash and delivered revenue remain separate. Last 31 event days retained.';
   live.updated_at = new Date().toISOString();
   await tx.put('live-commerce:v1', live);
 }

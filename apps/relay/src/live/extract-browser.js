@@ -2,7 +2,7 @@ import { createExtractionCheckout } from './extract-checkout.js';
 
 const root = document.querySelector('[data-extract-checkout]');
 if (root) {
-  const status = document.querySelector('#extract-status'), result = document.querySelector('#extract-result'), pay = document.querySelector('#extract-pay'), recover = document.querySelector('#extract-recover'), resend = document.querySelector('#extract-resend');
+  const status = document.querySelector('#extract-status'), result = document.querySelector('#extract-result'), pay = document.querySelector('#extract-pay'), recover = document.querySelector('#extract-recover'), resend = document.querySelector('#extract-resend'), credit = document.querySelector('#extract-credit');
   const storageKey = 'xguard-extract-pending-v1';
   const checkout = createExtractionCheckout({ recipient: root.dataset.recipient, cap: root.dataset.cap,
     load: () => { try { return JSON.parse(localStorage.getItem(storageKey)); } catch { return null; } },
@@ -10,7 +10,8 @@ if (root) {
   });
   function controls() {
     const p = checkout.pending(); pay.disabled = p?.state !== 'quoted'; recover.hidden = !p; resend.hidden = p?.state !== 'prepared';
-    document.querySelector('#extract-quote').disabled = p?.state === 'prepared';
+    credit.hidden = p?.state !== 'credited';
+    document.querySelector('#extract-quote').disabled = Boolean(p && p.state !== 'quoted');
   }
   async function run(action) {
     for (const button of root.querySelectorAll('button')) button.disabled = true;
@@ -30,6 +31,7 @@ if (root) {
   pay.addEventListener('click', () => run(async () => { if (!window.ethereum) throw new Error('Open this page in a browser with an EVM wallet. You can also use the documented x402 API.'); return checkout.authorize(window.ethereum); }));
   recover.addEventListener('click', () => run(() => checkout.recover()));
   resend.addEventListener('click', () => run(() => checkout.sendPrepared()));
+  credit.addEventListener('click', () => run(() => checkout.redeemCredit()));
   document.querySelector('#extract-download').addEventListener('click', () => { const a = document.createElement('a'), url = URL.createObjectURL(new Blob([result.textContent], { type: 'application/json' })); a.href = url; a.download = 'xguard-extraction.json'; a.click(); URL.revokeObjectURL(url); });
   if (checkout.pending()?.state === 'prepared') status.textContent = 'An authorization is saved in this browser. Recover it or resend the same authorization. No new payment signature is needed.';
   controls();

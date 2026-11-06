@@ -1,5 +1,11 @@
 # XGuard Live
 
+**[XGuard Extract](https://xguardgate.com/extract): up to 3 public web pages → clean text, metadata, links and source evidence in one JSON result. 0.012 USDC per request, paid with x402 v2 on Base.**
+
+Use the browser wallet checkout or `POST https://api.xguardgate.com/api/paid/v1/extract` with an `Idempotency-Key` and `{"urls":["https://example.com/"],"max_amount_atomic":"12000"}`. The initial request returns 402 without retrieving the supplied pages. A funded x402 client authorizes the exact offer, then retries the same body and key with `Payment-Signature` and `X-XGuard-Quote`.
+
+No subscription or XGuard API key. Public HTML/text/JSON only; no browser rendering, sign-ins, search or access-control bypass. Up to 128 KiB source input and 6,000 extracted text characters per page. Partial success reports coverage; all-source failure after settlement creates an operation-specific execution credit, not an automatic cash refund. [API and recovery contract](https://xguardgate.com/openapi.json) · [JavaScript client](sdk/live-paid.js).
+
 **The live facts layer for AI.**
 
 Current facts. Source verified. Change tracked. Machine readable.

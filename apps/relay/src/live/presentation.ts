@@ -16,7 +16,7 @@ const changeRows = (items: any[]) => items.length ? `<div class="table-scroll" r
 const arrow = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg>`;
 const searchIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4 4"/></svg>`;
 const brand = `<a class="brand" href="/" aria-label="XGuard Live home"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="8" stroke="currentColor" stroke-opacity=".58"/><path d="m9 10 14 12M23 10 9 22" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="16" cy="16" r="2.5" fill="currentColor"/></svg>XGuard<span class="brand-live">LIVE</span></a>`;
-const navLinks = [['/topics', 'Explore facts'], ['/changes', 'Change log'], ['/methodology', 'Methodology'], ['/pricing', 'Pricing']];
+const navLinks = [['/extract', 'Extract web pages'], ['/topics', 'Explore facts'], ['/changes', 'Change log'], ['/pricing', 'Pricing']];
 const currentPage = (path: string, href: string) => path === href ? ' aria-current="page"' : '';
 const sectionLink = (href: string, label: string) => `<a class="text-link" href="${href}">${label}${arrow}</a>`;
 
@@ -115,7 +115,7 @@ function homeView(data: any): string {
     <section class="home-section connect-panel" aria-labelledby="connect-heading">
       <div><p class="eyebrow">03 / Access</p><h2 id="connect-heading">Use facts in your workflow</h2>
       <p>Connect your AI client to read public facts, or get a paid verification receipt for a published fact.</p></div>
-      <div class="actions"><a class="button" href="/install">Connect AI tools ${arrow}</a>${sectionLink('/api/gateway/v1/checkout', 'Get a fact receipt')}</div>
+      <div class="actions"><a class="button" href="/extract">Extract web pages ${arrow}</a>${sectionLink('/install', 'Connect AI tools')}${sectionLink('/api/gateway/v1/checkout', 'Get a fact receipt')}</div>
     </section>
   </div>`;
 }

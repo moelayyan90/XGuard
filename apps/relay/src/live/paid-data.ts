@@ -11,6 +11,7 @@ export const LIVE_PAID = [
   { id: 'live-batch', route: 'batch', name: 'Evidence-backed fact bundle', amount: '10000', description: 'Retrieve up to 20 existing public facts in one attributed, timestamped, signed result. Missing facts are explicit; no new source fetches.', example: { facts: ['npm/react/latest-version', 'npm/typescript/latest-version'], max_amount_atomic: '10000' } },
   { id: 'live-history', route: 'history', name: 'Bounded historical export', amount: '20000', description: 'Export up to 300 stored observations of one fact in an explicit time range, with source hashes. No observations before collection began are invented.', example: { fact: 'npm/react/latest-version', from: '2026-10-01T00:00:00Z', to: '2026-10-19T00:00:00Z', limit: 300, max_amount_atomic: '20000' } },
   { id: 'live-compare', route: 'compare', name: 'Observed-value comparison', amount: '20000', description: 'Compare the last stored observation at or before each of two times. Reports observation times and evidence; unavailable historical values remain UNKNOWN.', example: { fact: 'npm/react/latest-version', from: '2026-10-01T00:00:00Z', to: '2026-10-19T00:00:00Z', max_amount_atomic: '20000' } },
+  EXTRACT_SERVICE,
 ] as const;
 export function livePaidDefinition(id: string): any { return LIVE_PAID.find(d => d.id === id) || (id === EXTRACT_SERVICE.id ? EXTRACT_SERVICE : null); }
 export function canonicalFact(value: unknown): string | null {

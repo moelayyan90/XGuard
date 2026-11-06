@@ -1,5 +1,5 @@
 {
   "payment_state_version": 4,
-  "payment_state_write_version": 3,
+  "payment_state_write_version": 4,
   "description": "Reader supports existing records and live-extract payment inputs, bounded source execution, receipts, credits and recovery. Support release keeps extraction unpublished and writes version 3. Activate separately with write version 4; rollback only to a reader supporting version 4. Existing bindings, migrations, data and financial obligations remain in place."
 }

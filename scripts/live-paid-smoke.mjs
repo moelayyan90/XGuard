@@ -19,8 +19,10 @@ export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag =
   }
   assert.equal(catalogResponse.status, 200);
   if (expectedTag) assert.equal(catalogResponse.headers.get('x-xguard-worker-version-tag'), expectedTag, 'API revision did not converge before the bounded deadline');
-  const catalog = await catalogResponse.json(); assert.equal(catalog.public_facts_remain_free, true); assert.equal(catalog.services.length, 3);
-  assert.deepEqual(catalog.services.map(x => [x.route, x.price.amount_atomic]), [['batch', '10000'], ['history', '20000'], ['compare', '20000']]);
+  const catalog = await catalogResponse.json(); assert.equal(catalog.public_facts_remain_free, true);
+  assert.deepEqual(catalog.services.filter(x => x.route !== 'extract').map(x => [x.route, x.price.amount_atomic]), [['batch', '10000'], ['history', '20000'], ['compare', '20000']]);
+  assert.ok([3, 4].includes(catalog.services.length));
+  if (catalog.services.some(x => x.route === 'extract')) assert.equal(catalog.services.find(x => x.route === 'extract').price.amount_atomic, '12000');
   const unpaid = await get('/batch', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': `monitor-${crypto.randomUUID()}` }, body: JSON.stringify({ facts: ['npm/react/latest-version'], max_amount_atomic: '10000' }) });
   const raw = await unpaid.text();
   let result;
@@ -33,6 +35,15 @@ export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag =
   else assert.ok(['paid_services_paused', 'paid_service_not_ready', 'paid_circuit_open', 'storage_request_quota_exhausted', 'storage_read_quota_exhausted', 'storage_write_quota_exhausted', 'paid_dependency_unavailable'].includes(result.error), JSON.stringify(result));
   if (requireReady && unpaid.status === 503) {
     throw new Error(`Paid purchase unavailable (HTTP 503): ${JSON.stringify({ revision: unpaid.headers.get('x-xguard-worker-version-tag'), ray: unpaid.headers.get('cf-ray'), reason: result.reasons || result.error })}`);
+  }
+  if (catalog.services.some(x => x.route === 'extract')) {
+    const probe = await get('/extract', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': `extract-monitor-${crypto.randomUUID()}` }, body: JSON.stringify({ urls: ['https://example.com/'], max_amount_atomic: '12000' }) });
+    const offer = await probe.json();
+    assert.equal(offer.result, undefined); assert.equal(offer.receipt, undefined);
+    if (expectedTag) assert.equal(probe.headers.get('x-xguard-worker-version-tag'), expectedTag);
+    assert.ok([402, 503].includes(probe.status));
+    if (probe.status === 402) { assert.equal(offer.accepts[0].amount, '12000'); assert.equal(offer.resource.url, base + '/extract'); }
+    else if (requireReady) throw new Error('Extraction purchase unavailable; no payment submitted.');
   }
   return { paid_contract: 'passed', purchase_availability: unpaid.status === 402 ? 'challenge-ready-no-sale-proven' : 'blocked-no-payment-accepted', blocked_reason: result.reasons || result.error || null, payments_submitted: 0, production_sale_proven: false };
 }
