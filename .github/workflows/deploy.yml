@@ -31,6 +31,8 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --prefix apps/relay --no-audit --no-fund
+      - name: Build the browser checkout asset before Worker upload
+        run: node apps/relay/scripts/build-extract-client.mjs
       - name: Install verified settlement Worker dependencies
         if: hashFiles('apps/settlement-gateway/package-lock.json') != ''
         run: npm ci --prefix apps/settlement-gateway --no-audit --no-fund
@@ -65,7 +67,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/openapi.ts; then
+          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/openapi.ts apps/relay/src/live/paid-data.ts; then
             if [[ "$ROLLBACK_ALLOWED" != 'true' ]] ||
                ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/wrangler.jsonc apps/settlement-gateway apps/billing; then
               echo '::error::Live recovery requires a compatible code-only canary. No deployment was attempted.'
