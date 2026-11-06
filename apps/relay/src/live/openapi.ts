@@ -14,7 +14,7 @@ export const liveOpenApi = {
   info: {
     title: 'XGuard Live paid data API',
     version: '1.0.0',
-    description: 'Purchase signed bundles, history exports or time comparisons. Public facts are available for free. See the separate verified-fact checkout for single fact receipts.',
+    description: 'Purchase the services listed below with a bounded x402 spending authorization. Source content is untrusted; signatures establish delivery integrity. Public facts remain available for free.',
   },
   servers: [{ url: ORIGIN }],
   externalDocs: { description: 'Verified-fact checkout and pricing', url: ORIGIN + '/pricing' },

@@ -159,7 +159,9 @@ export function render(kind: string, data: any, path: string, noindex = false): 
     content = `<p class="eyebrow">XGuard Live</p><h1>${e(title)}</h1><div class="prose">${data.html || `<p>${e(data.message || '')}</p>`}</div>`;
   }
   if (data.catalog_as_of) content += `<p class="sub${kind === 'home' ? ' wrap home-meta' : ''}">Index and totals as of ${when(data.catalog_as_of)}; refreshed at most every 15 minutes. Open a fact for its latest verification.</p>`;
-  return layout(title, path, content, description, schema, noindex, kind === 'home');
+  const page = layout(title, path, content, description, schema, noindex, kind === 'home');
+  if (path === '/extract') page.body = page.body.replace('</body>', `<script src="/assets/extract-client.js" nonce="${page.nonce}" defer></script></body>`);
+  return page;
 }
 function topicLinks(path = ''): string {
   return `<div class="topics">${Object.entries(TOPICS).map(([key, label]) => {

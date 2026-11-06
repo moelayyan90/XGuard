@@ -8,6 +8,8 @@ import { CSS, markdown, render } from './presentation.ts';
 import { installHtml, installPath, installation, integrationLinks, mcpServerCard, registryManifest } from './integrations.ts';
 import { liveOpenApi } from './openapi.ts';
 import { businessMetrics } from './metrics.ts';
+import { extractEnabled, extractPage } from './extract-page.ts';
+import extractionClient from './extract-client.generated.js';
 
 const control = (env: Env, op: string, body = {}) => rpc(env.LIVE_CONTROL, controlName, op, body);
 const shard = (env: Env, id: string, op: string, body = {}) => rpc(env.LIVE_SHARDS, shardName(shardOf(id)), op, body);
@@ -54,7 +56,7 @@ function pageResponse(request: Request, kind: string, data: any, path: string, n
   const policy = securityHeaders()['content-security-policy'].replace("script-src 'none'", `script-src 'nonce-${page.nonce}'`);
   // Cloudflare's automatically injected, nonced beacon reports to /cdn-cgi/rum.
   // Keep private pages and non-HTML representations on the default-deny policy.
-  const publicPolicy = path.startsWith('/admin') ? policy : `${policy}; connect-src 'self'`;
+  const publicPolicy = path.startsWith('/admin') ? policy : `${policy}; connect-src 'self'${path === '/extract' ? ' https://api.xguardgate.com' : ''}`;
   return new Response(page.body, { status, headers: { ...common, 'content-type': 'text/html; charset=utf-8', 'content-security-policy': publicPolicy } });
 }
 async function parseInput(request: Request): Promise<any> {
@@ -156,6 +158,8 @@ async function route(request: Request, env: Env): Promise<Response> {
     return pageResponse(request, 'prose', { title: 'Correction received', message: `Report ${result.id} is pending review. Verified data remains unchanged until a source check supports a correction.` }, '/corrections', true, 202);
   }
   if (!READ.has(request.method)) return json({ error: 'method_not_allowed' }, 405, { allow: 'GET, HEAD' });
+  if (path === '/extract' && extractEnabled()) return pageResponse(request, 'prose', extractPage(String((env as Env & Row).XGUARD_TREASURY_USDC_ADDRESS || '')), path);
+  if (path === '/assets/extract-client.js' && extractEnabled()) return new Response(extractionClient, { headers: { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'public, max-age=60' } });
   if (path === DESIGN_PATH || path === '/assets/live-v6.css') return new Response(path === DESIGN_PATH ? CSS + DESIGN_CSS : CSS, { headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
   if (path === installPath) return pageResponse(request, 'prose', { ...installation, html: installHtml }, path);
   if (path === '/connect' || path === '/developers') {

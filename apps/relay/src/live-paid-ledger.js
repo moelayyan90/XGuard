@@ -1,4 +1,4 @@
-const SERVICES = ['live-batch', 'live-history', 'live-compare'];
+const SERVICES = ['live-batch', 'live-history', 'live-compare', 'live-extract'];
 const writableByState = new WeakMap();
 
 async function checkWritable(state) {
@@ -72,7 +72,7 @@ export async function livePaidLedgerRoute(state, path, body) {
       scope: 'Live services only, since instrumentation. Counters are external production attempts; repeated attempts are not unique buyers. Commerce deduplicates confirmed external settlements and delivered revenue. Synthetic/internal/self-payments are excluded. Legacy internal usd_micros fields denote nominal USDC atomic units, not a fiat conversion. Direct USDC settlement is distinct from Cloudflare payout reports; actual cost and net profit are unknown.' });
   }
   if (path === '/live/response') {
-    if (!['batch', 'history', 'compare'].includes(body.service) || !Number.isFinite(body.duration_ms) || body.duration_ms < 0 || !Number.isInteger(body.status)) return json({ error: 'invalid_http_metric' }, 400);
+    if (!['batch', 'history', 'compare', 'extract'].includes(body.service) || !Number.isFinite(body.duration_ms) || body.duration_ms < 0 || !Number.isInteger(body.status)) return json({ error: 'invalid_http_metric' }, 400);
     await state.storage.transaction(async tx => {
       const http = await tx.get('live-http:v1') || { since: new Date().toISOString(), scope: 'External-classified origin POST responses only; histogram upper bounds, not end-to-end client latency or free-site traffic.', services: {} };
       const item = http.services[body.service] ||= { statuses: {}, latency_buckets: {} };
