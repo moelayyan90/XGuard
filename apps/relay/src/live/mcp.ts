@@ -216,7 +216,7 @@ async function transport(request: Request, env: Env, readPublishedFact: (request
           const headers = new Headers(request.headers); headers.set('content-type', 'application/json');
           if (typeof idempotency_key === 'string') headers.set('idempotency-key', idempotency_key);
           const pending: Promise<any>[] = [];
-          response = await livePaidFetch(new Request(PAID_BASE + '/extract', { method: 'POST', headers, body: JSON.stringify(input) }), env, { waitUntil: p => pending.push(p) }) || Response.json({ error: 'paid_route_unavailable' }, { status: 503 });
+          response = await livePaidFetch(new Request(PAID_BASE + '/extract', { method: 'POST', headers, body: JSON.stringify(input) }), env, { waitUntil: (p: Promise<any>) => pending.push(p) }) || Response.json({ error: 'paid_route_unavailable' }, { status: 503 });
           await Promise.all(pending);
         } else if (name === 'xguard.capabilities') {
           if (Object.keys(args).length) return fail(Response.json({ error: 'invalid_arguments' }, { status: 400 }));
