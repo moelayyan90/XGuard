@@ -199,6 +199,10 @@ jobs:
           done
           exit 1
 
+      - name: Verify Agent402 production acceptance without payment
+        id: agent402_smoke
+        run: node scripts/agent402-smoke.mjs
+
       - name: Verify owner access and start curated collection
         if: success() && steps.protocol_release.outputs.gradual != 'true'
         env:

@@ -12,13 +12,17 @@ const jsonContent = (schema: object) => ({ 'application/json': { schema } });
 export const liveOpenApi = {
   openapi: '3.1.0',
   info: {
-    title: 'XGuard Live paid data API',
+    title: 'XGuard — Secretless Agent Gateway',
     version: '1.0.0',
-    description: 'Purchase the services listed below with a bounded x402 spending authorization. Source content is untrusted; signatures establish delivery integrity. Public facts remain available for free.',
+    contact: { name: 'Mohammad Elayyan', email: 'mo.elayyan2023@gmail.com', url: ORIGIN + '/identity' },
+    description: 'XGuard — Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface. Purchase the services listed below with a bounded x402 spending authorization. Source content is untrusted; signatures establish delivery integrity. Public facts remain available for free.',
   },
   servers: [{ url: ORIGIN }],
   externalDocs: { description: 'Verified-fact checkout and pricing', url: ORIGIN + '/pricing' },
   paths: {
+    '/supported': { get: { servers: [{ url: apiOrigin }], operationId: 'getSupportedPaymentKinds', summary: 'x402 v2 facilitator discovery: exact on Base Mainnet (eip155:8453)', responses: { 200: { description: 'Supported x402 kinds, extensions and signers', content: jsonContent({ type: 'object', required: ['kinds', 'extensions', 'signers'], properties: { kinds: { type: 'array', items: { type: 'object', properties: { x402Version: { type: 'integer', const: 2 }, scheme: { type: 'string', const: 'exact' }, network: { type: 'string', const: 'eip155:8453' } } } }, extensions: { type: 'array', items: { type: 'string' } }, signers: { type: 'object' } } }) } } } },
+    ...Object.fromEntries(['verify', 'settle'].map(operation => ['/' + operation, { post: { servers: [{ url: apiOrigin }], operationId: operation + 'X402Payment', summary: 'x402 v2 facilitator ' + operation + ' through the existing non-custodial relay', requestBody: { required: true, content: jsonContent({ type: 'object', required: ['paymentPayload', 'paymentRequirements'], properties: { paymentPayload: { type: 'object' }, paymentRequirements: { type: 'object' } } }) }, responses: { 200: { description: operation === 'verify' ? 'Verification result' : 'Confirmed settlement result' }, 400: { description: 'Invalid payment; no settlement for invalid input' }, 402: { description: 'Existing settlement quota or license admission applies' }, 503: { description: 'Unavailable or uncertain; fail closed' } } } }])),
+    '/.well-known/x402': { get: { servers: [{ url: apiOrigin }], operationId: 'getX402FacilitatorIdentity', summary: 'Facilitator role, operator and canonical endpoints', responses: { 200: { description: 'Machine-readable x402 v2 facilitator identity' } } } },
     '/healthz': { get: { operationId: 'getLiveHealth', summary: 'Check public fact service health', responses: {
       200: { description: 'Public facts service reachable' },
       503: { description: 'Collector overdue or a dependency is unavailable' },

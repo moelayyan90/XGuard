@@ -7,11 +7,21 @@ import { A2A_CARD_PATH, A2A_PATH, liveA2aFetch, liveAgentCard } from './live/a2a
 import { liveMcpFetch } from './live/mcp.ts';
 import { recoverOutcome } from './paid-agent-entry.js';
 import { livePaidFetch } from './live-paid-entry.js';
+import { facilitatorSurface } from './facilitator-surface.js';
 export default {
   ...live,
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+    if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
+      const facilitator = await facilitatorSurface(request, env);
+      if (facilitator) {
+        const headers = new Headers(facilitator.headers);
+        if (env.CF_VERSION_METADATA?.id) headers.set('x-xguard-worker-version-id', env.CF_VERSION_METADATA.id);
+        if (env.CF_VERSION_METADATA?.tag) headers.set('x-xguard-worker-version-tag', env.CF_VERSION_METADATA.tag);
+        return new Response(facilitator.body, { status: facilitator.status, headers });
+      }
+    }
     const readFact = factRequest => live.fetch(factRequest, env, ctx);
     if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
       if ([A2A_CARD_PATH, A2A_PATH + A2A_CARD_PATH].includes(path) && ['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return liveAgentCard(request, env);

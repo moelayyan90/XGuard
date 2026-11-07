@@ -33,7 +33,7 @@ function layout(title: string, path: string, content: string, description: strin
   const footerGroups = [
     ['Explore', [['/topics', 'Fact index'], ['/changes', 'Change log'], ['/sources', 'Primary sources'], ['/status', 'System status']]],
     ['Resources', [['/install', 'Connect AI tools'], ['/methodology', 'Methodology'], ['/accuracy', 'Accuracy'], ['/llms.txt', 'For agents']]],
-    ['Support', [['/pricing', 'Pricing'], ['/corrections', 'Corrections'], ['/privacy', 'Privacy'], ['/terms', 'Terms'], ['/refund-policy', 'Refunds']]],
+    ['Support', [['/identity', 'Operator identity'], ['/pricing', 'Pricing'], ['/corrections', 'Corrections'], ['/privacy', 'Privacy'], ['/terms', 'Terms'], ['/refund-policy', 'Refunds']]],
   ] as const;
   return { nonce, body: `<!doctype html><html lang="en"><head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

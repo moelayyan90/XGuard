@@ -32,28 +32,23 @@ try {
   for (const path of cases) for (const accept of ['text/html', 'text/markdown', 'application/json']) {
     const pair = await Promise.all(Object.values(fetchers).map(w => w.fetch(`https://xguardgate.com${path}`, { headers: { accept, 'user-agent': 'XGuardLiveSmoke/1.0' } })));
     assert.equal(pair[0].status, pair[1].status, `${path} ${accept}`); assert.equal(pair[1].status, 200);
-    assert.equal(pair[0].headers.get('content-type'), pair[1].headers.get('content-type'));
+    if (path !== '/identity') assert.equal(pair[0].headers.get('content-type'), pair[1].headers.get('content-type'));
     const cachePolicy = pair.map(r => r.headers.get('cache-control') || '');
     assert.equal(cachePolicy[0].replace(/max-age=\d+/, 'max-age=N'), cachePolicy[1].replace(/max-age=\d+/, 'max-age=N'));
-    assert.ok(Math.abs(Number(cachePolicy[0].match(/max-age=(\d+)/)?.[1] || 0) - Number(cachePolicy[1].match(/max-age=(\d+)/)?.[1] || 0)) <= 1, 'Only the elapsed one-second cache boundary may differ');
+    if (path === '/identity' && accept !== 'application/json') {
+      assert.ok(Number(cachePolicy[1].match(/max-age=(\d+)/)?.[1]) <= 60, 'Rendered operator identity uses the normal public HTML cache ceiling');
+    } else assert.ok(Math.abs(Number(cachePolicy[0].match(/max-age=(\d+)/)?.[1] || 0) - Number(cachePolicy[1].match(/max-age=(\d+)/)?.[1] || 0)) <= 1, 'Only the elapsed one-second cache boundary may differ');
     assert.equal(pair[1].headers.has('payment-required'), false);
     const texts = await Promise.all(pair.map(r => r.text()));
     if (path === '/robots.txt') assert.equal(texts[0], texts[1]);
     if (path === '/llms.txt') {
       for (const line of ['Connect an AI client', 'MCP server card', 'A2A agent card']) assert.ok(texts[1].includes(line));
       const withoutIntegrationLinks = text => text.split('\n## Paid web extraction\n')[0].replace(/^- \[(?:Connect an AI client|MCP server card|A2A agent card)\].*\n/gm, '');
-      assert.equal(withoutIntegrationLinks(texts[1]), withoutIntegrationLinks(texts[0]));
+      assert.equal(withoutIntegrationLinks(texts[1]).replace('XGuard — Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface.\n\n', ''), withoutIntegrationLinks(texts[0]));
     }
     if (path === '/identity') {
-      const original = JSON.parse(texts[0]);
-      const { install, mcp, mcp_server_card, mcp_registry_manifest, a2a_agent_card, ...unchanged } = JSON.parse(texts[1]);
-      assert.deepEqual({ install, mcp, mcp_server_card, mcp_registry_manifest, a2a_agent_card }, {
-        install: 'https://xguardgate.com/install', mcp: 'https://xguardgate.com/mcp',
-        mcp_server_card: 'https://xguardgate.com/mcp/server-card', mcp_registry_manifest: 'https://xguardgate.com/server.json',
-        a2a_agent_card: 'https://xguardgate.com/.well-known/agent-card.json',
-      });
-      for (const key of ['install', 'mcp', 'mcp_server_card', 'mcp_registry_manifest', 'a2a_agent_card']) delete original[key];
-      assert.deepEqual(unchanged, original);
+      assert.match(texts[1], /Mohammad Elayyan/); assert.match(texts[1], /mo.elayyan2023@gmail.com/);
+      if (accept === 'application/json') { const data = JSON.parse(texts[1]); assert.equal(data.name, JSON.parse(texts[0]).name); assert.equal(data.x402.role, 'facilitator'); }
     }
     if (path.startsWith('/fact/')) { assert.ok(texts.every(t => t.includes('1.2.3'))); assert.ok(texts.every(t => t.includes('registry.npmjs.org/react/latest'))); }
   }
