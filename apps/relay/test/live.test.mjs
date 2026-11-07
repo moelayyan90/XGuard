@@ -162,7 +162,7 @@ test('public discovery, permanent changes, robots, sitemap, 404/410 and safe red
     assert.match(await site.text(), /\/fact\/npm\/react\/latest-version/);
     assert.equal((await worker.fetch(new Request('https://xguardgate.com/fact/npm/not-real/latest-version'), h.env, h.ctx)).status, 404);
     assert.equal((await worker.fetch(new Request('https://xguardgate.com/marketplace'), h.env, h.ctx)).status, 410);
-    const alias = await worker.fetch(new Request('https://api.xguardgate.com/live/npm/react'), h.env, h.ctx); assert.equal(alias.status, 308); assert.equal(alias.headers.get('location'), 'https://xguardgate.com/live/npm/react');
+    const alias = await worker.fetch(new Request('https://api.xguardgate.com/live/npm/react'), h.env, h.ctx); assert.equal(alias.status, 200); assert.equal(alias.headers.has('location'), false);
     await h.drain();
   } finally { h.close(); }
 });
