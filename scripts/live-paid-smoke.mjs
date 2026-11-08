@@ -20,8 +20,16 @@ export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag =
   assert.equal(catalogResponse.status, 200);
   if (expectedTag) assert.equal(catalogResponse.headers.get('x-xguard-worker-version-tag'), expectedTag, 'API revision did not converge before the bounded deadline');
   const catalog = await catalogResponse.json(); assert.equal(catalog.public_facts_remain_free, true);
-  assert.deepEqual(catalog.services.filter(x => x.route !== 'extract').map(x => [x.route, x.price.amount_atomic]), [['batch', '10000'], ['history', '20000'], ['compare', '20000']]);
-  assert.ok([3, 4].includes(catalog.services.length));
+  const legacyRoutes = ['batch', 'history', 'compare'];
+  assert.deepEqual(catalog.services.filter(x => legacyRoutes.includes(x.route)).map(x => [x.route, x.price.amount_atomic]), [['batch', '10000'], ['history', '20000'], ['compare', '20000']]);
+  const network = catalog.services.filter(x => ![...legacyRoutes, 'extract'].includes(x.route));
+  // Accept the exact previous catalog during rollback, or the complete new one.
+  if (network.length) assert.deepEqual(network.map(x => [x.route, x.price.amount_atomic]).sort(), [
+    ['route-resolve', '5000'], ['route-compare', '5000'], ['discover', '10000'],
+    ['platform-discovery', '15000'], ['crawl', '15000'], ['fact', '10000'],
+    ['task', '30000'], ['schedule', '30000'], ['verify', '10000'],
+  ].sort());
+  assert.equal(catalog.services.length, 3 + Number(catalog.services.some(x => x.route === 'extract')) + network.length);
   if (catalog.services.some(x => x.route === 'extract')) assert.equal(catalog.services.find(x => x.route === 'extract').price.amount_atomic, '12000');
   const unpaid = await get('/batch', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': `monitor-${crypto.randomUUID()}` }, body: JSON.stringify({ facts: ['npm/react/latest-version'], max_amount_atomic: '10000' }) });
   const raw = await unpaid.text();
@@ -44,6 +52,17 @@ export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag =
     assert.ok([402, 503].includes(probe.status));
     if (probe.status === 402) { assert.equal(offer.accepts[0].amount, '12000'); assert.equal(offer.resource.url, base + '/extract'); }
     else if (requireReady) throw new Error('Extraction purchase unavailable; no payment submitted.');
+  }
+  if (network.length) {
+    const probe = await get('/route-resolve', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': `network-monitor-${crypto.randomUUID()}` }, body: JSON.stringify({ intent: 'Extract a public website', max_amount_atomic: '5000' }) });
+    const offer = await probe.json();
+    assert.equal(offer.result, undefined); assert.equal(offer.receipt, undefined);
+    if (expectedTag) assert.equal(probe.headers.get('x-xguard-worker-version-tag'), expectedTag);
+    assert.ok([402, 503].includes(probe.status));
+    if (probe.status === 402) {
+      assert.equal(offer.x402Version, 2); assert.equal(offer.accepts[0].amount, '5000');
+      assert.equal(offer.resource.url, base + '/route-resolve'); assert.ok(probe.headers.get('payment-required'));
+    } else if (requireReady) throw new Error('Route resolution purchase unavailable; no payment submitted.');
   }
   return { paid_contract: 'passed', purchase_availability: unpaid.status === 402 ? 'challenge-ready-no-sale-proven' : 'blocked-no-payment-accepted', blocked_reason: result.reasons || result.error || null, payments_submitted: 0, production_sale_proven: false };
 }
