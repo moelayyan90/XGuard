@@ -30,7 +30,15 @@ try {
   }
   const cases = ['/robots.txt', '/llms.txt', '/identity', '/fact/npm/react/latest-version', '/history/npm/react/latest-version', '/live/npm/react', '/topics', '/sitemap.xml'];
   for (const path of cases) for (const accept of ['text/html', 'text/markdown', 'application/json']) {
-    const pair = await Promise.all(Object.values(fetchers).map(w => w.fetch(`https://xguardgate.com${path}`, { headers: { accept, 'user-agent': 'XGuardLiveSmoke/1.0' } })));
+    // Consume each Miniflare RPC response as it arrives, before another RPC can
+    // invalidate its streamed body. Keep all status, header and content checks.
+    const pair = await Promise.all(Object.entries(fetchers).map(async ([name, w]) => {
+      const r = await w.fetch(`https://xguardgate.com${path}`, { headers: { accept, 'user-agent': 'XGuardLiveSmoke/1.0' } });
+      const status = r.status, headers = new Headers(r.headers);
+      let body;
+      try { body = await r.text(); } catch (error) { throw new Error(`${name} ${path} ${accept}: could not read compatibility response`, { cause: error }); }
+      return { status, headers, body };
+    }));
     assert.equal(pair[0].status, pair[1].status, `${path} ${accept}`); assert.equal(pair[1].status, 200);
     if (path !== '/identity') assert.equal(pair[0].headers.get('content-type'), pair[1].headers.get('content-type'));
     const cachePolicy = pair.map(r => r.headers.get('cache-control') || '');
@@ -39,12 +47,13 @@ try {
       assert.ok(Number(cachePolicy[1].match(/max-age=(\d+)/)?.[1]) <= 60, 'Rendered operator identity uses the normal public HTML cache ceiling');
     } else assert.ok(Math.abs(Number(cachePolicy[0].match(/max-age=(\d+)/)?.[1] || 0) - Number(cachePolicy[1].match(/max-age=(\d+)/)?.[1] || 0)) <= 1, 'Only the elapsed one-second cache boundary may differ');
     assert.equal(pair[1].headers.has('payment-required'), false);
-    const texts = await Promise.all(pair.map(r => r.text()));
+    const texts = pair.map(r => r.body);
     if (path === '/robots.txt') assert.equal(texts[0], texts[1]);
     if (path === '/llms.txt') {
       for (const line of ['Connect an AI client', 'MCP server card', 'A2A agent card']) assert.ok(texts[1].includes(line));
       const withoutIntegrationLinks = text => text.split('\n## Paid web extraction\n')[0].replace(/^- \[(?:Connect an AI client|MCP server card|A2A agent card)\].*\n/gm, '');
-      assert.equal(withoutIntegrationLinks(texts[1]).replace('XGuard — Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface.\n\n', ''), withoutIntegrationLinks(texts[0]));
+      const normalizeIdentity = text => withoutIntegrationLinks(text).replace('XGuard — Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface.\n\n', '');
+      assert.equal(normalizeIdentity(texts[1]), normalizeIdentity(texts[0]));
     }
     if (path === '/identity') {
       assert.match(texts[1], /Mohammad Elayyan/); assert.match(texts[1], /mo.elayyan2023@gmail.com/);

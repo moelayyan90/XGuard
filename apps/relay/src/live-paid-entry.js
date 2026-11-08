@@ -2,6 +2,7 @@ import { handlePaidWebFetch, recoverOutcome, gatewayConfig, jsonBody, rateLimit,
 import { LIVE_PAID, EXTRACT_SERVICE, PAID_BASE, paidInputSchema, paidResultSchema, normalizeLivePaid, livePaidCapacity } from './live/paid-data.ts';
 import { securityHeaders } from './live/security.ts';
 import { storageQuotaCode, escape } from './live/util.ts';
+import { operation as networkOperation } from './network/catalog.ts';
 
 const PREFIX = '/api/paid/v1';
 const readinessByEnv = new WeakMap();
@@ -79,7 +80,9 @@ async function route(request, env, ctx) {
   // An existing settled obligation needs data/signing/storage, not a new payment
   // provider call or new-purchase enablement. The financial engine validates the
   // signed credit before any execution and cannot settle on a credit attempt.
-  const ready = creditAttempt ? ['payment_configuration', 'source_data', 'proof_authority', 'financial_storage'].every(k => readiness.checks[k]) && !readiness.errors.includes('paid_circuit_open') : readiness.ready;
+  const network = Boolean(networkOperation(definition.id));
+  const dependencies = network ? ['enabled', 'payment_configuration', 'proof_authority', 'financial_storage', ...(creditAttempt ? [] : ['facilitator'])] : ['payment_configuration', 'source_data', 'proof_authority', 'financial_storage'];
+  const ready = network || creditAttempt ? dependencies.every(k => readiness.checks[k]) && !readiness.errors.includes('paid_circuit_open') : readiness.ready;
   if (!ready) return response({ error: 'paid_service_not_ready', checks: readiness.checks, reasons: readiness.errors, new_payment_required: false }, 503);
   // Repeat the shared write-capacity and circuit gate even when the broader
   // dependency snapshot came from this Worker's readiness cache.
@@ -104,7 +107,7 @@ export async function livePaidFetch(request, env, ctx) {
   }
   const headers = new Headers(result.headers);
   const service = new URL(request.url).pathname.split('/').at(-1);
-  if (request.method === 'POST' && ['batch', 'history', 'compare', 'extract'].includes(service)) {
+  if (request.method === 'POST' && LIVE_PAID.some(d => d.route === service)) {
     const duration = Date.now() - started;
     ctx?.waitUntil?.(recordLivePaidResponse(request, env, service, result.status, duration).catch(() => {}));
     if (duration > 30000) {

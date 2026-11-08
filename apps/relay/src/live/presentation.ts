@@ -1,4 +1,6 @@
 import { DESIGN_PATH } from './design.ts';
+import { networkHome } from '../network/site.ts';
+import { siteHeader, siteFooter } from '../network/frame.ts';
 import { ORIGIN, TOPICS } from './types.ts';
 import { escape as e, valueText } from './util.ts';
 
@@ -15,11 +17,7 @@ const entityRows = (items: any[]) => items.length ? `<div class="table-scroll" r
 const changeRows = (items: any[]) => items.length ? `<div class="table-scroll" role="region" tabindex="0" aria-label="Observed changes"><table><thead><tr><th>Observed change</th><th>Before</th><th>After</th><th>Observed at</th></tr></thead><tbody>${items.map(x => `<tr><td><a href="/changes/${e(x.entity_id)}/${e(x.id)}">${e(x.label)}</a><div class="sub">${e(x.change_type)} · ${e(x.entity_id)}</div></td><td><code>${show(x.previous_value)}</code></td><td><code>${show(x.current_value)}</code></td><td>${when(x.observed_at)}<div class="sub">${sourceLink(x.source_url)}</div></td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No observed changes yet.</p>';
 const arrow = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg>`;
 const searchIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4 4"/></svg>`;
-const brand = `<a class="brand" href="/" aria-label="XGuard Live home"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="8" stroke="currentColor" stroke-opacity=".58"/><path d="m9 10 14 12M23 10 9 22" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="16" cy="16" r="2.5" fill="currentColor"/></svg>XGuard<span class="brand-live">LIVE</span></a>`;
-const navLinks = [['/extract', 'Extract web pages'], ['/topics', 'Explore facts'], ['/changes', 'Change log'], ['/pricing', 'Pricing']];
 const currentPage = (path: string, href: string) => path === href ? ' aria-current="page"' : '';
-const sectionLink = (href: string, label: string) => `<a class="text-link" href="${href}">${label}${arrow}</a>`;
-
 function searchForm(query = ''): string {
   return `<form class="search" action="/search" role="search">
     <label class="sr-only" for="query">Search the fact index</label>
@@ -30,101 +28,23 @@ function searchForm(query = ''): string {
 
 function layout(title: string, path: string, content: string, description: string, schema: any, noindex: boolean, home: boolean): { body: string; nonce: string } {
   const nonce = crypto.randomUUID().replaceAll('-', '');
-  const footerGroups = [
-    ['Explore', [['/topics', 'Fact index'], ['/changes', 'Change log'], ['/sources', 'Primary sources'], ['/status', 'System status']]],
-    ['Resources', [['/install', 'Connect AI tools'], ['/methodology', 'Methodology'], ['/accuracy', 'Accuracy'], ['/llms.txt', 'For agents']]],
-    ['Support', [['/identity', 'Operator identity'], ['/pricing', 'Pricing'], ['/corrections', 'Corrections'], ['/privacy', 'Privacy'], ['/terms', 'Terms'], ['/refund-policy', 'Refunds']]],
-  ] as const;
-  return { nonce, body: `<!doctype html><html lang="en"><head>
+  return { nonce, body: `<!doctype html><html lang="en" dir="ltr"><head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>${e(title)} | XGuard Live</title><meta name="description" content="${e(description)}">
+    <title>${e(title)} | XGuard</title><meta name="description" content="${e(description)}">
     <meta name="robots" content="${noindex ? 'noindex,follow' : 'index,follow'}">
     <link rel="canonical" href="${ORIGIN}${e(path)}"><link rel="stylesheet" href="${DESIGN_PATH}">
-    <link rel="alternate" type="application/atom+xml" title="XGuard Live changes" href="/changes.atom">
-    <meta name="color-scheme" content="light"><meta name="theme-color" content="#102821">
+    <link rel="alternate" type="application/atom+xml" title="XGuard source changes" href="/changes.atom">
+    <meta name="color-scheme" content="dark"><meta name="theme-color" content="#090e17">
     ${schema ? `<script type="application/ld+json" nonce="${nonce}">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>` : ''}
-  </head><body>
-    <a class="skip-link" href="#main-content">Skip to content</a>
-    <header class="site-header"><nav class="site-nav" aria-label="Main navigation">
-      ${brand}
-      <div class="links">${navLinks.map(([href, label]) => `<a href="${href}"${currentPage(path, href)}>${label}</a>`).join('')}</div>
-      <a class="nav-cta text-link" href="/install"${currentPage(path, '/install')}>Connect AI tools ${arrow}</a>
-    </nav></header>
-    <main id="main-content" class="wrap${home ? ' home-wrap' : ''}">${content}</main>
-    <footer class="site-footer"><div class="site-footer-inner">
-      <section>${brand}<p>The live facts layer for AI, grounded in primary sources.</p></section>
-      ${footerGroups.map(([heading, links]) => `<section><h2>${heading}</h2>${links.map(([href, label]) => `<a href="${href}">${label}</a>`).join('')}</section>`).join('')}
-    </div></footer>
-  </body></html>` };
-}
-
-function observationFigure(fact: any): string {
-  const contours = Array.from({ length: 13 }, (_, index) =>
-    `<use href="#contour" transform="translate(0 ${index * 9})" opacity="${(0.25 + index * 0.054).toFixed(2)}"/>`).join('');
-  return `<figure class="hero-figure">
-    <figcaption class="figure-caption"><span>01 / Source record</span><span>Primary-source data</span></figcaption>
-    <svg class="figure-art" viewBox="0 0 500 260" fill="none" aria-hidden="true">
-      <defs><path id="contour" d="M56 105c38-13 62-16 99-45 26-20 55-35 97-31 56 5 83 44 128 58 28 9 44 16 55 25 8 7-8 18-36 20-54 4-80-17-119-16-58 1-80 32-132 32-33 0-62-10-90-24-13-6-16-14-2-19Z"/></defs>
-      <g stroke="currentColor" stroke-width="1">${contours}</g>
-      <path d="M252 32v164m-7-145h14m-7 0h155" stroke="#dae8c0" stroke-width="1" stroke-dasharray="4 5" opacity=".63"/>
-      <circle cx="252" cy="51" r="12" stroke="#e0f3ad" opacity=".55"/><circle cx="252" cy="51" r="4" fill="#e0f3ad"/>
-      <path d="M398 47h10v9m-330 131H67v-10m0-111V56h11m335 131h10v-10" stroke="#afc2ab" opacity=".66"/>
-    </svg>
-    ${fact ? `<a class="hero-sample" href="${e(fact.canonical_url)}">
-      <span class="sample-label">${e(fact.entity_name)} · ${e(fact.label)}</span>${tag(fact.verification)}
-      <strong class="sample-value">${show(fact.current_value)}</strong>
-      <span class="sample-meta">${e(new URL(fact.source_url).hostname)} · ${when(fact.verified_at)}</span>
-    </a>` : `<div class="hero-sample hero-sample-empty"><span class="sample-label">Fact preview</span><span class="sample-meta">Published observations appear here when available.</span></div>`}
-  </figure>`;
-}
-
-function homeView(data: any): string {
-  const featured = data.examples.find((fact: any) => fact.verification === 'VERIFIED') || data.examples[0];
-  const stats = [[data.stats.facts, 'Published facts'], [data.stats.changes_today, 'Changes observed today'],
-    [data.stats.sources, 'Sources monitored'], [data.stats.verified, 'Fresh verified facts']];
-  return `<section class="home-hero" aria-labelledby="home-title">
-    <div class="wrap hero-inner">
-      <div class="hero-copy">
-        <p class="eyebrow">The live facts layer for AI</p>
-        <h1 id="home-title">Current facts.<br><em>Clear evidence.</em></h1>
-        <p class="lead">Look up software versions, service status and API pricing. See the official source, when it was checked and what changed.</p>
-        ${searchForm()}
-        <div class="hero-examples"><span>Try a search</span><a href="/search?q=react">React</a><a href="/search?q=python">Python</a><a href="/search?q=node">Node.js</a></div>
-      </div>
-      ${observationFigure(featured)}
-    </div>
-  </section>
-  <section class="home-stats" aria-label="Fact index totals"><div class="wrap stats">
-    ${stats.map(([n, label]) => `<div class="stat"><strong>${Number(n).toLocaleString('en-US')}</strong><span>${e(label)}</span></div>`).join('')}
-  </div></section>
-  <div class="wrap home-content">
-    <section class="home-section" aria-labelledby="featured-heading">
-      <div class="section-head"><div><p class="eyebrow">01 / Fact index</p><h2 id="featured-heading">Explore published facts</h2></div>${sectionLink('/topics', 'Browse the index')}</div>
-      ${data.examples.length ? `<div class="grid">${data.examples.map((f: any) => `<article class="card fact-preview">
-        <p class="eyebrow">${e(f.entity_name)}</p><h3><a href="${e(f.canonical_url)}">${e(f.label)}</a></h3>
-        <div class="value">${show(f.current_value)}</div>${tag(f.verification)}
-        <p class="sub">${when(f.verified_at)}<br>${sourceLink(f.source_url)}</p>
-      </article>`).join('')}</div>` : '<p class="empty">No verified facts are published yet.</p>'}
-      ${topicLinks()}
-    </section>
-    <section class="home-section" aria-labelledby="change-heading">
-      <div class="section-head"><div><p class="eyebrow">02 / Observation history</p><h2 id="change-heading">What changed recently</h2></div>${sectionLink('/changes', 'Full change log')}</div>
-      ${changeRows(data.changes)}
-      <p class="sub">Last successful global observation: ${when(data.stats.last_update)}. All times UTC.</p>
-    </section>
-    <section class="home-section connect-panel" aria-labelledby="connect-heading">
-      <div><p class="eyebrow">03 / Access</p><h2 id="connect-heading">Use facts in your workflow</h2>
-      <p>Connect your AI client to read public facts, or get a paid verification receipt for a published fact.</p></div>
-      <div class="actions"><a class="button" href="/extract">Extract web pages ${arrow}</a>${sectionLink('/install', 'Connect AI tools')}${sectionLink('/api/gateway/v1/checkout', 'Get a fact receipt')}</div>
-    </section>
-  </div>`;
+  </head><body>${siteHeader(path)}<main id="main-content" class="wrap${home ? ' home-wrap' : ''}">${content}</main>${siteFooter()}</body></html>` };
 }
 export function render(kind: string, data: any, path: string, noindex = false): { body: string; nonce: string } {
   let title = data.title || 'Current facts', description = 'Current facts, primary-source evidence and immutable change history.', content = '', schema: any = { '@context': 'https://schema.org', '@type': 'WebPage', name: title, url: ORIGIN + path };
   if (kind === 'home') {
-    title = 'The live facts layer for AI';
-    content = homeView(data);
-    schema = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'XGuard Live', url: ORIGIN, description };
+    title = 'The Route Layer for AI';
+    description = 'AI task routing, capability discovery and durable public-web execution. Know the cost, preserve task state and inspect the evidence.';
+    content = networkHome(data);
+    schema = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'XGuard', url: ORIGIN, description };
   } else if (kind === 'entity') {
     title = data.title;
     content = `<div class="breadcrumbs"><a href="/topics">Facts</a> / <a href="/topics/${e(data.topic)}">${e(TOPICS[data.topic])}</a></div><p class="eyebrow">Live entity record</p><h1>${e(title)}</h1><p class="lead">Current values and their latest primary-source verification.</p>${formats(path)}${factRows(data.facts)}<h2>Recent changes</h2>${changeRows(data.changes || [])}<p><a href="/history/${e(data.id)}">Browse observation history →</a></p>${data.related?.length ? `<h2>Declared dependencies</h2><p class="sub">Dependencies are linked through the source registry; verification of this entity does not verify a dependency.</p><div class="topics">${data.related.map((id: string) => `<a href="/search?q=${encodeURIComponent(id.split('/').slice(1).join('/'))}" rel="nofollow">${e(id)}</a>`).join('')}</div>` : ''}`;

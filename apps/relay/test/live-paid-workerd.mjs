@@ -12,7 +12,7 @@ import { shardName, shardOf } from '../src/live/util.ts';
 // All financial provider calls are intercepted. The transient signer is never
 // funded or printed. A simulated settlement is not a production transaction.
 const bundle = fileURLToPath(new URL('../../../.live-build/live-entry.js', import.meta.url));
-let settlements = 0, verified = 0, sourceCalls = 0;
+let settlements = 0, verified = 0, sourceCalls = 0, networkSourceCalls = 0;
 const types = { TransferWithAuthorization: [{ name: 'from', type: 'address' }, { name: 'to', type: 'address' }, { name: 'value', type: 'uint256' }, { name: 'validAfter', type: 'uint256' }, { name: 'validBefore', type: 'uint256' }, { name: 'nonce', type: 'bytes32' }] };
 const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, workers: [{ name: 'live-paid-test', modules: true, modulesRoot: resolve(bundle, '..'), scriptPath: bundle, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: Object.fromEntries(['LiveShard', 'LiveControl', 'ProofAuthority', 'PaidGatewayState'].map(className => [{ LiveShard: 'LIVE_SHARDS', LiveControl: 'LIVE_CONTROL', ProofAuthority: 'PROOF_AUTHORITY', PaidGatewayState: 'PAID_GATEWAY' }[className], { className, useSQLite: true }])),
@@ -33,6 +33,11 @@ const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0,
     if (['cloudflare-dns.com', 'one.one.one.one', 'dns.google'].includes(url.hostname)) return MFResponse.json({ Status: 0, Answer: url.searchParams.get('type') === 'A' ? [{ type: 1, data: '93.184.216.34' }] : [] });
     if (url.hostname === 'registry.npmjs.org' && url.pathname === '/robots.txt') return new MFResponse('', { status: 404 });
     if (url.hostname === 'registry.npmjs.org' && url.pathname === '/react/latest') { sourceCalls++; return MFResponse.json({ name: 'react', version: '1.2.3', license: 'MIT' }); }
+    if (url.hostname === 'example.org') {
+      if (url.pathname === '/robots.txt') return new MFResponse('', { status: 404 });
+      networkSourceCalls++;
+      return new MFResponse('<main>Current source evidence</main>', { status: url.pathname === '/unavailable' ? 503 : 200, headers: { 'content-type': 'text/html' } });
+    }
     throw new Error('Unexpected outbound destination: real providers are prohibited in this fixture');
   },
 }] }));
@@ -52,5 +57,29 @@ try {
   const key = await (await mf.dispatchFetch('https://api.xguardgate.com/api/paid/v1/proof-key')).json(); assert.equal(await verifyLiveDelivery(delivered, key.jwk), true);
   const recovered = await client.recover(recovery); assert.equal(recovered.status, 200); assert.equal(settlements, 1);
   assert.equal((await mf.dispatchFetch('https://xguardgate.com/fact/npm/react/latest-version', { headers: { accept: 'application/json' } })).status, 200);
+  const routing = await client.request('route-resolve', { intent: 'Extract a public website' });
+  assert.equal(routing.status, 200, await routing.clone().text());
+  const routeResult = await routing.json(); assert.equal(routeResult.result.routes.length, 4); assert.equal(routeResult.result.executable, true); assert.equal(networkSourceCalls, 0);
+  assert.equal(await verifyLiveDelivery(routeResult, key.jwk), true);
+  const taskInput = { steps: [{ kind: 'http', url: 'https://example.org/unavailable', fallback_url: 'https://example.org/backup', expected_status: 200 }], budget_atomic: '30000' };
+  const unsigned = await mf.dispatchFetch('https://api.xguardgate.com/v1/tasks', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'unsigned-task-fixture' }, body: JSON.stringify({ ...taskInput, max_amount_atomic: '30000' }) });
+  assert.equal(unsigned.status, 402, await unsigned.clone().text()); assert.equal(networkSourceCalls, 0, 'No task source before a settled payment');
+  let taskRecovery;
+  const taskClient = createLivePaidClient({ payer, maxAmountAtomic: '30000', trafficClass: 'synthetic', fetchImpl: (url, init) => mf.dispatchFetch(url, init), onPaymentPrepared: value => { taskRecovery = value; } });
+  const taskResponse = await taskClient.request('task', taskInput); assert.equal(taskResponse.status, 200, await taskResponse.clone().text());
+  const created = await taskResponse.json(); assert.ok(created.result.task_token); assert.equal(created.result.status, 'PENDING');
+  const taskUrl = 'https://api.xguardgate.com/v1/tasks/' + created.result.task_id;
+  assert.equal((await mf.dispatchFetch(taskUrl)).status, 404);
+  let state;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    state = await (await mf.dispatchFetch(taskUrl, { headers: { authorization: 'Bearer ' + created.result.task_token } })).json();
+    if (state.status === 'COMPLETED') break;
+    await new Promise(resolve => setTimeout(resolve, 150));
+  }
+  assert.equal(state.status, 'COMPLETED', JSON.stringify(state)); assert.equal(state.provider_switches, 1); assert.equal(state.checkpoints.length, 1); assert.equal(state.task_token, undefined);
+  const settledBeforeRecovery = settlements;
+  assert.equal((await taskClient.recover(taskRecovery)).status, 200); assert.equal(settlements, settledBeforeRecovery);
+  assert.equal(await verifyLiveDelivery(created, key.jwk), true);
+  console.log(JSON.stringify({ network_workerd: 'passed', paid_route_resolution: true, task_completed_with_failover: true, source_calls_before_task_payment: 0, task_recovery_without_second_settlement: true, production_money_moved: false }));
   console.log(JSON.stringify({ workerd: 'passed', official_x402_client: true, cryptographic_authorization_verified: true, simulated_settlements: settlements, new_source_calls_from_paid_request: 0, recovery_without_second_settlement: true, production_money_moved: false }));
 } finally { await mf.dispose(); }

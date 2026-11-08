@@ -1,4 +1,5 @@
-const SERVICES = ['live-batch', 'live-history', 'live-compare', 'live-extract'];
+import { OPERATIONS } from './network/catalog.ts';
+const SERVICES = ['live-batch', 'live-history', 'live-compare', 'live-extract', ...OPERATIONS.map(d => d.id)];
 const writableByState = new WeakMap();
 
 async function checkWritable(state) {

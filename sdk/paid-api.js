@@ -7,7 +7,7 @@ const API = 'https://api.xguardgate.com';
 const ASSET = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 function paidUrl(value) {
   const url = new URL(value);
-  if (url.origin !== API || !(url.pathname.startsWith('/p/') || /^\/api\/paid\/v1\/(batch|history|compare|extract)$/.test(url.pathname)) || url.username || url.password || url.hash) throw new Error('Use an XGuard paid API endpoint.');
+  if (url.origin !== API || !(url.pathname.startsWith('/p/') || /^\/api\/paid\/v1\/(batch|history|compare|extract|route-resolve|route-compare|discover|platform-discovery|crawl|fact|task|schedule|verify)$/.test(url.pathname)) || url.username || url.password || url.hash) throw new Error('Use an XGuard paid API endpoint.');
   return url.href;
 }
 // One spending decision and one authorization per invocation. No automatic

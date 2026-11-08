@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { OPERATIONS } from '../src/network/catalog.ts';
 import { pathToFileURL } from 'node:url';
 import { AgentCard, Message } from '@a2a-js/sdk';
 import { ClientFactory, ClientFactoryOptions, DefaultAgentCardResolver, JsonRpcTransportFactory } from '@a2a-js/sdk/client';
@@ -27,7 +28,7 @@ export async function checkA2a(fetcher) {
   assert.deepEqual(card.securitySchemes, {});
   assert.deepEqual(card.supportedInterfaces.map(({ url, protocolBinding, protocolVersion }) => ({ url, protocolBinding, protocolVersion })),
     [{ url: origin + '/a2a', protocolBinding: 'JSONRPC', protocolVersion: '1.0' }]);
-  assert.deepEqual(card.skills.map(s => s.id), ['xguard.discover', 'xguard.fact.get']);
+  assert.deepEqual(card.skills.map(s => s.id), ['xguard.discover', 'xguard.fact.get', ...OPERATIONS.map(d => 'xguard.network.' + d.route.replaceAll('-', '_'))]);
   assert.ok(card.skills.every(s => s.name && s.description && s.tags.length > 0));
 
   const factory = new ClientFactory(ClientFactoryOptions.createFrom(ClientFactoryOptions.default, {

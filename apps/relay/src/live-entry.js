@@ -5,14 +5,22 @@ export { LiveShard, LiveControl } from './live/objects.ts';
 import live from './live/worker.ts';
 import { A2A_CARD_PATH, A2A_PATH, liveA2aFetch, liveAgentCard } from './live/a2a.ts';
 import { liveMcpFetch } from './live/mcp.ts';
-import { recoverOutcome } from './paid-agent-entry.js';
+import { recoverOutcome, performWebFetch } from './paid-agent-entry.js';
 import { livePaidFetch } from './live-paid-entry.js';
 import { facilitatorSurface } from './facilitator-surface.js';
+import { networkFetch } from './network-entry.js';
+import { refreshCapabilityGraph } from './network/engine.ts';
 export default {
   ...live,
+  async scheduled(event, env, ctx) {
+    await live.scheduled(event, env, ctx);
+    ctx.waitUntil(refreshCapabilityGraph(env, performWebFetch).catch(() => console.warn(JSON.stringify({event:'network_graph_refresh_unavailable'}))));
+  },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+    const network = await networkFetch(request, env, ctx);
+    if (network) return network;
     if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
       const facilitator = await facilitatorSurface(request, env);
       if (facilitator) {

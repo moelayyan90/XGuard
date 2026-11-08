@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { OPERATIONS } from '../src/network/catalog.ts';
 import { LIVE_PAID } from '../src/live/paid-data.ts';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -129,14 +130,14 @@ try {
   await client.connect(new StreamableHTTPClientTransport(new URL(endpoint), { fetch: trackedFetch }));
   assert.equal(client.getServerVersion()?.name, 'xguard-live');
   assert.equal(client.getNegotiatedProtocolVersion(), version);
-  assert.equal((await client.listTools()).tools.length, 5 + Number(LIVE_PAID.some(d => d.route === 'extract')));
+  assert.equal((await client.listTools()).tools.length, 5 + OPERATIONS.length + Number(LIVE_PAID.some(d => d.route === 'extract')));
   const caps = await client.callTool({ name: 'xguard.capabilities' });
   assert.equal(caps.structuredContent.endpoint, endpoint);
   assert.ok(versions.every(r => r.session === null));
   assert.ok(versions.some(r => r.type?.startsWith('application/json') && r.status === 200));
   await old.connect(new LegacyTransport(new URL(endpoint), { fetch: trackedFetch }));
   assert.equal(old.getServerVersion()?.name, 'xguard-live');
-  assert.equal((await old.listTools()).tools.length, 5 + Number(LIVE_PAID.some(d => d.route === 'extract')));
+  assert.equal((await old.listTools()).tools.length, 5 + OPERATIONS.length + Number(LIVE_PAID.some(d => d.route === 'extract')));
   assert.ok(versions.some(r => r.type?.startsWith('text/event-stream') && r.status === 200));
   const negotiation = await dispatch(endpoint, { method: 'POST', headers: { ...common, 'mcp-protocol-version': legacy },
     body: JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'initialize',
@@ -150,7 +151,7 @@ try {
   const recoveredTools = await dispatch(endpoint, { method: 'POST',
     headers: { accept: 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 13, method: 'tools/list' }) });
   assert.equal(recoveredTools.status, 200, await recoveredTools.clone().text());
-  assert.equal((await recoveredTools.json()).result.tools.length, 5 + Number(LIVE_PAID.some(d => d.route === 'extract')));
+  assert.equal((await recoveredTools.json()).result.tools.length, 5 + OPERATIONS.length + Number(LIVE_PAID.some(d => d.route === 'extract')));
   const recoveredCaps = await dispatch(endpoint, { method: 'POST',
     headers: { 'content-type': 'application/json', 'mcp-protocol-version': version },
     body: JSON.stringify({ jsonrpc: '2.0', id: 14, method: 'tools/call', params: { name: 'xguard.capabilities' } }) });

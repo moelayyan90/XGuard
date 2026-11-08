@@ -48,3 +48,21 @@ test('canary verification pins both API calls to the candidate and rejects a mix
   assert.equal((await check('git-current')).payments_submitted, 0);
   await assert.rejects(check('git-previous'), /response revision differs/);
 });
+
+test('network canary checks all nine prices and rejects unpaid execution without spending', async () => {
+  const services = [['route-resolve', '5000'], ['route-compare', '5000'], ['discover', '10000'], ['platform-discovery', '15000'], ['crawl', '15000'], ['fact', '10000'], ['task', '30000'], ['schedule', '30000'], ['verify', '10000']].map(([route, amount_atomic]) => ({ route, price: { amount_atomic } }));
+  const expanded = { ...catalog, services: [...catalog.services, ...services] };
+  const posts = [];
+  const check = (routeStatus = 402, routeAmount = '5000', listing = expanded) => runPaidSmoke({ expectedTag: 'git-current', requireReady: true, fetchImpl: async (url, init) => {
+    assert.equal(init.headers['payment-signature'], undefined);
+    if (url.endsWith('/catalog')) return response(listing);
+    posts.push(new URL(url).pathname);
+    const route = url.endsWith('/route-resolve');
+    return response({ x402Version: 2, accepts: [{ amount: route ? routeAmount : '10000' }], resource: { url } }, route ? routeStatus : 402, 'git-current', { 'payment-required': 'fixture' });
+  } });
+  assert.equal((await check()).payments_submitted, 0);
+  assert.deepEqual(posts, ['/api/paid/v1/batch', '/api/paid/v1/route-resolve']);
+  await assert.rejects(check(200));
+  await assert.rejects(check(402, '1'));
+  await assert.rejects(check(402, '5000', { ...expanded, services: expanded.services.slice(0, -1) }));
+});

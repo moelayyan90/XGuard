@@ -8,7 +8,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "npm run --prefix apps/relay live:dev",
+    "dev": "node scripts/live-preview.mjs",
     "check": "npm run --prefix apps/relay live:check && npm run --prefix apps/relay live:typecheck",
     "test": "npm run --prefix apps/relay live:test",
     "build": "npm run --prefix apps/relay live:build",

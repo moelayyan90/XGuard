@@ -7,7 +7,7 @@ export function createLivePaidClient(options = {}) {
   const client = createPaidAPIClient(options);
   return {
     async request(service, input, { idempotencyKey = crypto.randomUUID() } = {}) {
-      if (!['batch', 'history', 'compare', 'extract'].includes(service)) throw new Error('Unknown Live paid service');
+      if (!['batch', 'history', 'compare', 'extract', 'route-resolve', 'route-compare', 'discover', 'platform-discovery', 'crawl', 'fact', 'task', 'schedule', 'verify'].includes(service)) throw new Error('Unknown Live paid service');
       if (!options.maxAmountAtomic) throw new Error('A buyer spending cap is required');
       return client.request(`${BASE}/${service}`, { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey }, body: JSON.stringify({ ...input, max_amount_atomic: String(options.maxAmountAtomic) }) });
     },
