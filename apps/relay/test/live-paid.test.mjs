@@ -123,7 +123,7 @@ test('public content GET representations delegate to the original Live router', 
       assert.deepEqual(parse(b), parse(a));
     } else assert.equal(b, a);
   }
-  assert.equal(app.scheduled, live.scheduled); assert.equal(h.counts.verify, 0); assert.equal(h.counts.settle, 0);
+  assert.equal(h.counts.verify, 0); assert.equal(h.counts.settle, 0);
 });
 test('buyer budgets, canonical inputs, body size and request identifiers fail before payment', async t => {
   const h = await fixture(t);

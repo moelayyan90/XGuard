@@ -3,6 +3,8 @@ import { readPublicJson, parsePublicJson } from '../core/public-contract.js';
 import { factExample, isPublicFactId, readPublicFact } from './public-fact.ts';
 import { securityHeaders } from './security.ts';
 import { ORIGIN, VERSION, type Env } from './types.ts';
+import { OPERATIONS } from '../network/catalog.ts';
+import { livePaidFetch } from '../live-paid-entry.js';
 
 export const A2A_CARD_PATH = '/.well-known/agent-card.json';
 export const A2A_PATH = '/a2a';
@@ -15,7 +17,7 @@ const maxRequestBytes = 16 * 1024;
 
 const card: AgentCard = {
   name: 'XGuard Live',
-  description: 'Discover XGuard Live and read published software facts with primary-source evidence and verification timestamps. This A2A interface is public and read-only.',
+  description: 'Discover XGuard, read legacy published facts, or purchase bounded route, discovery and durable public-read execution through x402 v2. Paid actions use an explicit spending cap and the canonical HTTP payment resource.',
   version: VERSION,
   provider: { organization: 'XGuard', url: ORIGIN },
   documentationUrl: ORIGIN + '/install',
@@ -37,7 +39,7 @@ const card: AgentCard = {
     tags: ['facts', 'software', 'provenance'],
     examples: [JSON.stringify({ action: factAction, factId: factExample })],
     inputModes, outputModes, securityRequirements: [],
-  }],
+  }, ...OPERATIONS.map(d => ({ id: 'xguard.network.' + d.route.replaceAll('-', '_'), name: d.name, description: d.description + ` Price: ${Number(d.amount)/1e6} USDC on Base; x402 HTTP payment headers required after the initial challenge.`, tags: ['paid', 'route-network'], examples: [JSON.stringify({ action: 'xguard.network.' + d.route.replaceAll('-', '_'), input: d.example, idempotency_key: 'stable-client-key' })], inputModes: ['application/json'], outputModes: ['application/json'], securityRequirements: [] }))],
 };
 
 type RpcId = string | number | null;
@@ -50,7 +52,7 @@ function headers(env: Env, cache: string) {
   result.set('content-type', 'application/json; charset=utf-8');
   result.set('cache-control', cache);
   result.set('access-control-allow-origin', '*');
-  result.set('access-control-allow-headers', 'Content-Type, A2A-Version, A2A-Extensions');
+  result.set('access-control-allow-headers', 'Content-Type, A2A-Version, A2A-Extensions, Payment-Signature, X-XGuard-Quote');
   result.set('access-control-expose-headers', 'A2A-Version, X-XGuard-Worker-Version-Id, X-XGuard-Worker-Version-Tag');
   result.set('a2a-version', WIRE_VERSION);
   result.set('x-xguard-a2a', 'public-v1');
@@ -129,6 +131,20 @@ export async function liveA2aFetch(request: Request, env: Env, readPublishedFact
   if (message.taskId) return error(rpcId, -32001, 'Task not found');
   const action = intent(message.parts[0]);
   if (!action) return error(rpcId, -32602, 'Unsupported message part');
+  const paid = OPERATIONS.find(d => action.action === 'xguard.network.' + d.route.replaceAll('-', '_'));
+  if (paid) {
+    if (!record(action.input) || typeof action.idempotency_key !== 'string' || Object.keys(action).some(k => !['action', 'input', 'idempotency_key'].includes(k))) return error(rpcId, -32602, 'Expected input and idempotency_key');
+    const forwarded = new Headers(request.headers); forwarded.set('content-type', 'application/json'); forwarded.set('idempotency-key', action.idempotency_key);
+    const pending: Promise<any>[] = [];
+    const response = await livePaidFetch(new Request('https://api.xguardgate.com/api/paid/v1/' + paid.route, { method: 'POST', headers: forwarded, body: JSON.stringify(action.input) }), env, { waitUntil: (p: Promise<any>) => pending.push(p) });
+    await Promise.allSettled(pending);
+    if (!response) return error(rpcId, -32603, 'Paid action unavailable', 503);
+    const data = await response.json();
+    for (const name of ['Payment-Required', 'Payment-Response', 'X-XGuard-Quote', 'X-XGuard-Receipt', 'X-XGuard-Proof']) { const value = response.headers.get(name); if (value) responseHeaders.set(name, value); }
+    responseHeaders.set('access-control-expose-headers', 'Payment-Required, Payment-Response, X-XGuard-Quote, X-XGuard-Receipt, X-XGuard-Proof, A2A-Version');
+    if (!response.ok) return error(rpcId, -32000, response.status === 402 ? 'Payment required' : 'Paid action rejected', response.status, data);
+    return json({ jsonrpc: '2.0', id: rpcId, result: { message: { messageId: crypto.randomUUID(), role: 'ROLE_AGENT', contextId: message.contextId || crypto.randomUUID(), parts: [{ text: JSON.stringify(data) }, { data }] } } });
+  }
   if (['payment-signature', 'x-xguard-quote', 'x-xguard-credit'].some(key => request.headers.has(key)) ||
       (action.action !== discoveryAction && action.action !== factAction)) {
     // A2A exposes only existing free reads. Do not forward payment proofs or

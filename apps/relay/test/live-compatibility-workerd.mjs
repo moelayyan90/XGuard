@@ -44,7 +44,8 @@ try {
     if (path === '/llms.txt') {
       for (const line of ['Connect an AI client', 'MCP server card', 'A2A agent card']) assert.ok(texts[1].includes(line));
       const withoutIntegrationLinks = text => text.split('\n## Paid web extraction\n')[0].replace(/^- \[(?:Connect an AI client|MCP server card|A2A agent card)\].*\n/gm, '');
-      assert.equal(withoutIntegrationLinks(texts[1]).replace('XGuard — Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface.\n\n', ''), withoutIntegrationLinks(texts[0]));
+      const normalizeIdentity = text => withoutIntegrationLinks(text).replace('XGuard — Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface.\n\n', '');
+      assert.equal(normalizeIdentity(texts[1]), normalizeIdentity(texts[0]));
     }
     if (path === '/identity') {
       assert.match(texts[1], /Mohammad Elayyan/); assert.match(texts[1], /mo.elayyan2023@gmail.com/);

@@ -7,6 +7,7 @@ import { readPublicJson, parsePublicJson } from "./core/public-contract.js";
 import { executeOutcome } from "./outcome-engine.js";
 import { livePaidDefinition, paidInputSchema, paidResultSchema, PAID_BASE, executeLivePaid, livePaidCapacity } from "./live/paid-data.ts";
 import { applyLivePaidMetric, applyLivePaidCommerce, livePaidLedgerRoute } from "./live-paid-ledger.js";
+import { networkState, networkAlarm } from './network/state.ts';
 import { applyOutcomeMetric, applyOutcomeCommerce, outcomeMetrics } from "./outcome-metrics.js";
 import { readBoundedBody } from "./core/execution-contract.js";
 import { advanceLifecycle, financialLifecycle } from "./core/payment-lifecycle.js";
@@ -952,7 +953,7 @@ export async function performWebFetch(input) {
     if (!location || hop === 3) throw Object.assign(new Error("unsafe_redirect"), { code: "upstream_failed" });
     const next = new URL(location, current);
     await response.body?.cancel().catch(() => {});
-    if (next.protocol !== "https:" || next.port && next.port !== "443" || next.username || next.password || next.hash || !hostnameAllowed(next.hostname) || input.outcome && next.hostname.split(".").some(x => x.startsWith("xn--"))) throw Object.assign(new Error("unsafe_redirect"), { code: "target_not_public" });
+    if (next.protocol !== "https:" || next.port && next.port !== "443" || next.username || next.password || next.hash || !hostnameAllowed(next.hostname) || input.outcome && next.hostname.split(".").some(x => x.startsWith("xn--")) || input.same_origin_only && next.origin !== new URL(input.url).origin) throw Object.assign(new Error("unsafe_redirect"), { code: "target_not_public" });
     redirects.push({ from: current.origin + current.pathname, to: next.origin + next.pathname, status: response.status });
     current = next;
   }
@@ -1066,6 +1067,7 @@ export class PaidGatewayState {
       catch (cause) { return doJson({ error: /^[a-z_]{1,80}$/.test(cause.code || "") ? cause.code : "seller_state_unavailable" }, cause.status || 503); }
     }
     if (path.startsWith('/live/')) return livePaidLedgerRoute(this.state, path, body);
+    if (path.startsWith('/network/')) return networkState(this.state, path, body);
     if (path === "/journal/append") {
       if (!JOURNEY_EVENTS.has(body.event) || !/^xgr_[A-Za-z0-9_-]{1,124}$/.test(body.request_id || "")) return doJson({ error: "invalid_journal_event" }, 400);
       await this.state.storage.transaction(async tx => {
@@ -1364,6 +1366,7 @@ export class PaidGatewayState {
   }
 
   async alarm() {
+    if (await networkAlarm(this.state, performWebFetch)) return;
     if (await sellerPayoutAlarm(this.state, this.env)) return;
     const journey = await this.state.storage.get("journey:v1");
     if (journey && Date.now() >= Date.parse(journey.created_at) + 30 * 86400000) { await this.state.storage.deleteAll(); return; }
@@ -1763,7 +1766,7 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
   await sellerStage(env, record, "upstream_execution_started");
   let result;
   try {
-    result = livePaidDefinition(record.input?.capability) ? await executeLivePaid(record.input, env, performWebFetch) : record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
+    result = livePaidDefinition(record.input?.capability) ? await executeLivePaid(record.input, env, performWebFetch, { payment_identifier: record.payment_identifier }) : record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
   } catch (cause) {
     const code = cause?.code || "upstream_failed";
@@ -1900,7 +1903,7 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
     if (!originalRecord || (input.capability && originalRecord.request_digest !== quote.input_digest)) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
     const attempt = await postStub(originalStub, "/operation/credit-attempt", { credit_id: payload.credit_id, request_id: id });
     if (!attempt.ok || attempt.body.delivered) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
-    const result = livePaidDefinition(input.capability) ? await executeLivePaid(input, env, performWebFetch) : input.capability ? await executeOutcome(input, env, performWebFetch) : await performWebFetch(input);
+    const result = livePaidDefinition(input.capability) ? await executeLivePaid(input, env, performWebFetch, { payment_identifier: originalRecord.payment_identifier }) : input.capability ? await executeOutcome(input, env, performWebFetch) : await performWebFetch(input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
     const proof = await signProof(env, {
       v: 1, typ: "xguard-credited-execution", iss: API, request_id: id, credit_id: payload.credit_id, tool,

@@ -3,6 +3,8 @@ import { sourceSpec } from './adapters.ts';
 import { hash, iso, rpc, shardName, shardOf } from './util.ts';
 import { normalizeOutcome } from '../outcome-catalog.js';
 import { executeOutcome } from '../outcome-engine.js';
+import { OPERATIONS, operation } from '../network/catalog.ts';
+import { normalizeNetwork, networkSchema, executeNetwork } from '../network/engine.ts';
 
 export const PAID_BASE = 'https://api.xguardgate.com/api/paid/v1';
 // Deploy the compatible reader first. Activation adds this service to LIVE_PAID.
@@ -12,6 +14,7 @@ export const LIVE_PAID = [
   { id: 'live-history', route: 'history', name: 'Bounded historical export', amount: '20000', description: 'Export up to 300 stored observations of one fact in an explicit time range, with source hashes. No observations before collection began are invented.', example: { fact: 'npm/react/latest-version', from: '2026-10-01T00:00:00Z', to: '2026-10-19T00:00:00Z', limit: 300, max_amount_atomic: '20000' } },
   { id: 'live-compare', route: 'compare', name: 'Observed-value comparison', amount: '20000', description: 'Compare the last stored observation at or before each of two times. Reports observation times and evidence; unavailable historical values remain UNKNOWN.', example: { fact: 'npm/react/latest-version', from: '2026-10-01T00:00:00Z', to: '2026-10-19T00:00:00Z', max_amount_atomic: '20000' } },
   EXTRACT_SERVICE,
+  ...OPERATIONS,
 ] as const;
 export function livePaidDefinition(id: string): any { return LIVE_PAID.find(d => d.id === id) || (id === EXTRACT_SERVICE.id ? EXTRACT_SERVICE : null); }
 export function canonicalFact(value: unknown): string | null {
@@ -26,6 +29,7 @@ function timestamp(value: unknown): string | null {
   return normalized.slice(0, 19) === value.slice(0, 19) ? normalized : null;
 }
 export function normalizeLivePaid(route: string, raw: any): Row {
+  if (operation(route)) return normalizeNetwork(route, raw);
   const def = LIVE_PAID.find(d => d.route === route) || (route === 'extract' ? EXTRACT_SERVICE : null);
   const fail = (code: string): never => { throw Object.assign(new Error(code), { code, status: 400 }); };
   if (!def || !raw || typeof raw !== 'object' || Array.isArray(raw)) return fail('invalid_paid_request');
@@ -54,6 +58,7 @@ export function normalizeLivePaid(route: string, raw: any): Row {
   return { ...base, fact, from, to, ...(route === 'history' ? { limit: raw.limit ?? 300, cursor } : {}) };
 }
 export function paidInputSchema(route: string): Row {
+  if (operation(route)) return networkSchema(route);
   if (route === 'extract') return { type: 'object', additionalProperties: false, required: ['urls', 'max_amount_atomic'], properties: { urls: { type: 'array', minItems: 1, maxItems: 3, uniqueItems: true, items: { type: 'string', format: 'uri', pattern: '^https://', maxLength: 2048 } }, max_amount_atomic: { type: 'string', pattern: '^\\d{1,12}$', description: 'Explicit spending cap in 6-decimal USDC atomic units.' } } };
   const fact = { type: 'string', maxLength: 300, description: 'Canonical public fact ID, e.g. npm/react/latest-version; never an arbitrary URL.' };
   return { type: 'object', additionalProperties: false, required: route === 'batch' ? ['facts', 'max_amount_atomic'] : ['fact', 'from', 'to', 'max_amount_atomic'], properties: {
@@ -63,12 +68,14 @@ export function paidInputSchema(route: string): Row {
 }
 export const paidResultSchema = { type: 'object', required: ['ok', 'result', 'receipt', 'settlement', 'proofrail'], properties: { ok: { const: true }, result: { type: 'object' }, receipt: { type: 'object' }, settlement: { type: 'object' }, proofrail: { type: 'object' } } };
 export async function livePaidCapacity(env: Env, input: Row): Promise<void> {
+  if (operation(input.capability)) { if (!env.PAID_GATEWAY) throw Object.assign(new Error('durable_storage_unavailable'), { code: 'durable_storage_unavailable', status: 503 }); return; }
   if (input.capability === EXTRACT_SERVICE.id) return; // Never access a buyer's source before settlement.
   const id = input.facts?.[0] || input.fact, entity = id.slice(0, id.lastIndexOf('/'));
   const fact = await rpc(env.LIVE_SHARDS, shardName(shardOf(entity)), 'fact', { id });
   if (!fact) throw Object.assign(new Error('fact_not_published'), { code: 'fact_not_published', status: 404 });
 }
-export async function executeLivePaid(input: Row, env: Env, fetchSource?: any): Promise<any> {
+export async function executeLivePaid(input: Row, env: Env, fetchSource?: any, context: Row = {}): Promise<any> {
+  if (operation(input.capability)) return executeNetwork(input, env, fetchSource, context);
   if (input.capability === EXTRACT_SERVICE.id) {
     if (typeof fetchSource !== 'function') throw new Error('extraction_provider_unavailable');
     const result = await executeOutcome({ ...input, capability: 'web-extraction' }, env, fetchSource);
