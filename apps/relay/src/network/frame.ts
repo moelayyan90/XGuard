@@ -6,9 +6,9 @@ export function siteHeader(path: string) {
 }
 export function siteFooter() {
   const groups = [
-    ['Platform', [['/routes','Task routes'],['/network','Execution workspace'],['/network?service=discover','Service discovery'],['/topics','Source index']]],
+    ['Platform', [['/routes','Task routes'],['/network','Execution workspace'],['/network?service=discover','Service discovery'],['/topics','Source index'],['/api/gateway/v1/checkout','Verification receipts']]],
     ['Build with XGuard', [['/network/docs','Documentation'],['/install','Connect an agent'],['/openapi.json','OpenAPI'],['/v1/payments/coverage','Payment coverage']]],
-    ['Company', [['/identity','Operator & contact'],['/status','System status'],['/terms','Terms'],['/privacy','Privacy'],['/refund-policy','Refund policy']]],
+    ['Company', [['/identity','Operator & contact'],['/status','System status'],['/pricing','Pricing'],['/terms','Terms'],['/privacy','Privacy'],['/refund-policy','Refund policy']]],
   ] as const;
   return `<footer class="site-footer"><div class="site-footer-inner"><section>${siteBrand()}<p>The route layer for AI.<br>Discover. Execute. Verify.</p><span class="footer-protocol">MCP / A2A / x402 / HTTP</span></section>${groups.map(([heading,links])=>`<section><h2>${heading}</h2>${links.map(([href,label])=>`<a href="${href}">${label}</a>`).join('')}</section>`).join('')}</div><div class="footer-bottom"><span>© 2026 XGuard</span><span>Pay per operation. Know the cost before you run.</span></div></footer>`;
 }
