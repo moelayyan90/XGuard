@@ -1,0 +1,41 @@
+name: C2SP Live Probe
+
+on:
+  push:
+    branches:
+      - probe/c2sp-live-verifier
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify live C2SP witness and print public verifier key
+        shell: bash
+        run: |
+          set -euo pipefail
+          meta="$(curl --fail --silent --show-error --max-time 15 https://api.xguardgate.com/witness)"
+          key="$(curl --fail --silent --show-error --max-time 15 https://api.xguardgate.com/witness/verifier-key | tr -d '\r\n')"
+          META="$meta" KEY="$key" node <<'NODE'
+          const meta = JSON.parse(process.env.META);
+          const key = process.env.KEY;
+          if (meta.protocol !== "c2sp.org/tlog-witness") throw new Error("unexpected protocol");
+          if (meta.push_endpoint !== "https://api.xguardgate.com/witness/add-checkpoint") throw new Error("unexpected push endpoint");
+          if (!/^xguardgate\.com\/witness\+[0-9a-f]{8}\+[A-Za-z0-9+/=]+$/.test(key)) throw new Error("invalid verifier key");
+          if (meta.verifier_key !== key) throw new Error("metadata/key mismatch");
+          const g = (meta.accepted_logs || []).find(x => x.origin === "gblin.digital/receipts-log");
+          if (!g) throw new Error("GBLIN log not pinned");
+          console.log(JSON.stringify({
+            ok: true,
+            protocol: meta.protocol,
+            witness: meta.witness,
+            push_endpoint: meta.push_endpoint,
+            verifier_key: key,
+            gblin_origin: g.origin,
+            gblin_origin_hash: g.origin_hash,
+            monitor: "https://api.xguardgate.com/witness/" + g.origin_hash + "/checkpoint"
+          }, null, 2));
+          NODE
