@@ -33,7 +33,7 @@ await inspect('daily_durable_usage', async () => {
   const schema = await api('/graphql', { query: '{ __schema { types { name fields { name type { kind name ofType { kind name ofType { kind name } } } } } } }' });
   const types = schema.data?.__schema?.types;
   if (!types) throw Error('Analytics schema unavailable');
-  const named = t => t?.name || named(t?.ofType);
+  const named = t => t ? t.name || named(t.ofType) : null;
   const accountType = types.find(t => t.fields?.some(f => f.name === 'durableObjectsInvocationsAdaptiveGroups'));
   if (!accountType) throw Error('Durable Objects datasets unavailable to this token');
   const start = new Date().toISOString().slice(0, 10) + 'T00:00:00Z', end = new Date().toISOString();
@@ -53,5 +53,5 @@ await inspect('daily_durable_usage', async () => {
     try { const value = await api('/graphql', { query }); results.push({ dataset: d.name, groups: value.data?.viewer?.accounts?.flatMap(a => a[d.name] || []) }); }
     catch (e) { results.push({ dataset: d.name, available: false, reason: redact(e.message) }); }
   }
-  return { available: results.some(r => r.groups), utc_start: start, utc_end: end, results };
+  return { available: results.some(r => r.groups), utc_start: start, utc_end: end, datasets: datasets.map(d => ({ name: d.name, metrics: d.metrics })), results };
 });
