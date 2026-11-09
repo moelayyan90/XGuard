@@ -74,8 +74,7 @@
       { "name": "PROOF_AUTHORITY", "class_name": "ProofAuthority" },
       { "name": "PAID_GATEWAY", "class_name": "PaidGatewayState" },
       { "name": "LIVE_SHARDS", "class_name": "LiveShard" },
-      { "name": "LIVE_CONTROL", "class_name": "LiveControl" },
-      { "name": "C2SP_WITNESS", "class_name": "C2SPWitness" }
+      { "name": "LIVE_CONTROL", "class_name": "LiveControl" }
     ]
   },
   "migrations": [
@@ -87,8 +86,7 @@
     { "tag": "relay-v6", "new_sqlite_classes": ["EgressKeyAuthority", "EgressCredentialState", "EgressTenantIndex", "EgressCapabilityState", "EgressMeter"] },
     { "tag": "relay-v7", "new_sqlite_classes": ["ProofAuthority"] },
     { "tag": "relay-v8", "new_sqlite_classes": ["PaidGatewayState"] },
-    { "tag": "relay-v9-live", "new_sqlite_classes": ["LiveShard", "LiveControl"] },
-    { "tag": "relay-v10-c2sp", "new_sqlite_classes": ["C2SPWitness"] }
+    { "tag": "relay-v9-live", "new_sqlite_classes": ["LiveShard", "LiveControl"] }
   ],
   "triggers": { "crons": ["*/10 * * * *"] },
   "observability": {
