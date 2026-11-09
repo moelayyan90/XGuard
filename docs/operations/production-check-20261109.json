@@ -1,0 +1,140 @@
+{
+  "scope": "After infrastructure canary rollback. This is the old production revision, not proof of a repaired deployment. All probes unsigned; no transaction or gas expenditure.",
+  "probes": [
+    {
+      "method": "GET",
+      "path": "/healthz",
+      "status": 503,
+      "worker_tag": "git-e96b831405ad",
+      "error": "storage_write_quota_exhausted",
+      "reasons": [],
+      "quota_reset_at": "2026-11-10T00:00:00.000Z"
+    },
+    {
+      "method": "GET",
+      "path": "/supported",
+      "status": 200,
+      "worker_tag": "git-e96b831405ad",
+      "error": null,
+      "reasons": [],
+      "quota_reset_at": null
+    },
+    {
+      "method": "GET",
+      "path": "/.well-known/x402",
+      "status": 200,
+      "worker_tag": "git-e96b831405ad",
+      "error": null,
+      "reasons": [],
+      "quota_reset_at": null
+    },
+    {
+      "method": "POST",
+      "path": "/verify",
+      "status": 400,
+      "worker_tag": "git-e96b831405ad",
+      "error": "missing_payment_context",
+      "reasons": [],
+      "quota_reset_at": null
+    },
+    {
+      "method": "POST",
+      "path": "/settle",
+      "status": 400,
+      "worker_tag": "git-e96b831405ad",
+      "error": "missing_payment_context",
+      "reasons": [],
+      "quota_reset_at": null
+    },
+    {
+      "method": "GET",
+      "path": "/witness",
+      "status": 500,
+      "worker_tag": null,
+      "error": 1101,
+      "reasons": [],
+      "quota_reset_at": null
+    },
+    {
+      "method": "GET",
+      "path": "/witness/verifier-key",
+      "status": 500,
+      "worker_tag": null,
+      "error": 1101,
+      "reasons": [],
+      "quota_reset_at": null
+    },
+    {
+      "method": "POST",
+      "path": "/witness/add-checkpoint",
+      "status": 500,
+      "worker_tag": null,
+      "error": 1101,
+      "reasons": [],
+      "quota_reset_at": null
+    },
+    {
+      "method": "GET",
+      "path": "/.well-known/agent-card.json",
+      "status": 200,
+      "worker_tag": "git-e96b831405ad",
+      "error": null,
+      "reasons": [],
+      "quota_reset_at": null
+    },
+    {
+      "method": "GET",
+      "path": "/api/paid/v1/catalog",
+      "status": 200,
+      "worker_tag": "git-e96b831405ad",
+      "error": null,
+      "reasons": [],
+      "quota_reset_at": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/paid/v1/batch",
+      "status": 503,
+      "worker_tag": "git-e96b831405ad",
+      "error": "paid_service_not_ready",
+      "reasons": [
+        "storage_write_quota_exhausted",
+        "proof_authority_unavailable"
+      ],
+      "quota_reset_at": null
+    }
+  ],
+  "protocol_discovery": {
+    "observed_at": "2026-11-09T16:19:12.979Z",
+    "financial_transactions": 0,
+    "mcp": {
+      "initialize": "passed",
+      "tool_count": 15
+    },
+    "a2a": {
+      "greeting_role": "ROLE_AGENT"
+    },
+    "requests": [
+      {
+        "url": "https://xguardgate.com/mcp",
+        "http": 200,
+        "worker_tag": "git-e96b831405ad"
+      },
+      {
+        "url": "https://xguardgate.com/mcp",
+        "http": 200,
+        "worker_tag": "git-e96b831405ad"
+      },
+      {
+        "url": "https://xguardgate.com/.well-known/agent-card.json",
+        "http": 200,
+        "worker_tag": "git-e96b831405ad"
+      },
+      {
+        "url": "https://xguardgate.com/a2a",
+        "http": 200,
+        "worker_tag": "git-e96b831405ad"
+      }
+    ]
+  }
+}

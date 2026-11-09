@@ -1,0 +1,15 @@
+{
+  "local_evm": "passed",
+  "contract": "local MockUSDC, not Circle bytecode",
+  "eip712_signature": true,
+  "evm_signature_and_nonce_checks": true,
+  "exact_local_token_delta_per_path": "1000",
+  "official_sdk_settlement_parity": true,
+  "confirmations": 2,
+  "idempotent_recovery": true,
+  "replay_rejected": true,
+  "native_broadcasts": 1,
+  "reference_broadcasts": 1,
+  "external_rpc_requests": 0,
+  "production_money_moved": false
+}

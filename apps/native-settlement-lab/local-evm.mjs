@@ -5,6 +5,7 @@ import solc from 'solc';
 import { createPublicClient, createWalletClient, custom, defineChain, getAddress } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { authorizationTypes } from '../relay/node_modules/@x402/evm/dist/esm/index.mjs';
+import { ExactEvmScheme } from '../relay/node_modules/@x402/evm/dist/esm/exact/facilitator/index.mjs';
 import { storage } from '../relay/test/live-harness.mjs';
 import { NativeSettlementEngine } from '../relay/src/native-settlement/engine.js';
 import { SqliteSettlementRepository } from '../relay/src/native-settlement/repository.js';
@@ -52,5 +53,18 @@ try {
   assert.deepEqual(await engine.settle(payment,requirements,'local-evm-first-payment'),receipt);
   assert.equal((await engine.settle(payment,requirements,'local-evm-replay')).errorReason,'authorization_replay');
   assert.equal((await engine.verify(payment,requirements)).isValid,false);assert.equal(broadcasts,1);
-  console.log(JSON.stringify({local_evm:'passed',contract:'local MockUSDC, not Circle bytecode',eip712_signature:true,evm_signature_and_nonce_checks:true,exact_local_token_delta:'1000',confirmations:receipt.confirmations,idempotent_recovery:true,replay_rejected:true,broadcasts,external_rpc_requests:0,production_money_moved:false}));
+  // Compare the result against the official facilitator implementation on the
+  // same local contract. This is not a paid upstream/production comparison.
+  const secondAuth={...authorization,nonce:generatePrivateKey()};
+  const secondSignature=await payer.signTypedData({domain:{name:'USD Coin',version:'2',chainId:8453,verifyingContract:BASE_USDC},types:authorizationTypes,primaryType:'TransferWithAuthorization',message:{...secondAuth,value:1000n,validAfter:BigInt(secondAuth.validAfter),validBefore:BigInt(secondAuth.validBefore)}});
+  let referenceBroadcasts=0;
+  const reference=new ExactEvmScheme({...rpc,getAddresses:()=>[gasAccount.address],
+    async writeContract(args){const hash=await wallet.writeContract(args);referenceBroadcasts++;await provider.request({method:'evm_mine',params:[]});return hash;},
+    waitForTransactionReceipt:args=>client.waitForTransactionReceipt(args),
+  },{simulateInSettle:true});
+  const referenceResult=await reference.settle({...payment,payload:{authorization:secondAuth,signature:secondSignature}},requirements);
+  assert.equal(referenceResult.success,true,JSON.stringify(referenceResult));assert.equal(referenceResult.network,receipt.network);assert.equal(referenceBroadcasts,1);
+  assert.equal(await client.readContract({address:BASE_USDC,abi:contract.abi,functionName:'balanceOf',args:[payer.address]}),after-1000n);
+  assert.equal(await client.readContract({address:BASE_USDC,abi:contract.abi,functionName:'balanceOf',args:[getAddress(requirements.payTo)]}),received+1000n);
+  console.log(JSON.stringify({local_evm:'passed',contract:'local MockUSDC, not Circle bytecode',eip712_signature:true,evm_signature_and_nonce_checks:true,exact_local_token_delta_per_path:'1000',official_sdk_settlement_parity:true,confirmations:receipt.confirmations,idempotent_recovery:true,replay_rejected:true,native_broadcasts:broadcasts,reference_broadcasts:referenceBroadcasts,external_rpc_requests:0,production_money_moved:false}));
 } finally {db.db.close();await provider.disconnect();}
