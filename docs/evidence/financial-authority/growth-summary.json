@@ -1,0 +1,28 @@
+{
+  "horizon_assumption": "24 hours per stage, for capacity modeling only; user did not specify stage duration",
+  "stages": 63,
+  "stage_63_operations": "4611686018427387904",
+  "cumulative_operations": "9223372036854775807",
+  "stage_63_hypothetical_gross_usd": "230584300921369395.20",
+  "cumulative_hypothetical_gross_usd": "461168601842738790.35",
+  "modeled_reads_per_operation": 35,
+  "modeled_writes_per_operation": 26,
+  "sql_only_marginal_usd_per_operation": "0.000026035",
+  "first_stage_exceeding_exclusive_free_sql_writes": 13,
+  "market_size_measured": null,
+  "independent_paid_operations": 0,
+  "commercial_revenue_proven": false,
+  "excluded_costs": [
+    "Worker/DO requests",
+    "CPU and duration",
+    "stored bytes and retention",
+    "ProofRail cold starts",
+    "real executor settlement and gas",
+    "support",
+    "tax",
+    "payment processing",
+    "abuse/recovery workload"
+  ],
+  "caveat": "A projection from a warmed one-leaf mock journey, not measured production unit cost, an invoice, actual revenue, demand, a purchase authorization or an upper bound for every chain. Deeper chains cost more. Shared account traffic reduces the capacity. No unlimited growth forecast is made.",
+  "pricing_source": "https://developers.cloudflare.com/durable-objects/platform/pricing/"
+}

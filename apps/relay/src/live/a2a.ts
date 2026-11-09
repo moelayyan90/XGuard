@@ -1,3 +1,4 @@
+import { financialAuthorityFetch } from '../financial-authority/http.js';
 import type { AgentCard } from '@a2a-js/sdk';
 import { readPublicJson, parsePublicJson } from '../core/public-contract.js';
 import { factExample, isPublicFactId, readPublicFact } from './public-fact.ts';
@@ -28,7 +29,7 @@ const card: AgentCard = {
   capabilities: { streaming: false, pushNotifications: false, extendedAgentCard: false, extensions: [] },
   securitySchemes: {}, securityRequirements: [], signatures: [],
   defaultInputModes: inputModes, defaultOutputModes: outputModes,
-  skills: [{
+  skills: [{ id: 'xguard.authority', name: 'Signed agent financial authority', description: 'Submit a signed delegation sandbox envelope over the same HTTP authority contract; no live payment or custody is implied.', tags: ['delegation', 'budgets', 'sandbox'], examples: [JSON.stringify({ action: 'xguard.authority', envelope: {} })], inputModes: ['application/json'], outputModes: ['application/json'], securityRequirements: [] }, {
     id: discoveryAction, name: 'Discover XGuard Live',
     description: 'List the supported A2A actions and the current public XGuard links.',
     tags: ['discovery', 'a2a'], examples: ['Hello', JSON.stringify({ action: discoveryAction })],
@@ -131,6 +132,15 @@ export async function liveA2aFetch(request: Request, env: Env, readPublishedFact
   if (message.taskId) return error(rpcId, -32001, 'Task not found');
   const action = intent(message.parts[0]);
   if (!action) return error(rpcId, -32602, 'Unsupported message part');
+  if (action.action === 'xguard.authority') {
+    const envelope = record(action.envelope);
+    if (!envelope || Object.keys(action).length !== 3 || typeof action.organization_token !== 'string' || typeof envelope.action !== 'string' || !/^[a-z]+$/.test(envelope.action)) return error(rpcId, -32602, 'Expected one signed envelope');
+    const response = await financialAuthorityFetch(new Request('https://api.xguardgate.com/v1/authority/' + envelope.action, { method: 'POST', headers: { 'content-type': 'application/json', 'x-xguard-organization-token': action.organization_token }, body: JSON.stringify(envelope) }), env);
+    if (!response) return error(rpcId, -32603, 'Authority unavailable', 503);
+    const data = await response.json();
+    if (!response.ok) return error(rpcId, -32000, 'Signed authority command rejected', response.status, data);
+    return json({ jsonrpc: '2.0', id: rpcId, result: { message: { messageId: crypto.randomUUID(), role: 'ROLE_AGENT', parts: [{ data }] } } });
+  }
   const paid = OPERATIONS.find(d => action.action === 'xguard.network.' + d.route.replaceAll('-', '_'));
   if (paid) {
     if (!record(action.input) || typeof action.idempotency_key !== 'string' || Object.keys(action).some(k => !['action', 'input', 'idempotency_key'].includes(k))) return error(rpcId, -32602, 'Expected input and idempotency_key');

@@ -1,3 +1,4 @@
+import { financialAuthorityFetch, authorityCatalog, authorityEnvelopeSchema } from '../financial-authority/http.js';
 import { createMcpHandler, Server, type ListToolsResult } from '@modelcontextprotocol/server';
 import { handlePaidWebFetch, handlePreflight, issueQuote, jsonBody, mcpToolsForEnv } from '../paid-agent-entry.js';
 import { logNormalization } from '../core/public-contract.js';
@@ -14,6 +15,7 @@ const origins = [ORIGIN, 'https://api.xguardgate.com'];
 const methods = ['GET', 'HEAD', 'POST', 'OPTIONS'];
 const factTool = 'xguard.fact.get';
 const toolNames = new Set(['xguard.capabilities', 'xguard.preflight', 'xguard.pricing.quote', 'xguard.web.fetch', 'xguard.extract']);
+for (const name of ['catalog', 'command', 'verify_receipt']) toolNames.add('xguard.authority.' + name);
 for (const d of OPERATIONS) toolNames.add('xguard.' + d.route.replaceAll('-', '_'));
 const paymentHeaders = ['Payment-Required', 'Payment-Response', 'X-XGuard-Quote', 'X-XGuard-Request-Id',
   'X-XGuard-Payment-Identifier', 'X-XGuard-Replay', 'X-XGuard-Receipt', 'X-XGuard-Proof', 'Retry-After'];
@@ -89,7 +91,7 @@ function list(env: Env): ListToolsResult {
     description: 'Read one free published software fact by canonical ID. Returns the primary source, verification status and timestamp. Use xguard.web.fetch for a separate paid fetch of a public URL.',
     inputSchema: { type: 'object', properties: { factId: factIdSchema }, required: ['factId'], additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, ...existingTools, ...OPERATIONS.map(d => ({ name: 'xguard.' + d.route.replaceAll('-', '_'), description: d.description + ` Price: ${Number(d.amount) / 1e6} USDC on Base. Sign only the canonical HTTP x402 offer and preserve the idempotency key and original quote.`, inputSchema: { ...paidInputSchema(d.route), type: 'object' as const, properties: { ...paidInputSchema(d.route).properties, idempotency_key: { type: 'string', minLength: 8, maxLength: 128 } }, required: [...paidInputSchema(d.route).required, 'idempotency_key'] }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } })), ...(extractEnabled() ? [{ name: 'xguard.extract', description: EXTRACT_SERVICE.description + ' Price: 0.012 USDC on Base. Uses x402 v2 HTTP payment headers: retry identical arguments and idempotency key with Payment-Signature and X-XGuard-Quote; the authorization is for the canonical HTTP API resource. No source is fetched before payment.', inputSchema: { ...paidInputSchema('extract'), type: 'object' as const, properties: { ...paidInputSchema('extract').properties, idempotency_key: { type: 'string', minLength: 8, maxLength: 128 } }, required: ['urls', 'max_amount_atomic', 'idempotency_key'] }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } }] : [])] };
+  }, ...[{ name: 'xguard.authority.catalog', description: 'Inspect the signed delegation sandbox, limits and unactivated service-fee contract.', inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, idempotentHint: true } }, { name: 'xguard.authority.command', description: 'Submit an owner/agent-signed authority envelope. Requires explicit key-holder authorization; the tool cannot sign for the caller. Sandbox is not a payment.', inputSchema: { type: 'object' as const, required: ['envelope', 'organization_token'], additionalProperties: false, properties: { envelope: authorityEnvelopeSchema, organization_token: { type: 'string', minLength: 43, maxLength: 43 } } }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true } }, { name: 'xguard.authority.verify_receipt', description: 'Verify a financial authority receipt against the existing ProofRail key, without charging.', inputSchema: { type: 'object' as const, required: ['receipt'], additionalProperties: false, properties: { receipt: { type: 'string', maxLength: 8192 } } }, annotations: { readOnlyHint: true, idempotentHint: true } }], ...existingTools, ...OPERATIONS.map(d => ({ name: 'xguard.' + d.route.replaceAll('-', '_'), description: d.description + ` Price: ${Number(d.amount) / 1e6} USDC on Base. Sign only the canonical HTTP x402 offer and preserve the idempotency key and original quote.`, inputSchema: { ...paidInputSchema(d.route), type: 'object' as const, properties: { ...paidInputSchema(d.route).properties, idempotency_key: { type: 'string', minLength: 8, maxLength: 128 } }, required: [...paidInputSchema(d.route).required, 'idempotency_key'] }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } })), ...(extractEnabled() ? [{ name: 'xguard.extract', description: EXTRACT_SERVICE.description + ' Price: 0.012 USDC on Base. Uses x402 v2 HTTP payment headers: retry identical arguments and idempotency key with Payment-Signature and X-XGuard-Quote; the authorization is for the canonical HTTP API resource. No source is fetched before payment.', inputSchema: { ...paidInputSchema('extract'), type: 'object' as const, properties: { ...paidInputSchema('extract').properties, idempotency_key: { type: 'string', minLength: 8, maxLength: 128 } }, required: ['urls', 'max_amount_atomic', 'idempotency_key'] }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } }] : [])] };
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -214,7 +216,17 @@ async function transport(request: Request, env: Env, readPublishedFact: (request
       if (!toolNames.has(name)) return fail(Response.json({ error: 'unknown_tool' }, { status: 400 }));
       try {
         const networkOperation = OPERATIONS.find(d => name === 'xguard.' + d.route.replaceAll('-', '_'));
-        if (networkOperation || name === 'xguard.extract' && extractEnabled()) {
+        if (name.startsWith('xguard.authority.')) {
+          if (name === 'xguard.authority.catalog') {
+            if (Object.keys(args).length) return fail(Response.json({ error: 'invalid_arguments' }, { status: 400 }));
+            response = Response.json(authorityCatalog());
+          } else {
+            const envelope = args.envelope as Record<string, unknown> | undefined;
+            const path = name.endsWith('verify_receipt') ? 'verify-receipt' : envelope?.action;
+            if (typeof path !== 'string' || !/^[a-z-]+$/.test(path) || Object.keys(args).length !== (name.endsWith('verify_receipt') ? 1 : 2)) return fail(Response.json({ error: 'invalid_arguments' }, { status: 400 }));
+            response = await financialAuthorityFetch(new Request('https://api.xguardgate.com/v1/authority/' + path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-xguard-organization-token': typeof args.organization_token === 'string' ? args.organization_token : '' }, body: JSON.stringify(name.endsWith('verify_receipt') ? args : envelope) }), env) || Response.json({ error: 'authority_unavailable' }, { status: 503 });
+          }
+        } else if (networkOperation || name === 'xguard.extract' && extractEnabled()) {
           const { idempotency_key, ...input } = args;
           const headers = new Headers(request.headers); headers.set('content-type', 'application/json');
           if (typeof idempotency_key === 'string') headers.set('idempotency-key', idempotency_key);

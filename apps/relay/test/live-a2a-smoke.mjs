@@ -28,8 +28,14 @@ export async function checkA2a(fetcher) {
   assert.deepEqual(card.securitySchemes, {});
   assert.deepEqual(card.supportedInterfaces.map(({ url, protocolBinding, protocolVersion }) => ({ url, protocolBinding, protocolVersion })),
     [{ url: origin + '/a2a', protocolBinding: 'JSONRPC', protocolVersion: '1.0' }]);
-  assert.deepEqual(card.skills.map(s => s.id), ['xguard.discover', 'xguard.fact.get', ...OPERATIONS.map(d => 'xguard.network.' + d.route.replaceAll('-', '_'))]);
+  assert.deepEqual(card.skills.map(s => s.id), ['xguard.authority', 'xguard.discover', 'xguard.fact.get', ...OPERATIONS.map(d => 'xguard.network.' + d.route.replaceAll('-', '_'))]);
   assert.ok(card.skills.every(s => s.name && s.description && s.tags.length > 0));
+  const authorityResponse = await fetcher(origin + '/v1/authority/catalog', { headers: { accept: 'application/json' } });
+  assert.equal(authorityResponse.status, 200);
+  const authority = await authorityResponse.json();
+  assert.equal(authority.status, 'sandbox_operator_enrollment');
+  assert.equal(authority.pricing.live_billing, 'not_activated');
+  assert.equal(authority.pricing.sandbox_charge, '0');
 
   const factory = new ClientFactory(ClientFactoryOptions.createFrom(ClientFactoryOptions.default, {
     cardResolver: new DefaultAgentCardResolver({ fetchImpl: fetcher }),
