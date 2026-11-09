@@ -1,12 +1,16 @@
 {
   "baseline_sha": "e96b831405adcc8178b45d5f6f8dabbae9fca179",
-  "scope": "Paired real workerd SQLite. 2048 repeat verified-crawler requests and 100 unchanged source revalidations. No providers, payments or production load. SQL row counters include indexes and triggers; provider request/alarm/KV billing is excluded.",
+  "scope": "Paired real workerd SQLite. 2048 repeat verified-crawler requests, 100 unchanged source revalidations, 3000 expired operational rows and 10 retention restarts. No providers, payments or production load. SQL row counters include indexes and triggers; provider request/alarm/KV billing is excluded.",
   "before": {
     "revalidation_writes": 1100,
     "telemetry_writes": 10242,
     "recorded_requests": 2048,
     "raw_crawler_samples": 2048,
-    "fact": "1.0.0"
+    "fact": "1.0.0",
+    "cleanup_writes": 3000,
+    "remaining_expired_raw": 0,
+    "cleanup_preserved_immutable_observations": true,
+    "final_operational_budget": null
   },
   "after": {
     "revalidation_writes": 1100,
@@ -14,12 +18,27 @@
     "recorded_requests": 2048,
     "raw_crawler_samples": 32,
     "fact": "1.0.0",
-    "budgeted_additional_writes": 265,
+    "budgeted_additional_writes": 19,
     "budget": {
       "day": "2026-11-09",
+      "rows_written": 246,
+      "telemetry_rows_written": 246,
+      "cleanup_rows_written": 0,
+      "dropped_events": 61,
+      "alert": 0,
+      "rate_cursor": ""
+    },
+    "cleanup_writes": 240,
+    "remaining_expired_raw": 886,
+    "cleanup_preserved_immutable_observations": true,
+    "final_operational_budget": {
+      "day": "2026-11-09",
       "rows_written": 492,
-      "dropped_events": 20,
-      "alert": 90
+      "telemetry_rows_written": 246,
+      "cleanup_rows_written": 246,
+      "dropped_events": 61,
+      "alert": 90,
+      "rate_cursor": "expired-00057"
     }
   },
   "telemetry_write_reduction_percent": 98.09607498535442

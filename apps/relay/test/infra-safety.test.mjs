@@ -4,6 +4,8 @@ import { PaidGatewayState } from '../src/paid-agent-entry.js';
 import { c2spWitnessRoute } from '../src/c2sp-witness.js';
 import live from '../src/live/worker.ts';
 import { environment, seed } from './live-harness.mjs';
+import { Store } from '../src/live/store.ts';
+import { storage as sqlStorage } from './live-harness.mjs';
 
 class SerializedStorage {
   values = new Map(); writes = 0; alarms = 0; chain = Promise.resolve();
@@ -45,4 +47,15 @@ test('unknown witness paths do not touch state and provider failures remain cont
   let calls=0;const env={C2SP_WITNESS:{idFromName:x=>x,get(){calls++;return{fetch:async()=>{throw Error('provider quota');}};}}};
   assert.equal((await c2spWitnessRoute(new Request('https://api.xguardgate.com/witness/v0/status'),env)).status,404);assert.equal(calls,0);
   assert.equal((await c2spWitnessRoute(new Request('https://api.xguardgate.com/witness'),env)).status,503);
+});
+test('an old release budget is never reset or overspent by the new retention allocation',()=>{
+  const db=sqlStorage(),store=new Store(db);try{
+    const old={day:new Date().toISOString().slice(0,10),rows_written:499,dropped_events:0,alert:90};
+    store.set('operational-telemetry-budget-v1',old);
+    store.run('INSERT INTO rate_limits VALUES(?,?,?)','expired-fixture',1,0);
+    const changes=db.db.prepare('SELECT total_changes() AS n').get().n;
+    store.cleanOperationalData();store.cleanOperationalData();
+    assert.equal(db.db.prepare('SELECT total_changes() AS n').get().n,changes);
+    assert.deepEqual(store.get('operational-telemetry-budget-v1'),old);
+  }finally{db.db.close();}
 });
