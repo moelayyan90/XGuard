@@ -21,10 +21,10 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
-    const network = await networkFetch(request, env, ctx);
-    if (network) return network;
     const witness = await c2spWitnessRoute(request, env);
     if (witness) return witness;
+    const network = await networkFetch(request, env, ctx);
+    if (network) return network;
     if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
       const facilitator = await facilitatorSurface(request, env);
       if (facilitator) {
