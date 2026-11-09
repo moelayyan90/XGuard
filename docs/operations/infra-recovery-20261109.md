@@ -24,7 +24,7 @@ Before deployment, observed public probes included /healthz 503, /supported 200 
 
 * Coalesce simultaneous anonymous, query-free public GET cache misses by representation and Worker version. Existing TTL, ETag, Vary, expiry and Cache-Control logic remains authoritative. Authorization, cookies, health, owner, corrections and financial endpoints are excluded. No stale financial/security result cache is introduced.
 * Batch optional public analytics into groups of at most 64 events, flushing on subsequent traffic after 60 seconds, scheduler ticks, alarms and owner metric reads. Preserve aggregate counts for buffered events; retain representative raw crawler samples. Pending analytics can be lost on eviction and optional events can be omitted at the analytics allocation. Counters are explicitly not financial accounting.
-* Bound public analytics to 500 measured SQL indexed writes per fixed shard/day (16,000 across 32 shards), with a conservative pre-admission reserve and local threshold logs at 50/75/90%. Preserve public access when this allocation is reached. Financial state, paid journals and replay records use separate paths.
+* Bound public analytics and optional retention together to 500 measured SQL cursor writes per fixed shard/day (16,000 across 32 shards), split into 250 for incoming metrics and 250 for bounded cleanup, with a conservative pre-admission reserve and local threshold logs at 50/75/90%. Preserve public access when this allocation is reached. Financial state, paid journals and replay records use separate paths.
 * Persist the paid rate-limit rejection marker once and make admission transactional; repeated rejected attempts create no more writes. Do not delete absent previous buckets on every request.
 * Retain every existing paid journey event, while scheduling the same journal retention alarm once rather than per event.
 * Reject unknown witness paths before touching its Durable Object; convert provider transport failures into controlled 503 responses. Existing cryptographic validation and witness state are unchanged.
@@ -40,7 +40,7 @@ Concurrent admission, restart persistence, complete financial journaling, public
 
 Use the existing compatible code-only 5% canary, candidate version override probes, 100% promotion and automatic rollback on service regression. Durable Object names, placement, bindings, migrations, state reader/writer versions, settlement contracts and signer configuration do not change. Provider-enforced exhausted allowances cannot be reset by deploying code. A controlled quota error after deployment is not a recovery claim; verify again after the UTC reset and collect comparable production windows.
 
-Success still requires measured production reduction over comparable workloads and headroom for expected financial and public traffic. Local fixture results alone cannot establish that. Historical raw records may cause retention deletes (also metered writes); no large migration or immediate mass deletion is introduced.
+Success still requires measured production reduction over comparable workloads and headroom for expected financial and public traffic. Local fixture results alone cannot establish that. Historical raw records are now removed in bounded, budgeted pages; no large migration or immediate mass deletion is introduced. See retention-budget-20261109.md for the follow-up and actual diagnostic evidence.
 
 ## Agent402
 

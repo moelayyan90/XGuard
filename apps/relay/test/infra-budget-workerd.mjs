@@ -32,6 +32,17 @@ try {
           for(let i=0;i<2048;i+=64) store.telemetryBatch(events.slice(i,i+64).map((e,j)=>({...e,id:crypto.randomUUID(),path:'/fixture/'+(i+j)})));
           result.budgeted_additional_writes=store.rowsWritten-capStart; result.budget=store.metrics().operational_budget;
         }
+        for(let i=0;i<1000;i++) {
+          store.run('INSERT INTO crawler_requests VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)','expired-'+i,'2000-01-01T00:00:00.000Z','/expired',200,'application/json','HIT','claimed-ai','OpenAI','fixture','','',0,0,'',0);
+          store.run('INSERT INTO crawler_visitors VALUES(?,?,?,?)','2000-01-01','expired-'+i,'OpenAI',1);
+          store.run('INSERT INTO rate_limits VALUES(?,?,?)','expired-'+String(i).padStart(5,'0'),1,0);
+        }
+        const immutableBefore=store.one('SELECT count(*) AS n FROM fact_observations').n, cleanupStart=store.rowsWritten;
+        store.cleanOperationalData();let cleanupWrites=store.rowsWritten-cleanupStart;
+        for(let i=0;i<10;i++){const restarted=new Store(this.state.storage), before=restarted.rowsWritten;restarted.cleanOperationalData();cleanupWrites+=restarted.rowsWritten-before;}
+        result.cleanup_writes=cleanupWrites;result.remaining_expired_raw=store.one('SELECT count(*) AS n FROM crawler_requests WHERE timestamp<?','2001-01-01').n;
+        result.cleanup_preserved_immutable_observations=store.one('SELECT count(*) AS n FROM fact_observations').n===immutableBefore;
+        result.final_operational_budget=store.metrics().operational_budget||null;
         return Response.json(result);
       }
     }
@@ -46,6 +57,12 @@ try {
   assert.ok(measurements.after.telemetry_writes<=measurements.before.telemetry_writes);
   if(measurements.before.raw_crawler_samples>measurements.after.raw_crawler_samples) assert.ok(measurements.after.telemetry_writes<measurements.before.telemetry_writes/10);
   assert.ok(measurements.after.budget.rows_written<=500);
-  const report={baseline_sha:process.env.LIVE_BASELINE_SHA||null,scope:'Paired real workerd SQLite. 2048 repeat verified-crawler requests and 100 unchanged source revalidations. No providers, payments or production load. SQL row counters include indexes and triggers; provider request/alarm/KV billing is excluded.',...measurements,telemetry_write_reduction_percent:100*(1-measurements.after.telemetry_writes/measurements.before.telemetry_writes)};
+  assert.ok(measurements.after.cleanup_preserved_immutable_observations);
+  assert.ok(measurements.after.final_operational_budget.rows_written<=500);
+  assert.ok(measurements.after.final_operational_budget.cleanup_rows_written<=250);
+  assert.ok(measurements.after.final_operational_budget.telemetry_rows_written<=250);
+  assert.ok(measurements.after.cleanup_writes<=measurements.before.cleanup_writes);
+  if(measurements.before.remaining_expired_raw===0) assert.ok(measurements.after.cleanup_writes<measurements.before.cleanup_writes/10);
+  const report={baseline_sha:process.env.LIVE_BASELINE_SHA||null,scope:'Paired real workerd SQLite. 2048 repeat verified-crawler requests, 100 unchanged source revalidations, 3000 expired operational rows and 10 retention restarts. No providers, payments or production load. SQL row counters include indexes and triggers; provider request/alarm/KV billing is excluded.',...measurements,telemetry_write_reduction_percent:100*(1-measurements.after.telemetry_writes/measurements.before.telemetry_writes)};
   console.log(JSON.stringify(report)); if(process.env.INFRA_BUDGET_REPORT) await writeFile(process.env.INFRA_BUDGET_REPORT,JSON.stringify(report,null,2));
 } finally {if(runtime)await runtime.dispose();await rm(directory,{recursive:true,force:true});}

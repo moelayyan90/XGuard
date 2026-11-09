@@ -206,6 +206,22 @@ export class Store {
   telemetry(event: Row): void {
     this.telemetryBatch([event]);
   }
+  operationalBudget(): Row {
+    const day = iso().slice(0, 10), prior = this.get('operational-telemetry-budget-v1');
+    return prior?.day === day
+      ? { ...prior, telemetry_rows_written: prior.telemetry_rows_written ?? prior.rows_written, cleanup_rows_written: prior.cleanup_rows_written || 0, rate_cursor: prior.rate_cursor || '' }
+      : { day, rows_written: 0, telemetry_rows_written: 0, cleanup_rows_written: 0, dropped_events: 0, alert: 0, rate_cursor: prior?.rate_cursor || '' };
+  }
+  checkpointOperationalBudget(budget: Row, start: number, component: 'telemetry' | 'cleanup'): void {
+    const writes = this.rowsWritten - start + 2; // Include the indexed checkpoint.
+    budget[component + '_rows_written'] += writes; budget.rows_written += writes;
+    const threshold = [90, 75, 50].find(n => budget.rows_written >= 500 * n / 100) || 0;
+    if (threshold > budget.alert) {
+      console.warn(JSON.stringify({ event: 'resource_budget_threshold', component: 'operational-telemetry-and-retention', threshold, rows_written: budget.rows_written, allocated_rows_per_shard_day: 500 }));
+      budget.alert = threshold;
+    }
+    this.set('operational-telemetry-budget-v1', budget);
+  }
   telemetryBatch(events: Row[]): void {
     // Operational analytics only. Count every buffered request, but retain one
     // representative raw crawler sample per group instead of duplicate rows.
@@ -219,30 +235,21 @@ export class Store {
       group.requests++; group.bytes += event.bytes; group.latency += event.latency_ms;
       groups.set(key, group);
     }
-    const budgetKey = 'operational-telemetry-budget-v1', today = iso().slice(0, 10);
-    const prior = this.get(budgetKey);
-    const budget = prior?.day === today ? prior : { day: today, rows_written: 0, dropped_events: 0, alert: 0 };
-    const limit = 500; // 16,000/day across the fixed 32 shards. Analytics only.
+    const budget = this.operationalBudget();
+    // Reserve half of the existing 500-row allocation for retention. New
+    // analytics cannot starve deletion, or spend an old release's budget twice.
     const start = this.rowsWritten;
     this.storage.transactionSync(() => {
       for (const { event, day, requests, bytes, latency } of groups.values()) {
       // Reserve the worst-case indexed writes and the budget checkpoint before
       // admitting a group. Exhaustion never rejects a public or paid request.
-      if (budget.rows_written + this.rowsWritten - start + 12 > limit) { budget.dropped_events += requests; continue; }
+      if (budget.telemetry_rows_written + this.rowsWritten - start + 12 > 250 || budget.rows_written + this.rowsWritten - start + 12 > 500) { budget.dropped_events += requests; continue; }
       if (event.classification !== 'unclassified' && !event.synthetic) this.run('INSERT INTO crawler_requests VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', event.id, event.timestamp, event.path, event.status, event.content_type, event.cache, event.classification, event.operator || '', event.user_agent, event.referrer || '', event.country || '', event.bytes, event.latency_ms, event.visitor_hash || '', 0);
       this.run(`INSERT INTO request_metrics VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(day,path,operator,classification,status,cache) DO UPDATE SET requests=requests+excluded.requests,bytes=bytes+excluded.bytes,latency_ms=latency_ms+excluded.latency_ms`, day, event.path, event.operator || '', event.classification, event.status, event.cache, requests, bytes, latency);
       if (event.visitor_hash && event.classification === 'verified-ai') this.run('INSERT INTO crawler_visitors VALUES(?,?,?,?) ON CONFLICT(day,visitor_hash,operator) DO UPDATE SET requests=requests+excluded.requests', day, event.visitor_hash, event.operator || '', requests);
       if (event.referral_platform && event.classification === 'unclassified') this.run('INSERT INTO ai_referrals VALUES(?,?,?,?) ON CONFLICT(day,path,platform) DO UPDATE SET requests=requests+excluded.requests', day, event.path, event.referral_platform, requests);
       }
-      if (this.rowsWritten > start) {
-        budget.rows_written += this.rowsWritten - start + 2;
-        const threshold = [90, 75, 50].find(n => budget.rows_written >= limit * n / 100) || 0;
-        if (threshold > budget.alert) {
-          console.warn(JSON.stringify({ event: 'resource_budget_threshold', component: 'operational-telemetry', threshold, rows_written: budget.rows_written, allocated_rows_per_shard_day: limit }));
-          budget.alert = threshold;
-        }
-        this.set(budgetKey, budget);
-      }
+      if (this.rowsWritten > start) this.checkpointOperationalBudget(budget, start, 'telemetry');
     });
   }
   metrics(): any {
@@ -253,9 +260,25 @@ export class Store {
       referrals: this.rows('SELECT platform,sum(requests) AS requests FROM ai_referrals WHERE day>=? GROUP BY platform', iso(Date.now() - 7 * 86400000).slice(0, 10)) };
   }
   cleanOperationalData(): void {
-    this.run('DELETE FROM crawler_requests WHERE timestamp<?', iso(Date.now() - 7 * 86400000));
-    this.run('DELETE FROM crawler_visitors WHERE day<?', iso(Date.now() - 31 * 86400000).slice(0, 10));
-    this.run('DELETE FROM rate_limits WHERE expires<?', Date.now());
+    const budget = this.operationalBudget(), start = this.rowsWritten, oldCursor = budget.rate_cursor || '';
+    const remaining = () => Math.min(250 - budget.cleanup_rows_written, 500 - budget.rows_written) - (this.rowsWritten - start) - 2;
+    this.storage.transactionSync(() => {
+      // Indexed candidate pages bound both read work and indexed row deletes.
+      // These three tables are optional operational data, never financial state.
+      const raw = Math.max(0, Math.min(64, Math.floor(remaining() / 5)));
+      if (raw) this.run('DELETE FROM crawler_requests WHERE id IN (SELECT id FROM crawler_requests WHERE timestamp<? ORDER BY timestamp LIMIT ?)', iso(Date.now() - 7 * 86400000), raw);
+      const visitors = Math.max(0, Math.min(16, Math.floor(remaining() / 4)));
+      if (visitors) this.run('DELETE FROM crawler_visitors WHERE (day,visitor_hash,operator) IN (SELECT day,visitor_hash,operator FROM crawler_visitors WHERE day<? ORDER BY day,visitor_hash,operator LIMIT ?)', iso(Date.now() - 31 * 86400000).slice(0, 10), visitors);
+      const rates = Math.max(0, Math.min(16, Math.floor(remaining() / 4)));
+      if (rates) {
+        // expires is not indexed. Walk a bounded primary-key page rather than
+        // scanning all live rows to find expired ones; persist progress.
+        const candidates = this.rows('SELECT key,expires FROM rate_limits WHERE key>? ORDER BY key LIMIT ?', oldCursor, rates);
+        for (const row of candidates) if (row.expires < Date.now()) this.run('DELETE FROM rate_limits WHERE key=?', row.key);
+        budget.rate_cursor = candidates.at(-1)?.key || '';
+      }
+      if (this.rowsWritten > start || budget.rate_cursor !== oldCursor) this.checkpointOperationalBudget(budget, start, 'cleanup');
+    });
   }
   limit(key: string, max: number, windowMs: number): boolean {
     return this.storage.transactionSync(() => {
