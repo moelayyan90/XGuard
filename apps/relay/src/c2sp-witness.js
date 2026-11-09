@@ -1,0 +1,414 @@
+const te = new TextEncoder();
+
+export const XGUARD_WITNESS_NAME = "xguardgate.com/witness";
+export const MAX_PROOF_LINES = 63;
+export const EMPTY_TREE_ROOT = "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=";
+
+export const PINNED_LOGS = Object.freeze({
+  "gblin.digital/receipts-log": Object.freeze({
+    id: "gblin-receipts",
+    origin: "gblin.digital/receipts-log",
+    vkey: "gblin.digital/receipts-log+00c6e18c+AY8/YnCHXTnsECT2EGv0M5RTqlVvFobctLv3WSihYkoG",
+    operator: "GBLIN Protocol",
+    checkpoint: "https://mcp.gblin.digital/log/checkpoint",
+  }),
+});
+
+const SIG_LINE = /^— ([^\s+]+) ([A-Za-z0-9+/=]+)$/u;
+
+function cat(...parts) {
+  const size = parts.reduce((n, part) => n + part.length, 0);
+  const out = new Uint8Array(size);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
+}
+
+function b64(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function unb64(value) {
+  return Uint8Array.from(atob(value), char => char.charCodeAt(0));
+}
+
+function b64url(bytes) {
+  return b64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function unb64url(value) {
+  const text = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = text + "=".repeat((4 - (text.length % 4 || 4)) % 4);
+  return unb64(padded);
+}
+
+function hex(bytes) {
+  return [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function unhex(value) {
+  if (!/^[0-9a-fA-F]+$/.test(value) || value.length % 2) throw new Error("bad hex");
+  return Uint8Array.from(value.match(/.{2}/g), pair => Number.parseInt(pair, 16));
+}
+
+async function sha256(bytes) {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+}
+
+function eq(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+export function unb64Strict(value) {
+  if (typeof value !== "string" || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+    throw new Error("non-canonical base64");
+  }
+  let bytes;
+  try {
+    bytes = unb64(value);
+  } catch {
+    throw new Error("non-canonical base64");
+  }
+  if (b64(bytes) !== value) throw new Error("non-canonical base64");
+  return bytes;
+}
+
+export function parseDecimal(value) {
+  if (typeof value !== "string" || !/^(0|[1-9][0-9]{0,15})$/.test(value)) throw new Error("bad decimal");
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) throw new Error("decimal out of range");
+  return parsed;
+}
+
+export function parseCheckpointNote(text) {
+  if (typeof text !== "string" || !text.endsWith("\n")) throw new Error("note: missing final newline");
+  if (/[\u0000-\u0009\u000b-\u001f]/.test(text)) throw new Error("note: control character");
+  const separator = text.lastIndexOf("\n\n");
+  if (separator < 0) throw new Error("note: no blank line");
+
+  const body = text.slice(0, separator + 1);
+  const signatureLines = text.slice(separator + 2, -1).split("\n");
+  if (!signatureLines.length || signatureLines.some(line => !line)) throw new Error("note: missing signature");
+  for (const line of signatureLines) {
+    const match = SIG_LINE.exec(line);
+    if (!match) throw new Error("note: malformed signature line");
+    if (unb64Strict(match[2]).length < 5) throw new Error("note: signature too short");
+  }
+
+  const lines = body.slice(0, -1).split("\n");
+  if (lines.length < 3 || lines.slice(0, 3).some(line => line.length === 0)) {
+    throw new Error("checkpoint: needs origin, size and root");
+  }
+  const size = parseDecimal(lines[1]);
+  const root = unb64Strict(lines[2]);
+  if (root.length !== 32) throw new Error("checkpoint: root hash is not 32 bytes");
+  return { body, origin: lines[0], size, root, signatureLines };
+}
+
+export function parseVerifierKey(vkey) {
+  const match = /^([^+]+)\+([0-9a-f]{8})\+([A-Za-z0-9+/=]+)$/.exec(String(vkey || ""));
+  if (!match) throw new Error("bad verifier key");
+  const raw = unb64Strict(match[3]);
+  if (raw.length !== 33) throw new Error("bad verifier key payload");
+  return { name: match[1], hash: unhex(match[2]), alg: raw[0], pub: raw.slice(1) };
+}
+
+async function keyHash(name, alg, pub) {
+  return (await sha256(cat(te.encode(name + "\n"), Uint8Array.of(alg), pub))).slice(0, 4);
+}
+
+export async function verifyLogSignature(note, vkey) {
+  const keyInfo = parseVerifierKey(vkey);
+  if (keyInfo.alg !== 0x01) throw new Error("log key is not an Ed25519 note key");
+  if (!eq(await keyHash(keyInfo.name, keyInfo.alg, keyInfo.pub), keyInfo.hash)) {
+    throw new Error("verifier key hash mismatch");
+  }
+  const key = await crypto.subtle.importKey("raw", keyInfo.pub, { name: "Ed25519" }, false, ["verify"]);
+  let verified = false;
+
+  for (const line of note.signatureLines) {
+    const match = SIG_LINE.exec(line);
+    if (!match || match[1] !== keyInfo.name) continue;
+    const payload = unb64Strict(match[2]);
+    if (!eq(payload.slice(0, 4), keyInfo.hash)) continue;
+    if (payload.length !== 68) return false;
+    const ok = await crypto.subtle.verify({ name: "Ed25519" }, key, payload.slice(4), te.encode(note.body));
+    if (!ok) return false;
+    verified = true;
+  }
+  return verified;
+}
+
+const nodeHash = async (left, right) => sha256(cat(Uint8Array.of(0x01), left, right));
+const isOdd = value => value % 2 === 1;
+const half = value => Math.floor(value / 2);
+const isPowerOfTwo = value => {
+  if (value < 1) return false;
+  let current = value;
+  while (current % 2 === 0) current /= 2;
+  return current === 1;
+};
+
+export async function verifyConsistency(oldSize, newSize, oldRoot, newRoot, proof) {
+  if (oldSize === newSize) return proof.length === 0 && eq(oldRoot, newRoot);
+  if (oldSize === 0) return proof.length === 0;
+  if (oldSize > newSize || proof.length === 0) return false;
+
+  let first = oldSize - 1;
+  let second = newSize - 1;
+  while (isOdd(first)) {
+    first = half(first);
+    second = half(second);
+  }
+
+  let index = 0;
+  let oldHash;
+  let newHash;
+  if (isPowerOfTwo(oldSize)) {
+    oldHash = oldRoot;
+    newHash = oldRoot;
+  } else {
+    oldHash = proof[0];
+    newHash = proof[0];
+    index = 1;
+  }
+
+  for (; index < proof.length; index += 1) {
+    if (second === 0) return false;
+    const current = proof[index];
+    if (isOdd(first) || first === second) {
+      oldHash = await nodeHash(current, oldHash);
+      newHash = await nodeHash(current, newHash);
+      while (!isOdd(first) && first !== 0) {
+        first = half(first);
+        second = half(second);
+      }
+    } else {
+      newHash = await nodeHash(newHash, current);
+    }
+    first = half(first);
+    second = half(second);
+  }
+
+  return second === 0 && eq(oldHash, oldRoot) && eq(newHash, newRoot);
+}
+
+export async function originHashHex(origin) {
+  return hex(await sha256(te.encode(origin)));
+}
+
+function reply(status, body, type = "text/plain; charset=utf-8", extra = {}) {
+  return new Response(body, {
+    status,
+    headers: {
+      "content-type": type,
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      "x-xguard-c2sp": "v1",
+      ...extra,
+    },
+  });
+}
+
+function json(body, status = 200) {
+  return reply(status, JSON.stringify(body), "application/json; charset=utf-8");
+}
+
+async function witnessVerifierKey(publicRaw) {
+  const hash = await keyHash(XGUARD_WITNESS_NAME, 0x04, publicRaw);
+  return `${XGUARD_WITNESS_NAME}+${hex(hash)}+${b64(cat(Uint8Array.of(0x04), publicRaw))}`;
+}
+
+async function ensureWitnessKey(storage) {
+  let record = await storage.get("witness:key:v1");
+  if (record?.privateJwk && record?.publicRaw) return record;
+
+  const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+  const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  const publicRaw = b64(unb64url(publicJwk.x));
+  record = { privateJwk, publicRaw, createdAt: new Date().toISOString() };
+  await storage.put("witness:key:v1", record);
+  return record;
+}
+
+async function cosign(note, keyRecord, timestamp = Math.floor(Date.now() / 1000)) {
+  const publicRaw = unb64Strict(keyRecord.publicRaw);
+  const privateKey = await crypto.subtle.importKey(
+    "jwk",
+    keyRecord.privateJwk,
+    { name: "Ed25519" },
+    false,
+    ["sign"],
+  );
+  const message = te.encode(`cosignature/v1\ntime ${timestamp}\n` + note.body);
+  const signature = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, privateKey, message));
+  const hash = await keyHash(XGUARD_WITNESS_NAME, 0x04, publicRaw);
+  const timeBytes = new Uint8Array(8);
+  new DataView(timeBytes.buffer).setBigUint64(0, BigInt(timestamp));
+  return `— ${XGUARD_WITNESS_NAME} ${b64(cat(hash, timeBytes, signature))}`;
+}
+
+function withCosignature(text, line) {
+  const separator = text.lastIndexOf("\n\n");
+  const signatures = text
+    .slice(separator + 2, -1)
+    .split("\n")
+    .filter(existing => !existing.startsWith(`— ${XGUARD_WITNESS_NAME} `));
+  return text.slice(0, separator + 2) + [...signatures, line].join("\n") + "\n";
+}
+
+function parseAddRequest(bodyText) {
+  const separator = bodyText.indexOf("\n\n");
+  if (separator < 0) throw new Error("no blank line before checkpoint");
+  const prefix = bodyText.slice(0, separator).split("\n");
+  const match = /^old (\S+)$/.exec(prefix[0] || "");
+  const old = parseDecimal(match ? match[1] : "");
+  const proofLines = prefix.slice(1);
+  if (proofLines.length > MAX_PROOF_LINES) throw new Error("more than 63 proof lines");
+  const proof = proofLines.map(line => {
+    const hash = unb64Strict(line);
+    if (hash.length !== 32) throw new Error("proof hash length");
+    return hash;
+  });
+  const checkpointText = bodyText.slice(separator + 2);
+  return { old, proof, checkpointText };
+}
+
+export class C2SPWitness {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async metadata() {
+    const key = await ensureWitnessKey(this.state.storage);
+    const publicRaw = unb64Strict(key.publicRaw);
+    const accepted = await Promise.all(Object.values(PINNED_LOGS).map(async log => ({
+      id: log.id,
+      origin: log.origin,
+      verifier_key: log.vkey,
+      checkpoint: log.checkpoint,
+      origin_hash: await originHashHex(log.origin),
+    })));
+    return {
+      witness: XGUARD_WITNESS_NAME,
+      protocol: "c2sp.org/tlog-witness",
+      cosignature: "c2sp.org/tlog-cosignature v1 Ed25519",
+      operator: "Mohammad Elayyan / XGuard",
+      contact: "mo.elayyan2023@gmail.com",
+      verifier_key: await witnessVerifierKey(publicRaw),
+      push_endpoint: "https://api.xguardgate.com/witness/add-checkpoint",
+      monitor_template: "https://api.xguardgate.com/witness/<sha256-origin>/checkpoint",
+      accepted_logs: accepted,
+      policy: "A cosignature only attests that the signed checkpoint verified and was consistent with the last checkpoint XGuard accepted for that origin.",
+    };
+  }
+
+  async addCheckpoint(bodyText) {
+    let request;
+    try {
+      request = parseAddRequest(bodyText);
+    } catch (error) {
+      return reply(400, `malformed request: ${error.message}\n`);
+    }
+
+    let note;
+    try {
+      note = parseCheckpointNote(request.checkpointText);
+    } catch (error) {
+      return reply(400, `malformed checkpoint: ${error.message}\n`);
+    }
+
+    const log = PINNED_LOGS[note.origin];
+    if (!log) return reply(404, "unknown origin\n");
+
+    let signatureValid = false;
+    try {
+      signatureValid = await verifyLogSignature(note, log.vkey);
+    } catch {
+      signatureValid = false;
+    }
+    if (!signatureValid) return reply(403, "checkpoint not signed by the pinned log key\n");
+    if (request.old > note.size) return reply(400, "old size larger than checkpoint size\n");
+
+    return this.state.blockConcurrencyWhile(async () => {
+      const headKey = `witness:head:${note.origin}`;
+      const previous = await this.state.storage.get(headKey);
+      const held = previous?.size ?? 0;
+      if (request.old !== held) return reply(409, `${held}\n`, "text/x.tlog.size");
+
+      const root = b64(note.root);
+      if (note.size === 0 && root !== EMPTY_TREE_ROOT) return reply(422, "size 0 requires the empty tree root\n");
+      if (request.old === 0 && request.proof.length !== 0) return reply(422, "proof must be empty when old size is 0\n");
+
+      if (request.old === note.size) {
+        if (previous && previous.root !== root) return reply(422, "same size, different root\n");
+        if (request.proof.length !== 0) return reply(422, "proof must be empty when old size equals checkpoint size\n");
+      } else if (request.old > 0) {
+        const oldRoot = unb64Strict(previous.root);
+        const ok = await verifyConsistency(request.old, note.size, oldRoot, note.root, request.proof);
+        if (!ok) return reply(422, "consistency proof invalid\n");
+      }
+
+      const key = await ensureWitnessKey(this.state.storage);
+      const line = await cosign(note, key);
+      const cosignedNote = withCosignature(request.checkpointText, line);
+      await this.state.storage.put(headKey, {
+        size: note.size,
+        root,
+        note: cosignedNote,
+        updatedAt: new Date().toISOString(),
+      });
+      return reply(200, line + "\n");
+    });
+  }
+
+  async checkpointByHash(originHash) {
+    for (const log of Object.values(PINNED_LOGS)) {
+      if (await originHashHex(log.origin) !== originHash) continue;
+      const previous = await this.state.storage.get(`witness:head:${log.origin}`);
+      return previous?.note ? reply(200, previous.note) : reply(404, "no checkpoint cosigned yet\n");
+    }
+    return reply(404, "unknown origin\n");
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (request.method === "GET" && ["/witness", "/witness/", "/witness/metadata"].includes(url.pathname)) {
+      return json(await this.metadata());
+    }
+    if (request.method === "GET" && url.pathname === "/witness/verifier-key") {
+      const key = await ensureWitnessKey(this.state.storage);
+      return reply(200, (await witnessVerifierKey(unb64Strict(key.publicRaw))) + "\n");
+    }
+    if (request.method === "POST" && url.pathname === "/witness/add-checkpoint") {
+      const body = await request.text();
+      if (body.length > 131072) return reply(413, "request too large\n");
+      return this.addCheckpoint(body);
+    }
+    const checkpoint = url.pathname.match(/^\/witness\/([0-9a-f]{64})\/checkpoint$/);
+    if (request.method === "GET" && checkpoint) return this.checkpointByHash(checkpoint[1]);
+    return reply(404, "not found\n");
+  }
+}
+
+export async function c2spWitnessRoute(request, env) {
+  const url = new URL(request.url);
+  if (!["xguardgate.com", "api.xguardgate.com"].includes(url.hostname) || !url.pathname.startsWith("/witness")) return null;
+  if (!env.C2SP_WITNESS) return reply(503, "witness unavailable\n");
+  if (!["GET", "POST", "HEAD"].includes(request.method)) return reply(405, "method not allowed\n", "text/plain; charset=utf-8", { allow: "GET, HEAD, POST" });
+
+  const stub = env.C2SP_WITNESS.get(env.C2SP_WITNESS.idFromName("xguard-c2sp-witness-v1"));
+  const forwarded = request.method === "HEAD"
+    ? new Request(request.url, { method: "GET", headers: request.headers })
+    : request;
+  const response = await stub.fetch(forwarded);
+  if (request.method !== "HEAD") return response;
+  return new Response(null, { status: response.status, headers: response.headers });
+}
