@@ -1,12 +1,12 @@
 import { escape } from '../live/util.ts';
 export const siteBrand = () => '<a class="brand" href="/" aria-label="XGuard home"><span class="brand-symbol" aria-hidden="true">x</span><span class="brand-word">XGuard</span></a>';
 export function siteHeader(path: string) {
-  const links = [['/routes', 'Routes'], ['/network?service=discover', 'Discover'], ['/network', 'Execute'], ['/network/docs', 'Developers']];
+  const links = [['/authority', 'Authority'], ['/routes', 'Routes'], ['/network?service=discover', 'Discover'], ['/network', 'Execute'], ['/network/docs', 'Developers']];
   return `<a class="skip-link" href="#main-content">Skip to content</a><header class="site-header"><nav class="site-nav" aria-label="Main navigation">${siteBrand()}<div class="links">${links.map(([href,label])=>`<a href="${href}"${path === href ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</div><a class="nav-cta" href="/install">Connect agent <span aria-hidden="true">↗</span></a></nav></header>`;
 }
 export function siteFooter() {
   const groups = [
-    ['Platform', [['/routes','Task routes'],['/network','Execution workspace'],['/network?service=discover','Service discovery'],['/topics','Source index'],['/api/gateway/v1/checkout','Verification receipts']]],
+    ['Platform', [['/routes','Task routes'],['/network','Execution workspace'],['/network?service=discover','Service discovery'],['/topics','Source index'],['/authority','Financial authority sandbox'],['/api/gateway/v1/checkout','Verification receipts']]],
     ['Build with XGuard', [['/network/docs','Documentation'],['/install','Connect an agent'],['/openapi.json','OpenAPI'],['/v1/payments/coverage','Payment coverage']]],
     ['Company', [['/identity','Operator & contact'],['/status','System status'],['/pricing','Pricing'],['/terms','Terms'],['/privacy','Privacy'],['/refund-policy','Refund policy']]],
   ] as const;

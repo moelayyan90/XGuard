@@ -1,0 +1,43 @@
+{
+  "observed_at": "2026-11-09T21:11:35.188423+00:00",
+  "results": [
+    {
+      "path": "/supported",
+      "status": 200,
+      "worker_version_id": "9deb055f-c803-47ee-acda-e76c89d454f6",
+      "worker_version_tag": "git-e96b831405ad",
+      "body": {
+        "kinds": [
+          {
+            "x402Version": 2,
+            "scheme": "exact",
+            "network": "eip155:8453"
+          }
+        ],
+        "extensions": [],
+        "signers": {}
+      }
+    },
+    {
+      "path": "/healthz",
+      "status": 503,
+      "worker_version_id": "9deb055f-c803-47ee-acda-e76c89d454f6",
+      "worker_version_tag": "git-e96b831405ad",
+      "body": {
+        "error": "storage_write_quota_exhausted",
+        "request_id": "f1b6f9f6-eed8-4d9d-8cd4-471dcfdb2b80",
+        "quota_reset_at": "2026-11-10T00:00:00.000Z",
+        "service": "XGuard Live",
+        "version": "6.0.0",
+        "owner_access": "configured"
+      }
+    },
+    {
+      "path": "/v1/authority/catalog",
+      "status": 410,
+      "worker_version_id": "9deb055f-c803-47ee-acda-e76c89d454f6",
+      "worker_version_tag": "git-e96b831405ad",
+      "body": "<!doctype html><html lang=\"en\" dir=\"ltr\"><head>\n    <meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n    <title>This service has been retired | XGuard</title><meta name=\"description\" content=\"Current facts, primary-source evidence and immutable change history.\">\n    <meta name=\"robots\" content=\"noindex,follow\">\n    <link rel=\"canonical\" href=\"https://xguardgate.com/\"><link rel=\"stylesheet\" href=\"/assets/live-v8.css\">\n    <link rel=\"alternate\" type=\"applic"
+    }
+  ]
+}

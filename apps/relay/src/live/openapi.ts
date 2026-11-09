@@ -1,3 +1,4 @@
+import { authorityPaths } from '../financial-authority/http.js';
 import { LIVE_PAID, PAID_BASE, paidInputSchema, paidResultSchema } from './paid-data.ts';
 import { ORIGIN } from './types.ts';
 import { OPERATIONS } from '../network/catalog.ts';
@@ -22,6 +23,7 @@ export const liveOpenApi = {
   servers: [{ url: ORIGIN }],
   externalDocs: { description: 'Verified-fact checkout and pricing', url: ORIGIN + '/pricing' },
   paths: {
+    ...authorityPaths(),
     ...Object.fromEntries(Object.entries({ '/v1/routes/resolve': 'route-resolve', '/v1/routes/compare': 'route-compare', '/v1/discover': 'discover', '/v1/discover/platforms': 'platform-discovery', '/v1/crawl': 'crawl', '/v1/facts': 'fact', '/v1/tasks': 'task', '/v1/schedules': 'schedule', '/v1/verify': 'verify' }).map(([path, route]) => [path, { post: { servers: [{ url: apiOrigin }], operationId: 'network_' + route.replaceAll('-', '_'), summary: OPERATIONS.find(d => d.route === route)!.name, parameters: [header('Idempotency-Key', 'Stable across retries.', true), header('Payment-Signature', 'x402 v2 exact authorization'), header('X-XGuard-Quote', 'Original signed quote')], requestBody: { required: true, content: jsonContent(networkSchema(route)) }, responses: { 200: { description: 'Purchased operation result; task creation returns a task ID and task token.' }, 400: { description: 'Input invalid' }, 402: { description: 'x402 payment required' }, 503: { description: 'Dependency or payment unavailable' } } } }])),
     '/v1/tasks/{id}': { get: { servers: [{ url: apiOrigin }], operationId: 'networkTaskStatus', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^xgtask_[a-f0-9]{32}$' } }, header('Authorization', 'Bearer task_token', true)], responses: { 200: { description: 'Durable task state' }, 404: { description: 'Task unknown or unauthorized' } } } },
     ...Object.fromEntries(['resume', 'cancel', 'verify'].map(action => ['/v1/tasks/{id}/' + action, { post: { servers: [{ url: apiOrigin }], operationId: 'networkTask' + action, parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^xgtask_[a-f0-9]{32}$' } }, header('Authorization', 'Bearer task_token', true)], responses: { 200: { description: 'Original bounded task contract updated or inspected; no new charge' }, 404: { description: 'Task unknown or unauthorized' }, 409: { description: 'Terminal task or exhausted retry budget' } } } }])),

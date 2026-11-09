@@ -1,0 +1,91 @@
+# XGuard Agent Financial Authority — sandbox
+
+This release reserves policy budgets, not bank balances. It cannot activate real spending via an environment toggle. No service fee is collected. An independent paying customer has not been established for this product.
+
+## Run the executable evidence
+
+```sh
+npm ci --prefix apps/relay --no-audit --no-fund
+npm run --prefix apps/relay authority:test
+node sdk/financial-authority/verify-receipt.mjs docs/evidence/financial-authority/sample-sandbox-receipt.json docs/evidence/financial-authority/sample-sandbox-public-key.json
+node scripts/authority-growth-model.mjs
+```
+
+The test creates only ephemeral authentication keys and a mock executor. It moves no real funds and creates no production wallet. The second verifier uses Node's crypto implementation and works offline without XGuard's server or installed npm dependencies. Pin the expected public key separately; a key included with an untrusted receipt is not a trust anchor. The checked-in key and receipt are **sandbox evidence**, never the production ProofRail key.
+
+## Connect
+
+Canonical API: `https://api.xguardgate.com/v1/authority`. Availability requires this release to be deployed. Inspect `/catalog` before onboarding. Owner enrollment currently requires the operator's existing `LIVE_ADMIN_KEY`; never put it in an agent prompt, URL, source file or public issue. Enrollment returns a scoped `organization_token`. Supply it as `X-XGuard-Organization-Token` with every subsequent command, or as `organizationToken` in SDK send options. It is an admission credential, not spending authority; the agent signature is always required. Invalid tenant tokens are rejected before any Durable Object lookup. Rotating the existing operator secret invalidates these sandbox tokens; token rotation/recovery needs operator coordination.
+
+```js
+import { createIdentity, signCommand, sendCommand } from './client.mjs';
+
+const owner = await createIdentity();
+const agent = await createIdentity();
+const org = 'customer_org_001';
+const policy = {
+  currency: 'USDC', asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  network: 'eip155:8453', per_operation: '5000000', per_period: '20000000',
+  lifetime: '100000000', period_seconds: 86400,
+  payees: ['OWNER_APPROVED_EXACT_MERCHANT_ADDRESS'],
+};
+const enrollment = await signCommand(owner, org, 'enroll', {
+  owner_key: owner.publicKey, policies: [policy], accept_price_atomic: '50000',
+});
+// The operator submits enrollment with the existing admin credential.
+// Merely signing this sandbox policy never signs a USDC payment.
+
+const grant = await signCommand(owner, org, 'grant', {
+  grant_id: 'agent_grant_001', parent: null, agent_key: agent.publicKey,
+  policy, not_before: Date.now() - 1000,
+  expires_at: Date.now() + 3600000, depth_remaining: 2,
+});
+// After enrollment, sendCommand(grant) stores the owner-signed delegation.
+// A child grant is signed by the parent's key, identifies parent:'agent_grant_001',
+// and narrows payees, limits, validity and depth_remaining.
+```
+
+Authentication keys belong in the customer's key store. `createIdentity` is a local example; exporting or persisting a private key is the caller's responsibility. Each key may have one delegation per organization in this release. There is no key-rotation or grant-renewal endpoint yet.
+
+`authorize` payload:
+
+```json
+{
+  "operation_id": "customer_operation_001",
+  "grant_id": "agent_grant_001",
+  "currency": "USDC",
+  "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "network": "eip155:8453",
+  "payee": "OWNER_APPROVED_EXACT_MERCHANT_ADDRESS",
+  "principal_atomic": "1000000",
+  "provider_fee_cap_atomic": "0",
+  "max_service_fee_atomic": "50000",
+  "adapter": "operator_approved_adapter",
+  "task_digest": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "expires_at": 0
+}
+```
+
+Replace `task_digest` with the base64url SHA-256 of the exact customer task and `expires_at` with an integer millisecond time no more than 5 minutes ahead, within every grant's expiry. The all-A value above is illustrative. Sign the whole command with the leaf key. Exact asset, network and payee strings are case-sensitive; no conversion or recipient substitution occurs.
+
+Preserve `operation_id` and the original payload across retries. A different payload with the same ID returns 409. A repeated nonce with changed content returns 409. An identical signed command returns current state. Expired envelopes can be replaced by a newly signed **status** command for the original operation. The client never signs or automatically buys a new payment after an uncertain outcome.
+
+Commands `execute`, `reconcile`, `cancel` and `status` take `{ "operation_id": "..." }`. `revoke` takes `{ "grant_id": "..." }`, or null for the whole organization, and must be owner-signed. `audit` is owner-only and takes `{ "from": 1, "limit": 100 }`; `metrics` takes `{}`. All requests use the versioned envelope generated by `signCommand`.
+
+MCP tools: `xguard.authority.catalog`, `xguard.authority.command` (argument `{envelope, organization_token}`), and `xguard.authority.verify_receipt` (argument `{receipt}`). A2A: `SendMessage` with one data part `{ "action": "xguard.authority", "envelope": {...}, "organization_token": "..." }`. Neither transport is allowed to smuggle the operator enrollment token. The HTTP API remains the canonical authorization contract.
+
+## Executor contract and boundaries
+
+The existing `AUTHORITY` binding is reused with distinct names `afa-v1:sandbox:<org_id>` and an `afa_records` table. Legacy mandates, ProofRail, C2SP and paid journals retain their bindings and formats. No new Cloudflare namespace or migration is created.
+
+No executor is configured in production by this release. A local/private executor needs `AFA_EXECUTOR`, `AFA_EXECUTOR_PUBLIC_JWK` (public P-256 key) and `AFA_EXECUTOR_ADAPTER` (exact allowed adapter name). The binding, never a caller-supplied URL, receives `POST /execute` once after durable dispatch, or **read-only** `POST /status` for reconciliation. Its idempotency key is `<organization_id>:<operation_id>`. It must independently enforce this key, verify the task digest against its actual task and preserve the exact recipient, principal and fee cap. XGuard cannot guarantee exactly-once side effects in a noncompliant external system.
+
+The executor signs sorted JSON using ES256, with raw 64-byte P1363 signature, and returns `{payload,signature}`. Required payload fields: `protocol:'xguard-afa-settlement/1'`, `mode`, `organization_id`, `operation_id`, `intent_digest`, `currency`, `asset`, `network`, `payee`, `principal_atomic`, `provider_fee_atomic`, `observed_at` (milliseconds), `status` (`confirmed`, `unknown`, `failed_no_effect`), and a nonempty `transaction` for confirmed outcomes. Failed-no-effect requires zero provider fees. A pinned signature is **executor evidence**, not independent blockchain finality. Sandbox transaction references do not represent onchain transactions.
+
+`RESERVED → DISPATCHING → CONFIRMED | FAILED | UNKNOWN`. Cancellation is allowed only before dispatch. Reconciliation cannot call `/execute`. All budgets remain held for unknown effects, including a process dying after dispatch was committed but before the network call. Recovery may require manual investigation if the executor cannot prove no effect. Expired reservations require an authenticated cancel; no unsafe automatic release is performed.
+
+The gate cannot control an agent's separate wallet, API key or alternate network path. No custody, KYC, universal agent identity, AP2 conformance, certified security audit, working production settlement or commercial revenue is claimed.
+
+## Before any live activation
+
+Live mode is rejected in code. A separate reviewed release must add aggregate service-fee budgets, one-invoice-only collection bound to signed delivery, production settlement/finality verification, grant/key lifecycle, durable-state versioning and account-wide admission accounting. It needs independent security review and legal classification. Any new production financial key, gas funding, real transaction or paid infrastructure requires the owner's separate explicit approval. Sandbox tests alone satisfy none of these gates.

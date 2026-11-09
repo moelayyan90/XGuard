@@ -1,0 +1,22 @@
+{
+  "name": "XGuard ProofRail",
+  "version": "1.0.0",
+  "alg": "ES256",
+  "kid": "did:web:api.xguardgate.com#xguard-proofrail",
+  "key_version": "xguard-proofrail-es256-1794259073273",
+  "jwk": {
+    "kty": "EC",
+    "use": "sig",
+    "key_ops": [
+      "verify"
+    ],
+    "alg": "ES256",
+    "ext": true,
+    "crv": "P-256",
+    "x": "KJgUJV00HIMkNhinMJOK_dCAgW_Pt1tI-jpLqPiKnHc",
+    "y": "vHHnn3KBrsekOz2D6qHJSSOrVQlLcE1D8tdEsUv8W4M",
+    "kid": "did:web:api.xguardgate.com#xguard-proofrail"
+  },
+  "created_at": "2026-11-09T21:17:53.273Z",
+  "verify_endpoint": "https://api.xguardgate.com/v1/proofs/verify"
+}
