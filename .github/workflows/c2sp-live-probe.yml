@@ -11,7 +11,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
     steps:
       - name: Verify live C2SP witness and print public verifier key
         shell: bash
@@ -39,3 +39,26 @@ jobs:
             monitor: "https://api.xguardgate.com/witness/" + g.origin_hash + "/checkpoint"
           }, null, 2));
           NODE
+
+      - name: Bootstrap first live GBLIN checkpoint into XGuard witness
+        shell: bash
+        run: |
+          set -euo pipefail
+          checkpoint="$(curl --fail --silent --show-error --max-time 15 https://mcp.gblin.digital/log/checkpoint)"
+          [[ -n "$checkpoint" ]] || { echo "empty GBLIN checkpoint"; exit 1; }
+          printf 'old 0\n\n%s\n' "$checkpoint" > "$RUNNER_TEMP/witness-request.txt"
+          status="$(curl --silent --show-error --max-time 20 -o "$RUNNER_TEMP/witness-response.txt" -w '%{http_code}'             -X POST --data-binary @"$RUNNER_TEMP/witness-request.txt"             https://api.xguardgate.com/witness/add-checkpoint)"
+          response="$(cat "$RUNNER_TEMP/witness-response.txt")"
+          if [[ "$status" == "200" ]]; then
+            printf 'bootstrap_status=200\ncosignature=%s\n' "$(printf '%s' "$response" | tr -d '\r\n')"
+          elif [[ "$status" == "409" ]]; then
+            printf 'bootstrap_status=409\nheld_size=%s\n' "$(printf '%s' "$response" | tr -d '\r\n')"
+          else
+            printf 'unexpected_status=%s\nresponse=%s\n' "$status" "$response"
+            exit 1
+          fi
+          origin_hash="cb6e6f270f915689e63aaa0e4e65e077518dfd3dffe76e2485d2a0047c4bfdfe"
+          monitor="$(curl --fail --silent --show-error --max-time 15 "https://api.xguardgate.com/witness/$origin_hash/checkpoint")"
+          printf '%s' "$monitor" | grep -F 'gblin.digital/receipts-log' >/dev/null
+          printf '%s' "$monitor" | grep -F '— xguardgate.com/witness ' >/dev/null
+          echo 'monitor_verified=true'
