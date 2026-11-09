@@ -1,0 +1,26 @@
+{
+  "baseline_sha": "e96b831405adcc8178b45d5f6f8dabbae9fca179",
+  "scope": "Paired real workerd SQLite. 2048 repeat verified-crawler requests and 100 unchanged source revalidations. No providers, payments or production load. SQL row counters include indexes and triggers; provider request/alarm/KV billing is excluded.",
+  "before": {
+    "revalidation_writes": 1100,
+    "telemetry_writes": 10242,
+    "recorded_requests": 2048,
+    "raw_crawler_samples": 2048,
+    "fact": "1.0.0"
+  },
+  "after": {
+    "revalidation_writes": 1100,
+    "telemetry_writes": 195,
+    "recorded_requests": 2048,
+    "raw_crawler_samples": 32,
+    "fact": "1.0.0",
+    "budgeted_additional_writes": 265,
+    "budget": {
+      "day": "2026-11-09",
+      "rows_written": 492,
+      "dropped_events": 20,
+      "alert": 90
+    }
+  },
+  "telemetry_write_reduction_percent": 98.09607498535442
+}

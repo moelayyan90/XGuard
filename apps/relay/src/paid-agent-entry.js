@@ -1071,14 +1071,17 @@ export class PaidGatewayState {
     if (path === "/journal/append") {
       if (!JOURNEY_EVENTS.has(body.event) || !/^xgr_[A-Za-z0-9_-]{1,124}$/.test(body.request_id || "")) return doJson({ error: "invalid_journal_event" }, 400);
       await this.state.storage.transaction(async tx => {
-        const journal = await tx.get("journey:v1") || { request_id: body.request_id, created_at: new Date().toISOString(), events: [], complete: true };
+        const existing = await tx.get("journey:v1");
+        const journal = existing || { request_id: body.request_id, created_at: new Date().toISOString(), events: [], complete: true };
         if (journal.events.length >= 100) { journal.complete = false; } else {
           const allowed = ["event", "request_id", "trace_id", "traffic_class", "transport", "surface", "tool", "network", "outcome", "drop_reason", "amount_atomic", "environment", "payment_state"];
           journal.events.push({ sequence: journal.events.length + 1, at: new Date().toISOString(), ...Object.fromEntries(allowed.filter(k => body[k] !== undefined).map(k => [k, String(body[k]).slice(0, 128)])) });
         }
         await tx.put("journey:v1", journal);
+        // The retention deadline belongs to the journal, not to every event.
+        // Keep the entire audit trail; schedule its cleanup exactly once.
+        if (!existing) await tx.setAlarm(Date.parse(journal.created_at) + 30 * 86400000);
       });
-      await this.state.storage.setAlarm(Date.now() + 30 * 86400000);
       return doJson({ ok: true });
     }
     if (path === "/facilitator/record") {
@@ -1182,11 +1185,19 @@ export class PaidGatewayState {
     if (path === "/index/rate") {
       const bucket = Math.floor(Date.now() / 60000);
       const key = `rate:${body.scope}:${body.subject_hash}:${bucket}`;
-      const count = Number(await this.state.storage.get(key) || 0) + 1;
-      await this.state.storage.put(key, count);
-      const previous = `rate:${body.scope}:${body.subject_hash}:${bucket - 3}`;
-      await this.state.storage.delete(previous);
       const limit = Math.max(1, Math.min(300, Number(body.limit || 30)));
+      const count = await this.state.storage.transaction(async tx => {
+        const previousCount = Number(await tx.get(key) || 0);
+        // Persist the rejected marker once. Repeated denials perform no writes
+        // and can never turn into admitted work after an isolate restart.
+        const next = Math.min(previousCount + 1, limit + 1);
+        if (next !== previousCount) await tx.put(key, next);
+        if (previousCount === 0) {
+          const previous = `rate:${body.scope}:${body.subject_hash}:${bucket - 3}`;
+          if (await tx.get(previous) !== undefined) await tx.delete(previous);
+        }
+        return next;
+      });
       return doJson({ allowed: count <= limit, count, limit, retry_after_seconds: 60 - Math.floor((Date.now() % 60000) / 1000) }, count <= limit ? 200 : 429);
     }
 
