@@ -186,7 +186,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (path === '/healthz' || path === '/status') {
     const catalog = await control(env, 'catalog'), parts = catalog.shards.map((s: any) => s.stats), state = catalog.last_cron;
     const stats = sumStats(parts), overdue = state && Date.now() - Date.parse(state) > 3600000;
-    const body = { service: 'XGuard Live', version: VERSION, storage: 'reachable', owner_access: (env.LIVE_ADMIN_KEY || env.XGUARD_OPERATOR_KEY || '').length >= 24 ? 'configured' : 'unconfigured', collector: state ? overdue ? 'overdue' : 'scheduled' : 'awaiting-first-cron', last_cron: state, catalog_as_of: catalog.as_of, aggregate_interval_seconds: 900, collection_min_interval_seconds: 600, ...stats };
+    const body = { service: 'XGuard Live', version: VERSION, storage: 'reachable', owner_access: (env.LIVE_ADMIN_KEY || env.XGUARD_OPERATOR_KEY || '').length >= 24 ? 'configured' : 'unconfigured', collector: state ? overdue ? 'overdue' : 'scheduled' : 'awaiting-first-cron', last_cron: state, catalog_as_of: catalog.as_of, aggregate_interval_seconds: catalog.capacity?.refresh_interval_seconds || 900, catalog_capacity: catalog.capacity, collection_min_interval_seconds: 600, ...stats };
     if (path === '/healthz') return json(body, overdue ? 503 : 200);
     return pageResponse(request, 'prose', { title: 'System status', ...body, html: `<p>Control storage is reachable. The ${SHARDS}-shard catalog was checked at ${escape(catalog.as_of)}.</p><p>Collector: ${escape(body.collector)}. Last scheduler heartbeat: ${escape(state || 'not observed')}.</p><pre>${escape(JSON.stringify(stats, null, 2))}</pre>` }, path, true);
   }
