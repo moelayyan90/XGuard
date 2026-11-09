@@ -50,3 +50,9 @@ The Jordan Securities Commission publishes [Law No. 14 of 2025](https://jsc.gov.
 ## Agent402 acceptance
 
 Their latest 2026-11-09 response confirms discovery and identity but rejects another relay to existing upstream facilitators. They will reconsider a signer XGuard controls on a network they accept. This simulation does not remove that blocker. Do not add a local signer to metadata or contact them claiming independence. After explicit financial approval and the prerequisites above, the concrete evidence required is an actual successful Base settlement, verifiable transaction/receipt, the deployed signer identity, rejection/latency comparison and agreed canary scope. Their seller price/payTo/routing must remain unchanged unless they explicitly agree otherwise.
+
+## Production deployment remains blocked by provider capacity
+
+The infrastructure release #599 was merged as f2d63e1578d38d55186c102c99b7752a7adc2eb7 and passed CI. Production run 42651056818 uploaded a 5% canary, then the unchanged A2A fact-read check failed because the baseline account allowance remained exhausted. Automatic rollback restored Worker 9deb055f-c803-47ee-acda-e76c89d454f6 (git-e96b831405ad). No account-wide after-reduction measurement is available.
+
+The additional read-only capacity preflight stops future releases before any upload/provisioning when the exact snapshotted production revision reports a confirmed, unreset provider quota error. It does not accept failed protocol checks or skip rollback. After reset, the original 5% canary and full protocol/paid/witness checks remain required. Nonfinancial facilitator status changes are included in the compatible code-only gradual-release selector.
