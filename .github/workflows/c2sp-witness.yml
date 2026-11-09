@@ -1,0 +1,35 @@
+name: Verify C2SP production witness
+on:
+  push:
+    branches: [fix/c2sp-gblin-interop]
+  workflow_run:
+    workflows: [Deploy XGuard Live]
+    branches: [main]
+    types: [completed]
+permissions:
+  contents: read
+concurrency:
+  group: xguard-c2sp-production-verification
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.event_name == 'push' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify real witness and safe production contracts
+        env:
+          C2SP_SUBMIT_CHECKPOINT: ${{ github.event_name == 'workflow_run' && 'true' || 'false' }}
+        run: node scripts/c2sp-production-smoke.mjs
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: c2sp-production-evidence
+          path: c2sp-production-evidence.json

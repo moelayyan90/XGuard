@@ -2,6 +2,7 @@ const te = new TextEncoder();
 
 export const XGUARD_WITNESS_NAME = "xguardgate.com/witness";
 export const MAX_PROOF_LINES = 63;
+export const MAX_REQUEST_BYTES = 131072;
 export const EMPTY_TREE_ROOT = "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=";
 
 export const PINNED_LOGS = Object.freeze({
@@ -35,10 +36,6 @@ function b64(bytes) {
 
 function unb64(value) {
   return Uint8Array.from(atob(value), char => char.charCodeAt(0));
-}
-
-function b64url(bytes) {
-  return b64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function unb64url(value) {
@@ -92,8 +89,7 @@ export function parseCheckpointNote(text) {
   if (separator < 0) throw new Error("note: no blank line");
 
   const body = text.slice(0, separator + 1);
-  const signatureLines = text.slice(separator + 2, -1).split("\n");
-  if (!signatureLines.length || signatureLines.some(line => !line)) throw new Error("note: missing signature");
+  const signatureLines = text.length === separator + 2 ? [] : text.slice(separator + 2, -1).split("\n");
   for (const line of signatureLines) {
     const match = SIG_LINE.exec(line);
     if (!match) throw new Error("note: malformed signature line");
@@ -101,9 +97,10 @@ export function parseCheckpointNote(text) {
   }
 
   const lines = body.slice(0, -1).split("\n");
-  if (lines.length < 3 || lines.slice(0, 3).some(line => line.length === 0)) {
+  if (lines.length < 3 || lines.some(line => line.length === 0)) {
     throw new Error("checkpoint: needs origin, size and root");
   }
+  if (/[\s+]/u.test(lines[0]) || te.encode(lines[0]).length > 255) throw new Error("checkpoint: invalid origin");
   const size = parseDecimal(lines[1]);
   const root = unb64Strict(lines[2]);
   if (root.length !== 32) throw new Error("checkpoint: root hash is not 32 bytes");
@@ -113,6 +110,7 @@ export function parseCheckpointNote(text) {
 export function parseVerifierKey(vkey) {
   const match = /^([^+]+)\+([0-9a-f]{8})\+([A-Za-z0-9+/=]+)$/.exec(String(vkey || ""));
   if (!match) throw new Error("bad verifier key");
+  if (/[\s\u0000-\u001f]/u.test(match[1])) throw new Error("bad verifier key name");
   const raw = unb64Strict(match[3]);
   if (raw.length !== 33) throw new Error("bad verifier key payload");
   return { name: match[1], hash: unhex(match[2]), alg: raw[0], pub: raw.slice(1) };
@@ -226,7 +224,18 @@ async function witnessVerifierKey(publicRaw) {
 
 async function ensureWitnessKey(storage) {
   let record = await storage.get("witness:key:v1");
-  if (record?.privateJwk && record?.publicRaw) return record;
+  if (record !== undefined) {
+    // Never replace a damaged key record: that would silently change identity.
+    const pub = unb64Strict(record?.publicRaw);
+    if (pub.length !== 32 || record?.privateJwk?.kty !== "OKP" || record.privateJwk.crv !== "Ed25519" ||
+        !record.privateJwk.d || !eq(unb64url(record.privateJwk.x), pub)) throw new Error("witness key unavailable");
+    const privateKey = await crypto.subtle.importKey("jwk", record.privateJwk, { name: "Ed25519" }, false, ["sign"]);
+    const publicKey = await crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
+    const check = te.encode("XGuard witness key integrity v1");
+    const signature = await crypto.subtle.sign("Ed25519", privateKey, check);
+    if (!await crypto.subtle.verify("Ed25519", publicKey, signature, check)) throw new Error("witness key unavailable");
+    return record;
+  }
 
   const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
   const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
@@ -280,16 +289,22 @@ function parseAddRequest(bodyText) {
   return { old, proof, checkpointText };
 }
 
-export class C2SPWitness {
-  constructor(state, env) {
+// The core takes an explicit trust policy so the external Go vectors can run
+// unchanged in an isolated workerd. The production class below always pins it.
+export class C2SPWitnessCore {
+  constructor(state, logs) {
     this.state = state;
-    this.env = env;
+    this.logs = logs;
+    this.pending = Promise.resolve();
+    // Constructor input gate prevents concurrent first reads from generating
+    // competing identities. Every operation reuses this single persisted key.
+    this.keyReady = state.blockConcurrencyWhile(() => ensureWitnessKey(state.storage));
   }
 
   async metadata() {
-    const key = await ensureWitnessKey(this.state.storage);
+    const key = await this.keyReady;
     const publicRaw = unb64Strict(key.publicRaw);
-    const accepted = await Promise.all(Object.values(PINNED_LOGS).map(async log => ({
+    const accepted = await Promise.all(Object.values(this.logs).map(async log => ({
       id: log.id,
       origin: log.origin,
       verifier_key: log.vkey,
@@ -310,7 +325,17 @@ export class C2SPWitness {
     };
   }
 
-  async addCheckpoint(bodyText) {
+  addCheckpoint(bodyText) {
+    // An explicit queue also serializes requests that already entered before
+    // an asynchronous signature verification completes. Storage commits before
+    // the successful response and a failure cannot poison subsequent requests.
+    const accepted = this.pending.then(() => this.acceptCheckpoint(bodyText));
+    this.pending = accepted.then(() => undefined, () => undefined);
+    return accepted;
+  }
+
+  async acceptCheckpoint(bodyText) {
+    const key = await this.keyReady;
     let request;
     try {
       request = parseAddRequest(bodyText);
@@ -325,7 +350,7 @@ export class C2SPWitness {
       return reply(400, `malformed checkpoint: ${error.message}\n`);
     }
 
-    const log = PINNED_LOGS[note.origin];
+    const log = Object.hasOwn(this.logs, note.origin) ? this.logs[note.origin] : null;
     if (!log) return reply(404, "unknown origin\n");
 
     let signatureValid = false;
@@ -337,40 +362,37 @@ export class C2SPWitness {
     if (!signatureValid) return reply(403, "checkpoint not signed by the pinned log key\n");
     if (request.old > note.size) return reply(400, "old size larger than checkpoint size\n");
 
-    return this.state.blockConcurrencyWhile(async () => {
-      const headKey = `witness:head:${note.origin}`;
-      const previous = await this.state.storage.get(headKey);
-      const held = previous?.size ?? 0;
-      if (request.old !== held) return reply(409, `${held}\n`, "text/x.tlog.size");
+    const headKey = `witness:head:${note.origin}`;
+    const previous = await this.state.storage.get(headKey);
+    const held = previous?.size ?? 0;
+    if (request.old !== held) return reply(409, `${held}\n`, "text/x.tlog.size");
 
-      const root = b64(note.root);
-      if (note.size === 0 && root !== EMPTY_TREE_ROOT) return reply(422, "size 0 requires the empty tree root\n");
-      if (request.old === 0 && request.proof.length !== 0) return reply(422, "proof must be empty when old size is 0\n");
+    const root = b64(note.root);
+    if (note.size === 0 && root !== EMPTY_TREE_ROOT) return reply(422, "size 0 requires the empty tree root\n");
+    if (request.old === 0 && request.proof.length !== 0) return reply(422, "proof must be empty when old size is 0\n");
 
-      if (request.old === note.size) {
-        if (previous && previous.root !== root) return reply(422, "same size, different root\n");
-        if (request.proof.length !== 0) return reply(422, "proof must be empty when old size equals checkpoint size\n");
-      } else if (request.old > 0) {
-        const oldRoot = unb64Strict(previous.root);
-        const ok = await verifyConsistency(request.old, note.size, oldRoot, note.root, request.proof);
-        if (!ok) return reply(422, "consistency proof invalid\n");
-      }
+    if (request.old === note.size) {
+      if (previous && previous.root !== root) return reply(422, "same size, different root\n");
+      if (request.proof.length !== 0) return reply(422, "proof must be empty when old size equals checkpoint size\n");
+    } else if (request.old > 0) {
+      const oldRoot = unb64Strict(previous.root);
+      const ok = await verifyConsistency(request.old, note.size, oldRoot, note.root, request.proof);
+      if (!ok) return reply(422, "consistency proof invalid\n");
+    }
 
-      const key = await ensureWitnessKey(this.state.storage);
-      const line = await cosign(note, key);
-      const cosignedNote = withCosignature(request.checkpointText, line);
-      await this.state.storage.put(headKey, {
-        size: note.size,
-        root,
-        note: cosignedNote,
-        updatedAt: new Date().toISOString(),
-      });
-      return reply(200, line + "\n");
+    const line = await cosign(note, key);
+    const cosignedNote = withCosignature(request.checkpointText, line);
+    await this.state.storage.put(headKey, {
+      size: note.size,
+      root,
+      note: cosignedNote,
+      updatedAt: new Date().toISOString(),
     });
+    return reply(200, line + "\n");
   }
 
   async checkpointByHash(originHash) {
-    for (const log of Object.values(PINNED_LOGS)) {
+    for (const log of Object.values(this.logs)) {
       if (await originHashHex(log.origin) !== originHash) continue;
       const previous = await this.state.storage.get(`witness:head:${log.origin}`);
       return previous?.note ? reply(200, previous.note) : reply(404, "no checkpoint cosigned yet\n");
@@ -379,22 +401,56 @@ export class C2SPWitness {
   }
 
   async fetch(request) {
+    try {
+      return await this.handleRequest(request);
+    } catch {
+      // No crypto/storage errors, key records, or exception details are public.
+      return reply(503, "witness unavailable\n");
+    }
+  }
+
+  async handleRequest(request) {
+    await this.keyReady;
     const url = new URL(request.url);
     if (request.method === "GET" && ["/witness", "/witness/", "/witness/metadata"].includes(url.pathname)) {
       return json(await this.metadata());
     }
     if (request.method === "GET" && url.pathname === "/witness/verifier-key") {
-      const key = await ensureWitnessKey(this.state.storage);
+      const key = await this.keyReady;
       return reply(200, (await witnessVerifierKey(unb64Strict(key.publicRaw))) + "\n");
     }
     if (request.method === "POST" && url.pathname === "/witness/add-checkpoint") {
-      const body = await request.text();
-      if (body.length > 131072) return reply(413, "request too large\n");
+      if (Number(request.headers.get("content-length")) > MAX_REQUEST_BYTES) return reply(413, "request too large\n");
+      const chunks = [];
+      let length = 0;
+      const reader = request.body?.getReader();
+      if (reader) while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        length += value.byteLength;
+        if (length > MAX_REQUEST_BYTES) {
+          await reader.cancel();
+          return reply(413, "request too large\n");
+        }
+        chunks.push(value);
+      }
+      const bytes = new Uint8Array(length);
+      let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+      let body;
+      try { body = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
+      catch { return reply(400, "malformed UTF-8\n"); }
       return this.addCheckpoint(body);
     }
     const checkpoint = url.pathname.match(/^\/witness\/([0-9a-f]{64})\/checkpoint$/);
     if (request.method === "GET" && checkpoint) return this.checkpointByHash(checkpoint[1]);
     return reply(404, "not found\n");
+  }
+}
+
+export class C2SPWitness extends C2SPWitnessCore {
+  constructor(state, env) {
+    super(state, PINNED_LOGS);
   }
 }
 
