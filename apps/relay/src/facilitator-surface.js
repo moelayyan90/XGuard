@@ -1,6 +1,7 @@
 import relay from './index.js';
 import { inspectPayment } from './core/payment-context.js';
 import { securityHeaders } from './live/security.ts';
+import { NATIVE_STATUS } from './native-settlement/policy.js';
 
 export const FACILITATOR_IDENTITY = {
   name: 'XGuard',
@@ -18,6 +19,7 @@ export const FACILITATOR_IDENTITY = {
     settle: 'https://api.xguardgate.com/settle',
   },
   settlement: 'Non-custodial compatibility gateway to configured upstream facilitators. XGuard does not publish or claim a local settlement signer. Existing payment verification, quota admission and durable replay protection apply.',
+  native_settlement: NATIVE_STATUS,
 };
 
 const DISCOVERY = new Set(['/facilitator', '/.well-known/x402', '/.well-known/x402.json', '/.well-known/x402-facilitator.json']);

@@ -23,6 +23,7 @@ jobs:
           npm run check
           npm test
           node --test apps/relay/test/infra-safety.test.mjs
+          node --test apps/relay/test/native-settlement.test.mjs
           node --test scripts/live-owner-bootstrap-test.mjs
           node --test scripts/live-paid-smoke-test.mjs
       - name: Build and exercise actual workerd SQLite storage
