@@ -34,7 +34,7 @@ await inspect('daily_durable_usage', async () => {
   const types = schema.data?.__schema?.types;
   if (!types) throw Error('Analytics schema unavailable');
   const named = t => t ? t.name || named(t.ofType) : null;
-  const accountType = types.find(t => t.fields?.some(f => f.name === 'durableObjectsInvocationsAdaptiveGroups'));
+  const accountType = types.find(t => t.name === 'Account') || types.find(t => t.fields?.some(f => f.name === 'durableObjectsInvocationsAdaptiveGroups' && named(f.type) !== 'Settings'));
   if (!accountType) throw Error('Durable Objects datasets unavailable to this token');
   const start = new Date().toISOString().slice(0, 10) + 'T00:00:00Z', end = new Date().toISOString();
   const datasets = [];
