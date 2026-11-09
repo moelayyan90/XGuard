@@ -1,0 +1,24 @@
+name: Infrastructure recovery audit
+on:
+  push:
+    branches: [codex/infra-native-recovery-20261109]
+    paths: [scripts/infra-provider-audit.mjs, .github/workflows/infra-recovery-audit.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Read provider limits and aggregate usage without mutations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/infra-provider-audit.mjs
