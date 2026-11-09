@@ -113,11 +113,18 @@ try {
     assert.equal(r.status, 400, path + ' must fail before settlement with missing payment context');
     evidence.checks.push({ path, status: r.status, body: await r.json() });
   }
-  for (const path of ['/.well-known/x402', '/v1/ready', '/.well-known/agent-card.json', '/openapi.json', '/v1/proof']) {
+  // The current Live router intentionally retired the legacy /v1 readiness and
+  // proof discovery URLs before this integration. Verify that exact contract
+  // and require the actual active readiness endpoint to be healthy.
+  for (const [path, expected] of [
+    ['/.well-known/x402', 200], ['/v1/ready', 410], ['/v1/proof', 410],
+    ['/healthz', 200], ['/api/paid/v1/readiness', 200],
+    ['/.well-known/agent-card.json', 200], ['/openapi.json', 200],
+  ]) {
     const r = await get(base + path);
     const raw = await r.text();
-    evidence.checks.push({ path, status: r.status, body: raw.slice(0, 12000) });
-    assert.equal(r.status, 200, path);
+    evidence.checks.push({ path, status: r.status, expected, content_type: r.headers.get('content-type'), body: raw.slice(0, expected === 410 ? 180 : 1500) });
+    assert.equal(r.status, expected, path);
   }
   const mcp = await get(base + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 'gblin-c2sp-smoke', method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'XGuard-C2SP-smoke', version: '1.0' } } }) });

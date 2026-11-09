@@ -36,11 +36,13 @@ its own automatic push. Confirm that separately in issue #211 or GBLIN's public
 
 ## ProofRail reverse direction
 
-Current ProofRail is ES256-signed execution evidence, implemented by
+The existing ProofRail compatibility code implements ES256-signed execution evidence, using
 `ProofAuthority` and the proof helpers in `paid-agent-entry.js`. The discovery
 record in `canonical-entry.js` describes this scope. It does not implement a
 C2SP append-only Merkle log, an Ed25519 checkpoint signer or consistency-proof
-endpoint. The GBLIN log origin is not an XGuard/ProofRail log origin.
+endpoint. The current public Live router returns 410 for the retired `/v1/proof`
+and `/v1/ready` URLs. Active paid readiness is `/api/paid/v1/readiness`.
+The GBLIN log origin is not an XGuard/ProofRail log origin.
 
 A small future addition can publish hashes of already public, redacted proof
 envelopes into a separate append-only log. It must not change payment state,
