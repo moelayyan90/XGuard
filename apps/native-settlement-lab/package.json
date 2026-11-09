@@ -1,0 +1,9 @@
+{
+  "name": "xguard-native-settlement-local-evm",
+  "private": true,
+  "type": "module",
+  "description": "In-process EVM validation only. No network server, fork, mainnet RPC or real assets.",
+  "engines": { "node": ">=24" },
+  "scripts": { "test": "node local-evm.mjs" },
+  "devDependencies": { "ganache": "7.9.2", "solc": "0.8.30", "viem": "2.37.6" }
+}
