@@ -53,5 +53,13 @@ await inspect('daily_durable_usage', async () => {
     try { const value = await api('/graphql', { query }); results.push({ dataset: d.name, groups: value.data?.viewer?.accounts?.flatMap(a => a[d.name] || []) }); }
     catch (e) { results.push({ dataset: d.name, available: false, reason: redact(e.message) }); }
   }
-  return { available: results.some(r => r.groups), utc_start: start, utc_end: end, datasets: datasets.map(d => ({ name: d.name, metrics: d.metrics })), results };
+  const periodic = results.find(r => r.dataset === 'durableObjectsPeriodicGroups')?.groups;
+  const totals = periodic?.reduce((a, r) => ({ rows_read: a.rows_read + Number(r.sum?.rowsRead || 0), rows_written: a.rows_written + Number(r.sum?.rowsWritten || 0) }), { rows_read: 0, rows_written: 0 });
+  if (totals) for (const [metric, allowance] of [['rows_read', 5000000], ['rows_written', 100000]]) {
+    const percent = totals[metric] * 100 / allowance;
+    const threshold = [90, 75, 50].find(t => percent >= t) || 0;
+    if (threshold) console.log(`::warning title=Durable Objects ${metric} ${threshold}%::Provider UTC-day counter ${totals[metric]}; free allowance ${allowance}. Review workload before exhaustion.`);
+    if (threshold >= 90 && process.env.GITHUB_ACTIONS === 'true') process.exitCode = 1;
+  }
+  return { available: results.some(r => r.groups), utc_start: start, utc_end: end, totals, free_plan_allowances: { rows_read: 5000000, rows_written: 100000 }, datasets: datasets.map(d => ({ name: d.name, metrics: d.metrics })), results };
 });

@@ -204,17 +204,49 @@ export class Store {
     return { ...result, profile: { rows_read: this.rowsRead - before } };
   }
   telemetry(event: Row): void {
-    const day = event.timestamp.slice(0, 10);
+    this.telemetryBatch([event]);
+  }
+  telemetryBatch(events: Row[]): void {
+    // Operational analytics only. Count every buffered request, but retain one
+    // representative raw crawler sample per group instead of duplicate rows.
+    // Financial journals, replay records and receipts never enter this path.
+    const groups = new Map<string, Row>();
+    for (const event of events) {
+      if (event.synthetic) continue;
+      const day = event.timestamp.slice(0, 10);
+      const key = JSON.stringify([day, event.path, event.operator || '', event.classification, event.status, event.cache, event.visitor_hash || '', event.referral_platform || '']);
+      const group = groups.get(key) || { event, day, requests: 0, bytes: 0, latency: 0 };
+      group.requests++; group.bytes += event.bytes; group.latency += event.latency_ms;
+      groups.set(key, group);
+    }
+    const budgetKey = 'operational-telemetry-budget-v1', today = iso().slice(0, 10);
+    const prior = this.get(budgetKey);
+    const budget = prior?.day === today ? prior : { day: today, rows_written: 0, dropped_events: 0, alert: 0 };
+    const limit = 500; // 16,000/day across the fixed 32 shards. Analytics only.
+    const start = this.rowsWritten;
     this.storage.transactionSync(() => {
+      for (const { event, day, requests, bytes, latency } of groups.values()) {
+      // Reserve the worst-case indexed writes and the budget checkpoint before
+      // admitting a group. Exhaustion never rejects a public or paid request.
+      if (budget.rows_written + this.rowsWritten - start + 12 > limit) { budget.dropped_events += requests; continue; }
       if (event.classification !== 'unclassified' && !event.synthetic) this.run('INSERT INTO crawler_requests VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', event.id, event.timestamp, event.path, event.status, event.content_type, event.cache, event.classification, event.operator || '', event.user_agent, event.referrer || '', event.country || '', event.bytes, event.latency_ms, event.visitor_hash || '', 0);
-      if (event.synthetic) return;
-      this.run(`INSERT INTO request_metrics VALUES(?,?,?,?,?,?,1,?,?) ON CONFLICT(day,path,operator,classification,status,cache) DO UPDATE SET requests=requests+1,bytes=bytes+excluded.bytes,latency_ms=latency_ms+excluded.latency_ms`, day, event.path, event.operator || '', event.classification, event.status, event.cache, event.bytes, event.latency_ms);
-      if (event.visitor_hash && event.classification === 'verified-ai') this.run('INSERT INTO crawler_visitors VALUES(?,?,?,1) ON CONFLICT(day,visitor_hash,operator) DO UPDATE SET requests=requests+1', day, event.visitor_hash, event.operator || '');
-      if (event.referral_platform && event.classification === 'unclassified') this.run('INSERT INTO ai_referrals VALUES(?,?,?,1) ON CONFLICT(day,path,platform) DO UPDATE SET requests=requests+1', day, event.path, event.referral_platform);
+      this.run(`INSERT INTO request_metrics VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(day,path,operator,classification,status,cache) DO UPDATE SET requests=requests+excluded.requests,bytes=bytes+excluded.bytes,latency_ms=latency_ms+excluded.latency_ms`, day, event.path, event.operator || '', event.classification, event.status, event.cache, requests, bytes, latency);
+      if (event.visitor_hash && event.classification === 'verified-ai') this.run('INSERT INTO crawler_visitors VALUES(?,?,?,?) ON CONFLICT(day,visitor_hash,operator) DO UPDATE SET requests=requests+excluded.requests', day, event.visitor_hash, event.operator || '', requests);
+      if (event.referral_platform && event.classification === 'unclassified') this.run('INSERT INTO ai_referrals VALUES(?,?,?,?) ON CONFLICT(day,path,platform) DO UPDATE SET requests=requests+excluded.requests', day, event.path, event.referral_platform, requests);
+      }
+      if (this.rowsWritten > start) {
+        budget.rows_written += this.rowsWritten - start + 2;
+        const threshold = [90, 75, 50].find(n => budget.rows_written >= limit * n / 100) || 0;
+        if (threshold > budget.alert) {
+          console.warn(JSON.stringify({ event: 'resource_budget_threshold', component: 'operational-telemetry', threshold, rows_written: budget.rows_written, allocated_rows_per_shard_day: limit }));
+          budget.alert = threshold;
+        }
+        this.set(budgetKey, budget);
+      }
     });
   }
   metrics(): any {
-    return { requests: this.rows('SELECT day,classification,operator,status,cache,sum(requests) AS requests,sum(bytes) AS bytes FROM request_metrics WHERE day>=? GROUP BY day,classification,operator,status,cache ORDER BY day DESC', iso(Date.now() - 30 * 86400000).slice(0, 10)),
+    return { operational_budget: this.get('operational-telemetry-budget-v1'), requests: this.rows('SELECT day,classification,operator,status,cache,sum(requests) AS requests,sum(bytes) AS bytes FROM request_metrics WHERE day>=? GROUP BY day,classification,operator,status,cache ORDER BY day DESC', iso(Date.now() - 30 * 86400000).slice(0, 10)),
       hot_paths: this.rows('SELECT path,sum(requests) AS requests FROM request_metrics WHERE day=? GROUP BY path ORDER BY requests DESC LIMIT 20', iso().slice(0, 10)),
       top_pages: this.rows("SELECT path,sum(requests) AS requests FROM request_metrics WHERE day>=? AND classification='verified-ai' GROUP BY path ORDER BY requests DESC LIMIT 20", iso(Date.now() - 7 * 86400000).slice(0, 10)),
       repeat: this.one('SELECT count(*) AS crawlers,COALESCE(sum(CASE WHEN requests>1 THEN 1 ELSE 0 END),0) AS repeat_crawlers FROM crawler_visitors WHERE day=?', iso().slice(0, 10)),

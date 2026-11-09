@@ -1,5 +1,7 @@
 name: Infrastructure recovery audit
 on:
+  schedule:
+    - cron: '13,43 * * * *'
   push:
     branches: [codex/infra-native-recovery-20261109]
     paths: [scripts/infra-provider-audit.mjs, .github/workflows/infra-recovery-audit.yml]

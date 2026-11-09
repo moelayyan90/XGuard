@@ -22,6 +22,7 @@ jobs:
         run: |
           npm run check
           npm test
+          node --test apps/relay/test/infra-safety.test.mjs
           node --test scripts/live-owner-bootstrap-test.mjs
           node --test scripts/live-paid-smoke-test.mjs
       - name: Build and exercise actual workerd SQLite storage
@@ -56,6 +57,7 @@ jobs:
           LIVE_BASELINE_BUNDLE="$baseline_dir/.live-build/live-entry.js" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/live-compatibility-workerd.mjs
           LIVE_BASELINE_ROOT="$baseline_dir" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/live-capacity-workerd.mjs
           LIVE_BASELINE_ROOT="$baseline_dir" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/live-sql-budget-workerd.mjs
+          LIVE_BASELINE_ROOT="$baseline_dir" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/infra-budget-workerd.mjs
       - name: Preserve financial state and recovery invariants
         run: |
           node --test scripts/durable-object-deploy-guard-test.mjs

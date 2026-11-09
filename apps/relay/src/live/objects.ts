@@ -10,7 +10,14 @@ import { catalogCapacity } from './capacity.ts';
 
 export class LiveShard {
   state: State; env: Env; store: Store; running = false;
+  telemetryBuffer: Row[] = []; telemetryFlushedAt = Date.now(); telemetryRetryAt = 0;
   constructor(state: State, env: Env) { this.state = state; this.env = env; this.store = new Store(state.storage); }
+  flushTelemetry(): void {
+    if (!this.telemetryBuffer.length || Date.now() < this.telemetryRetryAt) return;
+    try { this.store.telemetryBatch(this.telemetryBuffer); }
+    catch (error) { this.telemetryRetryAt = Date.now() + 60000; throw error; }
+    this.telemetryBuffer = []; this.telemetryFlushedAt = Date.now();
+  }
   async wake(urgent = false): Promise<void> {
     if (this.env.LIVE_SOURCE_FETCHES === 'off') return;
     const existing = await this.state.storage.getAlarm(), now = Date.now();
@@ -28,6 +35,7 @@ export class LiveShard {
     if (this.running || this.env.LIVE_SOURCE_FETCHES === 'off') return;
     this.running = true;
     try {
+      try { this.flushTelemetry(); } catch { console.warn(JSON.stringify({ event: 'telemetry_flush_unavailable' })); }
       this.store.set('last-tick', iso());
       for (let i = 0; i < 4; i++) {
         const source = this.store.peekDue(); if (!source) break;
@@ -45,7 +53,7 @@ export class LiveShard {
         for (const input of (body.sources || []).slice(0, 1500)) if (this.store.enqueue(sourceSpec(input.adapter, input.identifier), body.provenance)) queued++;
         await this.wake(); return json({ queued });
       }
-      if (op === 'tick') { await this.wake(); return json({ scheduled: true }); }
+      if (op === 'tick') { try { this.flushTelemetry(); } catch { console.warn(JSON.stringify({ event: 'telemetry_flush_unavailable' })); } await this.wake(); return json({ scheduled: true }); }
       if (op === 'entity') return json(this.store.entity(body.id));
       if (op === 'entity-page') { const entity = this.store.entity(body.id); return json(entity ? { ...entity, changes: this.store.changes(body.id, null, 1, 8) } : null); }
       if (op === 'fact') return json(this.store.fact(body.id));
@@ -76,8 +84,9 @@ export class LiveShard {
         return json({ items, profile: { rows_read: this.store.rowsRead - before } });
       }
       if (op === 'topic-counts') return json(this.store.rows('SELECT topic,count(*) AS count FROM entities WHERE published=1 AND suppressed=0 GROUP BY topic'));
-      if (op === 'metrics') return json(this.store.metrics());
+      if (op === 'metrics') { this.flushTelemetry(); return json({ ...this.store.metrics(), telemetry_scope: 'Budgeted, buffered operational counters; events may be omitted at the analytics allocation or lost on eviction. Raw crawler rows are representative samples. No financial accounting uses these counters.' }); }
       if (op === 'growth-candidates') {
+        this.flushTelemetry();
         const demand = this.store.rows("SELECT path,sum(requests) AS requests FROM request_metrics WHERE day>=? AND status=200 AND classification IN ('verified-ai','unclassified') GROUP BY path HAVING sum(requests)>=3 ORDER BY requests DESC LIMIT 20", iso(Date.now() - 7 * 86400000).slice(0, 10));
         const candidates: Row[] = [];
         for (const row of demand) {
@@ -90,7 +99,12 @@ export class LiveShard {
         }
         return json(candidates.slice(0, 30));
       }
-      if (op === 'telemetry') { this.store.telemetry(body.event); return json({ ok: true }); }
+      if (op === 'telemetry') {
+        if (this.telemetryBuffer.length >= 256) { this.flushTelemetry(); if (this.telemetryBuffer.length >= 256) return json({ ok: true, telemetry: 'buffer_full' }); }
+        this.telemetryBuffer.push(body.event);
+        if (this.telemetryBuffer.length >= 64 || Date.now() - this.telemetryFlushedAt >= 60000) this.flushTelemetry();
+        return json({ ok: true, buffered: this.telemetryBuffer.length });
+      }
       if (op === 'sources') return json(this.store.rows('SELECT id,domain,enabled,failures,last_error,last_success,next_fetch,last_interval FROM sources ORDER BY failures DESC,id LIMIT 200'));
       if (op === 'refresh') {
         const source = this.store.one('SELECT enabled FROM sources WHERE id=?', body.id);

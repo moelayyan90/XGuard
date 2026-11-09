@@ -457,6 +457,7 @@ export class C2SPWitness extends C2SPWitnessCore {
 export async function c2spWitnessRoute(request, env) {
   const url = new URL(request.url);
   if (!["xguardgate.com", "api.xguardgate.com"].includes(url.hostname) || !url.pathname.startsWith("/witness")) return null;
+  if (!["/witness", "/witness/", "/witness/metadata", "/witness/verifier-key", "/witness/add-checkpoint"].includes(url.pathname) && !/^\/witness\/[0-9a-f]{64}\/checkpoint$/.test(url.pathname)) return reply(404, "not found\n");
   if (!env.C2SP_WITNESS) return reply(503, "witness unavailable\n");
   if (!["GET", "POST", "HEAD"].includes(request.method)) return reply(405, "method not allowed\n", "text/plain; charset=utf-8", { allow: "GET, HEAD, POST" });
 
@@ -464,7 +465,9 @@ export async function c2spWitnessRoute(request, env) {
   const forwarded = request.method === "HEAD"
     ? new Request(request.url, { method: "GET", headers: request.headers })
     : request;
-  const response = await stub.fetch(forwarded);
+  let response;
+  try { response = await stub.fetch(forwarded); }
+  catch { return reply(503, "witness unavailable\n"); }
   if (request.method !== "HEAD") return response;
   return new Response(null, { status: response.status, headers: response.headers });
 }
