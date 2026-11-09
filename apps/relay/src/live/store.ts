@@ -61,6 +61,12 @@ export class Store {
   deferDomain(domain: string, delay: number): void {
     this.run('INSERT INTO domain_leases VALUES(?,?,?) ON CONFLICT(domain) DO UPDATE SET until_ms=max(until_ms,excluded.until_ms)', domain, 'local-backoff', Date.now() + delay);
   }
+  recentDemand(path: string, now = Date.now()): number {
+    // Equality on both leading PK columns (day,path) avoids scanning every
+    // visited path in yesterday/today's partitions for each source refresh.
+    const today = iso(now).slice(0, 10), yesterday = iso(now - 86400000).slice(0, 10);
+    return Number(this.one('SELECT sum(requests) AS n FROM request_metrics WHERE day IN (?,?) AND path=?', yesterday, today, path)?.n || 0);
+  }
   matchesCurrent(input: Pick<ObservationInput, 'spec' | 'facts'>): boolean {
     const current = new Map(this.rows('SELECT d.fact_key,d.label,d.unit,d.max_age,c.value_json FROM fact_definitions d JOIN current_facts c ON c.id=d.id WHERE d.entity_id=?', input.spec.id).map(row => [row.fact_key, row]));
     return input.facts.every(fact => { const row = current.get(fact.key); return row && row.value_json === stable(fact.value) && row.label === fact.label && (row.unit || '') === (fact.unit || '') && row.max_age === input.spec.maxAge; });

@@ -33,7 +33,7 @@ export async function refreshOne(store: Store, env: Env, source: Row): Promise<v
     if (source.last_modified) headers['if-modified-since'] = source.last_modified;
     const response = await safeFetch(spec.url, headers); status = response.status; retryAfter = response.headers.get('retry-after');
     const verified = iso();
-    const recentDemand = store.one('SELECT sum(requests) AS n FROM request_metrics WHERE path=? AND day>=?', `/live/${spec.id}`, iso(Date.now() - 86400000).slice(0, 10))?.n || 0;
+    const recentDemand = store.recentDemand(`/live/${spec.id}`);
     const interval = refreshInterval(source, store.one('SELECT * FROM source_reliability WHERE source_id=?', spec.id), recentDemand);
     const next = Date.now() + Math.floor(interval * 1000 * (.9 + Math.random() * .1));
     if (status === 304) {
