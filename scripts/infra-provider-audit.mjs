@@ -30,7 +30,7 @@ await inspect('namespaces', async () => {
 await inspect('daily_durable_usage', async () => {
   // Discover dataset/metric names from the live schema instead of assuming that
   // request counters represent SQLite row reads or writes.
-  const schema = await api('/graphql', { query: '{ __schema { types { name fields { name type { kind name ofType { kind name ofType { kind name } } } } } } }' });
+  const schema = await api('/graphql', { query: '{ __schema { types { name fields { name type { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name } } } } } } } } }' });
   const types = schema.data?.__schema?.types;
   if (!types) throw Error('Analytics schema unavailable');
   const named = t => t ? t.name || named(t.ofType) : null;
@@ -42,7 +42,7 @@ await inspect('daily_durable_usage', async () => {
     const row = types.find(t => t.name === named(f.type));
     const sum = types.find(t => t.name === named(row?.fields?.find(x => x.name === 'sum')?.type));
     const metrics = sum?.fields?.map(x => x.name).filter(n => /requests|rowsRead|rowsWritten|readUnits|writeUnits|sql.*(Read|Writ)/i.test(n)) || [];
-    if (!metrics.length) continue;
+    if (!metrics.length) { console.log(JSON.stringify({ audit: 'dataset_schema', dataset: f.name, row: row?.name, sum_fields: sum?.fields?.map(x => x.name) || [] })); continue; }
     const dimension = types.find(t => t.name === named(row?.fields?.find(x => x.name === 'dimensions')?.type));
     const dims = dimension?.fields?.map(x => x.name).filter(n => /namespaceId|scriptName|className/.test(n)) || [];
     datasets.push({ name: f.name, metrics, dims });
