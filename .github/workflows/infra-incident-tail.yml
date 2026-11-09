@@ -1,0 +1,24 @@
+name: Read bounded infrastructure incident logs
+on:
+  push:
+    branches: [codex/infra-incident-log-20261109]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --prefix apps/relay --no-audit --no-fund
+      - name: Read sanitized provider errors without configuration or financial changes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: node scripts/live-diagnostics.mjs

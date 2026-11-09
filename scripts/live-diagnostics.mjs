@@ -57,7 +57,7 @@ child.stderr.on('data', data => { stderr = (stderr + data.toString()).slice(-120
 child.on('error', () => console.log('Diagnostic process could not start.'));
 try {
   await delay(10000);
-  for (const path of ['/healthz', '/fact/npm/undici/latest-version', '/']) {
+  for (const path of ['/healthz', '/fact/npm/undici/latest-version', '/', '/witness/verifier-key']) {
     try {
       const response = await fetch('https://xguardgate.com' + path, { headers: { 'user-agent': 'XGuardLive-diagnostics/6.0', accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
       await response.body?.cancel(); console.log(JSON.stringify({ probe: path, status: response.status }));
