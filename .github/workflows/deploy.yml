@@ -76,7 +76,7 @@ jobs:
             echo 'gradual=true' >> "$GITHUB_OUTPUT"
             echo 'live_recovery=true' >> "$GITHUB_OUTPUT"
           elif [[ "$ROLLBACK_ALLOWED" == 'true' ]] &&
-               ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/mcp.ts apps/relay/src/live/a2a.ts server.json apps/relay/src/live/capacity.ts apps/relay/src/live/objects.ts apps/relay/src/live/store.ts apps/relay/src/live/refresh.ts &&
+               ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/mcp.ts apps/relay/src/live/a2a.ts server.json apps/relay/src/live/capacity.ts apps/relay/src/live/presentation.ts apps/relay/src/live/objects.ts apps/relay/src/live/store.ts apps/relay/src/live/refresh.ts &&
                git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/wrangler.jsonc apps/settlement-gateway; then
             echo 'gradual=true' >> "$GITHUB_OUTPUT"
           fi
