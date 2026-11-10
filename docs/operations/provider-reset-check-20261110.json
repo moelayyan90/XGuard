@@ -117,5 +117,34 @@
     "native_settlement_enabled": false,
     "authority_live_mode_enabled": false,
     "agent402_contacted": false
+  },
+  "monitoring_continuity": {
+    "status": "impaired",
+    "observed_at": "2026-11-10T02:33:51Z",
+    "audit_schedule": "13,43 * * * *",
+    "last_audit_run": 42726890619,
+    "last_audit_created_at": "2026-11-10T00:15:22Z",
+    "missing_audit_windows": [
+      "2026-11-10T00:43:00Z",
+      "2026-11-10T01:13:00Z",
+      "2026-11-10T01:43:00Z",
+      "2026-11-10T02:13:00Z"
+    ],
+    "last_live_monitor_created_at": "2026-11-09T22:31:00Z",
+    "missing_live_monitor_windows": [
+      "2026-11-10T00:23:00Z",
+      "2026-11-10T01:23:00Z",
+      "2026-11-10T02:23:00Z"
+    ],
+    "manual_dispatch_attempted": false,
+    "manual_dispatch_blocker": "Available browser and gh CLI sessions were not authenticated; the connected GitHub tool exposes no workflow_dispatch operation.",
+    "production_health_at_observation": {
+      "status": 200,
+      "worker_tag": "git-b22cfc6e93b7",
+      "worker_version_id": "7fe3013e-5432-43b0-91ba-e7c9697c0b7f",
+      "storage": "reachable",
+      "collector": "scheduled"
+    },
+    "threshold_interpretation": "Missing measurements are not evidence of a 50%, 75% or 90% crossing."
   }
 }
