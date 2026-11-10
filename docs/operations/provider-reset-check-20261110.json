@@ -1,0 +1,170 @@
+{
+  "scope": "Production recovery observations after the documented daily reset. A guarded non-financial canary was promoted after capacity and health recovered. No payment, signer, key, financial transaction, plan change or resource purchase was attempted.",
+  "main": {
+    "sha": "f7ebedea01fdf6060b5da72c883b24f34845182a",
+    "ci_run": 42702247749,
+    "codeql_run": 42702248299
+  },
+  "active_production": {
+    "worker_tag": "git-e96b831405ad",
+    "worker_version_id": "9deb055f-c803-47ee-acda-e76c89d454f6"
+  },
+  "health_probes": [
+    {
+      "at": "2026-11-10T00:03:27Z",
+      "status": 503,
+      "error": "storage_write_quota_exhausted",
+      "quota_reset_at": "2026-11-11T00:00:00.000Z"
+    },
+    {
+      "at": "2026-11-10T00:09:11Z",
+      "status": 503,
+      "error": "storage_write_quota_exhausted",
+      "quota_reset_at": "2026-11-11T00:00:00.000Z"
+    },
+    {
+      "at": "2026-11-10T00:12:54Z",
+      "status": 503,
+      "error": "storage_write_quota_exhausted",
+      "quota_reset_at": "2026-11-11T00:00:00.000Z"
+    }
+  ],
+  "provider_analytics": {
+    "workflow_run": 42649723667,
+    "attempt": 2,
+    "job": 129529872710,
+    "utc_start": "2026-11-10T00:00:00Z",
+    "utc_end": "2026-11-10T00:04:43.600Z",
+    "rows_read": 0,
+    "rows_written": 0,
+    "allowances": {
+      "rows_read": 5000000,
+      "rows_written": 100000
+    },
+    "invocations": {
+      "LiveShard": 20,
+      "LiveControl": 3,
+      "PaidGatewayState": 1,
+      "C2SPWitness": 1
+    },
+    "thresholds_crossed": [],
+    "interpretation": "The provider enforcement response and analytics disagree. Zero analytics rows may reflect reporting or reset lag; it is not evidence of restored writable capacity or a production reduction."
+  },
+  "initial_deployment_gate": {
+    "retry_attempted": false,
+    "upload_attempted": false,
+    "reason": "Mandatory provider-capacity preflight would stop on the fresh storage_write_quota_exhausted response. Canary and rollback safeguards were not bypassed."
+  },
+  "recovery": {
+    "storage_reachable_at": "2026-11-10T00:15:50Z",
+    "collector_scheduled_at": "2026-11-10T00:21:16.326Z",
+    "provider_analytics_through": "2026-11-10T00:15:33.820Z",
+    "rows_read": 113,
+    "rows_written": 7,
+    "write_allowance_fraction": 0.00007,
+    "thresholds_crossed": [],
+    "deployment_run": 42702669137,
+    "deployment_attempt": 3,
+    "deployed_sha": "f7ebedea01fdf6060b5da72c883b24f34845182a",
+    "worker_tag": "git-f7ebedea01fd",
+    "worker_version_id": "aa9249c8-c4c1-44c5-af8e-c97ab89b44fc",
+    "promoted_percent": 100,
+    "rollback_used": false,
+    "final_active": {
+      "sha": "b22cfc6e93b7d7b7838d3e9ef6fcbf3a042747a7",
+      "worker_tag": "git-b22cfc6e93b7",
+      "worker_version_id": "7fe3013e-5432-43b0-91ba-e7c9697c0b7f",
+      "deployment_run": 42729527866,
+      "health_status": 200
+    },
+    "checks": {
+      "health": 200,
+      "supported": 200,
+      "signers": {},
+      "verify_missing_context": 400,
+      "settle_missing_context": 400,
+      "mcp": "passed",
+      "a2a": "passed",
+      "paid_unsigned": 402,
+      "real_transfers": 0,
+      "authority_status": "sandbox_operator_enrollment",
+      "authority_live_billing": "not_activated"
+    },
+    "c2sp": {
+      "verifier_key": 200,
+      "initial_post_deploy_run": 42728124066,
+      "initial_result": "runner_contract_mismatch_before_submission",
+      "cause": "GBLIN consistency endpoint returned application/json while the production runner expected newline Base64; the initial failure occurred before checkpoint submission.",
+      "fix_pr": 605,
+      "fix_commit": "b22cfc6e93b7d7b7838d3e9ef6fcbf3a042747a7",
+      "main_ci_run": 42729127110,
+      "deployment_run": 42729527866,
+      "successful_production_run": 42729666034,
+      "result": "passed",
+      "old_size": 208,
+      "new_size": 210,
+      "log_signature_verified": true,
+      "consistency_verified": true,
+      "monitoring_verified": true,
+      "payments_submitted": 0
+    }
+  },
+  "financial_boundaries": {
+    "payment_attempted": false,
+    "transaction_attempted": false,
+    "gas_spent": false,
+    "production_signer_enabled": false,
+    "native_settlement_enabled": false,
+    "authority_live_mode_enabled": false,
+    "agent402_contacted": false
+  },
+  "monitoring_continuity": {
+    "status": "partial_recovery",
+    "observed_at": "2026-11-10T05:00:22Z",
+    "audit_schedule": "13,43 * * * *",
+    "last_audit_run": 42726890619,
+    "last_audit_created_at": "2026-11-10T00:15:22Z",
+    "missing_audit_windows": [
+      "2026-11-10T00:43:00Z",
+      "2026-11-10T01:13:00Z",
+      "2026-11-10T01:43:00Z",
+      "2026-11-10T02:13:00Z",
+      "2026-11-10T02:43:00Z",
+      "2026-11-10T03:13:00Z",
+      "2026-11-10T03:43:00Z",
+      "2026-11-10T04:13:00Z",
+      "2026-11-10T04:43:00Z"
+    ],
+    "last_live_monitor_created_at": "2026-11-09T22:31:00Z",
+    "missing_live_monitor_windows": [
+      "2026-11-10T00:23:00Z",
+      "2026-11-10T01:23:00Z",
+      "2026-11-10T02:23:00Z"
+    ],
+    "manual_dispatch_attempted": false,
+    "manual_dispatch_blocker": "Available browser and gh CLI sessions were not authenticated; the connected GitHub tool exposes no workflow_dispatch operation.",
+    "production_health_at_observation": {
+      "status": 200,
+      "worker_tag": "git-b22cfc6e93b7",
+      "worker_version_id": "7fe3013e-5432-43b0-91ba-e7c9697c0b7f",
+      "storage": "reachable",
+      "collector": "scheduled",
+      "last_cron": "2026-11-10T04:50:59.891Z"
+    },
+    "threshold_interpretation": "The live service monitor recovered, but the provider-usage audit remains absent. Missing analytics measurements are not evidence of a 50%, 75% or 90% crossing.",
+    "live_monitor_recovery": {
+      "workflow_run": 42757429037,
+      "created_at": "2026-11-10T04:41:16Z",
+      "conclusion": "success",
+      "verified_facts": 9299,
+      "published_facts": 9880,
+      "collector": "scheduled",
+      "last_cron": "2026-11-10T04:40:59.879Z",
+      "paid_contract": "passed",
+      "purchase_availability": "challenge-ready-no-sale-proven",
+      "blocked_reason": "payment_required",
+      "payments_submitted": 0,
+      "production_sale_proven": false
+    }
+  }
+}
