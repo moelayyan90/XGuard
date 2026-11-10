@@ -1,5 +1,5 @@
 {
-  "scope": "Read-only production and Cloudflare analytics observations after the documented daily reset. No upload, canary, payment, signer, key, transaction, plan change or resource purchase was attempted.",
+  "scope": "Production recovery observations after the documented daily reset. A guarded non-financial canary was promoted after capacity and health recovered. No payment, signer, key, financial transaction, plan change or resource purchase was attempted.",
   "main": {
     "sha": "f7ebedea01fdf6060b5da72c883b24f34845182a",
     "ci_run": 42702247749,
@@ -50,10 +50,46 @@
     "thresholds_crossed": [],
     "interpretation": "The provider enforcement response and analytics disagree. Zero analytics rows may reflect reporting or reset lag; it is not evidence of restored writable capacity or a production reduction."
   },
-  "deployment": {
+  "initial_deployment_gate": {
     "retry_attempted": false,
     "upload_attempted": false,
     "reason": "Mandatory provider-capacity preflight would stop on the fresh storage_write_quota_exhausted response. Canary and rollback safeguards were not bypassed."
+  },
+  "recovery": {
+    "storage_reachable_at": "2026-11-10T00:15:50Z",
+    "collector_scheduled_at": "2026-11-10T00:21:16.326Z",
+    "provider_analytics_through": "2026-11-10T00:15:33.820Z",
+    "rows_read": 113,
+    "rows_written": 7,
+    "write_allowance_fraction": 0.00007,
+    "thresholds_crossed": [],
+    "deployment_run": 42702669137,
+    "deployment_attempt": 3,
+    "deployed_sha": "f7ebedea01fdf6060b5da72c883b24f34845182a",
+    "worker_tag": "git-f7ebedea01fd",
+    "worker_version_id": "aa9249c8-c4c1-44c5-af8e-c97ab89b44fc",
+    "promoted_percent": 100,
+    "rollback_used": false,
+    "checks": {
+      "health": 200,
+      "supported": 200,
+      "signers": {},
+      "verify_missing_context": 400,
+      "settle_missing_context": 400,
+      "mcp": "passed",
+      "a2a": "passed",
+      "paid_unsigned": 402,
+      "real_transfers": 0,
+      "authority_status": "sandbox_operator_enrollment",
+      "authority_live_billing": "not_activated"
+    },
+    "c2sp": {
+      "verifier_key": 200,
+      "post_deploy_run": 42728124066,
+      "result": "pending_runner_compatibility",
+      "cause": "GBLIN consistency endpoint returned application/json while the production runner expected newline Base64; failure occurred before checkpoint submission.",
+      "fix_pr": 605
+    }
   },
   "financial_boundaries": {
     "payment_attempted": false,
