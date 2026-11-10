@@ -119,8 +119,8 @@
     "agent402_contacted": false
   },
   "monitoring_continuity": {
-    "status": "impaired",
-    "observed_at": "2026-11-10T02:33:51Z",
+    "status": "partial_recovery",
+    "observed_at": "2026-11-10T05:00:22Z",
     "audit_schedule": "13,43 * * * *",
     "last_audit_run": 42726890619,
     "last_audit_created_at": "2026-11-10T00:15:22Z",
@@ -128,7 +128,12 @@
       "2026-11-10T00:43:00Z",
       "2026-11-10T01:13:00Z",
       "2026-11-10T01:43:00Z",
-      "2026-11-10T02:13:00Z"
+      "2026-11-10T02:13:00Z",
+      "2026-11-10T02:43:00Z",
+      "2026-11-10T03:13:00Z",
+      "2026-11-10T03:43:00Z",
+      "2026-11-10T04:13:00Z",
+      "2026-11-10T04:43:00Z"
     ],
     "last_live_monitor_created_at": "2026-11-09T22:31:00Z",
     "missing_live_monitor_windows": [
@@ -143,8 +148,23 @@
       "worker_tag": "git-b22cfc6e93b7",
       "worker_version_id": "7fe3013e-5432-43b0-91ba-e7c9697c0b7f",
       "storage": "reachable",
-      "collector": "scheduled"
+      "collector": "scheduled",
+      "last_cron": "2026-11-10T04:50:59.891Z"
     },
-    "threshold_interpretation": "Missing measurements are not evidence of a 50%, 75% or 90% crossing."
+    "threshold_interpretation": "The live service monitor recovered, but the provider-usage audit remains absent. Missing analytics measurements are not evidence of a 50%, 75% or 90% crossing.",
+    "live_monitor_recovery": {
+      "workflow_run": 42757429037,
+      "created_at": "2026-11-10T04:41:16Z",
+      "conclusion": "success",
+      "verified_facts": 9299,
+      "published_facts": 9880,
+      "collector": "scheduled",
+      "last_cron": "2026-11-10T04:40:59.879Z",
+      "paid_contract": "passed",
+      "purchase_availability": "challenge-ready-no-sale-proven",
+      "blocked_reason": "payment_required",
+      "payments_submitted": 0,
+      "production_sale_proven": false
+    }
   }
 }
