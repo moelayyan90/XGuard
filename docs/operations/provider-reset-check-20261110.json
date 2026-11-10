@@ -70,6 +70,13 @@
     "worker_version_id": "aa9249c8-c4c1-44c5-af8e-c97ab89b44fc",
     "promoted_percent": 100,
     "rollback_used": false,
+    "final_active": {
+      "sha": "b22cfc6e93b7d7b7838d3e9ef6fcbf3a042747a7",
+      "worker_tag": "git-b22cfc6e93b7",
+      "worker_version_id": "7fe3013e-5432-43b0-91ba-e7c9697c0b7f",
+      "deployment_run": 42729527866,
+      "health_status": 200
+    },
     "checks": {
       "health": 200,
       "supported": 200,
@@ -85,10 +92,21 @@
     },
     "c2sp": {
       "verifier_key": 200,
-      "post_deploy_run": 42728124066,
-      "result": "pending_runner_compatibility",
-      "cause": "GBLIN consistency endpoint returned application/json while the production runner expected newline Base64; failure occurred before checkpoint submission.",
-      "fix_pr": 605
+      "initial_post_deploy_run": 42728124066,
+      "initial_result": "runner_contract_mismatch_before_submission",
+      "cause": "GBLIN consistency endpoint returned application/json while the production runner expected newline Base64; the initial failure occurred before checkpoint submission.",
+      "fix_pr": 605,
+      "fix_commit": "b22cfc6e93b7d7b7838d3e9ef6fcbf3a042747a7",
+      "main_ci_run": 42729127110,
+      "deployment_run": 42729527866,
+      "successful_production_run": 42729666034,
+      "result": "passed",
+      "old_size": 208,
+      "new_size": 210,
+      "log_signature_verified": true,
+      "consistency_verified": true,
+      "monitoring_verified": true,
+      "payments_submitted": 0
     }
   },
   "financial_boundaries": {
