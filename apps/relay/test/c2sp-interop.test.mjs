@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { C2SPWitness, C2SPWitnessCore, parseCheckpointNote, MAX_REQUEST_BYTES } from '../src/c2sp-witness.js';
-import { runInterop, testLogs, vectors } from './c2sp-interop-helpers.mjs';
+import { parseConsistencyPayload, runInterop, testLogs, vectors } from './c2sp-interop-helpers.mjs';
 
 function fixture() {
   const values = new Map();
@@ -23,6 +23,19 @@ test('GBLIN Go reference vectors: wire responses, consistency, monitoring and co
   const send = (path, init) => w.fetch(req(path, init));
   const key = (await (await send('/witness/verifier-key')).text()).trim();
   await runInterop(send, key);
+});
+
+test('production consistency parser accepts pinned JSON and legacy text contracts only', () => {
+  const hashes = [Buffer.alloc(32, 1).toString('base64'), Buffer.alloc(32, 2).toString('base64')];
+  const expected = { origin: vectors.origin, old: 208, new: 210, oldRoot: hashes[0], newRoot: hashes[1] };
+  const proof = [Buffer.alloc(32, 3).toString('base64'), Buffer.alloc(32, 4).toString('base64')];
+  assert.deepEqual(parseConsistencyPayload(proof.join('\n') + '\n', 'text/plain', expected), proof);
+  const body = JSON.stringify({ origin: expected.origin, old: expected.old, new: expected.new,
+    old_root: expected.oldRoot, new_root: expected.newRoot, proof });
+  assert.deepEqual(parseConsistencyPayload(body, 'application/json', expected), proof);
+  assert.throws(() => parseConsistencyPayload(JSON.stringify({ ...JSON.parse(body), old: 207 }), 'application/json', expected), /old size/);
+  assert.throws(() => parseConsistencyPayload(JSON.stringify({ ...JSON.parse(body), proof: ['AQ=='] }), 'application/json', expected), /32 bytes/);
+  assert.throws(() => parseConsistencyPayload(JSON.stringify({ ...JSON.parse(body), proof: [proof[0].replace(/=$/, '')] }), 'application/json', expected), /canonical base64/);
 });
 
 test('concurrent cold-start metadata and pushes retain one identity across restart', async () => {
