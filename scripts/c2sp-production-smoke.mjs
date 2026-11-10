@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { parseCheckpointNote, verifyLogSignature, verifyConsistency, unb64Strict, PINNED_LOGS } from '../apps/relay/src/c2sp-witness.js';
-import { verifyCosignature } from '../apps/relay/test/c2sp-interop-helpers.mjs';
+import { parseConsistencyPayload, verifyCosignature } from '../apps/relay/test/c2sp-interop-helpers.mjs';
 
 const base = 'https://api.xguardgate.com';
 const origin = 'gblin.digital/receipts-log';
@@ -77,8 +77,11 @@ try {
       if (old > 0 && old < note.size) {
         const r = await get(`https://mcp.gblin.digital/log/consistency?old=${old}&new=${note.size}`);
         assert.equal(r.status, 200, 'GBLIN consistency endpoint');
-        const lines = (await r.text()).trim().split('\n').filter(Boolean);
-        assert.ok(lines.length <= 63);
+        const lines = parseConsistencyPayload(await r.text(), r.headers.get('content-type'), {
+          origin, old, new: note.size,
+          oldRoot: Buffer.from(previous.note.root).toString('base64'),
+          newRoot: Buffer.from(note.root).toString('base64'),
+        });
         proof = lines.map(unb64Strict);
         assert.ok(proof.every(x => x.length === 32));
         proofText = lines.join('\n') + '\n';

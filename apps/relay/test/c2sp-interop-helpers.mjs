@@ -5,6 +5,33 @@ import { readFileSync } from 'node:fs';
 export const vectors = JSON.parse(readFileSync(new URL('./fixtures/gblin-witness-vectors.json', import.meta.url)));
 export const testLogs = Object.freeze({ [vectors.origin]: { origin: vectors.origin, vkey: vectors.logVkey } });
 
+function canonicalHash(value) {
+  assert.equal(typeof value, 'string', 'consistency hash must be base64 text');
+  const bytes = Buffer.from(value, 'base64');
+  assert.equal(bytes.length, 32, 'consistency hash must be 32 bytes');
+  assert.equal(bytes.toString('base64'), value, 'consistency hash must use canonical base64');
+  return value;
+}
+
+export function parseConsistencyPayload(raw, contentType, expected) {
+  let lines;
+  if (String(contentType || '').toLowerCase().includes('application/json') || String(raw).trimStart().startsWith('{')) {
+    const body = JSON.parse(raw);
+    assert.equal(body.origin, expected.origin, 'consistency origin');
+    assert.equal(body.old, expected.old, 'consistency old size');
+    assert.equal(body.new, expected.new, 'consistency new size');
+    assert.equal(canonicalHash(body.old_root), expected.oldRoot, 'consistency old root');
+    assert.equal(canonicalHash(body.new_root), expected.newRoot, 'consistency new root');
+    assert.ok(Array.isArray(body.proof), 'consistency proof array');
+    lines = body.proof;
+  } else {
+    lines = String(raw).trim().split('\n').filter(Boolean);
+  }
+  assert.ok(lines.length <= 63, 'consistency proof line limit');
+  for (const line of lines) canonicalHash(line);
+  return lines;
+}
+
 // Independent Node/OpenSSL verification of the wire cosignature, rather than
 // asking the witness implementation to verify its own output.
 export function verifyCosignature(text, line, vkey) {
