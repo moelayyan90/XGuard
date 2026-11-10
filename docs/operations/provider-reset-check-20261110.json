@@ -1,0 +1,67 @@
+{
+  "scope": "Read-only production and Cloudflare analytics observations after the documented daily reset. No upload, canary, payment, signer, key, transaction, plan change or resource purchase was attempted.",
+  "main": {
+    "sha": "f7ebedea01fdf6060b5da72c883b24f34845182a",
+    "ci_run": 42702247749,
+    "codeql_run": 42702248299
+  },
+  "active_production": {
+    "worker_tag": "git-e96b831405ad",
+    "worker_version_id": "9deb055f-c803-47ee-acda-e76c89d454f6"
+  },
+  "health_probes": [
+    {
+      "at": "2026-11-10T00:03:27Z",
+      "status": 503,
+      "error": "storage_write_quota_exhausted",
+      "quota_reset_at": "2026-11-11T00:00:00.000Z"
+    },
+    {
+      "at": "2026-11-10T00:09:11Z",
+      "status": 503,
+      "error": "storage_write_quota_exhausted",
+      "quota_reset_at": "2026-11-11T00:00:00.000Z"
+    },
+    {
+      "at": "2026-11-10T00:12:54Z",
+      "status": 503,
+      "error": "storage_write_quota_exhausted",
+      "quota_reset_at": "2026-11-11T00:00:00.000Z"
+    }
+  ],
+  "provider_analytics": {
+    "workflow_run": 42649723667,
+    "attempt": 2,
+    "job": 129529872710,
+    "utc_start": "2026-11-10T00:00:00Z",
+    "utc_end": "2026-11-10T00:04:43.600Z",
+    "rows_read": 0,
+    "rows_written": 0,
+    "allowances": {
+      "rows_read": 5000000,
+      "rows_written": 100000
+    },
+    "invocations": {
+      "LiveShard": 20,
+      "LiveControl": 3,
+      "PaidGatewayState": 1,
+      "C2SPWitness": 1
+    },
+    "thresholds_crossed": [],
+    "interpretation": "The provider enforcement response and analytics disagree. Zero analytics rows may reflect reporting or reset lag; it is not evidence of restored writable capacity or a production reduction."
+  },
+  "deployment": {
+    "retry_attempted": false,
+    "upload_attempted": false,
+    "reason": "Mandatory provider-capacity preflight would stop on the fresh storage_write_quota_exhausted response. Canary and rollback safeguards were not bypassed."
+  },
+  "financial_boundaries": {
+    "payment_attempted": false,
+    "transaction_attempted": false,
+    "gas_spent": false,
+    "production_signer_enabled": false,
+    "native_settlement_enabled": false,
+    "authority_live_mode_enabled": false,
+    "agent402_contacted": false
+  }
+}
