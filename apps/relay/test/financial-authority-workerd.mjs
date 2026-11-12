@@ -84,6 +84,7 @@ try {
   await test('explicit operator onboarding and owner proof are required', async () => {
     const e = await signCommand(owner, orgId, 'enroll', { owner_key: owner.publicKey, policies: [policy()], accept_price_atomic: '50000' });
     assert.equal((await send(e)).status, 403); assert.equal((await send(e, true)).status, 200);
+    const retry = await send(e, true); assert.equal(retry.status, 200); assert.equal(retry.result.replay, true); assert.ok(retry.result.organization_token);
   });
   await test('real parent and child signatures create an attenuating chain', async () => {
     const p = grant('grant_parent_001', parent.publicKey); assert.equal((await command(owner, 'grant', p)).status, 200);
@@ -244,6 +245,17 @@ try {
     await command(agent, 'authorize', op('no_adapter_operation', '10', 'grant_no_adapter'), { org: freshOrg });
     const result = await command(agent, 'execute', { operation_id: 'no_adapter_operation' }, { org: freshOrg }); assert.equal(result.status, 503);
     assert.equal((await command(agent, 'status', { operation_id: 'no_adapter_operation' }, { org: freshOrg })).result.state, 'RESERVED');
+  });
+  await test('built-in sandbox completes without an executor or an external transaction', async () => {
+    const freshOrg = 'builtin_sandbox_org', agent = await createIdentity(), count = calls;
+    assert.equal((await command(owner, 'enroll', { owner_key: owner.publicKey, policies: [policy()], accept_price_atomic: '50000' }, { org: freshOrg })).status, 200);
+    assert.equal((await command(owner, 'grant', grant('grant_builtin_sandbox', agent.publicKey), { org: freshOrg })).status, 200);
+    const intent = { ...op('builtin_sandbox_operation', '10', 'grant_builtin_sandbox'), adapter: 'sandbox-simulation' };
+    assert.equal((await command(agent, 'authorize', intent, { org: freshOrg })).status, 200);
+    const done = await command(agent, 'execute', { operation_id: intent.operation_id }, { org: freshOrg });
+    assert.equal(done.result.state, 'CONFIRMED'); assert.equal(done.result.settlement.payload.external_effect, false); assert.equal(done.result.mode, 'sandbox');
+    assert.equal(verifyReceiptOffline(done.receipt.jws, key.jwk).valid, true); assert.equal(calls, count);
+    assert.equal((await command(agent, 'execute', { operation_id: intent.operation_id }, { org: freshOrg })).result.replay, true); assert.equal(calls, count);
   });
   if (process.env.AFA_EVIDENCE_DIR) {
     const out = process.env.AFA_EVIDENCE_DIR; await mkdir(out, { recursive: true });

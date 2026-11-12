@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-09T21:17:55.124Z",
-  "tests_passed": 24,
+  "generated_at": "2026-11-12T05:50:17.179Z",
+  "tests_passed": 25,
   "tests": [
     "discovery and invalid paths cause no financial execution",
     "explicit operator onboarding and owner proof are required",
@@ -25,7 +25,8 @@
     "revocation fences existing reservations and all descendants",
     "audit chain is hash-linked and sandbox revenue stays zero",
     "bounded load measures the whole local reserve-execute-receipt journey",
-    "unconfigured executor rejects before committing dispatch"
+    "unconfigured executor rejects before committing dispatch",
+    "built-in sandbox completes without an executor or an external transaction"
   ],
   "benchmark": {
     "samples": 64,
@@ -33,9 +34,9 @@
     "simultaneous_admissions": 40,
     "accepted_admissions": 32,
     "backpressure_429": 8,
-    "median_ms": 11.655659000000014,
-    "p95_ms": 14.753569000000198,
-    "max_ms": 18.589302999999745,
+    "median_ms": 14.61059699999987,
+    "p95_ms": 18.900574000000233,
+    "max_ms": 34.577690000000075,
     "mean_rows_read": 34.875,
     "mean_rows_written": 25.0625,
     "scope": "In-process workerd SQLite plus real ProofRail signing and an attested mock executor. Excludes internet latency, real settlement, external buyer and production billing."
@@ -52,9 +53,9 @@
       "simultaneous_admissions": 40,
       "accepted_admissions": 32,
       "backpressure_429": 8,
-      "median_ms": 11.655659000000014,
-      "p95_ms": 14.753569000000198,
-      "max_ms": 18.589302999999745,
+      "median_ms": 14.61059699999987,
+      "p95_ms": 18.900574000000233,
+      "max_ms": 34.577690000000075,
       "mean_rows_read": 34.875,
       "mean_rows_written": 25.0625,
       "scope": "In-process workerd SQLite plus real ProofRail signing and an attested mock executor. Excludes internet latency, real settlement, external buyer and production billing."

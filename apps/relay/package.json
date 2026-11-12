@@ -8,10 +8,10 @@
     "live:typecheck": "tsc -p tsconfig.live.json",
     "live:test": "node --test test/live.test.mjs test/live-paid.test.mjs test/extract-checkout.test.mjs test/agent402.test.mjs test/network.test.mjs test/capacity.test.mjs test/c2sp-witness.test.mjs test/c2sp-interop.test.mjs",
     "live:build": "node scripts/build-extract-client.mjs && wrangler deploy src/live-entry.js --config wrangler.live-local.jsonc --dry-run --outdir ../../.live-build",
-    "live:test-runtime": "node test/live-workerd.mjs && node test/live-paid-workerd.mjs && node test/extract-workerd.mjs && node test/c2sp-workerd.mjs && node test/financial-authority-workerd.mjs",
+    "live:test-runtime": "node test/live-workerd.mjs && node test/live-paid-workerd.mjs && node test/extract-workerd.mjs && node test/c2sp-workerd.mjs && node test/financial-authority-workerd.mjs && node test/financial-authority-commerce-workerd.mjs && node --test test/financial-authority-enrollment.test.mjs",
     "live:dev": "wrangler dev --config wrangler.live-local.jsonc --test-scheduled",
     "live:smoke": "node ../../scripts/live-smoke.mjs",
-    "authority:test": "node test/financial-authority-workerd.mjs"
+    "authority:test": "node test/financial-authority-workerd.mjs && node test/financial-authority-commerce-workerd.mjs && node --test test/financial-authority-enrollment.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",

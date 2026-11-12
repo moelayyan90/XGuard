@@ -1,9 +1,11 @@
+import { invoiceCheckout } from './paid.js';
+import { authorizeEnrollment } from './enrollment.js';
 import { AUDIENCE, PROTOCOL, need, AuthorityError, b64, unb64, bytes, verify, digest, checkEnvelope } from './crypto.js';
 import { PRICE, LIMITS } from './engine.js';
 import { authorityPage } from './page.js';
 import { parsePublicJson } from '../core/public-contract.js';
 export const BASE = '/v1/authority';
-const ACTIONS = ['enroll', 'grant', 'authorize', 'status', 'execute', 'reconcile', 'cancel', 'revoke', 'audit', 'metrics'];
+const ACTIONS = ['enroll', 'grant', 'authorize', 'status', 'execute', 'reconcile', 'cancel', 'revoke', 'audit', 'metrics', 'checkout', 'disable-agent', 'rotate-owner'];
 async function admissionKey(env) {
   need(env.LIVE_ADMIN_KEY?.length >= 24, 'organization_admission_unavailable', 503);
   return crypto.subtle.importKey('raw', bytes(env.LIVE_ADMIN_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
@@ -15,17 +17,19 @@ async function checkOrganizationToken(request, env, envelope) {
   need(token && /^[A-Za-z0-9_-]{43}$/.test(token) && await crypto.subtle.verify('HMAC', await admissionKey(env), unb64(token), admissionContext(envelope)), 'organization_admission_required', 401);
 }
 export function authorityCatalog() {
-  return { name: 'XGuard Agent Financial Authority', protocol: PROTOCOL, status: 'sandbox_operator_enrollment', audience: AUDIENCE,
-    scope: 'Public-key agent identities, signed attenuating delegation, atomic shared budget reservations, dispatch fencing, pinned executor settlement evidence and ProofRail receipts. No custody or spending key is created.',
+  return { name: 'XGuard Agent Financial Authority', protocol: PROTOCOL, status: 'sandbox_operator_enrollment', enrollment: 'funded_license_or_operator', audience: AUDIENCE,
+    scope: 'Public-key agent identities, signed attenuating delegation, atomic principal and service-fee budgets, dispatch fencing, pinned executor evidence, optional read-only chain checks, one invoice after signed delivery and ProofRail receipts. No custody or spending key is created.',
     pricing: { hypothesis_usd: 0.05, amount_atomic: PRICE, currency: 'USDC', market_validated: false, sandbox_charge: '0', live_billing: 'not_activated', assessed_is_not_collected: true, verification_recovery_rejection_retry_fee: '0', merchant_principal: 'separate, unchanged payee', provider_fee: 'explicit caller-signed cap in the principal currency' },
     endpoints: Object.fromEntries(ACTIONS.map(a => [a, `${AUDIENCE}/${a}`])),
     public_key: `${AUDIENCE}/proof-key`, verify_receipt: `${AUDIENCE}/verify-receipt`, openapi: `${AUDIENCE}/openapi.json`, docs: 'https://xguardgate.com/authority',
     integrations: { http: true, openapi: true, mcp_tools: ['xguard.authority.catalog', 'xguard.authority.command', 'xguard.authority.verify_receipt'], a2a_action: 'xguard.authority', x402: 'Existing XGuard x402 services remain available. Authority service-fee collection is not activated; no x402 charge is advertised for the sandbox.', ap2: 'No AP2 conformance or partnership claimed.' },
     limits: LIMITS, identity: 'Key possession only; not KYC or proof of a legal organization.',
-    execution: 'An operator-approved private executor binding and pinned attestation key are required. Absent adapter: 503 before dispatch. Sandbox never represents a real settlement.',
+    execution: 'sandbox-simulation completes a no-funds test using ProofRail evidence. Every other adapter requires an operator-approved private executor and pinned attestation key; absent adapter: 503 before dispatch. Sandbox never represents a real settlement.',
     revocation: 'Linearizes before dispatch in the tenant ledger. Does not undo an already dispatched external effect. Unknown effects keep funds reserved until attested reconciliation.',
     capacity: '500 new operations per organization/day; account headroom and executor capacity must be measured separately. Current Cloudflare allowance can block availability.',
-    organization_admission: 'Operator enrollment issues a scoped admission token. Supply X-XGuard-Organization-Token with every signed tenant command. It cannot authorize spending by itself; it prevents arbitrary anonymous object creation.',
+    organization_admission: 'Enroll using an existing funded unrestricted XGuard license and its deterministic organization ID from the SDK, or an operator-issued enrollment. The existing license is checked read-only, never debited. Enrollment issues a scoped token; supply X-XGuard-Organization-Token alongside every agent-signed tenant command.',
+    invoice_checkout: 'Owner-approved fee limits are reserved across the organization and delegation chain. A single invoice opens only after confirmed signed delivery. The checkout command returns a private invoice capability. Fee settlement has passed closed simulations; deployed fee collection remains hard-disabled pending separate activation approval.',
+    owner_recovery: 'disable-agent prevents new reservations and dispatch for that key and descendants. rotate-owner requires proofs from the current and new owner. Historical grants remain verifiable and may be explicitly revoked.',
     security_review: 'Automated test coverage is not an independent security audit.',
   };
 }
@@ -33,7 +37,7 @@ export const authorityEnvelopeSchema = { type: 'object', additionalProperties: f
   protocol: { const: PROTOCOL }, audience: { const: AUDIENCE }, mode: { enum: ['sandbox','live'] }, org_id: { type: 'string', pattern: '^[A-Za-z0-9_-]{8,80}$' }, action: { enum: ACTIONS }, signer: { type: 'string' }, nonce: { type: 'string', minLength: 16, maxLength: 80 }, issued_at: { type: 'integer' }, expires_at: { type: 'integer' }, payload: { type: 'object' }, signature: { type: 'string' },
 } };
 export function authorityPaths() {
-  return Object.fromEntries(ACTIONS.map(action => [BASE + '/' + action, { post: { operationId: 'authority_' + action, summary: action + ' an explicitly signed financial authority command', parameters: [{ name: action === 'enroll' ? 'Authorization' : 'X-XGuard-Organization-Token', in: 'header', required: true, schema: { type: 'string' }, description: action === 'enroll' ? 'Existing operator Bearer credential; never delegate this to an agent.' : 'Scoped tenant admission token, in addition to the agent signature.' }], requestBody: { required: true, content: { 'application/json': { schema: authorityEnvelopeSchema } } }, responses: { 200: { description: 'Authenticated command result; sandbox is not a purchase.' }, 400: { description: 'Invalid bounded command' }, 401: { description: 'Invalid or expired identity signature' }, 403: { description: 'Policy, budget or owner check denied' }, 409: { description: 'Conflict; recover using the original operation, do not redispatch' }, 429: { description: 'Resource backpressure' }, 503: { description: 'Storage, signing or executor unavailable; no automatic new execution' } } } }]));
+  return Object.fromEntries(ACTIONS.map(action => [BASE + '/' + action, { post: { operationId: 'authority_' + action.replaceAll('-', '_'), summary: action + ' an explicitly signed financial authority command', parameters: [{ name: action === 'enroll' ? 'Authorization' : 'X-XGuard-Organization-Token', in: 'header', required: true, schema: { type: 'string' }, description: action === 'enroll' ? 'Existing funded XGuard license or operator Bearer credential. No enrollment debit. Never delegate the operator credential to an agent.' : 'Scoped tenant admission token, in addition to the agent signature.' }], requestBody: { required: true, content: { 'application/json': { schema: authorityEnvelopeSchema } } }, responses: { 200: { description: 'Authenticated command result; sandbox is not a purchase.' }, 400: { description: 'Invalid bounded command' }, 401: { description: 'Invalid or expired identity signature' }, 403: { description: 'Policy, budget or owner check denied' }, 409: { description: 'Conflict; recover using the original operation, do not redispatch' }, 429: { description: 'Resource backpressure' }, 503: { description: 'Storage, signing or executor unavailable; no automatic new execution' } } } }]));
 }
 export function authorityOpenapi() {
   return { openapi: '3.1.0', info: { title: 'XGuard Agent Financial Authority', version: '1.0.0-sandbox', description: authorityCatalog().scope }, servers: [{ url: 'https://api.xguardgate.com' }], paths: authorityPaths() };
@@ -107,14 +111,21 @@ export async function financialAuthorityFetch(request, env) {
         checkEnvelope(value, action, 'sandbox');
         let admin = false;
         if (action === 'enroll') {
-          const key = request.headers.get('authorization')?.match(/^Bearer ([^\s]+)$/)?.[1];
-          need(env.LIVE_ADMIN_KEY?.length >= 24 && key && await digest(key) === await digest(env.LIVE_ADMIN_KEY), 'operator_enrollment_required', 403); admin = true;
+          await authorizeEnrollment(request, env, value); admin = true;
         } else await checkOrganizationToken(request, env, value);
         const stub = env.AUTHORITY.get(env.AUTHORITY.idFromName(`afa-v1:${value.mode}:${value.org_id}`));
         const r = await stub.fetch('https://authority/afa/v1', { method: 'POST', headers: { 'content-type': 'application/json', 'x-afa-enrollment-authorized': String(admin) }, body: JSON.stringify(value) });
         const body = await r.json();
         if (r.ok && action === 'enroll') body.organization_token = await organizationToken(env, value);
-        response = Response.json(r.ok ? { result: body, receipt: await receiptFor(env, body) } : body, { status: r.status });
+        const receipt = r.ok ? await receiptFor(env, body) : null;
+        if (r.ok && body.state === 'CONFIRMED' && body.fee_reserved_atomic !== '0' && !body.service_fee?.invoice && receipt) {
+          const recorded = await stub.fetch('https://authority/afa/invoice', { method: 'POST', body: JSON.stringify({ kind: 'delivery', organization_id: value.org_id, operation_id: body.operation_id, receipt: receipt.jws }) });
+          const invoice = await recorded.json(); need(recorded.ok, invoice.error || 'signed_delivery_record_failed', recorded.status);
+          if (invoice.invoice) body.service_fee.invoice = invoice.invoice;
+          if (invoice.measured_resources) body.measured_resources.invoice = invoice.measured_resources;
+        }
+        if (r.ok && action === 'checkout') body.checkout = await invoiceCheckout(env, value.org_id, body.operation_id);
+        response = Response.json(r.ok ? { result: body, receipt } : body, { status: r.status });
       }
     }
   } catch (e) { response = Response.json({ error: e instanceof AuthorityError ? e.code : 'authority_dependency_unavailable', new_payment_required: false, retry_execution: false }, { status: e instanceof AuthorityError ? e.status : 503 }); }

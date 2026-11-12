@@ -1,0 +1,173 @@
+{
+  "observed_at": "2026-11-12T05:47:28.450Z",
+  "scope": "Read-only probes; no purchase or funds moved",
+  "results": [
+    {
+      "path": "/healthz",
+      "status": 200,
+      "tag": "git-b22cfc6e93b7",
+      "body": {
+        "service": "XGuard Live",
+        "version": "6.0.0",
+        "storage": "reachable",
+        "owner_access": "configured",
+        "collector": "scheduled",
+        "last_cron": "2026-11-12T05:41:00.185Z",
+        "catalog_as_of": "2026-11-12T04:36:42.647Z",
+        "aggregate_interval_seconds": 4630,
+        "catalog_capacity": {
+          "policy": "measured-catalog-read-reserve-v1",
+          "component": "public-catalog",
+          "allocated_rows_per_day": 1000000,
+          "measured_rows_per_refresh": 42870,
+          "minimum_refresh_interval_seconds": 900,
+          "refresh_interval_seconds": 4630,
+          "projected_rows_per_day": 800000,
+          "projected_rows_at_minimum_interval": 4115520,
+          "pacing_active": true,
+          "scope": "Projection for catalog SQL reads only. Not measured account-wide usage, a hard quota reservation, an invoice, or a guarantee of daily availability."
+        },
+        "collection_min_interval_seconds": 600,
+        "facts": 9898,
+        "verified": 9819,
+        "stale": 78,
+        "entities": 2757,
+        "sources": 2821,
+        "changes_today": 96,
+        "fetch_errors": 66,
+        "pending": 64,
+        "due": 1046,
+        "fetches_24h": 2763,
+        "last_update": "2026-11-12T04:35:30.515Z",
+        "shards": 32
+      }
+    },
+    {
+      "path": "/v1/authority/catalog",
+      "status": 200,
+      "tag": "git-b22cfc6e93b7",
+      "body": {
+        "name": "XGuard Agent Financial Authority",
+        "protocol": "xguard-afa/1",
+        "status": "sandbox_operator_enrollment",
+        "audience": "https://api.xguardgate.com/v1/authority",
+        "scope": "Public-key agent identities, signed attenuating delegation, atomic shared budget reservations, dispatch fencing, pinned executor settlement evidence and ProofRail receipts. No custody or spending key is created.",
+        "pricing": {
+          "hypothesis_usd": 0.05,
+          "amount_atomic": "50000",
+          "currency": "USDC",
+          "market_validated": false,
+          "sandbox_charge": "0",
+          "live_billing": "not_activated",
+          "assessed_is_not_collected": true,
+          "verification_recovery_rejection_retry_fee": "0",
+          "merchant_principal": "separate, unchanged payee",
+          "provider_fee": "explicit caller-signed cap in the principal currency"
+        },
+        "endpoints": {
+          "enroll": "https://api.xguardgate.com/v1/authority/enroll",
+          "grant": "https://api.xguardgate.com/v1/authority/grant",
+          "authorize": "https://api.xguardgate.com/v1/authority/authorize",
+          "status": "https://api.xguardgate.com/v1/authority/status",
+          "execute": "https://api.xguardgate.com/v1/authority/execute",
+          "reconcile": "https://api.xguardgate.com/v1/authority/reconcile",
+          "cancel": "https://api.xguardgate.com/v1/authority/cancel",
+          "revoke": "https://api.xguardgate.com/v1/authority/revoke",
+          "audit": "https://api.xguardgate.com/v1/authority/audit",
+          "metrics": "https://api.xguardgate.com/v1/authority/metrics"
+        },
+        "public_key": "https://api.xguardgate.com/v1/authority/proof-key",
+        "verify_receipt": "https://api.xguardgate.com/v1/authority/verify-receipt",
+        "openapi": "https://api.xguardgate.com/v1/authority/openapi.json",
+        "docs": "https://xguardgate.com/authority",
+        "integrations": {
+          "http": true,
+          "openapi": true,
+          "mcp_tools": [
+            "xguard.authority.catalog",
+            "xguard.authority.command",
+            "xguard.authority.verify_receipt"
+          ],
+          "a2a_action": "xguard.authority",
+          "x402": "Existing XGuard x402 services remain available. Authority service-fee collection is not activated; no x402 charge is advertised for the sandbox.",
+          "ap2": "No AP2 conformance or partnership claimed."
+        },
+        "limits": {
+          "chain": 8,
+          "body": 32768,
+          "daily_operations": 500,
+          "daily_mutations": 5000,
+          "outstanding": 32,
+          "lifetime_operations": 100000,
+          "receipt_bytes": 8192
+        },
+        "identity": "Key possession only; not KYC or proof of a legal organization.",
+        "execution": "An operator-approved private executor binding and pinned attestation key are required. Absent adapter: 503 before dispatch. Sandbox never represents a real settlement.",
+        "revocation": "Linearizes before dispatch in the tenant ledger. Does not undo an already dispatched external effect. Unknown effects keep funds reserved until attested reconciliation.",
+        "capacity": "500 new operations per organization/day; account headroom and executor capacity must be measured separately. Current Cloudflare allowance can block availability.",
+        "organization_admission": "Operator enrollment issues a scoped admission token. Supply X-XGuard-Organization-Token with every signed tenant command. It cannot authorize spending by itself; it prevents arbitrary anonymous object creation.",
+        "security_review": "Automated test coverage is not an independent security audit."
+      }
+    },
+    {
+      "path": "/api/paid/v1/readiness",
+      "status": 200,
+      "tag": "git-b22cfc6e93b7",
+      "body": {
+        "ready": true,
+        "checked_at": "2026-11-12T05:47:28.393Z",
+        "checks": {
+          "enabled": true,
+          "payment_configuration": true,
+          "source_data": true,
+          "proof_authority": true,
+          "financial_storage": true,
+          "facilitator": true
+        },
+        "errors": [],
+        "network": "eip155:8453",
+        "currency": "USDC",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "receiving_address": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
+        "receiving_address_verification": "Configured receiving address; this check does not prove owner control or a real purchase.",
+        "cost_budget": {
+          "basis": "configured_cost_budgets_not_measured_profit",
+          "configured": true,
+          "available": true,
+          "rejection_reason": null,
+          "customer_price_usd_micros": 10000,
+          "provider_cost_usd_micros": 0,
+          "provider_cost_basis": "built_in_public_https_fetch_without_a_paid_provider",
+          "infrastructure_cost_budget_usd_micros": 1500,
+          "payment_cost_budget_usd_micros": 0,
+          "minimum_contribution_bps": 2000,
+          "minimum_price_usd_micros": 1875,
+          "estimated_contribution_usd_micros": 8500,
+          "estimated_contribution_margin_bps": 8500,
+          "actual_infrastructure_cost_usd_micros": null,
+          "actual_payment_cost_usd_micros": null,
+          "gross_profit_usd_micros": null,
+          "net_profit_usd_micros": null
+        },
+        "real_sale": "Not established by readiness. Consult authenticated revenue records.",
+        "free_service_dependency": false
+      }
+    },
+    {
+      "path": "/supported",
+      "status": 200,
+      "tag": "git-b22cfc6e93b7",
+      "body": {
+        "kinds": [
+          {
+            "x402Version": 2,
+            "scheme": "exact",
+            "network": "eip155:8453"
+          }
+        ],
+        "extensions": [],
+        "signers": {}
+      }
+    }
+  ]
+}

@@ -9,6 +9,13 @@
   "modeled_writes_per_operation": 26,
   "sql_only_marginal_usd_per_operation": "0.000026035",
   "first_stage_exceeding_exclusive_free_sql_writes": 13,
+  "fee_journey_authority_ledger_only": {
+    "reads": 107,
+    "writes": 57,
+    "sql_only_marginal_usd": "0.000057107",
+    "first_stage_exceeding_exclusive_free_sql_writes": 12,
+    "scope": "Observed SQLite cursor counters across a warmed two-level principal authorization, signed delivery, status, checkout, x402 offer and one successful simulated fee collection. Includes invoice preflight/claim/completion. Excludes PaidGateway KV/SQL, ProofRail, schema creation, Worker/DO duration, network/gas, retained bytes, invoices, support and tax. One closed-fixture sample, not a production unit-cost invoice."
+  },
   "market_size_measured": null,
   "independent_paid_operations": 0,
   "commercial_revenue_proven": false,

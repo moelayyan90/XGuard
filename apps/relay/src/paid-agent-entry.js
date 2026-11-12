@@ -1,3 +1,5 @@
+import { FEE_SERVICE } from './financial-authority/fees.js';
+import { claimAuthorityInvoice } from './financial-authority/paid.js';
 import { VERSION } from "./core/identity.js";
 import { isPrivateIpv4, isPrivateIpv6, hostnameAllowed, publicDns } from "./core/network-policy.js";
 import { pricingEconomics, executionEconomics } from "./core/unit-economics.js";
@@ -1777,7 +1779,7 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
   await sellerStage(env, record, "upstream_execution_started");
   let result;
   try {
-    result = livePaidDefinition(record.input?.capability) ? await executeLivePaid(record.input, env, performWebFetch, { payment_identifier: record.payment_identifier }) : record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
+    result = livePaidDefinition(record.input?.capability) ? await executeLivePaid(record.input, env, performWebFetch, { payment_identifier: record.payment_identifier, ...(record.input?.capability === FEE_SERVICE.id ? { authority_payment: { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, chain_verified: record.chain_verified === true, amount_atomic: record.amount, network: record.network, asset: record.asset, payee: record.pay_to, transaction: record.transaction } } : {}) }) : record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
   } catch (cause) {
     const code = cause?.code || "upstream_failed";
@@ -1865,7 +1867,7 @@ async function reconcileStoredOperation(state, env) {
   await observeStage(env, "settlement_success", record.request_id, {
     traffic_class: record.traffic_class,
     transport: record.transport || "reconcile",
-    tool: TOOL,
+    tool: record.input?.capability === FEE_SERVICE.id ? record.tool : TOOL,
     network: record.network,
     amount_atomic: record.amount,
     environment: record.environment,
@@ -1914,7 +1916,7 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
     if (!originalRecord || (input.capability && originalRecord.request_digest !== quote.input_digest)) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
     const attempt = await postStub(originalStub, "/operation/credit-attempt", { credit_id: payload.credit_id, request_id: id });
     if (!attempt.ok || attempt.body.delivered) throw Object.assign(new Error("credit_invalid"), { code: "credit_invalid" });
-    const result = livePaidDefinition(input.capability) ? await executeLivePaid(input, env, performWebFetch, { payment_identifier: originalRecord.payment_identifier }) : input.capability ? await executeOutcome(input, env, performWebFetch) : await performWebFetch(input);
+    const result = livePaidDefinition(input.capability) ? await executeLivePaid(input, env, performWebFetch, { payment_identifier: originalRecord.payment_identifier, ...(input.capability === FEE_SERVICE.id ? { authority_payment: { payment_identifier: originalRecord.payment_identifier, authorization_fingerprint: originalRecord.authorization_fingerprint, chain_verified: originalRecord.chain_verified === true, amount_atomic: originalRecord.amount, network: originalRecord.network, asset: originalRecord.asset, payee: originalRecord.pay_to, transaction: originalRecord.transaction } } : {}) }) : input.capability ? await executeOutcome(input, env, performWebFetch) : await performWebFetch(input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
     const proof = await signProof(env, {
       v: 1, typ: "xguard-credited-execution", iss: API, request_id: id, credit_id: payload.credit_id, tool,
@@ -1943,8 +1945,8 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
 
 export async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = false, transport = "http", outcomeInput = null) {
   const tool = outcomeInput ? `xguard.${outcomeInput.capability}` : TOOL;
-  const requireChainEvidence = transport === "mcp-live";
-  const observation = { trafficClass: trafficClass(request), transport, ...(requireChainEvidence ? { resource: request.url } : {}) };
+  const requireChainEvidence = transport === "mcp-live" || outcomeInput?.capability === FEE_SERVICE.id;
+  const observation = { trafficClass: outcomeInput?.capability === FEE_SERVICE.id ? "synthetic" : trafficClass(request), transport, ...(requireChainEvidence ? { resource: request.url } : {}) };
   await observeStage(env, "request_received", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production" });
   if (!env.PROOF_AUTHORITY || !env.PAID_GATEWAY) return error("payment_not_configured", 503, id);
   const rate = await rateLimit(request, env, "paid-execution", 30);
@@ -2145,6 +2147,15 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
       await postStub(stub, '/operation/transition', { status: 'failed', patch: { failure_stage: 'request_reservation', failure_reason: 'live_idempotency_conflict' } });
       await postStub(gatewayIndex(env), '/index/finalize', { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: 'failed' });
       return error('live_idempotency_conflict', 409, id, { details: { new_payment_required: false, retry_same_authorization_only: true } });
+    }
+  }
+  if (input.capability === FEE_SERVICE.id) {
+    try {
+      await claimAuthorityInvoice(env, input, { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, amount_atomic: config.amount, network: config.network, asset: config.asset, payee: config.payTo });
+    } catch (cause) {
+      await postStub(stub, '/operation/transition', { status: 'failed', patch: { failure_stage: 'invoice_reservation', failure_reason: cause.code || 'invoice_already_claimed' } });
+      await postStub(gatewayIndex(env), '/index/finalize', { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: 'failed' });
+      return error(cause.code || 'invoice_already_claimed', cause.status || 409, id, { details: { new_payment_required: false } });
     }
   }
   const reservation = await postStub(stub, "/operation/reserve-settlement", {});

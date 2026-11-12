@@ -41,7 +41,15 @@ export async function reconcilePayment(env, record) {
       }
       if (!transaction) continue;
       const receipt = await client.getTransactionReceipt({ hash: transaction });
-      if (receiptConfirmsAuthorization(receipt, { asset: record.asset, from: record.payer, nonce: record.nonce, payTo: record.pay_to, amount: record.amount })) return { success: true, transaction, network: record.network, payer: record.payer };
+      if (receiptConfirmsAuthorization(receipt, { asset: record.asset, from: record.payer, nonce: record.nonce, payTo: record.pay_to, amount: record.amount })) {
+        if (record.require_finality === true || record.input?.capability === 'authority-fee') {
+          const canonical = await client.getBlock({ blockNumber: receipt.blockNumber });
+          const head = await client.getBlockNumber();
+          if (canonical.hash !== receipt.blockHash || head < receipt.blockNumber + 1n) continue;
+          return { success: true, transaction, network: record.network, payer: record.payer, confirmations: Number(head - receipt.blockNumber + 1n), canonical_block_hash: receipt.blockHash };
+        }
+        return { success: true, transaction, network: record.network, payer: record.payer };
+      }
     } catch { /* Try the next explicitly configured read-only RPC, never another settlement. */ }
   }
   return null; // Missing evidence is unresolved, not proof of failure or permission to execute.
