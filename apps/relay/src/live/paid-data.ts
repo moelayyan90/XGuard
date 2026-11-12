@@ -1,3 +1,5 @@
+import { FEE_SERVICE } from '../financial-authority/fees.js';
+import { normalizeAuthorityFee, authorityFeeSchema, authorityInvoicePreflight, completeAuthorityInvoice } from '../financial-authority/paid.js';
 import type { Env, Row } from './types.ts';
 import { sourceSpec } from './adapters.ts';
 import { hash, iso, rpc, shardName, shardOf } from './util.ts';
@@ -16,7 +18,7 @@ export const LIVE_PAID = [
   EXTRACT_SERVICE,
   ...OPERATIONS,
 ] as const;
-export function livePaidDefinition(id: string): any { return LIVE_PAID.find(d => d.id === id) || (id === EXTRACT_SERVICE.id ? EXTRACT_SERVICE : null); }
+export function livePaidDefinition(id: string): any { return LIVE_PAID.find(d => d.id === id) || (id === EXTRACT_SERVICE.id ? EXTRACT_SERVICE : id === FEE_SERVICE.id ? FEE_SERVICE : null); }
 export function canonicalFact(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 300 || /[%?#\\\s]/.test(value)) return null;
   const parts = value.split('/'), key = parts.pop() || '';
@@ -29,6 +31,7 @@ function timestamp(value: unknown): string | null {
   return normalized.slice(0, 19) === value.slice(0, 19) ? normalized : null;
 }
 export function normalizeLivePaid(route: string, raw: any): Row {
+  if (route === FEE_SERVICE.route) return normalizeAuthorityFee(raw);
   if (operation(route)) return normalizeNetwork(route, raw);
   const def = LIVE_PAID.find(d => d.route === route) || (route === 'extract' ? EXTRACT_SERVICE : null);
   const fail = (code: string): never => { throw Object.assign(new Error(code), { code, status: 400 }); };
@@ -58,6 +61,7 @@ export function normalizeLivePaid(route: string, raw: any): Row {
   return { ...base, fact, from, to, ...(route === 'history' ? { limit: raw.limit ?? 300, cursor } : {}) };
 }
 export function paidInputSchema(route: string): Row {
+  if (route === FEE_SERVICE.route) return authorityFeeSchema;
   if (operation(route)) return networkSchema(route);
   if (route === 'extract') return { type: 'object', additionalProperties: false, required: ['urls', 'max_amount_atomic'], properties: { urls: { type: 'array', minItems: 1, maxItems: 3, uniqueItems: true, items: { type: 'string', format: 'uri', pattern: '^https://', maxLength: 2048 } }, max_amount_atomic: { type: 'string', pattern: '^\\d{1,12}$', description: 'Explicit spending cap in 6-decimal USDC atomic units.' } } };
   const fact = { type: 'string', maxLength: 300, description: 'Canonical public fact ID, e.g. npm/react/latest-version; never an arbitrary URL.' };
@@ -68,6 +72,7 @@ export function paidInputSchema(route: string): Row {
 }
 export const paidResultSchema = { type: 'object', required: ['ok', 'result', 'receipt', 'settlement', 'proofrail'], properties: { ok: { const: true }, result: { type: 'object' }, receipt: { type: 'object' }, settlement: { type: 'object' }, proofrail: { type: 'object' } } };
 export async function livePaidCapacity(env: Env, input: Row): Promise<void> {
+  if (input.capability === FEE_SERVICE.id) { await authorityInvoicePreflight(env, input); return; }
   if (operation(input.capability)) { if (!env.PAID_GATEWAY) throw Object.assign(new Error('durable_storage_unavailable'), { code: 'durable_storage_unavailable', status: 503 }); return; }
   if (input.capability === EXTRACT_SERVICE.id) return; // Never access a buyer's source before settlement.
   const id = input.facts?.[0] || input.fact, entity = id.slice(0, id.lastIndexOf('/'));
@@ -75,6 +80,7 @@ export async function livePaidCapacity(env: Env, input: Row): Promise<void> {
   if (!fact) throw Object.assign(new Error('fact_not_published'), { code: 'fact_not_published', status: 404 });
 }
 export async function executeLivePaid(input: Row, env: Env, fetchSource?: any, context: Row = {}): Promise<any> {
+  if (input.capability === FEE_SERVICE.id) return completeAuthorityInvoice(env, input, context);
   if (operation(input.capability)) return executeNetwork(input, env, fetchSource, context);
   if (input.capability === EXTRACT_SERVICE.id) {
     if (typeof fetchSource !== 'function') throw new Error('extraction_provider_unavailable');

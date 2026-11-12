@@ -208,6 +208,24 @@ jobs:
         id: agent402_smoke
         run: node scripts/agent402-smoke.mjs
 
+      - name: Verify delegated authority sandbox without funds or a payment signer
+        id: authority_smoke
+        if: success() && steps.deploy.outcome == 'success'
+        env:
+          LIVE_ADMIN_KEY: ${{ secrets.LIVE_ADMIN_KEY || secrets.XGUARD_OPERATOR_KEY }}
+          EXPECTED_XGUARD_TAG: git-${{ env.DEPLOY_SHA }}
+          AUTHORITY_PRODUCTION_EVIDENCE_DIR: ${{ runner.temp }}/xguard-authority-evidence
+        run: EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node scripts/authority-production-smoke.mjs
+
+      - name: Save synthetic authority receipt without credentials
+        if: success() && steps.authority_smoke.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: authority-sandbox-production-evidence
+          path: ${{ runner.temp }}/xguard-authority-evidence
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Verify owner access and start curated collection
         if: success() && steps.protocol_release.outputs.gradual != 'true'
         env:

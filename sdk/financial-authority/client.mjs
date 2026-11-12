@@ -1,5 +1,6 @@
 // Authentication keys stay with the owner/agent. These are not payment keys.
 import { b64, bytes, keyId, PROTOCOL, AUDIENCE, unsigned } from '../../apps/relay/src/financial-authority/crypto.js';
+export { organizationForLicense } from '../../apps/relay/src/financial-authority/enrollment.js';
 export async function createIdentity() {
   const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign','verify']);
   const publicKey = await crypto.subtle.exportKey('jwk', pair.publicKey);
@@ -19,6 +20,6 @@ export async function sendCommand(envelope, options = {}) {
   if (options.enrollmentToken) headers.authorization = 'Bearer ' + options.enrollmentToken;
   if (options.organizationToken) headers['x-xguard-organization-token'] = options.organizationToken;
   // Deliberately no automatic retries and no payment signer.
-  const response = await fetch(origin + '/v1/authority/' + envelope.action, { method: 'POST', headers, body: JSON.stringify(envelope), signal: AbortSignal.timeout(15000) });
+  const response = await fetch(origin + '/v1/authority/' + envelope.action, { method: 'POST', headers, body: JSON.stringify(envelope), redirect: 'error', signal: AbortSignal.timeout(15000) });
   return { status: response.status, body: await response.json() };
 }

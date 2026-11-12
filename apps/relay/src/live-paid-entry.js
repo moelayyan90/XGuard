@@ -1,3 +1,5 @@
+import { FEE_SERVICE } from './financial-authority/fees.js';
+import { authorityFeeEnabled } from './financial-authority/paid.js';
 import { handlePaidWebFetch, recoverOutcome, gatewayConfig, jsonBody, rateLimit, livePaidState, livePaidProofKey, livePaidVerifyReceipt, recordLivePaidDiscovery, recordLivePaidResponse } from './paid-agent-entry.js';
 import { LIVE_PAID, EXTRACT_SERVICE, PAID_BASE, paidInputSchema, paidResultSchema, normalizeLivePaid, livePaidCapacity } from './live/paid-data.ts';
 import { securityHeaders } from './live/security.ts';
@@ -62,7 +64,8 @@ async function route(request, env, ctx) {
     if (!(await rateLimit(request, env, 'live-receipt-verification', 30)).allowed) return response({ error: 'rate_limited' }, 429);
     return response(await livePaidVerifyReceipt(env, value.receipt, value.proof));
   }
-  const definition = LIVE_PAID.find(d => relative === `/${d.route}`) || (relative === '/extract' && request.headers.has('x-xguard-credit') ? EXTRACT_SERVICE : null);
+  if (relative === '/authority' && !authorityFeeEnabled(env)) return response({ error: 'authority_fee_activation_required', new_payment_required: false }, 503);
+  const definition = (relative === '/authority' ? FEE_SERVICE : null) || LIVE_PAID.find(d => relative === `/${d.route}`) || (relative === '/extract' && request.headers.has('x-xguard-credit') ? EXTRACT_SERVICE : null);
   if (!definition) return response({ error: 'paid_route_not_found', catalog: `${PAID_BASE}/catalog` }, 404);
   if (request.method !== 'POST') return response({ error: 'method_not_allowed', method: 'POST', input_schema: paidInputSchema(definition.route) }, 405);
   const creditAttempt = Boolean(request.headers.get('x-xguard-credit'));
@@ -80,7 +83,7 @@ async function route(request, env, ctx) {
   // An existing settled obligation needs data/signing/storage, not a new payment
   // provider call or new-purchase enablement. The financial engine validates the
   // signed credit before any execution and cannot settle on a credit attempt.
-  const network = Boolean(networkOperation(definition.id));
+  const network = definition.id === FEE_SERVICE.id || Boolean(networkOperation(definition.id));
   const dependencies = network ? ['enabled', 'payment_configuration', 'proof_authority', 'financial_storage', ...(creditAttempt ? [] : ['facilitator'])] : ['payment_configuration', 'source_data', 'proof_authority', 'financial_storage'];
   const ready = network || creditAttempt ? dependencies.every(k => readiness.checks[k]) && !readiness.errors.includes('paid_circuit_open') : readiness.ready;
   if (!ready) return response({ error: 'paid_service_not_ready', checks: readiness.checks, reasons: readiness.errors, new_payment_required: false }, 503);

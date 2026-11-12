@@ -15,14 +15,24 @@ The test creates only ephemeral authentication keys and a mock executor. It move
 
 ## Connect
 
-Canonical API: `https://api.xguardgate.com/v1/authority`. Availability requires this release to be deployed. Inspect `/catalog` before onboarding. Owner enrollment currently requires the operator's existing `LIVE_ADMIN_KEY`; never put it in an agent prompt, URL, source file or public issue. Enrollment returns a scoped `organization_token`. Supply it as `X-XGuard-Organization-Token` with every subsequent command, or as `organizationToken` in SDK send options. It is an admission credential, not spending authority; the agent signature is always required. Invalid tenant tokens are rejected before any Durable Object lookup. Rotating the existing operator secret invalidates these sandbox tokens; token rotation/recovery needs operator coordination.
+Canonical API: `https://api.xguardgate.com/v1/authority`. Inspect `/catalog` first. Enroll with an existing funded unrestricted XGuard license, using `organizationForLicense(license)` for the deterministic organization ID, or obtain operator enrollment. The license is checked only at the pinned existing `/v1/balance` endpoint. No credit is consumed; no other product purchase is counted as authority revenue. Keep the license out of agent prompts, URLs and logs.
+
+A runnable example needs Node 24 and your existing license in the local `XGUARD_LICENSE` environment variable:
+
+```sh
+node sdk/financial-authority/sandbox-demo.mjs
+```
+
+The example saves an **authentication** key in `~/.xguard/authority/sandbox-owner.json` with mode 0600, issues two levels of delegation, uses `adapter: "sandbox-simulation"`, verifies a receipt and revokes the demo grant. It creates no wallet or payment signature. Repeat enrollment with the same owner and identical policies safely returns the original tenant admission token; a changed owner or policy conflicts. A lost owner key is not recovered from the license.
+
+Enrollment returns `organization_token`. Supply it as `X-XGuard-Organization-Token` or SDK `organizationToken`, in addition to every signed command. Invalid tokens fail before object lookup. Operator-secret rotation invalidates these sandbox tokens. The operator credential must never be given to a customer or agent.
 
 ```js
-import { createIdentity, signCommand, sendCommand } from './client.mjs';
+import { createIdentity, signCommand, sendCommand, organizationForLicense } from './client.mjs';
 
 const owner = await createIdentity();
 const agent = await createIdentity();
-const org = 'customer_org_001';
+const org = await organizationForLicense(process.env.XGUARD_LICENSE);
 const policy = {
   currency: 'USDC', asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
   network: 'eip155:8453', per_operation: '5000000', per_period: '20000000',
@@ -32,7 +42,7 @@ const policy = {
 const enrollment = await signCommand(owner, org, 'enroll', {
   owner_key: owner.publicKey, policies: [policy], accept_price_atomic: '50000',
 });
-// The operator submits enrollment with the existing admin credential.
+// Submit with sendCommand(enrollment, { enrollmentToken: process.env.XGUARD_LICENSE }).
 // Merely signing this sandbox policy never signs a USDC payment.
 
 const grant = await signCommand(owner, org, 'grant', {
@@ -45,7 +55,7 @@ const grant = await signCommand(owner, org, 'grant', {
 // and narrows payees, limits, validity and depth_remaining.
 ```
 
-Authentication keys belong in the customer's key store. `createIdentity` is a local example; exporting or persisting a private key is the caller's responsibility. Each key may have one delegation per organization in this release. There is no key-rotation or grant-renewal endpoint yet.
+Authentication keys belong in the customer's key store. `createIdentity` is a local example; exporting or persisting a private key is the caller's responsibility. Each key may have one delegation per organization in this release. An owner may `disable-agent` using `{ agent_id }`. `rotate-owner` requires the current owner signature and a new-key possession proof over `{ protocol: "xguard-afa-owner-rotation/1", org_id, previous_owner_id, new_owner_id, nonce }`; include `new_owner_key` and `new_owner_proof` in the payload. Historical root signatures remain verifiable. Up to 20 distinct owner rotations are retained. There is no renewal endpoint; issue a new key/grant.
 
 `authorize` payload:
 
@@ -78,7 +88,7 @@ MCP tools: `xguard.authority.catalog`, `xguard.authority.command` (argument `{en
 
 The existing `AUTHORITY` binding is reused with distinct names `afa-v1:sandbox:<org_id>` and an `afa_records` table. Legacy mandates, ProofRail, C2SP and paid journals retain their bindings and formats. No new Cloudflare namespace or migration is created.
 
-No executor is configured in production by this release. A local/private executor needs `AFA_EXECUTOR`, `AFA_EXECUTOR_PUBLIC_JWK` (public P-256 key) and `AFA_EXECUTOR_ADAPTER` (exact allowed adapter name). The binding, never a caller-supplied URL, receives `POST /execute` once after durable dispatch, or **read-only** `POST /status` for reconciliation. Its idempotency key is `<organization_id>:<operation_id>`. It must independently enforce this key, verify the task digest against its actual task and preserve the exact recipient, principal and fee cap. XGuard cannot guarantee exactly-once side effects in a noncompliant external system.
+The built-in `sandbox-simulation` path has no external effects. No financial executor is configured in production by this release. A local/private executor needs `AFA_EXECUTOR`, `AFA_EXECUTOR_PUBLIC_JWK` (public P-256 key) and `AFA_EXECUTOR_ADAPTER` (exact allowed adapter name). The binding, never a caller-supplied URL, receives `POST /execute` once after durable dispatch, or **read-only** `POST /status` for reconciliation. Its idempotency key is `<organization_id>:<operation_id>`. It must independently enforce this key, verify the task digest against its actual task and preserve the exact recipient, principal and fee cap. XGuard cannot guarantee exactly-once side effects in a noncompliant external system.
 
 The executor signs sorted JSON using ES256, with raw 64-byte P1363 signature, and returns `{payload,signature}`. Required payload fields: `protocol:'xguard-afa-settlement/1'`, `mode`, `organization_id`, `operation_id`, `intent_digest`, `currency`, `asset`, `network`, `payee`, `principal_atomic`, `provider_fee_atomic`, `observed_at` (milliseconds), `status` (`confirmed`, `unknown`, `failed_no_effect`), and a nonempty `transaction` for confirmed outcomes. Failed-no-effect requires zero provider fees. A pinned signature is **executor evidence**, not independent blockchain finality. Sandbox transaction references do not represent onchain transactions.
 
@@ -88,4 +98,16 @@ The gate cannot control an agent's separate wallet, API key or alternate network
 
 ## Before any live activation
 
-Live mode is rejected in code. A separate reviewed release must add aggregate service-fee budgets, one-invoice-only collection bound to signed delivery, production settlement/finality verification, grant/key lifecycle, durable-state versioning and account-wide admission accounting. It needs independent security review and legal classification. Any new production financial key, gas funding, real transaction or paid infrastructure requires the owner's separate explicit approval. Sandbox tests alone satisfy none of these gates.
+Live mode is rejected in code. Aggregate service-fee budgets, one-invoice-only collection, read-only chain evidence and owner-key lifecycle are implemented and tested in isolation. A separate reviewed release must validate real settlement, legal classification, financial-state versioning, account-wide admission, actual costs and customer consent before enabling monetary collection. It needs independent security review and legal classification. Any new production financial key, gas funding, real transaction or paid infrastructure requires the owner's separate explicit approval. Sandbox tests alone satisfy none of these gates.
+
+## Service-fee budgets and checkout
+
+Service fees are a separate Base USDC budget. To opt into invoice simulation, add `service_fee_budget` to enrollment and a narrowing `service_fee_limit` to each policy and grant. Each is `{ per_operation: "50000", per_period: "500000", lifetime: "5000000", period_seconds: 86400 }`. The global institution fee budget applies across all merchant currencies. These are policy limits, not a deposit or proof of a balance.
+
+Only a completed operation with a verified signed delivery can open one invoice. `checkout` takes `{ operation_id }` and returns a private invoice capability plus the exact x402 endpoint/idempotency key. Keep the capability out of URLs and logs. Production returns `authority_fee_activation_required` before accepting a payment. The fee path is available only in isolated simulations in this release; the production version binding prevents an environment toggle from activating it.
+
+The closed commerce test uses the official x402 client, real ephemeral EIP-712 signatures and mocked facilitator/RPC responses. Identical payment replay returns the previous result; a different wallet is fenced before settlement. A lost settlement response cannot create a new debit. A definitely rejected no-effect attempt permits a newly signed replacement, capped at 3 attempts. Storage failure after settlement uses the original execution credit. Simulations and self-payments are excluded from revenue.
+
+## Settlement evidence
+
+`sandbox-simulation` has no external effects. All other executors remain private and operator pinned. For an optional Base USDC read-only evidence check, sign `payment_context: { payer, nonce }` as part of the intent, use the exact USDC asset/merchant and a zero provider-fee cap. Confirmation then also requires matching AuthorizationUsed and Transfer events, a canonical block and at least 2 confirmations through a configured RPC. This is evidence at observation time, not irreversible finality or independent proof of fiat settlement. Missing evidence remains UNKNOWN and keeps reservations. The checker never submits a transaction.

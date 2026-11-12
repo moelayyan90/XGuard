@@ -1,0 +1,37 @@
+{
+  "tests_passed": 19,
+  "tests": [
+    "no invoice exists before a completed signed decision",
+    "organization service-fee limit is shared across principal currencies",
+    "service fee cannot be widened by a subagent",
+    "one invoice follows signed delivery and preserves merchant payee",
+    "official x402 payment buys one invoice with independent chain evidence",
+    "same payment returns its signed result without repeat debit",
+    "a second wallet cannot pay the same invoice again",
+    "two racing wallets yield exactly one fee settlement",
+    "forged invoice capabilities cannot reach payment execution",
+    "lost settlement response never permits a new debit",
+    "definite no-effect failure permits one explicitly signed replacement",
+    "storage failure after fee settlement is recovered with original execution credit",
+    "independent merchant verification rejects missing transfer and recovers read-only",
+    "repeated dependency failures open the shared circuit before another fee attempt",
+    "noncanonical or shallow fee receipts stay unresolved without a second settlement",
+    "restart preserves invoice fencing and simulated accounting",
+    "disabled agent cannot create new spend but owner can recover holds",
+    "owner rotation requires both key proofs and preserves historical chain verification",
+    "deployed metadata blocks fee activation even with a simulation flag"
+  ],
+  "real_transfers": 0,
+  "real_service_fee_revenue": "0",
+  "network": "closed in-process fixtures only",
+  "fee_settlement_calls": 7,
+  "signature_verifications": 10,
+  "measured_authority_resources": {
+    "sql_rows_read": 107,
+    "sql_rows_written": 57,
+    "authority_do_calls": 10,
+    "scope": "Observed SQLite cursor counters across a warmed two-level principal authorization, signed delivery, status, checkout, x402 offer and one successful simulated fee collection. Includes invoice preflight/claim/completion. Excludes PaidGateway KV/SQL, ProofRail, schema creation, Worker/DO duration, network/gas, retained bytes, invoices, support and tax. One closed-fixture sample, not a production unit-cost invoice."
+  },
+  "independent_security_audit": false,
+  "generated_at": "2026-11-12T05:55:22.937Z"
+}

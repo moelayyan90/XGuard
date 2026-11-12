@@ -13,7 +13,7 @@ async function api(path, body) {
   if (!response.ok || value.success === false || value.errors?.length) throw Error(JSON.stringify({ status: response.status, errors: (value.errors || []).map(e => redact(e.message)) }));
   return value;
 }
-async function inspect(label, fn) { try { console.log(JSON.stringify({ audit: label, ...await fn() })); } catch (e) { console.log(JSON.stringify({ audit: label, available: false, reason: redact(e.message) })); } }
+async function inspect(label, fn) { try { const result = await fn(); console.log(JSON.stringify({ audit: label, ...result })); return result; } catch (e) { console.log(JSON.stringify({ audit: label, available: false, reason: redact(e.message) })); return { available: false }; } }
 await inspect('subscriptions', async () => {
   const { result } = await api(`/accounts/${account}/subscriptions`);
   return { available: true, plans: result.map(p => ({ plan: p.rate_plan?.id || p.plan?.id, name: p.rate_plan?.public_name || p.plan?.name, state: p.state, frequency: p.frequency })) };
@@ -27,7 +27,7 @@ await inspect('namespaces', async () => {
   const { result } = await api(`/accounts/${account}/workers/durable_objects/namespaces?per_page=100`);
   return { available: true, namespaces: result.map(n => ({ id: n.id, name: n.name, script: n.script, class: n.class, use_sqlite: n.use_sqlite })) };
 });
-await inspect('daily_durable_usage', async () => {
+const dailyUsage = await inspect('daily_durable_usage', async () => {
   // Discover dataset/metric names from the live schema instead of assuming that
   // request counters represent SQLite row reads or writes.
   const schema = await api('/graphql', { query: '{ __schema { types { name fields { name type { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name } } } } } } } } }' });
@@ -63,3 +63,7 @@ await inspect('daily_durable_usage', async () => {
   }
   return { available: results.some(r => r.groups), utc_start: start, utc_end: end, totals, free_plan_allowances: { rows_read: 5000000, rows_written: 100000 }, datasets: datasets.map(d => ({ name: d.name, metrics: d.metrics })), results };
 });
+if (process.env.PROVIDER_USAGE_REQUIRED === 'true' && (!dailyUsage.available || !dailyUsage.totals)) {
+  console.log('::error title=Provider usage visibility unavailable::Daily SQLite counters could not be read. Missing usage evidence is not healthy capacity.');
+  process.exitCode = 1;
+}
