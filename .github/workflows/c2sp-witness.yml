@@ -1,5 +1,8 @@
 name: Verify C2SP production witness
 on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
   push:
     branches: [fix/c2sp-gblin-interop]
   workflow_run:
@@ -13,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
-    if: github.event_name == 'push' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -24,12 +27,13 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Verify real witness and safe production contracts
+      - name: Audit automatic witnessing without submitting a checkpoint or payment
         env:
-          C2SP_SUBMIT_CHECKPOINT: ${{ github.event_name == 'workflow_run' && 'true' || 'false' }}
-        run: node scripts/c2sp-production-smoke.mjs
+          C2SP_REQUIRE_HISTORY_STATUS: 'true'
+        run: node scripts/c2sp-stability-audit.mjs
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: c2sp-production-evidence
-          path: c2sp-production-evidence.json
+          name: c2sp-stability-evidence
+          path: c2sp-stability-evidence.json
+          retention-days: 30

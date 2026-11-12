@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { C2SPWitness, C2SPWitnessCore, parseCheckpointNote, MAX_REQUEST_BYTES } from '../src/c2sp-witness.js';
+import { C2SPWitness, C2SPWitnessCore, parseCheckpointNote, MAX_REQUEST_BYTES, PINNED_LOGS, PRODUCTION_WITNESS_KEY } from '../src/c2sp-witness.js';
 import { parseConsistencyPayload, runInterop, testLogs, vectors } from './c2sp-interop-helpers.mjs';
 
 function fixture() {
@@ -52,13 +52,18 @@ test('concurrent cold-start metadata and pushes retain one identity across resta
   assert.equal((await restarted.fetch(req(`/witness/${vectors.originHash}/checkpoint`))).status, 200);
 });
 
-test('production class ignores environment trust overrides and inherited property origins', async () => {
+test('production pins its existing identity and ignores trust overrides; inherited origins are rejected', async () => {
   const f = fixture();
   const w = new C2SPWitness(f.state, { PINNED_LOGS: testLogs });
+  assert.equal(w.logs, PINNED_LOGS);
+  assert.equal(w.expectedKey, PRODUCTION_WITNESS_KEY);
   const first = vectors.steps.find(x => x.name === 'first checkpoint size 5');
-  assert.equal((await w.fetch(req(first.path, { method: 'POST', body: first.body }))).status, 404);
+  assert.equal((await w.fetch(req(first.path, { method: 'POST', body: first.body }))).status, 503);
+  assert.equal(f.keyWrites(), 0);
+  const localPolicy = new C2SPWitnessCore(fixture().state, w.logs);
+  assert.equal((await localPolicy.fetch(req(first.path, { method: 'POST', body: first.body }))).status, 404);
   const inherited = first.body.replaceAll(vectors.origin, 'constructor');
-  assert.equal((await w.fetch(req(first.path, { method: 'POST', body: inherited }))).status, 404);
+  assert.equal((await localPolicy.fetch(req(first.path, { method: 'POST', body: inherited }))).status, 404);
 });
 
 test('missing trusted signature is 403; invalid UTF-8 and empty extension lines fail closed', async () => {

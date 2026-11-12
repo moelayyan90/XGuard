@@ -72,7 +72,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/openapi.ts apps/relay/src/live/paid-data.ts apps/relay/package.json apps/relay/package-lock.json; then
+          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/openapi.ts apps/relay/src/live/paid-data.ts apps/relay/src/c2sp-witness.js apps/relay/package.json apps/relay/package-lock.json; then
             if [[ "$ROLLBACK_ALLOWED" != 'true' ]] ||
                ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/wrangler.jsonc apps/settlement-gateway apps/billing; then
               echo '::error::Live recovery requires a compatible code-only canary. No deployment was attempted.'
@@ -171,6 +171,7 @@ jobs:
           if [[ "$LIVE_RECOVERY" == true ]]; then
             export EXPECT_LIVE_OPENAPI=true
             "$wrangler" versions deploy "$PREVIOUS_VERSION@100" "$candidate@0" --yes --config "$config" --message "XGuard Live recovery 0% preflight"
+            if [[ -f scripts/c2sp-stability-audit.mjs ]]; then node scripts/c2sp-stability-audit.mjs; fi
             for attempt in {1..3}; do
               if node scripts/live-smoke.mjs && node scripts/live-paid-smoke.mjs --require-ready; then break; fi
               if [[ "$attempt" == 3 ]]; then exit 1; fi

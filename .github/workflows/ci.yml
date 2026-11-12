@@ -29,6 +29,7 @@ jobs:
           node --test scripts/live-capacity-preflight-test.mjs
           node --test scripts/live-owner-bootstrap-test.mjs
           node --test scripts/live-paid-smoke-test.mjs
+          node --test scripts/c2sp-stability-contract-test.mjs scripts/gblin-canary-compare-test.mjs
       - name: Settle only mock tokens in an isolated in-process EVM
         run: |
           npm ci --prefix apps/native-settlement-lab --no-audit --no-fund
