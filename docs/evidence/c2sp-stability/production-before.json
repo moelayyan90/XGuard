@@ -1,0 +1,108 @@
+{
+  "observed_at": "2026-11-12T06:56:21.315Z",
+  "result": "passed",
+  "mode": "GET-only; no checkpoint submission or financial request",
+  "http": [
+    {
+      "url": "https://api.xguardgate.com/witness",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "response_date": "Thu, 12 Nov 2026 06:55:49 GMT",
+      "worker_tag": null
+    },
+    {
+      "url": "https://api.xguardgate.com/witness/verifier-key",
+      "status": 200,
+      "content_type": "text/plain; charset=utf-8",
+      "response_date": "Thu, 12 Nov 2026 06:55:50 GMT",
+      "worker_tag": null
+    },
+    {
+      "url": "https://mcp.gblin.digital/log/checkpoint",
+      "status": 200,
+      "content_type": "text/plain; charset=utf-8",
+      "response_date": "Thu, 12 Nov 2026 06:55:56 GMT",
+      "worker_tag": null
+    },
+    {
+      "url": "https://api.xguardgate.com/witness/cb6e6f270f915689e63aaa0e4e65e077518dfd3dffe76e2485d2a0047c4bfdfe/checkpoint",
+      "status": 200,
+      "content_type": "text/plain; charset=utf-8",
+      "response_date": "Thu, 12 Nov 2026 06:56:02 GMT",
+      "worker_tag": null
+    },
+    {
+      "url": "https://mcp.gblin.digital/log/witnesses",
+      "status": 200,
+      "content_type": "application/json",
+      "response_date": "Thu, 12 Nov 2026 06:56:08 GMT",
+      "worker_tag": null
+    },
+    {
+      "url": "https://api.xguardgate.com/witness/cb6e6f270f915689e63aaa0e4e65e077518dfd3dffe76e2485d2a0047c4bfdfe/status",
+      "status": 404,
+      "content_type": "text/plain; charset=utf-8",
+      "response_date": "Thu, 12 Nov 2026 06:56:14 GMT",
+      "worker_tag": null
+    },
+    {
+      "url": "https://mcp.gblin.digital/log/consistency?old=212&new=213",
+      "status": 200,
+      "content_type": "application/json",
+      "response_date": "Thu, 12 Nov 2026 06:56:20 GMT",
+      "worker_tag": null
+    },
+    {
+      "url": "https://mcp.gblin.digital/log/consistency?old=213&new=214",
+      "status": 200,
+      "content_type": "application/json",
+      "response_date": "Thu, 12 Nov 2026 06:56:21 GMT",
+      "worker_tag": null
+    }
+  ],
+  "verifier_key": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q",
+  "gblin_verifier_key": "gblin.digital/receipts-log+00c6e18c+AY8/YnCHXTnsECT2EGv0M5RTqlVvFobctLv3WSihYkoG",
+  "latest_size": 214,
+  "latest_root": "j4ypIH75PDYatHM1nLOBTk6z9Ke9YWEBp024O+oyCVY=",
+  "gblin_push_record": {
+    "witness": "xguardgate.com/witness",
+    "vkey": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q",
+    "endpoint": "https://api.xguardgate.com/witness/add-checkpoint",
+    "cosigned_size": 214,
+    "at": "2026-11-12T01:20:12.591Z",
+    "last_error": null
+  },
+  "gblin_checkpoint_cosignature_at": "2026-11-12T01:20:12.000Z",
+  "xguard_monitor_cosignature_at": "2026-11-12T06:30:52.000Z",
+  "log_signature_verified_independently": true,
+  "xguard_cosignatures_verified_independently": true,
+  "monitor_size_root_match": true,
+  "current_push_error": null,
+  "monitored_note": "gblin.digital/receipts-log\n214\nj4ypIH75PDYatHM1nLOBTk6z9Ke9YWEBp024O+oyCVY=\n\n— gblin.digital/receipts-log AMbhjEyJmPkT986pUlAA2ifOFuEzxVyb5liAAPcbkvwbC7CllmypRyKn1wHN3/y7iJlDv003J4r115YksAyMrWsSCwE=\n— markovianprotocol.com/witness QbiCfwAAAABq9QPkaMoRmQbeJE6hXx7Ts1KCx2w1fp7aJO/hX9D4VFZnI5BHkyOW3tF02iQeEApof2ZQ8VRM80K38tyGDe1uxH87CA==\n— xguardgate.com/witness TL3LQQAAAABq9V0cG+fcHV67taGoCu5J+7Lns5fDh8cH+4UVsUrAsW2jWeaMC5vV+y3jtqqxLKZXb8BrUGaowir5TID1DW2FsUtlBQ==\n",
+  "upstream_note": "gblin.digital/receipts-log\n214\nj4ypIH75PDYatHM1nLOBTk6z9Ke9YWEBp024O+oyCVY=\n\n— gblin.digital/receipts-log AMbhjEyJmPkT986pUlAA2ifOFuEzxVyb5liAAPcbkvwbC7CllmypRyKn1wHN3/y7iJlDv003J4r115YksAyMrWsSCwE=\n— markovianprotocol.com/witness QbiCfwAAAABq9QPkaMoRmQbeJE6hXx7Ts1KCx2w1fp7aJO/hX9D4VFZnI5BHkyOW3tF02iQeEApof2ZQ8VRM80K38tyGDe1uxH87CA==\n— xguardgate.com/witness TL3LQQAAAABq9RRM4nOagggSzH4eMq1pRiB/JPTItFjKBVb4dp6fBnW0P7GkRDcyHoVNXQsaaXbSfTUzcB5JJThT67mvPdIhU15SDw==\n",
+  "log_only_growth": [
+    {
+      "old": 212,
+      "size": 213,
+      "old_root": "wMgzoTObtTLa/GRgjE6QYDONndz/X0h5pc+A1rdotq4=",
+      "root": "gyLdGHVexCWV4P5gIozIm8cCAwk4+6qhihTyorKgkfM=",
+      "consistency_verified": true
+    },
+    {
+      "old": 213,
+      "size": 214,
+      "old_root": "gyLdGHVexCWV4P5gIozIm8cCAwk4+6qhihTyorKgkfM=",
+      "root": "j4ypIH75PDYatHM1nLOBTk6z9Ke9YWEBp024O+oyCVY=",
+      "consistency_verified": true
+    }
+  ],
+  "history_status": null,
+  "observed_distinct_growth_sizes_after_212": [],
+  "several_witness_growth_events_proven": false,
+  "history_limit": "Only recorded successful growth is counted. Historical deliveries such as 213 cannot be inferred from the current head or our own replay probes.",
+  "sender_attribution": "Pinned signatures authenticate checkpoints. The public GBLIN push state supplies operator-reported delivery status; HTTP sender identity is not independently authenticated.",
+  "financial_settlements_submitted": 0,
+  "canary_route": null,
+  "canary_fixture": null,
+  "reverse_proofrail_c2sp_feed_claimed": false
+}

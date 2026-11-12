@@ -1,0 +1,83 @@
+{
+  "captured_at": "2026-11-12T06:34:31.218Z",
+  "scope": "Public signed GBLIN size-214 material, for offline protocol validation only. Mock monitor responses deliberately use this same signed note; this is not a historical delivery record.",
+  "checkpoint": "gblin.digital/receipts-log\n214\nj4ypIH75PDYatHM1nLOBTk6z9Ke9YWEBp024O+oyCVY=\n\n— gblin.digital/receipts-log AMbhjEyJmPkT986pUlAA2ifOFuEzxVyb5liAAPcbkvwbC7CllmypRyKn1wHN3/y7iJlDv003J4r115YksAyMrWsSCwE=\n— markovianprotocol.com/witness QbiCfwAAAABq9QPkaMoRmQbeJE6hXx7Ts1KCx2w1fp7aJO/hX9D4VFZnI5BHkyOW3tF02iQeEApof2ZQ8VRM80K38tyGDe1uxH87CA==\n— xguardgate.com/witness TL3LQQAAAABq9RRM4nOagggSzH4eMq1pRiB/JPTItFjKBVb4dp6fBnW0P7GkRDcyHoVNXQsaaXbSfTUzcB5JJThT67mvPdIhU15SDw==\n",
+  "witnesses": {
+    "origin": "gblin.digital/receipts-log",
+    "what": "Third-party witnesses invited to cosign this log's checkpoint (c2sp.org/tlog-witness). A cosignature attests only that the log stayed append-only between the sizes that witness has seen — it says nothing about whether a sealed action is true.",
+    "how_to_join": "Pin our origin and verifier key (GET /log — verifier_key), then accept POST add-checkpoint pushes from us; we push on every size change. Audit first with GET /log/leaves and GET /log/consistency.",
+    "witnesses": [
+      {
+        "witness": "markovianprotocol.com/witness",
+        "vkey": "markovianprotocol.com/witness+41b8827f+BJKLl8rBYM0oUxSaWh9rjTldTprEpYj/SWVIGgacA9XC",
+        "endpoint": "https://witness.markovianprotocol.com/add-checkpoint",
+        "cosigned_size": 214,
+        "at": "2026-11-12T00:10:12.019Z",
+        "last_error": null
+      },
+      {
+        "witness": "xguardgate.com/witness",
+        "vkey": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q",
+        "endpoint": "https://api.xguardgate.com/witness/add-checkpoint",
+        "cosigned_size": 214,
+        "at": "2026-11-12T01:20:12.591Z",
+        "last_error": null
+      }
+    ]
+  },
+  "metadata": {
+    "witness": "xguardgate.com/witness",
+    "protocol": "c2sp.org/tlog-witness",
+    "cosignature": "c2sp.org/tlog-cosignature v1 Ed25519",
+    "operator": "Mohammad Elayyan / XGuard",
+    "contact": "mo.elayyan2023@gmail.com",
+    "verifier_key": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q",
+    "push_endpoint": "https://api.xguardgate.com/witness/add-checkpoint",
+    "monitor_template": "https://api.xguardgate.com/witness/<sha256-origin>/checkpoint",
+    "accepted_logs": [
+      {
+        "id": "gblin-receipts",
+        "origin": "gblin.digital/receipts-log",
+        "verifier_key": "gblin.digital/receipts-log+00c6e18c+AY8/YnCHXTnsECT2EGv0M5RTqlVvFobctLv3WSihYkoG",
+        "checkpoint": "https://mcp.gblin.digital/log/checkpoint",
+        "origin_hash": "cb6e6f270f915689e63aaa0e4e65e077518dfd3dffe76e2485d2a0047c4bfdfe"
+      }
+    ],
+    "policy": "A cosignature only attests that the signed checkpoint verified and was consistent with the last checkpoint XGuard accepted for that origin."
+  },
+  "consistency": {
+    "212:213": {
+      "origin": "gblin.digital/receipts-log",
+      "old": 212,
+      "new": 213,
+      "old_root": "wMgzoTObtTLa/GRgjE6QYDONndz/X0h5pc+A1rdotq4=",
+      "new_root": "gyLdGHVexCWV4P5gIozIm8cCAwk4+6qhihTyorKgkfM=",
+      "proof": [
+        "9/tQ3E1FpROqUPTI1+gi82inP3Js/T0oQIAvMGGrz0M=",
+        "5rAa7wXv3ip4rrXwYcXNomKton0HVdVWGGTeupqZff8=",
+        "xzNIz/IL31pReVU7UAdwRvwnX0D4IhGWHy+HjFOXnOw=",
+        "5bpkphf5VNn+FcTALQ7Ctm/5LsBcklB3JIz2grIOWAo=",
+        "6CC8b/Z/gNtf4e4jkOcmq2TcO6nROrP84k+x3DBDdL8="
+      ],
+      "algorithm": "RFC 6962 §2.1.2 (SUBPROOF); node hash = SHA256(0x01 || left || right)",
+      "note": "Proves the tree of `old` leaves is a prefix of the tree of `new` leaves: nothing was rewritten."
+    },
+    "213:214": {
+      "origin": "gblin.digital/receipts-log",
+      "old": 213,
+      "new": 214,
+      "old_root": "gyLdGHVexCWV4P5gIozIm8cCAwk4+6qhihTyorKgkfM=",
+      "new_root": "j4ypIH75PDYatHM1nLOBTk6z9Ke9YWEBp024O+oyCVY=",
+      "proof": [
+        "5rAa7wXv3ip4rrXwYcXNomKton0HVdVWGGTeupqZff8=",
+        "CZgGaDfIc1xZyedAojMfVuQIeTznNnpOLPMhKzFXi4g=",
+        "9/tQ3E1FpROqUPTI1+gi82inP3Js/T0oQIAvMGGrz0M=",
+        "xzNIz/IL31pReVU7UAdwRvwnX0D4IhGWHy+HjFOXnOw=",
+        "5bpkphf5VNn+FcTALQ7Ctm/5LsBcklB3JIz2grIOWAo=",
+        "6CC8b/Z/gNtf4e4jkOcmq2TcO6nROrP84k+x3DBDdL8="
+      ],
+      "algorithm": "RFC 6962 §2.1.2 (SUBPROOF); node hash = SHA256(0x01 || left || right)",
+      "note": "Proves the tree of `old` leaves is a prefix of the tree of `new` leaves: nothing was rewritten."
+    }
+  }
+}

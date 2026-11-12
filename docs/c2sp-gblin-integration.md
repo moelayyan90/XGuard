@@ -4,9 +4,13 @@ XGuard accepts C2SP `add-checkpoint` requests for the fixed
 `gblin.digital/receipts-log` origin and its published Ed25519 log key.
 The production witness name is `xguardgate.com/witness`; obtain its actual
 type-0x04 verifier key from `https://api.xguardgate.com/witness/verifier-key`.
-Private key material is generated and retained inside the isolated
+The existing private key was generated and is retained inside the isolated
 `C2SP_WITNESS` Durable Object. It is never an environment variable, repository
 secret, HTTP response or workflow artifact.
+The existing deployed identity is now pinned to `+4cbdcb41`. A missing or
+mismatched production key, or a missing established head, fails closed.
+Restore the original namespace/state; never create a replacement identity to
+make a probe pass. Local fixtures may still generate ephemeral test keys.
 
 Submission prefix: `https://api.xguardgate.com/witness`.
 Monitoring prefix: the same URL. The monitoring path is
@@ -24,15 +28,21 @@ update, unchanged production trust pins, a stable cold-start key, and key/head
 survival across SQLite runtime restarts. Node/OpenSSL independently verifies
 the emitted cosignatures, including checkpoint extensions.
 
-After successful production deployments, the C2SP verification workflow fetches
-a genuine signed GBLIN checkpoint, verifies its pinned log signature and any
-required consistency proof, submits it, and verifies the persisted monitored
-cosignature. It records only public protocol evidence. It sends no payments,
-uses no operator credentials and never submits test-origin checkpoints to the
-production witness. A successful validation-runner submission is evidence that
-GBLIN → XGuard cosigning works; it is not evidence that GBLIN has configured
-its own automatic push. Confirm that separately in issue #211 or GBLIN's public
-`/log/witnesses` status.
+After successful deployments and hourly, the C2SP workflow now runs the
+GET-only `scripts/c2sp-stability-audit.mjs`. It independently verifies both
+public signatures, the pinned identity, latest size/root, GBLIN push status
+and consistency proofs. It never submits a checkpoint or financial request.
+This avoids masking an upstream push failure with our own repair and avoids
+changing a successful push's timestamp. Explicit repair using the older smoke
+tool is separate; it is never evidence of GBLIN automatic delivery.
+
+`GET /witness/<origin-hash>/status` adds bounded successful growth history
+(at most 32 entries / 16 KiB), receipt times, signed checkpoint bodies and
+cosignatures. Each atomic head record is capped at 96 KiB before persistence.
+The history begins at instrumentation; it does not reconstruct old deliveries.
+Same-body retries return the original verified signature with no head write.
+Up to 16 requests are admitted concurrently, then 429 + Retry-After applies.
+See [stability evidence and canary boundary](operations/gblin-witness-stability-20261112.md).
 
 ## ProofRail reverse direction
 

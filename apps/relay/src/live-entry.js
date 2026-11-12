@@ -25,7 +25,12 @@ export default {
     const authority = await financialAuthorityFetch(request, env);
     if (authority) return authority;
     const witness = await c2spWitnessRoute(request, env);
-    if (witness) return witness;
+    if (witness) {
+      const headers = new Headers(witness.headers);
+      if (env.CF_VERSION_METADATA?.id) headers.set('x-xguard-worker-version-id', env.CF_VERSION_METADATA.id);
+      if (env.CF_VERSION_METADATA?.tag) headers.set('x-xguard-worker-version-tag', env.CF_VERSION_METADATA.tag);
+      return new Response(witness.body, { status: witness.status, headers });
+    }
     const network = await networkFetch(request, env, ctx);
     if (network) return network;
     if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
