@@ -18,6 +18,8 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --prefix apps/relay --no-audit --no-fund
+      - name: Reject known runtime dependency advisories
+        run: npm audit --prefix apps/relay --omit=dev --audit-level=moderate
       - name: Live syntax, security checks, strict types and behavior
         run: |
           npm run check

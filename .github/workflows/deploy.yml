@@ -72,7 +72,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/openapi.ts apps/relay/src/live/paid-data.ts; then
+          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/openapi.ts apps/relay/src/live/paid-data.ts apps/relay/package.json apps/relay/package-lock.json; then
             if [[ "$ROLLBACK_ALLOWED" != 'true' ]] ||
                ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/wrangler.jsonc apps/settlement-gateway apps/billing; then
               echo '::error::Live recovery requires a compatible code-only canary. No deployment was attempted.'
