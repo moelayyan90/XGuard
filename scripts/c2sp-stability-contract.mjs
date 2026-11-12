@@ -8,6 +8,15 @@ export const GBLIN_HASH = createHash('sha256').update(GBLIN_ORIGIN).digest('hex'
 export const MONITOR_URL = `https://api.xguardgate.com/witness/${GBLIN_HASH}/checkpoint`;
 export const STATUS_URL = `https://api.xguardgate.com/witness/${GBLIN_HASH}/status`;
 
+export function createAuditGet({ candidate, fetchImpl = globalThis.fetch } = {}) {
+  if (candidate) assert.match(candidate, /^[a-f0-9-]{36}$/, 'candidate Worker ID');
+  return url => fetchImpl(url, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(15000), headers: {
+    'user-agent': 'XGuard-C2SP-ReadOnly-Audit/1.0 (+https://github.com/moelayyan90/XGuard/issues/211)', 'cache-control': 'no-cache',
+    // Cloudflare parses this as a structured field: UUIDs must be quoted strings.
+    ...(candidate && new URL(url).hostname === 'api.xguardgate.com' ? { 'Cloudflare-Workers-Version-Overrides': `xguard-mainnet="${candidate}"` } : {}),
+  } });
+}
+
 // Independent Node/OpenSSL verification of the log's note signature.
 export function verifyPinnedLog(note) {
   const [name, id] = PINNED_LOGS[GBLIN_ORIGIN].vkey.split('+', 3);

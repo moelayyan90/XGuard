@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { auditStability, MONITOR_URL, STATUS_URL } from './c2sp-stability-contract.mjs';
+import { auditStability, createAuditGet, MONITOR_URL, STATUS_URL } from './c2sp-stability-contract.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('../apps/relay/test/fixtures/gblin-public-214.json', import.meta.url)));
 function endpoints() {
@@ -55,4 +55,17 @@ test('missing historical status is explicit before upgrade and mandatory for the
 test('oversized protocol evidence is bounded before parsing',async()=>{
   const m=endpoints();m.set('https://api.xguardgate.com/witness','x'.repeat(131073));
   await assert.rejects(auditStability({get:get(m)}),/bounded public evidence/);
+});
+test('candidate transport uses a quoted Cloudflare structured field only on XGuard requests',async()=>{
+  const calls=[],candidate='42a18e26-165b-4226-9e6a-0dbc8b8b2702';
+  const request=createAuditGet({candidate,fetchImpl:async(url,init)=>{calls.push({url,init});return new Response('ok');}});
+  await request('https://api.xguardgate.com/witness');
+  await request('https://mcp.gblin.digital/log/checkpoint');
+  assert.equal(new Headers(calls[0].init.headers).get('cloudflare-workers-version-overrides'),`xguard-mainnet="${candidate}"`);
+  assert.equal(new Headers(calls[1].init.headers).has('cloudflare-workers-version-overrides'),false);
+  assert.ok(calls.every(x=>x.init.method==='GET'&&x.init.redirect==='error'&&x.init.body===undefined));
+  assert.throws(()=>createAuditGet({candidate:'invalid'}),/candidate Worker ID/);
+});
+test('a missing candidate revision never passes a deployment audit',async()=>{
+  await assert.rejects(auditStability({get:get(endpoints()),expectedTag:'git-b88d3253569c'}),/candidate witness Worker tag/);
 });
