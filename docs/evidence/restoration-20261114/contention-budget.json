@@ -1,0 +1,8 @@
+{
+  "baseline_sha": "e1528aa1bc5ac889ca4e42994f38536b30078671",
+  "scope": "One real collector alarm with one due source and a busy upstream domain, in isolated workerd SQLite. Excludes alarm metadata and other account workloads; not a production bill or account-wide capacity claim.",
+  "before_rows_written": 4,
+  "after_rows_written": 4,
+  "source_fetches": 0,
+  "payments": 0
+}

@@ -59,3 +59,34 @@ test('an old release budget is never reset or overspent by the new retention all
     assert.deepEqual(store.get('operational-telemetry-budget-v1'),old);
   }finally{db.db.close();}
 });
+test('collection capacity survives restart, defers writes before mutation and leaves public facts readable',async()=>{
+  const h=environment();try{
+    const {store,spec}=await seed(h),day=new Date().toISOString().slice(0,10);
+    store.set('source-write-budget-v1',{day,rows_written:1590,allocation:1600,limit:1600,paused:false});
+    assert.throws(()=>store.collectionWrite(20,()=>store.set('must-not-exist',true)),/capacity_deferred/);
+    assert.equal(store.get('must-not-exist'),null);
+    const restarted=new Store(store.storage);
+    assert.equal(restarted.collectionBudget().paused,true);
+    assert.throws(()=>restarted.collectionWrite(1,()=>store.set('must-not-exist',true)),/capacity_deferred/);
+    assert.equal(restarted.fact(spec.id+'/latest-version').current_value,'1.0.0');
+    const tomorrow=Date.parse(day+'T00:00:00Z')+86400000+1000;
+    assert.equal(restarted.collectionBudget(tomorrow).paused,false);
+    assert.ok(restarted.collectionBudget(tomorrow).allocation<1600);
+    assert.equal((await live.fetch(new Request('https://xguardgate.com/fact/npm/react/latest-version'),h.env,h.ctx)).status,200);
+    for(const path of ['/readyz','/a2a/health']){
+      const response=await live.fetch(new Request('https://xguardgate.com'+path),h.env,h.ctx);
+      assert.equal(response.status,200);assert.ok(response.headers.get('cache-control').includes('no-store'));
+      const head=await live.fetch(new Request('https://xguardgate.com'+path,{method:'HEAD'}),h.env,h.ctx);
+      assert.equal(head.status,200);assert.equal(await head.text(),'');
+    }
+  }finally{await h.drain();h.close();}
+});
+test('first deployment reserves headroom for old writes and a later UTC day receives its normal allocation',()=>{
+  const db=sqlStorage();try{
+    const store=new Store(db),noon=Date.parse('2030-01-02T12:00:00Z');
+    assert.equal(store.collectionBudget(noon).allocation,600);
+    store.set('source-write-budget-v1',{day:'2030-01-01',rows_written:1600,allocation:1600,limit:1600,paused:true});
+    assert.equal(store.collectionBudget(noon).allocation,800);
+    assert.equal(store.collectionBudget(noon).paused,false);
+  }finally{db.db.close();}
+});

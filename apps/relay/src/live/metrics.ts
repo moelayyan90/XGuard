@@ -17,6 +17,7 @@ export function businessMetrics(state: any, shards: any[], now = new Date()): an
   for (const shard of shards) for (const item of shard.top_pages) demand[category(item.path)] = (demand[category(item.path)] || 0) + item.requests;
   return {
     month, total_requests: requests, verified_ai_requests: verified,
+    traffic_counting: { completeness: 'partial', counts_are_lower_bounds: true, source: 'Budgeted buffered application telemetry; events may be omitted or lost on eviction.', authoritative_comparison: 'Use Cloudflare HTTP analytics over equal windows; Worker invocations are not unique visitors.' },
     claimed_ai_requests: sum(traffic.filter(x => x.classification === 'claimed-ai'), 'requests'),
     paid_retrievals_reported: sum(reports.filter((x: any) => x.program === 'pay-per-crawl'), 'uses'),
     paid_uses_reported: sum(reports.filter((x: any) => x.program === 'pay-per-use'), 'uses'),

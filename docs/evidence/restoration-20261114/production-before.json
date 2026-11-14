@@ -1,0 +1,2858 @@
+{
+  "started": "2026-11-14T09:52:02.116Z",
+  "finished": "2026-11-14T09:52:24.570Z",
+  "scope": "Synthetic unsigned endpoint checks, not traffic analytics or proof of paid verification/settlement.",
+  "results": [
+    {
+      "url": "https://xguardgate.com/status",
+      "method": "GET",
+      "status": 200,
+      "ms": 8553,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f31f9c5ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-robots-tag": "noindex, follow",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "title": "System status",
+        "service": "XGuard Live",
+        "version": "6.0.0",
+        "storage": "reachable",
+        "owner_access": "configured",
+        "collector": "scheduled",
+        "last_cron": "2026-11-14T09:51:05.229Z",
+        "catalog_as_of": "2026-11-14T09:19:41.042Z",
+        "aggregate_interval_seconds": 4632,
+        "catalog_capacity": {
+          "policy": "measured-catalog-read-reserve-v1",
+          "component": "public-catalog",
+          "allocated_rows_per_day": 1000000,
+          "measured_rows_per_refresh": 42882,
+          "minimum_refresh_interval_seconds": 900,
+          "refresh_interval_seconds": 4632,
+          "projected_rows_per_day": 800000,
+          "projected_rows_at_minimum_interval": 4116672,
+          "pacing_active": true,
+          "scope": "Projection for catalog SQL reads only. Not measured account-wide usage, a hard quota reservation, an invoice, or a guarantee of daily availability."
+        },
+        "collection_min_interval_seconds": 600,
+        "facts": 9898,
+        "verified": 9795,
+        "stale": 102,
+        "entities": 2757,
+        "sources": 2821,
+        "changes_today": 190,
+        "fetch_errors": 66,
+        "pending": 64,
+        "due": 538,
+        "fetches_24h": 2818,
+        "last_update": "2026-11-14T09:19:23.373Z",
+        "shards": 32,
+        "html": "<p>Control storage is reachable. The 32-shard catalog was checked at 2026-11-14T09:19:41.042Z.</p><p>Collector: scheduled. Last scheduler heartbeat: 2026-11-14T09:51:05.229Z.</p><pre>{\n  &quot;facts&quot;: 9898,\n  &quot;verified&quot;: 9795,\n  &quot;stale&quot;: 102,\n  &quot;entities&quot;: 2757,\n  &quot;sources&quot;: 2821,\n  &quot;changes_today&quot;: 190,\n  &quot;fetch_errors&quot;: 66,\n  &quot;pending&quot;: 64,\n  &quot;due&quot;: 538,\n  &quot;fetches_24h&quot;: 2818,\n  &quot;last_update&quot;: &quot;2026-11-14T09:19:23.373Z&quot;,\n  &quot;shards&quot;: 32\n}</pre>"
+      }
+    },
+    {
+      "url": "https://xguardgate.com/",
+      "method": "GET",
+      "status": 200,
+      "ms": 8882,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f31f9c7ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "title": "XGuard Live",
+        "catalog_as_of": "2026-11-14T09:19:41.042Z",
+        "stats": {
+          "facts": 9898,
+          "verified": 9795,
+          "stale": 102,
+          "entities": 2757,
+          "sources": 2821,
+          "changes_today": 190,
+          "fetch_errors": 66,
+          "pending": 64,
+          "due": 538,
+          "fetches_24h": 2818,
+          "last_update": "2026-11-14T09:19:23.373Z",
+          "shards": 32
+        },
+        "examples": [
+          {
+            "id": "npm/@ai-sdk/svelte/latest-version",
+            "entity": "npm/@ai-sdk/svelte",
+            "entity_name": "@ai-sdk/svelte \u00b7 npm",
+            "fact": "latest-version",
+            "label": "Latest release version",
+            "current_value": "5.0.173",
+            "last_observed_value": "5.0.173",
+            "normalized_value": "5.0.173",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "5.0.171",
+            "observed_at": "2026-11-14T02:06:03.822Z",
+            "first_observed_at": "2026-10-07T17:53:51.498Z",
+            "verified_at": "2026-11-14T02:06:03.822Z",
+            "valid_from": "2026-11-14T02:06:03.822Z",
+            "changed_at": "2026-11-14T02:06:03.822Z",
+            "change_type": "released",
+            "source_url": "https://registry.npmjs.org/%40ai-sdk%2Fsvelte/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "806cf6d9bbb0627937125bf1182e9151aeae7e19b44bc4c3cbccc63a718584b3",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/@ai-sdk/svelte/latest-version",
+            "history_url": "https://xguardgate.com/history/npm/@ai-sdk/svelte/latest-version",
+            "evidence_url": "https://xguardgate.com/evidence/npm/@ai-sdk/svelte/20af22af-1d31-463e-8021-8efca379be74",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/@angular-devkit/schematics/latest-version",
+            "entity": "npm/@angular-devkit/schematics",
+            "entity_name": "@angular-devkit/schematics \u00b7 npm",
+            "fact": "latest-version",
+            "label": "Latest release version",
+            "current_value": "22.2.7",
+            "last_observed_value": "22.2.7",
+            "normalized_value": "22.2.7",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "22.2.6",
+            "observed_at": "2026-11-13T03:34:38.983Z",
+            "first_observed_at": "2026-10-15T07:51:23.032Z",
+            "verified_at": "2026-11-14T01:08:02.677Z",
+            "valid_from": "2026-11-13T03:34:38.983Z",
+            "changed_at": "2026-11-13T03:34:38.983Z",
+            "change_type": "released",
+            "source_url": "https://registry.npmjs.org/%40angular-devkit%2Fschematics/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "234c1e216e7becbaebfec2caff4ec0638176054bf8730c45358427bc614f48aa",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/@angular-devkit/schematics/latest-version",
+            "history_url": "https://xguardgate.com/history/npm/@angular-devkit/schematics/latest-version",
+            "evidence_url": "https://xguardgate.com/evidence/npm/@angular-devkit/schematics/c4bcab65-6a6d-40d0-a78b-5ef15cf5f6fb",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "github/vercel/next.js/latest-release",
+            "entity": "github/vercel/next.js",
+            "entity_name": "vercel/next.js",
+            "fact": "latest-release",
+            "label": "Latest published release tag",
+            "current_value": null,
+            "last_observed_value": "v16.4.6",
+            "normalized_value": null,
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "v16.4.5",
+            "observed_at": "2026-11-11T07:50:44.136Z",
+            "first_observed_at": "2026-10-10T03:31:26.458Z",
+            "verified_at": "2026-11-12T08:37:35.409Z",
+            "valid_from": "2026-11-11T07:50:44.136Z",
+            "changed_at": "2026-11-11T07:50:44.136Z",
+            "change_type": "released",
+            "source_url": "https://api.github.com/repos/vercel/next.js/releases/latest",
+            "source_domain": "api.github.com",
+            "source_type": "official-api",
+            "retrieval_method": "conditional-https",
+            "source_hash": "5f51a405c23a2c3754a9945c38278fb974a546bba67965ce99cc71bab0dee585",
+            "verification": "STALE",
+            "confidence": "unconfirmed-current-value",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/github/vercel/next.js/latest-release",
+            "history_url": "https://xguardgate.com/history/github/vercel/next.js/latest-release",
+            "evidence_url": "https://xguardgate.com/evidence/github/vercel/next.js/0ba78247-070e-4e0a-a0e3-47ad0a48f43d",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/@achrinza/node-ipc/latest-version",
+            "entity": "npm/@achrinza/node-ipc",
+            "entity_name": "@achrinza/node-ipc \u00b7 npm",
+            "fact": "latest-version",
+            "label": "Latest release version",
+            "current_value": "9.2.10",
+            "last_observed_value": "9.2.10",
+            "normalized_value": "9.2.10",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": null,
+            "observed_at": "2026-10-23T01:53:13.170Z",
+            "first_observed_at": "2026-10-23T01:53:13.170Z",
+            "verified_at": "2026-11-14T07:10:14.250Z",
+            "valid_from": "2026-10-23T01:53:13.170Z",
+            "changed_at": "2026-10-23T01:53:13.170Z",
+            "change_type": "added",
+            "source_url": "https://registry.npmjs.org/%40achrinza%2Fnode-ipc/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "e01f3f33a2e0fb03a653a798fb8f9704889907bfcc770fd6398929a73c5b437f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/@achrinza/node-ipc/latest-version",
+            "history_url": "https://xguardgate.com/history/npm/@achrinza/node-ipc/latest-version",
+            "evidence_url": "https://xguardgate.com/evidence/npm/@achrinza/node-ipc/dafe894b-7110-4c41-b635-6f92d97eecb6",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "github/pytorch/pytorch/latest-release",
+            "entity": "github/pytorch/pytorch",
+            "entity_name": "pytorch/pytorch",
+            "fact": "latest-release",
+            "label": "Latest published release tag",
+            "current_value": null,
+            "last_observed_value": "v2.15.0",
+            "normalized_value": null,
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "v2.14.1",
+            "observed_at": "2026-11-12T08:33:27.319Z",
+            "first_observed_at": "2026-10-10T03:11:08.235Z",
+            "verified_at": "2026-11-12T08:33:27.319Z",
+            "valid_from": "2026-10-29T11:49:15.393Z",
+            "changed_at": "2026-10-29T11:49:15.393Z",
+            "change_type": "released",
+            "source_url": "https://api.github.com/repos/pytorch/pytorch/releases/latest",
+            "source_domain": "api.github.com",
+            "source_type": "official-api",
+            "retrieval_method": "conditional-https",
+            "source_hash": "f59cff8dce29fc9ba69623e8c1d3fb62e0e9e02a7f9efaa528502faa207240f5",
+            "verification": "STALE",
+            "confidence": "unconfirmed-current-value",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/github/pytorch/pytorch/latest-release",
+            "history_url": "https://xguardgate.com/history/github/pytorch/pytorch/latest-release",
+            "evidence_url": "https://xguardgate.com/evidence/github/pytorch/pytorch/3ba4ea33-2f74-443e-a7e6-91720c50750c",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/@ai-sdk/elevenlabs/latest-version",
+            "entity": "npm/@ai-sdk/elevenlabs",
+            "entity_name": "@ai-sdk/elevenlabs \u00b7 npm",
+            "fact": "latest-version",
+            "label": "Latest release version",
+            "current_value": "3.0.86",
+            "last_observed_value": "3.0.86",
+            "normalized_value": "3.0.86",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "3.0.84",
+            "observed_at": "2026-11-13T06:43:56.337Z",
+            "first_observed_at": "2026-10-07T17:52:40.584Z",
+            "verified_at": "2026-11-14T05:19:50.637Z",
+            "valid_from": "2026-11-13T06:43:56.337Z",
+            "changed_at": "2026-11-13T06:43:56.337Z",
+            "change_type": "released",
+            "source_url": "https://registry.npmjs.org/%40ai-sdk%2Felevenlabs/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "f7d176492c19094d0aed3c2671c118ceb8435dd3d066039702650073fb79f25f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/@ai-sdk/elevenlabs/latest-version",
+            "history_url": "https://xguardgate.com/history/npm/@ai-sdk/elevenlabs/latest-version",
+            "evidence_url": "https://xguardgate.com/evidence/npm/@ai-sdk/elevenlabs/70734fc8-df49-4e5b-b51b-2c55bbf2cc4a",
+            "max_age_seconds": 172800
+          }
+        ],
+        "changes": [
+          {
+            "id": "b0457066-66b2-41bd-88fa-b7ab907d85c2",
+            "fact_id": "npm/@transcend-io/mcp-server-preferences/latest-version",
+            "entity_id": "npm/@transcend-io/mcp-server-preferences",
+            "observed_at": "2026-11-14T09:19:20.609Z",
+            "change_type": "released",
+            "observation_id": "b0457066-66b2-41bd-88fa-b7ab907d85c2",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40transcend-io%2Fmcp-server-preferences/latest",
+            "source_hash": "15aad7b4e9925ae5e8c31dd21d40ba4142883484d5d8ca2f18a9b2265c902f97",
+            "previous_value": "0.7.22",
+            "current_value": "0.7.23"
+          },
+          {
+            "id": "48de84ce-bf20-490e-864e-2b1eb3d3d07d",
+            "fact_id": "npm/@tiptap/extension-node-range/latest-version",
+            "entity_id": "npm/@tiptap/extension-node-range",
+            "observed_at": "2026-11-14T09:18:57.993Z",
+            "change_type": "released",
+            "observation_id": "48de84ce-bf20-490e-864e-2b1eb3d3d07d",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40tiptap%2Fextension-node-range/latest",
+            "source_hash": "209e4a294609f474f81d661f31707f812dacade8d21a8ab6b8c6b26b097d642e",
+            "previous_value": "3.33.1",
+            "current_value": "3.34.0"
+          },
+          {
+            "id": "a30e8e52-05c7-4af0-b2d8-7a48227a3128",
+            "fact_id": "npm/@clerk/react/latest-version",
+            "entity_id": "npm/@clerk/react",
+            "observed_at": "2026-11-14T09:11:30.761Z",
+            "change_type": "released",
+            "observation_id": "a30e8e52-05c7-4af0-b2d8-7a48227a3128",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40clerk%2Freact/latest",
+            "source_hash": "c717b95227f0cc7c2aac4ba8d525ae00675f7125ed3bfeffe085c4ecadd7fb50",
+            "previous_value": "6.18.7",
+            "current_value": "6.18.8"
+          }
+        ],
+        "changes_count": 8
+      },
+      "evidence_scope": "First three records and returned record count."
+    },
+    {
+      "url": "https://xguardgate.com/readyz",
+      "method": "GET",
+      "status": 404,
+      "ms": 50,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f34d822ff48-MSP",
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": "noindex",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "<!doctype html><html lang=\"en\" dir=\"ltr\"><head>\n    <meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n    <title>Page not found | XGuard</title><meta name=\"description\" content=\"Current facts, primary-source evidence and immutable change history.\">\n    <meta name=\"robots\" content=\"noindex,follow\">\n    <link rel=\"canonical\" href=\"https://xguardgate.com/\"><link rel=\"stylesheet\" href=\"/assets/live-v8.css\">\n    <link rel=\"alternate\" type=\"application/atom+xml\""
+    },
+    {
+      "url": "https://xguardgate.com/healthz",
+      "method": "GET",
+      "status": 200,
+      "ms": 255,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f34d824ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "service": "XGuard Live",
+        "version": "6.0.0",
+        "storage": "reachable",
+        "owner_access": "configured",
+        "collector": "scheduled",
+        "last_cron": "2026-11-14T09:51:05.229Z",
+        "catalog_as_of": "2026-11-14T09:19:41.042Z",
+        "aggregate_interval_seconds": 4632,
+        "catalog_capacity": {
+          "policy": "measured-catalog-read-reserve-v1",
+          "component": "public-catalog",
+          "allocated_rows_per_day": 1000000,
+          "measured_rows_per_refresh": 42882,
+          "minimum_refresh_interval_seconds": 900,
+          "refresh_interval_seconds": 4632,
+          "projected_rows_per_day": 800000,
+          "projected_rows_at_minimum_interval": 4116672,
+          "pacing_active": true,
+          "scope": "Projection for catalog SQL reads only. Not measured account-wide usage, a hard quota reservation, an invoice, or a guarantee of daily availability."
+        },
+        "collection_min_interval_seconds": 600,
+        "facts": 9898,
+        "verified": 9795,
+        "stale": 102,
+        "entities": 2757,
+        "sources": 2821,
+        "changes_today": 190,
+        "fetch_errors": 66,
+        "pending": 64,
+        "due": 538,
+        "fetches_24h": 2818,
+        "last_update": "2026-11-14T09:19:23.373Z",
+        "shards": 32
+      }
+    },
+    {
+      "url": "https://xguardgate.com/.well-known/x402",
+      "method": "GET",
+      "status": 200,
+      "ms": 20,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f366b53ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "name": "XGuard",
+        "description": "XGuard \u2014 Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface.",
+        "role": "facilitator",
+        "protocol": "x402",
+        "x402Version": 2,
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "networkName": "Base Mainnet",
+        "website": "https://xguardgate.com",
+        "canonicalSite": "https://xguardgate.com",
+        "api": "https://api.xguardgate.com",
+        "canonicalApi": "https://api.xguardgate.com",
+        "operator": {
+          "name": "Mohammad Elayyan",
+          "contact": "mo.elayyan2023@gmail.com"
+        },
+        "repository": "https://github.com/moelayyan90/XGuard",
+        "identity": "https://xguardgate.com/identity",
+        "endpoints": {
+          "supported": "https://api.xguardgate.com/supported",
+          "verify": "https://api.xguardgate.com/verify",
+          "settle": "https://api.xguardgate.com/settle"
+        },
+        "settlement": "Non-custodial compatibility gateway to configured upstream facilitators. XGuard does not publish or claim a local settlement signer. Existing payment verification, quota admission and durable replay protection apply.",
+        "native_settlement": {
+          "state": "disabled",
+          "implementation": "isolated-simulation",
+          "production_signer": false,
+          "production_settlement_proven": false,
+          "supported_scope": "x402 v2 exact EIP-3009, Base USDC; no Permit2 or smart-wallet deployment",
+          "activation": "Requires explicit operator approval, isolated production signing, gas funding, security review and an authorized real settlement."
+        }
+      }
+    },
+    {
+      "url": "https://xguardgate.com/.well-known/agent-card.json",
+      "method": "GET",
+      "status": 200,
+      "ms": 50,
+      "headers": {
+        "cache-control": "public, max-age=300",
+        "cf-ray": "a5a51f366b54ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "name": "XGuard Live",
+        "description": "Discover XGuard, read legacy published facts, or purchase bounded route, discovery and durable public-read execution through x402 v2. Paid actions use an explicit spending cap and the canonical HTTP payment resource.",
+        "version": "6.0.0",
+        "provider": {
+          "organization": "XGuard",
+          "url": "https://xguardgate.com"
+        },
+        "documentationUrl": "https://xguardgate.com/install",
+        "supportedInterfaces": [
+          {
+            "url": "https://xguardgate.com/a2a",
+            "protocolBinding": "JSONRPC",
+            "protocolVersion": "1.0",
+            "tenant": ""
+          }
+        ],
+        "capabilities": {
+          "streaming": false,
+          "pushNotifications": false,
+          "extendedAgentCard": false,
+          "extensions": []
+        },
+        "securitySchemes": {},
+        "securityRequirements": [],
+        "signatures": [],
+        "defaultInputModes": [
+          "text/plain",
+          "application/json"
+        ],
+        "defaultOutputModes": [
+          "text/plain",
+          "application/json"
+        ],
+        "skills": [
+          {
+            "id": "xguard.authority",
+            "name": "Signed agent financial authority",
+            "description": "Submit a signed delegation sandbox envelope over the same HTTP authority contract; no live payment or custody is implied.",
+            "tags": [
+              "delegation",
+              "budgets",
+              "sandbox"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.authority\",\"envelope\":{}}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.discover",
+            "name": "Discover XGuard Live",
+            "description": "List the supported A2A actions and the current public XGuard links.",
+            "tags": [
+              "discovery",
+              "a2a"
+            ],
+            "examples": [
+              "Hello",
+              "{\"action\":\"xguard.discover\"}"
+            ],
+            "inputModes": [
+              "text/plain",
+              "application/json"
+            ],
+            "outputModes": [
+              "text/plain",
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.fact.get",
+            "name": "Read a published fact",
+            "description": "Read one public XGuard fact by its canonical ID, including its source and verification status.",
+            "tags": [
+              "facts",
+              "software",
+              "provenance"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.fact.get\",\"factId\":\"npm/react/latest-version\"}"
+            ],
+            "inputModes": [
+              "text/plain",
+              "application/json"
+            ],
+            "outputModes": [
+              "text/plain",
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.route_resolve",
+            "name": "Executable task routing",
+            "description": "Resolve a bounded intent against the capability catalog. Returns four route rankings, dependencies, explicit unknowns and executable coverage. No universal task execution claim. Price: 0.005 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.route_resolve\",\"input\":{\"intent\":\"Extract text from a public website\",\"max_amount_atomic\":\"5000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.route_compare",
+            "name": "Route comparison",
+            "description": "Compare cheapest, fastest, highest-evidence and recommended paths against the same current capability catalog. Unknown prices and probabilities remain null. Price: 0.005 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.route_compare\",\"input\":{\"intent\":\"Verify website availability\",\"max_amount_atomic\":\"5000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.discover",
+            "name": "Capability discovery",
+            "description": "Find matching curated services and check up to three official documentation resources now. A documentation check is not proof of provider execution. Price: 0.01 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.discover\",\"input\":{\"query\":\"hosting\",\"max_amount_atomic\":\"10000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.platform_discovery",
+            "name": "Platform metadata discovery",
+            "description": "Inspect up to three same-origin public metadata paths from one supplied HTTPS platform. Returns attributed candidate metadata, never trusts self-description as verified capability. Price: 0.015 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.platform_discovery\",\"input\":{\"url\":\"https://example.com/\",\"max_amount_atomic\":\"15000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.crawl",
+            "name": "Bounded robots-aware crawl",
+            "description": "Fetch and extract one public HTTPS page after checking robots.txt. No JavaScript rendering, login, CAPTCHA bypass or unlimited crawl. Price: 0.015 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.crawl\",\"input\":{\"url\":\"https://example.com/\",\"max_amount_atomic\":\"15000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.fact",
+            "name": "Current primary-source fact",
+            "description": "Read a current npm package version or official publisher service summary from its primary JSON endpoint. Includes retrieval time and source digest. Price: 0.01 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.fact\",\"input\":{\"kind\":\"npm-version\",\"identifier\":\"react\",\"max_amount_atomic\":\"10000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.task",
+            "name": "Durable bounded execution",
+            "description": "Run up to three public read-only fetch, extraction or HTTP verification steps with persistent task ID, checkpoints, bounded retry, failover and acceptance checks. Fee breakdown is included. No third-party paid actions. Price: 0.03 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.task\",\"input\":{\"steps\":[{\"kind\":\"http\",\"url\":\"https://example.com/\",\"expected_status\":200}],\"budget_atomic\":\"30000\",\"max_amount_atomic\":\"30000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.schedule",
+            "name": "Durable scheduled execution",
+            "description": "Schedule up to three bounded public read-only steps. One-shot time, bounded interval or HTTP-health condition; at most three total attempts/runs, included in the quoted price. Price: 0.03 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.schedule\",\"input\":{\"steps\":[{\"kind\":\"http\",\"url\":\"https://example.com/\",\"expected_status\":200}],\"run_at\":\"2026-12-01T12:00:00Z\",\"budget_atomic\":\"30000\",\"max_amount_atomic\":\"30000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.verify",
+            "name": "Independent HTTP verification",
+            "description": "Verify the current HTTP status of one public HTTPS resource against an explicit expected status. It cannot verify responsive layout, payment capture or arbitrary task completion. Price: 0.01 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.verify\",\"input\":{\"url\":\"https://example.com/\",\"expected_status\":200,\"max_amount_atomic\":\"10000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          }
+        ]
+      }
+    },
+    {
+      "url": "https://xguardgate.com/a2a/health",
+      "method": "GET",
+      "status": 410,
+      "ms": 23,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f36bbf5ff48-MSP",
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": "noindex",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "<!doctype html><html lang=\"en\" dir=\"ltr\"><head>\n    <meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n    <title>This service has been retired | XGuard</title><meta name=\"description\" content=\"Current facts, primary-source evidence and immutable change history.\">\n    <meta name=\"robots\" content=\"noindex,follow\">\n    <link rel=\"canonical\" href=\"https://xguardgate.com/\"><link rel=\"stylesheet\" href=\"/assets/live-v8.css\">\n    <link rel=\"alternate\" type=\"applic"
+    },
+    {
+      "url": "https://xguardgate.com/supported",
+      "method": "GET",
+      "status": 200,
+      "ms": 46,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f36bbf7ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "kinds": [
+          {
+            "x402Version": 2,
+            "scheme": "exact",
+            "network": "eip155:8453"
+          }
+        ],
+        "extensions": [],
+        "signers": {}
+      }
+    },
+    {
+      "url": "https://xguardgate.com/witness/status",
+      "method": "GET",
+      "status": 404,
+      "ms": 56,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f371ca7ff48-MSP",
+        "content-type": "text/plain; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "not found\n"
+    },
+    {
+      "url": "https://xguardgate.com/witness/verifier-key",
+      "method": "GET",
+      "status": 200,
+      "ms": 357,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f370c91ff48-MSP",
+        "content-type": "text/plain; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q\n"
+    },
+    {
+      "url": "https://xguardgate.com/robots.txt",
+      "method": "GET",
+      "status": 200,
+      "ms": 45,
+      "headers": {
+        "cache-control": "public, max-age=300, must-revalidate",
+        "cf-ray": "a5a51f393941ff48-MSP",
+        "content-type": "text/plain; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /search\nDisallow: /_legacy\nContent-Signal: search=yes, ai-input=yes, ai-train=no\n\nUser-agent: GPTBot\nDisallow: /\n\nUser-agent: ClaudeBot\nDisallow: /\n\nUser-agent: CCBot\nDisallow: /\n\nSitemap: https://xguardgate.com/sitemap.xml\n"
+    },
+    {
+      "url": "https://xguardgate.com/sitemap.xml",
+      "method": "GET",
+      "status": 200,
+      "ms": 478,
+      "headers": {
+        "cache-control": "public, max-age=300, must-revalidate",
+        "cf-ray": "a5a51f393940ff48-MSP",
+        "content-type": "application/xml; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>https://xguardgate.com/sitemaps/site.xml</loc></sitemap><sitemap><loc>https://xguardgate.com/sitemaps/facts-0-1.xml</loc></sitemap><sitemap><loc>https://xguardgate.com/sitemaps/entities-0-1.xml</loc></sitemap><sitemap><loc>https://xguardgate.com/sitemaps/facts-1-1.xml</loc></sitemap><sitemap><loc>https://xguardgate.com/sitemaps/entities-1-1.xml</loc></sitemap><sitemap><loc>https:"
+    },
+    {
+      "url": "https://xguardgate.com/openapi.json",
+      "method": "GET",
+      "status": 200,
+      "ms": 31,
+      "headers": {
+        "cache-control": "public, max-age=300, must-revalidate",
+        "cf-ray": "a5a51f3c383aff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "openapi": "3.1.0",
+        "info": {
+          "title": "XGuard \u2014 Secretless Agent Gateway",
+          "version": "1.0.0",
+          "contact": {
+            "name": "Mohammad Elayyan",
+            "email": "mo.elayyan2023@gmail.com",
+            "url": "https://xguardgate.com/identity"
+          },
+          "description": "XGuard \u2014 Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface. Purchase the services listed below with a bounded x402 spending authorization. Source content is untrusted; signatures establish delivery integrity. Public facts remain available for free."
+        },
+        "paths": [
+          "/v1/authority/enroll",
+          "/v1/authority/grant",
+          "/v1/authority/authorize",
+          "/v1/authority/status",
+          "/v1/authority/execute",
+          "/v1/authority/reconcile",
+          "/v1/authority/cancel",
+          "/v1/authority/revoke",
+          "/v1/authority/audit",
+          "/v1/authority/metrics",
+          "/v1/authority/checkout",
+          "/v1/authority/disable-agent",
+          "/v1/authority/rotate-owner",
+          "/v1/routes/resolve",
+          "/v1/routes/compare",
+          "/v1/discover",
+          "/v1/discover/platforms",
+          "/v1/crawl",
+          "/v1/facts",
+          "/v1/tasks",
+          "/v1/schedules",
+          "/v1/verify",
+          "/v1/tasks/{id}",
+          "/v1/tasks/{id}/resume",
+          "/v1/tasks/{id}/cancel",
+          "/v1/tasks/{id}/verify",
+          "/v1/capabilities",
+          "/v1/payments/coverage",
+          "/supported",
+          "/verify",
+          "/settle",
+          "/.well-known/x402",
+          "/healthz",
+          "/api/paid/v1/catalog",
+          "/api/paid/v1/readiness",
+          "/api/paid/v1/batch",
+          "/api/paid/v1/history",
+          "/api/paid/v1/compare",
+          "/api/paid/v1/extract",
+          "/api/paid/v1/route-resolve",
+          "/api/paid/v1/route-compare",
+          "/api/paid/v1/discover",
+          "/api/paid/v1/platform-discovery",
+          "/api/paid/v1/crawl",
+          "/api/paid/v1/fact",
+          "/api/paid/v1/task",
+          "/api/paid/v1/schedule",
+          "/api/paid/v1/verify"
+        ]
+      },
+      "evidence_scope": "OpenAPI route names only; schemas omitted."
+    },
+    {
+      "url": "https://xguardgate.com/sitemaps/site.xml",
+      "method": "GET",
+      "status": 200,
+      "ms": 129,
+      "headers": {
+        "cache-control": "public, max-age=300, must-revalidate",
+        "cf-ray": "a5a51f3c383cff48-MSP",
+        "content-type": "application/xml; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>https://xguardgate.com/</loc></url><url><loc>https://xguardgate.com/network</loc></url><url><loc>https://xguardgate.com/network/docs</loc></url><url><loc>https://xguardgate.com/routes</loc></url><url><loc>https://xguardgate.com/routes/crawl-website</loc></url><url><loc>https://xguardgate.com/routes/find-api</loc></url><url><loc>https://xguardgate.com/routes/deploy-web-app</loc></url><url><"
+    },
+    {
+      "url": "https://xguardgate.com/fact/npm/react/latest-version",
+      "method": "GET",
+      "status": 200,
+      "ms": 182,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f3d09efff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "fact": {
+          "id": "npm/react/latest-version",
+          "entity": "npm/react",
+          "entity_name": "react \u00b7 npm",
+          "fact": "latest-version",
+          "label": "Latest release version",
+          "current_value": "19.3.1",
+          "last_observed_value": "19.3.1",
+          "normalized_value": "19.3.1",
+          "unit": null,
+          "value_type": "string",
+          "previous_value": "19.3.0",
+          "observed_at": "2026-10-16T02:40:54.347Z",
+          "first_observed_at": "2026-10-07T16:48:30.547Z",
+          "verified_at": "2026-11-14T01:18:10.374Z",
+          "valid_from": "2026-10-16T02:40:54.347Z",
+          "changed_at": "2026-10-16T02:40:54.347Z",
+          "change_type": "released",
+          "source_url": "https://registry.npmjs.org/react/latest",
+          "source_domain": "registry.npmjs.org",
+          "source_type": "official-registry",
+          "retrieval_method": "conditional-https",
+          "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+          "verification": "VERIFIED",
+          "confidence": "source-verified",
+          "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+          "canonical_url": "https://xguardgate.com/fact/npm/react/latest-version",
+          "history_url": "https://xguardgate.com/history/npm/react/latest-version",
+          "evidence_url": "https://xguardgate.com/evidence/npm/react/14e28f2c-985c-4066-bffb-63bb73d06646",
+          "max_age_seconds": 172800
+        },
+        "history": [
+          {
+            "id": "14e28f2c-985c-4066-bffb-63bb73d06646",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "valid_from": "2026-10-16T02:40:54.347Z",
+            "verification": "verified",
+            "evidence_id": "426a780d-2420-4abf-9573-74095770c1d3",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "method": "conditional-https",
+            "value": "19.3.1"
+          },
+          {
+            "id": "49ae77a7-fbb3-40dc-9d1b-36b97a6cec19",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-13T12:01:53.099Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "verification": "verified",
+            "evidence_id": "8b64cbc2-6f9b-429e-9e39-f92222c0c307",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "method": "conditional-https",
+            "value": "19.3.0"
+          },
+          {
+            "id": "8f5226f9-64c3-464b-bda7-208ab74a42f5",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-12T11:51:39.579Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "verification": "verified",
+            "evidence_id": "8953d0ff-f5be-4d3e-8d7f-0a7d49326fce",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "method": "conditional-https",
+            "value": "19.3.0"
+          }
+        ],
+        "history_count": 6
+      },
+      "evidence_scope": "First three records and returned record count."
+    },
+    {
+      "url": "https://xguardgate.com/live/npm/react",
+      "method": "GET",
+      "status": 200,
+      "ms": 213,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f3d09f0ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "id": "npm/react",
+        "title": "react \u00b7 npm",
+        "topic": "javascript-packages",
+        "published": 1,
+        "suppressed": 0,
+        "created_at": "2026-10-07T16:48:30.547Z",
+        "updated_at": "2026-10-16T02:40:54.347Z",
+        "facts": [
+          {
+            "id": "npm/react/deprecated",
+            "entity": "npm/react",
+            "entity_name": "react \u00b7 npm",
+            "fact": "deprecated",
+            "label": "Deprecation declared by publisher",
+            "current_value": false,
+            "last_observed_value": false,
+            "normalized_value": false,
+            "unit": null,
+            "value_type": "boolean",
+            "previous_value": null,
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "first_observed_at": "2026-10-07T16:48:30.547Z",
+            "verified_at": "2026-11-14T01:18:10.374Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "changed_at": "2026-10-07T16:48:30.547Z",
+            "change_type": "added",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/react/deprecated",
+            "history_url": "https://xguardgate.com/history/npm/react/deprecated",
+            "evidence_url": "https://xguardgate.com/evidence/npm/react/d698fa47-09ce-4a53-92c7-859407f07060",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/react/latest-version",
+            "entity": "npm/react",
+            "entity_name": "react \u00b7 npm",
+            "fact": "latest-version",
+            "label": "Latest release version",
+            "current_value": "19.3.1",
+            "last_observed_value": "19.3.1",
+            "normalized_value": "19.3.1",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "19.3.0",
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "first_observed_at": "2026-10-07T16:48:30.547Z",
+            "verified_at": "2026-11-14T01:18:10.374Z",
+            "valid_from": "2026-10-16T02:40:54.347Z",
+            "changed_at": "2026-10-16T02:40:54.347Z",
+            "change_type": "released",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/react/latest-version",
+            "history_url": "https://xguardgate.com/history/npm/react/latest-version",
+            "evidence_url": "https://xguardgate.com/evidence/npm/react/14e28f2c-985c-4066-bffb-63bb73d06646",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/react/license",
+            "entity": "npm/react",
+            "entity_name": "react \u00b7 npm",
+            "fact": "license",
+            "label": "Declared license",
+            "current_value": "MIT",
+            "last_observed_value": "MIT",
+            "normalized_value": "MIT",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": null,
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "first_observed_at": "2026-10-07T16:48:30.547Z",
+            "verified_at": "2026-11-14T01:18:10.374Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "changed_at": "2026-10-07T16:48:30.547Z",
+            "change_type": "added",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/react/license",
+            "history_url": "https://xguardgate.com/history/npm/react/license",
+            "evidence_url": "https://xguardgate.com/evidence/npm/react/71a27e4c-27ff-40f5-93f0-4064a21901bb",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/react/node-requirement",
+            "entity": "npm/react",
+            "entity_name": "react \u00b7 npm",
+            "fact": "node-requirement",
+            "label": "Required Node.js version",
+            "current_value": ">=0.10.0",
+            "last_observed_value": ">=0.10.0",
+            "normalized_value": ">=0.10.0",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": null,
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "first_observed_at": "2026-10-07T16:48:30.547Z",
+            "verified_at": "2026-11-14T01:18:10.374Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "changed_at": "2026-10-07T16:48:30.547Z",
+            "change_type": "added",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/react/node-requirement",
+            "history_url": "https://xguardgate.com/history/npm/react/node-requirement",
+            "evidence_url": "https://xguardgate.com/evidence/npm/react/8045afde-6f5d-4c8c-b7aa-2d0121420f4a",
+            "max_age_seconds": 172800
+          }
+        ],
+        "related": [],
+        "changes": [
+          {
+            "id": "14e28f2c-985c-4066-bffb-63bb73d06646",
+            "fact_id": "npm/react/latest-version",
+            "entity_id": "npm/react",
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "change_type": "released",
+            "observation_id": "14e28f2c-985c-4066-bffb-63bb73d06646",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "previous_value": "19.3.0",
+            "current_value": "19.3.1"
+          },
+          {
+            "id": "e932fefe-b6fe-4623-83e3-56b65ac3c789",
+            "fact_id": "npm/react/license",
+            "entity_id": "npm/react",
+            "observed_at": "2026-10-07T16:48:30.547Z",
+            "change_type": "added",
+            "observation_id": "e932fefe-b6fe-4623-83e3-56b65ac3c789",
+            "label": "Declared license",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "previous_value": null,
+            "current_value": "MIT"
+          },
+          {
+            "id": "d32fbc7f-8c89-49c0-8ddf-5da843660ab0",
+            "fact_id": "npm/react/node-requirement",
+            "entity_id": "npm/react",
+            "observed_at": "2026-10-07T16:48:30.547Z",
+            "change_type": "added",
+            "observation_id": "d32fbc7f-8c89-49c0-8ddf-5da843660ab0",
+            "label": "Required Node.js version",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "previous_value": null,
+            "current_value": ">=0.10.0"
+          }
+        ],
+        "changes_count": 5
+      },
+      "evidence_scope": "First three records and returned record count."
+    },
+    {
+      "url": "https://xguardgate.com/history/npm/react/latest-version",
+      "method": "GET",
+      "status": 200,
+      "ms": 193,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f3e6ce3ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "title": "Latest release version history",
+        "history": [
+          {
+            "id": "14e28f2c-985c-4066-bffb-63bb73d06646",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "valid_from": "2026-10-16T02:40:54.347Z",
+            "verification": "verified",
+            "evidence_id": "426a780d-2420-4abf-9573-74095770c1d3",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "method": "conditional-https",
+            "value": "19.3.1"
+          },
+          {
+            "id": "49ae77a7-fbb3-40dc-9d1b-36b97a6cec19",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-13T12:01:53.099Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "verification": "verified",
+            "evidence_id": "8b64cbc2-6f9b-429e-9e39-f92222c0c307",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "method": "conditional-https",
+            "value": "19.3.0"
+          },
+          {
+            "id": "8f5226f9-64c3-464b-bda7-208ab74a42f5",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-12T11:51:39.579Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "verification": "verified",
+            "evidence_id": "8953d0ff-f5be-4d3e-8d7f-0a7d49326fce",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "method": "conditional-https",
+            "value": "19.3.0"
+          }
+        ],
+        "page": 1,
+        "history_count": 6
+      },
+      "evidence_scope": "First three records and returned record count."
+    },
+    {
+      "url": "https://xguardgate.com/changes",
+      "method": "GET",
+      "status": 200,
+      "ms": 208,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f3e6ce1ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "title": "What changed",
+        "changes": [
+          {
+            "id": "b0457066-66b2-41bd-88fa-b7ab907d85c2",
+            "fact_id": "npm/@transcend-io/mcp-server-preferences/latest-version",
+            "entity_id": "npm/@transcend-io/mcp-server-preferences",
+            "observed_at": "2026-11-14T09:19:20.609Z",
+            "change_type": "released",
+            "observation_id": "b0457066-66b2-41bd-88fa-b7ab907d85c2",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40transcend-io%2Fmcp-server-preferences/latest",
+            "source_hash": "15aad7b4e9925ae5e8c31dd21d40ba4142883484d5d8ca2f18a9b2265c902f97",
+            "previous_value": "0.7.22",
+            "current_value": "0.7.23"
+          },
+          {
+            "id": "48de84ce-bf20-490e-864e-2b1eb3d3d07d",
+            "fact_id": "npm/@tiptap/extension-node-range/latest-version",
+            "entity_id": "npm/@tiptap/extension-node-range",
+            "observed_at": "2026-11-14T09:18:57.993Z",
+            "change_type": "released",
+            "observation_id": "48de84ce-bf20-490e-864e-2b1eb3d3d07d",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40tiptap%2Fextension-node-range/latest",
+            "source_hash": "209e4a294609f474f81d661f31707f812dacade8d21a8ab6b8c6b26b097d642e",
+            "previous_value": "3.33.1",
+            "current_value": "3.34.0"
+          },
+          {
+            "id": "a30e8e52-05c7-4af0-b2d8-7a48227a3128",
+            "fact_id": "npm/@clerk/react/latest-version",
+            "entity_id": "npm/@clerk/react",
+            "observed_at": "2026-11-14T09:11:30.761Z",
+            "change_type": "released",
+            "observation_id": "a30e8e52-05c7-4af0-b2d8-7a48227a3128",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40clerk%2Freact/latest",
+            "source_hash": "c717b95227f0cc7c2aac4ba8d525ae00675f7125ed3bfeffe085c4ecadd7fb50",
+            "previous_value": "6.18.7",
+            "current_value": "6.18.8"
+          }
+        ],
+        "catalog_as_of": "2026-11-14T09:19:41.042Z",
+        "changes_count": 100
+      },
+      "evidence_scope": "First three records and returned record count."
+    },
+    {
+      "url": "https://xguardgate.com/mcp",
+      "method": "POST",
+      "status": 200,
+      "ms": 61,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f3fbfcdff48-MSP",
+        "content-type": "text/event-stream",
+        "x-robots-tag": "noindex",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "event: message\ndata: {\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"xguard-live\",\"version\":\"6.0.0\"},\"instructions\":\"Read published facts for free with xguard.fact.get. Paid web fetch uses x402 v2 HTTP headers and executes only after a verified settlement.\"},\"jsonrpc\":\"2.0\",\"id\":1}\n\n"
+    },
+    {
+      "url": "https://xguardgate.com/mcp",
+      "method": "POST",
+      "status": 200,
+      "ms": 35,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f400886ff48-MSP",
+        "content-type": "text/event-stream",
+        "x-robots-tag": "noindex",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "event: message\ndata: {\"result\":{\"tools\":[{\"name\":\"xguard.fact.get\",\"description\":\"Read one free published software fact by canonical ID. Returns the primary source, verification status and timestamp. Use xguard.web.fetch for a separate paid fetch of a public URL.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"factId\":{\"type\":\"string\",\"maxLength\":350,\"pattern\":\"^[A-Za-z0-9][A-Za-z0-9_.-]*(?:/[@A-Za-z0-9][A-Za-z0-9_.-]*){2,3}$\",\"description\":\"Canonical fact ID, for example npm/react/latest-version"
+    },
+    {
+      "url": "https://xguardgate.com/verify",
+      "method": "POST",
+      "status": 400,
+      "ms": 42,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f4048fcff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "isValid": false,
+        "invalidReason": "missing_payment_context"
+      }
+    },
+    {
+      "url": "https://xguardgate.com/witness/add-checkpoint",
+      "method": "POST",
+      "status": 400,
+      "ms": 165,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f40899aff48-MSP",
+        "content-type": "text/plain; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "malformed request: no blank line before checkpoint\n"
+    },
+    {
+      "url": "https://xguardgate.com/",
+      "method": "HEAD",
+      "status": 200,
+      "ms": 214,
+      "headers": {
+        "cache-control": "public, max-age=60",
+        "cf-ray": "a5a51f419bb5ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": ""
+    },
+    {
+      "url": "https://xguardgate.com/readyz",
+      "method": "HEAD",
+      "status": 404,
+      "ms": 42,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f42ee43ff48-MSP",
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": "noindex",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": ""
+    },
+    {
+      "url": "https://api.xguardgate.com/status",
+      "method": "GET",
+      "status": 200,
+      "ms": 4918,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f6138e6ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-robots-tag": "noindex, follow",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "title": "System status",
+        "service": "XGuard Live",
+        "version": "6.0.0",
+        "storage": "reachable",
+        "owner_access": "configured",
+        "collector": "scheduled",
+        "last_cron": "2026-11-14T09:51:05.229Z",
+        "catalog_as_of": "2026-11-14T09:19:41.042Z",
+        "aggregate_interval_seconds": 4632,
+        "catalog_capacity": {
+          "policy": "measured-catalog-read-reserve-v1",
+          "component": "public-catalog",
+          "allocated_rows_per_day": 1000000,
+          "measured_rows_per_refresh": 42882,
+          "minimum_refresh_interval_seconds": 900,
+          "refresh_interval_seconds": 4632,
+          "projected_rows_per_day": 800000,
+          "projected_rows_at_minimum_interval": 4116672,
+          "pacing_active": true,
+          "scope": "Projection for catalog SQL reads only. Not measured account-wide usage, a hard quota reservation, an invoice, or a guarantee of daily availability."
+        },
+        "collection_min_interval_seconds": 600,
+        "facts": 9898,
+        "verified": 9795,
+        "stale": 102,
+        "entities": 2757,
+        "sources": 2821,
+        "changes_today": 190,
+        "fetch_errors": 66,
+        "pending": 64,
+        "due": 538,
+        "fetches_24h": 2818,
+        "last_update": "2026-11-14T09:19:23.373Z",
+        "shards": 32,
+        "html": "<p>Control storage is reachable. The 32-shard catalog was checked at 2026-11-14T09:19:41.042Z.</p><p>Collector: scheduled. Last scheduler heartbeat: 2026-11-14T09:51:05.229Z.</p><pre>{\n  &quot;facts&quot;: 9898,\n  &quot;verified&quot;: 9795,\n  &quot;stale&quot;: 102,\n  &quot;entities&quot;: 2757,\n  &quot;sources&quot;: 2821,\n  &quot;changes_today&quot;: 190,\n  &quot;fetch_errors&quot;: 66,\n  &quot;pending&quot;: 64,\n  &quot;due&quot;: 538,\n  &quot;fetches_24h&quot;: 2818,\n  &quot;last_update&quot;: &quot;2026-11-14T09:19:23.373Z&quot;,\n  &quot;shards&quot;: 32\n}</pre>"
+      }
+    },
+    {
+      "url": "https://api.xguardgate.com/",
+      "method": "GET",
+      "status": 200,
+      "ms": 4920,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f6138f2ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "title": "XGuard Live",
+        "catalog_as_of": "2026-11-14T09:19:41.042Z",
+        "stats": {
+          "facts": 9898,
+          "verified": 9795,
+          "stale": 102,
+          "entities": 2757,
+          "sources": 2821,
+          "changes_today": 190,
+          "fetch_errors": 66,
+          "pending": 64,
+          "due": 538,
+          "fetches_24h": 2818,
+          "last_update": "2026-11-14T09:19:23.373Z",
+          "shards": 32
+        },
+        "examples": [
+          {
+            "id": "npm/@ai-sdk/svelte/latest-version",
+            "entity": "npm/@ai-sdk/svelte",
+            "entity_name": "@ai-sdk/svelte \u00b7 npm",
+            "fact": "latest-version",
+            "label": "Latest release version",
+            "current_value": "5.0.173",
+            "last_observed_value": "5.0.173",
+            "normalized_value": "5.0.173",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "5.0.171",
+            "observed_at": "2026-11-14T02:06:03.822Z",
+            "first_observed_at": "2026-10-07T17:53:51.498Z",
+            "verified_at": "2026-11-14T02:06:03.822Z",
+            "valid_from": "2026-11-14T02:06:03.822Z",
+            "changed_at": "2026-11-14T02:06:03.822Z",
+            "change_type": "released",
+            "source_url": "https://registry.npmjs.org/%40ai-sdk%2Fsvelte/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "806cf6d9bbb0627937125bf1182e9151aeae7e19b44bc4c3cbccc63a718584b3",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/@ai-sdk/svelte/latest-version",
+            "history_url": "https://xguardgate.com/history/npm/@ai-sdk/svelte/latest-version",
+            "evidence_url": "https://xguardgate.com/evidence/npm/@ai-sdk/svelte/20af22af-1d31-463e-8021-8efca379be74",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/@angular-devkit/schematics/latest-version",
+            "entity": "npm/@angular-devkit/schematics",
+            "entity_name": "@angular-devkit/schematics \u00b7 npm",
+            "fact": "latest-version",
+            "label": "Latest release version",
+            "current_value": "22.2.7",
+            "last_observed_value": "22.2.7",
+            "normalized_value": "22.2.7",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "22.2.6",
+            "observed_at": "2026-11-13T03:34:38.983Z",
+            "first_observed_at": "2026-10-15T07:51:23.032Z",
+            "verified_at": "2026-11-14T01:08:02.677Z",
+            "valid_from": "2026-11-13T03:34:38.983Z",
+            "changed_at": "2026-11-13T03:34:38.983Z",
+            "change_type": "released",
+            "source_url": "https://registry.npmjs.org/%40angular-devkit%2Fschematics/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "234c1e216e7becbaebfec2caff4ec0638176054bf8730c45358427bc614f48aa",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/@angular-devkit/schematics/latest-version",
+            "history_url": "https://xguardgate.com/history/npm/@angular-devkit/schematics/latest-version",
+            "evidence_url": "https://xguardgate.com/evidence/npm/@angular-devkit/schematics/c4bcab65-6a6d-40d0-a78b-5ef15cf5f6fb",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "github/vercel/next.js/latest-release",
+            "entity": "github/vercel/next.js",
+            "entity_name": "vercel/next.js",
+            "fact": "latest-release",
+            "label": "Latest published release tag",
+            "current_value": null,
+            "last_observed_value": "v16.4.6",
+            "normalized_value": null,
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "v16.4.5",
+            "observed_at": "2026-11-11T07:50:44.136Z",
+            "first_observed_at": "2026-10-10T03:31:26.458Z",
+            "verified_at": "2026-11-12T08:37:35.409Z",
+            "valid_from": "2026-11-11T07:50:44.136Z",
+            "changed_at": "2026-11-11T07:50:44.136Z",
+            "change_type": "released",
+            "source_url": "https://api.github.com/repos/vercel/next.js/releases/latest",
+            "source_domain": "api.github.com",
+            "source_type": "official-api",
+            "retrieval_method": "conditional-https",
+            "source_hash": "5f51a405c23a2c3754a9945c38278fb974a546bba67965ce99cc71bab0dee585",
+            "verification": "STALE",
+            "confidence": "unconfirmed-current-value",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/github/vercel/next.js/latest-release",
+            "history_url": "https://xguardgate.com/history/github/vercel/next.js/latest-release",
+            "evidence_url": "https://xguardgate.com/evidence/github/vercel/next.js/0ba78247-070e-4e0a-a0e3-47ad0a48f43d",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/@achrinza/node-ipc/latest-version",
+            "entity": "npm/@achrinza/node-ipc",
+            "entity_name": "@achrinza/node-ipc \u00b7 npm",
+            "fact": "latest-version",
+            "label": "Latest release version",
+            "current_value": "9.2.10",
+            "last_observed_value": "9.2.10",
+            "normalized_value": "9.2.10",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": null,
+            "observed_at": "2026-10-23T01:53:13.170Z",
+            "first_observed_at": "2026-10-23T01:53:13.170Z",
+            "verified_at": "2026-11-14T07:10:14.250Z",
+            "valid_from": "2026-10-23T01:53:13.170Z",
+            "changed_at": "2026-10-23T01:53:13.170Z",
+            "change_type": "added",
+            "source_url": "https://registry.npmjs.org/%40achrinza%2Fnode-ipc/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "e01f3f33a2e0fb03a653a798fb8f9704889907bfcc770fd6398929a73c5b437f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/@achrinza/node-ipc/latest-version",
+            "history_url": "https://xguardgate.com/history/npm/@achrinza/node-ipc/latest-version",
+            "evidence_url": "https://xguardgate.com/evidence/npm/@achrinza/node-ipc/dafe894b-7110-4c41-b635-6f92d97eecb6",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "github/pytorch/pytorch/latest-release",
+            "entity": "github/pytorch/pytorch",
+            "entity_name": "pytorch/pytorch",
+            "fact": "latest-release",
+            "label": "Latest published release tag",
+            "current_value": null,
+            "last_observed_value": "v2.15.0",
+            "normalized_value": null,
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "v2.14.1",
+            "observed_at": "2026-11-12T08:33:27.319Z",
+            "first_observed_at": "2026-10-10T03:11:08.235Z",
+            "verified_at": "2026-11-12T08:33:27.319Z",
+            "valid_from": "2026-10-29T11:49:15.393Z",
+            "changed_at": "2026-10-29T11:49:15.393Z",
+            "change_type": "released",
+            "source_url": "https://api.github.com/repos/pytorch/pytorch/releases/latest",
+            "source_domain": "api.github.com",
+            "source_type": "official-api",
+            "retrieval_method": "conditional-https",
+            "source_hash": "f59cff8dce29fc9ba69623e8c1d3fb62e0e9e02a7f9efaa528502faa207240f5",
+            "verification": "STALE",
+            "confidence": "unconfirmed-current-value",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/github/pytorch/pytorch/latest-release",
+            "history_url": "https://xguardgate.com/history/github/pytorch/pytorch/latest-release",
+            "evidence_url": "https://xguardgate.com/evidence/github/pytorch/pytorch/3ba4ea33-2f74-443e-a7e6-91720c50750c",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/@ai-sdk/elevenlabs/latest-version",
+            "entity": "npm/@ai-sdk/elevenlabs",
+            "entity_name": "@ai-sdk/elevenlabs \u00b7 npm",
+            "fact": "latest-version",
+            "label": "Latest release version",
+            "current_value": "3.0.86",
+            "last_observed_value": "3.0.86",
+            "normalized_value": "3.0.86",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "3.0.84",
+            "observed_at": "2026-11-13T06:43:56.337Z",
+            "first_observed_at": "2026-10-07T17:52:40.584Z",
+            "verified_at": "2026-11-14T05:19:50.637Z",
+            "valid_from": "2026-11-13T06:43:56.337Z",
+            "changed_at": "2026-11-13T06:43:56.337Z",
+            "change_type": "released",
+            "source_url": "https://registry.npmjs.org/%40ai-sdk%2Felevenlabs/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "f7d176492c19094d0aed3c2671c118ceb8435dd3d066039702650073fb79f25f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/@ai-sdk/elevenlabs/latest-version",
+            "history_url": "https://xguardgate.com/history/npm/@ai-sdk/elevenlabs/latest-version",
+            "evidence_url": "https://xguardgate.com/evidence/npm/@ai-sdk/elevenlabs/70734fc8-df49-4e5b-b51b-2c55bbf2cc4a",
+            "max_age_seconds": 172800
+          }
+        ],
+        "changes": [
+          {
+            "id": "b0457066-66b2-41bd-88fa-b7ab907d85c2",
+            "fact_id": "npm/@transcend-io/mcp-server-preferences/latest-version",
+            "entity_id": "npm/@transcend-io/mcp-server-preferences",
+            "observed_at": "2026-11-14T09:19:20.609Z",
+            "change_type": "released",
+            "observation_id": "b0457066-66b2-41bd-88fa-b7ab907d85c2",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40transcend-io%2Fmcp-server-preferences/latest",
+            "source_hash": "15aad7b4e9925ae5e8c31dd21d40ba4142883484d5d8ca2f18a9b2265c902f97",
+            "previous_value": "0.7.22",
+            "current_value": "0.7.23"
+          },
+          {
+            "id": "48de84ce-bf20-490e-864e-2b1eb3d3d07d",
+            "fact_id": "npm/@tiptap/extension-node-range/latest-version",
+            "entity_id": "npm/@tiptap/extension-node-range",
+            "observed_at": "2026-11-14T09:18:57.993Z",
+            "change_type": "released",
+            "observation_id": "48de84ce-bf20-490e-864e-2b1eb3d3d07d",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40tiptap%2Fextension-node-range/latest",
+            "source_hash": "209e4a294609f474f81d661f31707f812dacade8d21a8ab6b8c6b26b097d642e",
+            "previous_value": "3.33.1",
+            "current_value": "3.34.0"
+          },
+          {
+            "id": "a30e8e52-05c7-4af0-b2d8-7a48227a3128",
+            "fact_id": "npm/@clerk/react/latest-version",
+            "entity_id": "npm/@clerk/react",
+            "observed_at": "2026-11-14T09:11:30.761Z",
+            "change_type": "released",
+            "observation_id": "a30e8e52-05c7-4af0-b2d8-7a48227a3128",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40clerk%2Freact/latest",
+            "source_hash": "c717b95227f0cc7c2aac4ba8d525ae00675f7125ed3bfeffe085c4ecadd7fb50",
+            "previous_value": "6.18.7",
+            "current_value": "6.18.8"
+          }
+        ],
+        "changes_count": 8
+      },
+      "evidence_scope": "First three records and returned record count."
+    },
+    {
+      "url": "https://api.xguardgate.com/readyz",
+      "method": "GET",
+      "status": 404,
+      "ms": 33,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f61ea67ff48-MSP",
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": "noindex",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "<!doctype html><html lang=\"en\" dir=\"ltr\"><head>\n    <meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n    <title>Page not found | XGuard</title><meta name=\"description\" content=\"Current facts, primary-source evidence and immutable change history.\">\n    <meta name=\"robots\" content=\"noindex,follow\">\n    <link rel=\"canonical\" href=\"https://xguardgate.com/\"><link rel=\"stylesheet\" href=\"/assets/live-v8.css\">\n    <link rel=\"alternate\" type=\"application/atom+xml\""
+    },
+    {
+      "url": "https://api.xguardgate.com/healthz",
+      "method": "GET",
+      "status": 200,
+      "ms": 128,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f61ea66ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "service": "XGuard Live",
+        "version": "6.0.0",
+        "storage": "reachable",
+        "owner_access": "configured",
+        "collector": "scheduled",
+        "last_cron": "2026-11-14T09:51:05.229Z",
+        "catalog_as_of": "2026-11-14T09:19:41.042Z",
+        "aggregate_interval_seconds": 4632,
+        "catalog_capacity": {
+          "policy": "measured-catalog-read-reserve-v1",
+          "component": "public-catalog",
+          "allocated_rows_per_day": 1000000,
+          "measured_rows_per_refresh": 42882,
+          "minimum_refresh_interval_seconds": 900,
+          "refresh_interval_seconds": 4632,
+          "projected_rows_per_day": 800000,
+          "projected_rows_at_minimum_interval": 4116672,
+          "pacing_active": true,
+          "scope": "Projection for catalog SQL reads only. Not measured account-wide usage, a hard quota reservation, an invoice, or a guarantee of daily availability."
+        },
+        "collection_min_interval_seconds": 600,
+        "facts": 9898,
+        "verified": 9795,
+        "stale": 102,
+        "entities": 2757,
+        "sources": 2821,
+        "changes_today": 190,
+        "fetch_errors": 66,
+        "pending": 64,
+        "due": 538,
+        "fetches_24h": 2818,
+        "last_update": "2026-11-14T09:19:23.373Z",
+        "shards": 32
+      }
+    },
+    {
+      "url": "https://api.xguardgate.com/.well-known/x402",
+      "method": "GET",
+      "status": 200,
+      "ms": 20,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f62bbe9ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "name": "XGuard",
+        "description": "XGuard \u2014 Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface.",
+        "role": "facilitator",
+        "protocol": "x402",
+        "x402Version": 2,
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "networkName": "Base Mainnet",
+        "website": "https://xguardgate.com",
+        "canonicalSite": "https://xguardgate.com",
+        "api": "https://api.xguardgate.com",
+        "canonicalApi": "https://api.xguardgate.com",
+        "operator": {
+          "name": "Mohammad Elayyan",
+          "contact": "mo.elayyan2023@gmail.com"
+        },
+        "repository": "https://github.com/moelayyan90/XGuard",
+        "identity": "https://xguardgate.com/identity",
+        "endpoints": {
+          "supported": "https://api.xguardgate.com/supported",
+          "verify": "https://api.xguardgate.com/verify",
+          "settle": "https://api.xguardgate.com/settle"
+        },
+        "settlement": "Non-custodial compatibility gateway to configured upstream facilitators. XGuard does not publish or claim a local settlement signer. Existing payment verification, quota admission and durable replay protection apply.",
+        "native_settlement": {
+          "state": "disabled",
+          "implementation": "isolated-simulation",
+          "production_signer": false,
+          "production_settlement_proven": false,
+          "supported_scope": "x402 v2 exact EIP-3009, Base USDC; no Permit2 or smart-wallet deployment",
+          "activation": "Requires explicit operator approval, isolated production signing, gas funding, security review and an authorized real settlement."
+        }
+      }
+    },
+    {
+      "url": "https://api.xguardgate.com/.well-known/agent-card.json",
+      "method": "GET",
+      "status": 200,
+      "ms": 50,
+      "headers": {
+        "cache-control": "public, max-age=300",
+        "cf-ray": "a5a51f62bbeaff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "name": "XGuard Live",
+        "description": "Discover XGuard, read legacy published facts, or purchase bounded route, discovery and durable public-read execution through x402 v2. Paid actions use an explicit spending cap and the canonical HTTP payment resource.",
+        "version": "6.0.0",
+        "provider": {
+          "organization": "XGuard",
+          "url": "https://xguardgate.com"
+        },
+        "documentationUrl": "https://xguardgate.com/install",
+        "supportedInterfaces": [
+          {
+            "url": "https://xguardgate.com/a2a",
+            "protocolBinding": "JSONRPC",
+            "protocolVersion": "1.0",
+            "tenant": ""
+          }
+        ],
+        "capabilities": {
+          "streaming": false,
+          "pushNotifications": false,
+          "extendedAgentCard": false,
+          "extensions": []
+        },
+        "securitySchemes": {},
+        "securityRequirements": [],
+        "signatures": [],
+        "defaultInputModes": [
+          "text/plain",
+          "application/json"
+        ],
+        "defaultOutputModes": [
+          "text/plain",
+          "application/json"
+        ],
+        "skills": [
+          {
+            "id": "xguard.authority",
+            "name": "Signed agent financial authority",
+            "description": "Submit a signed delegation sandbox envelope over the same HTTP authority contract; no live payment or custody is implied.",
+            "tags": [
+              "delegation",
+              "budgets",
+              "sandbox"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.authority\",\"envelope\":{}}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.discover",
+            "name": "Discover XGuard Live",
+            "description": "List the supported A2A actions and the current public XGuard links.",
+            "tags": [
+              "discovery",
+              "a2a"
+            ],
+            "examples": [
+              "Hello",
+              "{\"action\":\"xguard.discover\"}"
+            ],
+            "inputModes": [
+              "text/plain",
+              "application/json"
+            ],
+            "outputModes": [
+              "text/plain",
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.fact.get",
+            "name": "Read a published fact",
+            "description": "Read one public XGuard fact by its canonical ID, including its source and verification status.",
+            "tags": [
+              "facts",
+              "software",
+              "provenance"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.fact.get\",\"factId\":\"npm/react/latest-version\"}"
+            ],
+            "inputModes": [
+              "text/plain",
+              "application/json"
+            ],
+            "outputModes": [
+              "text/plain",
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.route_resolve",
+            "name": "Executable task routing",
+            "description": "Resolve a bounded intent against the capability catalog. Returns four route rankings, dependencies, explicit unknowns and executable coverage. No universal task execution claim. Price: 0.005 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.route_resolve\",\"input\":{\"intent\":\"Extract text from a public website\",\"max_amount_atomic\":\"5000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.route_compare",
+            "name": "Route comparison",
+            "description": "Compare cheapest, fastest, highest-evidence and recommended paths against the same current capability catalog. Unknown prices and probabilities remain null. Price: 0.005 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.route_compare\",\"input\":{\"intent\":\"Verify website availability\",\"max_amount_atomic\":\"5000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.discover",
+            "name": "Capability discovery",
+            "description": "Find matching curated services and check up to three official documentation resources now. A documentation check is not proof of provider execution. Price: 0.01 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.discover\",\"input\":{\"query\":\"hosting\",\"max_amount_atomic\":\"10000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.platform_discovery",
+            "name": "Platform metadata discovery",
+            "description": "Inspect up to three same-origin public metadata paths from one supplied HTTPS platform. Returns attributed candidate metadata, never trusts self-description as verified capability. Price: 0.015 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.platform_discovery\",\"input\":{\"url\":\"https://example.com/\",\"max_amount_atomic\":\"15000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.crawl",
+            "name": "Bounded robots-aware crawl",
+            "description": "Fetch and extract one public HTTPS page after checking robots.txt. No JavaScript rendering, login, CAPTCHA bypass or unlimited crawl. Price: 0.015 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.crawl\",\"input\":{\"url\":\"https://example.com/\",\"max_amount_atomic\":\"15000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.fact",
+            "name": "Current primary-source fact",
+            "description": "Read a current npm package version or official publisher service summary from its primary JSON endpoint. Includes retrieval time and source digest. Price: 0.01 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.fact\",\"input\":{\"kind\":\"npm-version\",\"identifier\":\"react\",\"max_amount_atomic\":\"10000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.task",
+            "name": "Durable bounded execution",
+            "description": "Run up to three public read-only fetch, extraction or HTTP verification steps with persistent task ID, checkpoints, bounded retry, failover and acceptance checks. Fee breakdown is included. No third-party paid actions. Price: 0.03 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.task\",\"input\":{\"steps\":[{\"kind\":\"http\",\"url\":\"https://example.com/\",\"expected_status\":200}],\"budget_atomic\":\"30000\",\"max_amount_atomic\":\"30000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.schedule",
+            "name": "Durable scheduled execution",
+            "description": "Schedule up to three bounded public read-only steps. One-shot time, bounded interval or HTTP-health condition; at most three total attempts/runs, included in the quoted price. Price: 0.03 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.schedule\",\"input\":{\"steps\":[{\"kind\":\"http\",\"url\":\"https://example.com/\",\"expected_status\":200}],\"run_at\":\"2026-12-01T12:00:00Z\",\"budget_atomic\":\"30000\",\"max_amount_atomic\":\"30000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          },
+          {
+            "id": "xguard.network.verify",
+            "name": "Independent HTTP verification",
+            "description": "Verify the current HTTP status of one public HTTPS resource against an explicit expected status. It cannot verify responsive layout, payment capture or arbitrary task completion. Price: 0.01 USDC on Base; x402 HTTP payment headers required after the initial challenge.",
+            "tags": [
+              "paid",
+              "route-network"
+            ],
+            "examples": [
+              "{\"action\":\"xguard.network.verify\",\"input\":{\"url\":\"https://example.com/\",\"expected_status\":200,\"max_amount_atomic\":\"10000\"},\"idempotency_key\":\"stable-client-key\"}"
+            ],
+            "inputModes": [
+              "application/json"
+            ],
+            "outputModes": [
+              "application/json"
+            ],
+            "securityRequirements": []
+          }
+        ]
+      }
+    },
+    {
+      "url": "https://api.xguardgate.com/a2a/health",
+      "method": "GET",
+      "status": 410,
+      "ms": 27,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f630ca3ff48-MSP",
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": "noindex",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "<!doctype html><html lang=\"en\" dir=\"ltr\"><head>\n    <meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n    <title>This service has been retired | XGuard</title><meta name=\"description\" content=\"Current facts, primary-source evidence and immutable change history.\">\n    <meta name=\"robots\" content=\"noindex,follow\">\n    <link rel=\"canonical\" href=\"https://xguardgate.com/\"><link rel=\"stylesheet\" href=\"/assets/live-v8.css\">\n    <link rel=\"alternate\" type=\"applic"
+    },
+    {
+      "url": "https://api.xguardgate.com/supported",
+      "method": "GET",
+      "status": 200,
+      "ms": 31,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f630ca2ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "kinds": [
+          {
+            "x402Version": 2,
+            "scheme": "exact",
+            "network": "eip155:8453"
+          }
+        ],
+        "extensions": [],
+        "signers": {}
+      }
+    },
+    {
+      "url": "https://api.xguardgate.com/witness/status",
+      "method": "GET",
+      "status": 404,
+      "ms": 18,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f633cf2ff48-MSP",
+        "content-type": "text/plain; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "not found\n"
+    },
+    {
+      "url": "https://api.xguardgate.com/witness/verifier-key",
+      "method": "GET",
+      "status": 200,
+      "ms": 153,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f633cf4ff48-MSP",
+        "content-type": "text/plain; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q\n"
+    },
+    {
+      "url": "https://api.xguardgate.com/robots.txt",
+      "method": "GET",
+      "status": 200,
+      "ms": 77,
+      "headers": {
+        "cache-control": "public, max-age=300, must-revalidate",
+        "cf-ray": "a5a51f643efdff48-MSP",
+        "content-type": "text/plain; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /search\nDisallow: /_legacy\nContent-Signal: search=yes, ai-input=yes, ai-train=no\n\nUser-agent: GPTBot\nDisallow: /\n\nUser-agent: ClaudeBot\nDisallow: /\n\nUser-agent: CCBot\nDisallow: /\n\nSitemap: https://xguardgate.com/sitemap.xml\n"
+    },
+    {
+      "url": "https://api.xguardgate.com/sitemap.xml",
+      "method": "GET",
+      "status": 200,
+      "ms": 221,
+      "headers": {
+        "cache-control": "public, max-age=300, must-revalidate",
+        "cf-ray": "a5a51f643effff48-MSP",
+        "content-type": "application/xml; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><sitemap><loc>https://xguardgate.com/sitemaps/site.xml</loc></sitemap><sitemap><loc>https://xguardgate.com/sitemaps/facts-0-1.xml</loc></sitemap><sitemap><loc>https://xguardgate.com/sitemaps/entities-0-1.xml</loc></sitemap><sitemap><loc>https://xguardgate.com/sitemaps/facts-1-1.xml</loc></sitemap><sitemap><loc>https://xguardgate.com/sitemaps/entities-1-1.xml</loc></sitemap><sitemap><loc>https:"
+    },
+    {
+      "url": "https://api.xguardgate.com/openapi.json",
+      "method": "GET",
+      "status": 200,
+      "ms": 86,
+      "headers": {
+        "cache-control": "public, max-age=300, must-revalidate",
+        "cf-ray": "a5a51f6599baff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "openapi": "3.1.0",
+        "info": {
+          "title": "XGuard \u2014 Secretless Agent Gateway",
+          "version": "1.0.0",
+          "contact": {
+            "name": "Mohammad Elayyan",
+            "email": "mo.elayyan2023@gmail.com",
+            "url": "https://xguardgate.com/identity"
+          },
+          "description": "XGuard \u2014 Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface. Purchase the services listed below with a bounded x402 spending authorization. Source content is untrusted; signatures establish delivery integrity. Public facts remain available for free."
+        },
+        "paths": [
+          "/v1/authority/enroll",
+          "/v1/authority/grant",
+          "/v1/authority/authorize",
+          "/v1/authority/status",
+          "/v1/authority/execute",
+          "/v1/authority/reconcile",
+          "/v1/authority/cancel",
+          "/v1/authority/revoke",
+          "/v1/authority/audit",
+          "/v1/authority/metrics",
+          "/v1/authority/checkout",
+          "/v1/authority/disable-agent",
+          "/v1/authority/rotate-owner",
+          "/v1/routes/resolve",
+          "/v1/routes/compare",
+          "/v1/discover",
+          "/v1/discover/platforms",
+          "/v1/crawl",
+          "/v1/facts",
+          "/v1/tasks",
+          "/v1/schedules",
+          "/v1/verify",
+          "/v1/tasks/{id}",
+          "/v1/tasks/{id}/resume",
+          "/v1/tasks/{id}/cancel",
+          "/v1/tasks/{id}/verify",
+          "/v1/capabilities",
+          "/v1/payments/coverage",
+          "/supported",
+          "/verify",
+          "/settle",
+          "/.well-known/x402",
+          "/healthz",
+          "/api/paid/v1/catalog",
+          "/api/paid/v1/readiness",
+          "/api/paid/v1/batch",
+          "/api/paid/v1/history",
+          "/api/paid/v1/compare",
+          "/api/paid/v1/extract",
+          "/api/paid/v1/route-resolve",
+          "/api/paid/v1/route-compare",
+          "/api/paid/v1/discover",
+          "/api/paid/v1/platform-discovery",
+          "/api/paid/v1/crawl",
+          "/api/paid/v1/fact",
+          "/api/paid/v1/task",
+          "/api/paid/v1/schedule",
+          "/api/paid/v1/verify"
+        ]
+      },
+      "evidence_scope": "OpenAPI route names only; schemas omitted."
+    },
+    {
+      "url": "https://api.xguardgate.com/sitemaps/site.xml",
+      "method": "GET",
+      "status": 200,
+      "ms": 112,
+      "headers": {
+        "cache-control": "public, max-age=300, must-revalidate",
+        "cf-ray": "a5a51f6599b9ff48-MSP",
+        "content-type": "application/xml; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>https://xguardgate.com/</loc></url><url><loc>https://xguardgate.com/network</loc></url><url><loc>https://xguardgate.com/network/docs</loc></url><url><loc>https://xguardgate.com/routes</loc></url><url><loc>https://xguardgate.com/routes/crawl-website</loc></url><url><loc>https://xguardgate.com/routes/find-api</loc></url><url><loc>https://xguardgate.com/routes/deploy-web-app</loc></url><url><"
+    },
+    {
+      "url": "https://api.xguardgate.com/fact/npm/react/latest-version",
+      "method": "GET",
+      "status": 200,
+      "ms": 88,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f664b0aff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "fact": {
+          "id": "npm/react/latest-version",
+          "entity": "npm/react",
+          "entity_name": "react \u00b7 npm",
+          "fact": "latest-version",
+          "label": "Latest release version",
+          "current_value": "19.3.1",
+          "last_observed_value": "19.3.1",
+          "normalized_value": "19.3.1",
+          "unit": null,
+          "value_type": "string",
+          "previous_value": "19.3.0",
+          "observed_at": "2026-10-16T02:40:54.347Z",
+          "first_observed_at": "2026-10-07T16:48:30.547Z",
+          "verified_at": "2026-11-14T01:18:10.374Z",
+          "valid_from": "2026-10-16T02:40:54.347Z",
+          "changed_at": "2026-10-16T02:40:54.347Z",
+          "change_type": "released",
+          "source_url": "https://registry.npmjs.org/react/latest",
+          "source_domain": "registry.npmjs.org",
+          "source_type": "official-registry",
+          "retrieval_method": "conditional-https",
+          "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+          "verification": "VERIFIED",
+          "confidence": "source-verified",
+          "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+          "canonical_url": "https://xguardgate.com/fact/npm/react/latest-version",
+          "history_url": "https://xguardgate.com/history/npm/react/latest-version",
+          "evidence_url": "https://xguardgate.com/evidence/npm/react/14e28f2c-985c-4066-bffb-63bb73d06646",
+          "max_age_seconds": 172800
+        },
+        "history": [
+          {
+            "id": "14e28f2c-985c-4066-bffb-63bb73d06646",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "valid_from": "2026-10-16T02:40:54.347Z",
+            "verification": "verified",
+            "evidence_id": "426a780d-2420-4abf-9573-74095770c1d3",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "method": "conditional-https",
+            "value": "19.3.1"
+          },
+          {
+            "id": "49ae77a7-fbb3-40dc-9d1b-36b97a6cec19",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-13T12:01:53.099Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "verification": "verified",
+            "evidence_id": "8b64cbc2-6f9b-429e-9e39-f92222c0c307",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "method": "conditional-https",
+            "value": "19.3.0"
+          },
+          {
+            "id": "8f5226f9-64c3-464b-bda7-208ab74a42f5",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-12T11:51:39.579Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "verification": "verified",
+            "evidence_id": "8953d0ff-f5be-4d3e-8d7f-0a7d49326fce",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "method": "conditional-https",
+            "value": "19.3.0"
+          }
+        ],
+        "history_count": 6
+      },
+      "evidence_scope": "First three records and returned record count."
+    },
+    {
+      "url": "https://api.xguardgate.com/live/npm/react",
+      "method": "GET",
+      "status": 200,
+      "ms": 104,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f664b0bff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "id": "npm/react",
+        "title": "react \u00b7 npm",
+        "topic": "javascript-packages",
+        "published": 1,
+        "suppressed": 0,
+        "created_at": "2026-10-07T16:48:30.547Z",
+        "updated_at": "2026-10-16T02:40:54.347Z",
+        "facts": [
+          {
+            "id": "npm/react/deprecated",
+            "entity": "npm/react",
+            "entity_name": "react \u00b7 npm",
+            "fact": "deprecated",
+            "label": "Deprecation declared by publisher",
+            "current_value": false,
+            "last_observed_value": false,
+            "normalized_value": false,
+            "unit": null,
+            "value_type": "boolean",
+            "previous_value": null,
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "first_observed_at": "2026-10-07T16:48:30.547Z",
+            "verified_at": "2026-11-14T01:18:10.374Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "changed_at": "2026-10-07T16:48:30.547Z",
+            "change_type": "added",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/react/deprecated",
+            "history_url": "https://xguardgate.com/history/npm/react/deprecated",
+            "evidence_url": "https://xguardgate.com/evidence/npm/react/d698fa47-09ce-4a53-92c7-859407f07060",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/react/latest-version",
+            "entity": "npm/react",
+            "entity_name": "react \u00b7 npm",
+            "fact": "latest-version",
+            "label": "Latest release version",
+            "current_value": "19.3.1",
+            "last_observed_value": "19.3.1",
+            "normalized_value": "19.3.1",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": "19.3.0",
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "first_observed_at": "2026-10-07T16:48:30.547Z",
+            "verified_at": "2026-11-14T01:18:10.374Z",
+            "valid_from": "2026-10-16T02:40:54.347Z",
+            "changed_at": "2026-10-16T02:40:54.347Z",
+            "change_type": "released",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/react/latest-version",
+            "history_url": "https://xguardgate.com/history/npm/react/latest-version",
+            "evidence_url": "https://xguardgate.com/evidence/npm/react/14e28f2c-985c-4066-bffb-63bb73d06646",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/react/license",
+            "entity": "npm/react",
+            "entity_name": "react \u00b7 npm",
+            "fact": "license",
+            "label": "Declared license",
+            "current_value": "MIT",
+            "last_observed_value": "MIT",
+            "normalized_value": "MIT",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": null,
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "first_observed_at": "2026-10-07T16:48:30.547Z",
+            "verified_at": "2026-11-14T01:18:10.374Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "changed_at": "2026-10-07T16:48:30.547Z",
+            "change_type": "added",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/react/license",
+            "history_url": "https://xguardgate.com/history/npm/react/license",
+            "evidence_url": "https://xguardgate.com/evidence/npm/react/71a27e4c-27ff-40f5-93f0-4064a21901bb",
+            "max_age_seconds": 172800
+          },
+          {
+            "id": "npm/react/node-requirement",
+            "entity": "npm/react",
+            "entity_name": "react \u00b7 npm",
+            "fact": "node-requirement",
+            "label": "Required Node.js version",
+            "current_value": ">=0.10.0",
+            "last_observed_value": ">=0.10.0",
+            "normalized_value": ">=0.10.0",
+            "unit": null,
+            "value_type": "string",
+            "previous_value": null,
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "first_observed_at": "2026-10-07T16:48:30.547Z",
+            "verified_at": "2026-11-14T01:18:10.374Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "changed_at": "2026-10-07T16:48:30.547Z",
+            "change_type": "added",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_domain": "registry.npmjs.org",
+            "source_type": "official-registry",
+            "retrieval_method": "conditional-https",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "verification": "VERIFIED",
+            "confidence": "source-verified",
+            "confidence_scope": "Matches the cited primary source; not an independent audit of its claims.",
+            "canonical_url": "https://xguardgate.com/fact/npm/react/node-requirement",
+            "history_url": "https://xguardgate.com/history/npm/react/node-requirement",
+            "evidence_url": "https://xguardgate.com/evidence/npm/react/8045afde-6f5d-4c8c-b7aa-2d0121420f4a",
+            "max_age_seconds": 172800
+          }
+        ],
+        "related": [],
+        "changes": [
+          {
+            "id": "14e28f2c-985c-4066-bffb-63bb73d06646",
+            "fact_id": "npm/react/latest-version",
+            "entity_id": "npm/react",
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "change_type": "released",
+            "observation_id": "14e28f2c-985c-4066-bffb-63bb73d06646",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "previous_value": "19.3.0",
+            "current_value": "19.3.1"
+          },
+          {
+            "id": "e932fefe-b6fe-4623-83e3-56b65ac3c789",
+            "fact_id": "npm/react/license",
+            "entity_id": "npm/react",
+            "observed_at": "2026-10-07T16:48:30.547Z",
+            "change_type": "added",
+            "observation_id": "e932fefe-b6fe-4623-83e3-56b65ac3c789",
+            "label": "Declared license",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "previous_value": null,
+            "current_value": "MIT"
+          },
+          {
+            "id": "d32fbc7f-8c89-49c0-8ddf-5da843660ab0",
+            "fact_id": "npm/react/node-requirement",
+            "entity_id": "npm/react",
+            "observed_at": "2026-10-07T16:48:30.547Z",
+            "change_type": "added",
+            "observation_id": "d32fbc7f-8c89-49c0-8ddf-5da843660ab0",
+            "label": "Required Node.js version",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "previous_value": null,
+            "current_value": ">=0.10.0"
+          }
+        ],
+        "changes_count": 5
+      },
+      "evidence_scope": "First three records and returned record count."
+    },
+    {
+      "url": "https://api.xguardgate.com/history/npm/react/latest-version",
+      "method": "GET",
+      "status": 200,
+      "ms": 134,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f66fc4dff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "title": "Latest release version history",
+        "history": [
+          {
+            "id": "14e28f2c-985c-4066-bffb-63bb73d06646",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-16T02:40:54.347Z",
+            "valid_from": "2026-10-16T02:40:54.347Z",
+            "verification": "verified",
+            "evidence_id": "426a780d-2420-4abf-9573-74095770c1d3",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+            "method": "conditional-https",
+            "value": "19.3.1"
+          },
+          {
+            "id": "49ae77a7-fbb3-40dc-9d1b-36b97a6cec19",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-13T12:01:53.099Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "verification": "verified",
+            "evidence_id": "8b64cbc2-6f9b-429e-9e39-f92222c0c307",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "method": "conditional-https",
+            "value": "19.3.0"
+          },
+          {
+            "id": "8f5226f9-64c3-464b-bda7-208ab74a42f5",
+            "fact_id": "npm/react/latest-version",
+            "observed_at": "2026-10-12T11:51:39.579Z",
+            "valid_from": "2026-10-07T16:48:30.547Z",
+            "verification": "verified",
+            "evidence_id": "8953d0ff-f5be-4d3e-8d7f-0a7d49326fce",
+            "source_url": "https://registry.npmjs.org/react/latest",
+            "source_hash": "c9b7f5adeab67cd3146ffc69712aee7ddc37c23e656e41feaaa5624dff4e02aa",
+            "method": "conditional-https",
+            "value": "19.3.0"
+          }
+        ],
+        "page": 1,
+        "history_count": 6
+      },
+      "evidence_scope": "First three records and returned record count."
+    },
+    {
+      "url": "https://api.xguardgate.com/changes",
+      "method": "GET",
+      "status": 200,
+      "ms": 171,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f66fc4fff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "title": "What changed",
+        "changes": [
+          {
+            "id": "b0457066-66b2-41bd-88fa-b7ab907d85c2",
+            "fact_id": "npm/@transcend-io/mcp-server-preferences/latest-version",
+            "entity_id": "npm/@transcend-io/mcp-server-preferences",
+            "observed_at": "2026-11-14T09:19:20.609Z",
+            "change_type": "released",
+            "observation_id": "b0457066-66b2-41bd-88fa-b7ab907d85c2",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40transcend-io%2Fmcp-server-preferences/latest",
+            "source_hash": "15aad7b4e9925ae5e8c31dd21d40ba4142883484d5d8ca2f18a9b2265c902f97",
+            "previous_value": "0.7.22",
+            "current_value": "0.7.23"
+          },
+          {
+            "id": "48de84ce-bf20-490e-864e-2b1eb3d3d07d",
+            "fact_id": "npm/@tiptap/extension-node-range/latest-version",
+            "entity_id": "npm/@tiptap/extension-node-range",
+            "observed_at": "2026-11-14T09:18:57.993Z",
+            "change_type": "released",
+            "observation_id": "48de84ce-bf20-490e-864e-2b1eb3d3d07d",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40tiptap%2Fextension-node-range/latest",
+            "source_hash": "209e4a294609f474f81d661f31707f812dacade8d21a8ab6b8c6b26b097d642e",
+            "previous_value": "3.33.1",
+            "current_value": "3.34.0"
+          },
+          {
+            "id": "a30e8e52-05c7-4af0-b2d8-7a48227a3128",
+            "fact_id": "npm/@clerk/react/latest-version",
+            "entity_id": "npm/@clerk/react",
+            "observed_at": "2026-11-14T09:11:30.761Z",
+            "change_type": "released",
+            "observation_id": "a30e8e52-05c7-4af0-b2d8-7a48227a3128",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40clerk%2Freact/latest",
+            "source_hash": "c717b95227f0cc7c2aac4ba8d525ae00675f7125ed3bfeffe085c4ecadd7fb50",
+            "previous_value": "6.18.7",
+            "current_value": "6.18.8"
+          }
+        ],
+        "catalog_as_of": "2026-11-14T09:19:41.042Z",
+        "changes_count": 100
+      },
+      "evidence_scope": "First three records and returned record count."
+    },
+    {
+      "url": "https://api.xguardgate.com/mcp",
+      "method": "POST",
+      "status": 200,
+      "ms": 34,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f680e55ff48-MSP",
+        "content-type": "text/event-stream",
+        "x-robots-tag": "noindex",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "event: message\ndata: {\"result\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"xguard-live\",\"version\":\"6.0.0\"},\"instructions\":\"Read published facts for free with xguard.fact.get. Paid web fetch uses x402 v2 HTTP headers and executes only after a verified settlement.\"},\"jsonrpc\":\"2.0\",\"id\":1}\n\n"
+    },
+    {
+      "url": "https://api.xguardgate.com/mcp",
+      "method": "POST",
+      "status": 200,
+      "ms": 32,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f683eb4ff48-MSP",
+        "content-type": "text/event-stream",
+        "x-robots-tag": "noindex",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "event: message\ndata: {\"result\":{\"tools\":[{\"name\":\"xguard.fact.get\",\"description\":\"Read one free published software fact by canonical ID. Returns the primary source, verification status and timestamp. Use xguard.web.fetch for a separate paid fetch of a public URL.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"factId\":{\"type\":\"string\",\"maxLength\":350,\"pattern\":\"^[A-Za-z0-9][A-Za-z0-9_.-]*(?:/[@A-Za-z0-9][A-Za-z0-9_.-]*){2,3}$\",\"description\":\"Canonical fact ID, for example npm/react/latest-version"
+    },
+    {
+      "url": "https://api.xguardgate.com/verify",
+      "method": "POST",
+      "status": 400,
+      "ms": 22,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f686f30ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "isValid": false,
+        "invalidReason": "missing_payment_context"
+      }
+    },
+    {
+      "url": "https://api.xguardgate.com/witness/add-checkpoint",
+      "method": "POST",
+      "status": 400,
+      "ms": 173,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f689f80ff48-MSP",
+        "content-type": "text/plain; charset=utf-8",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": "malformed request: no blank line before checkpoint\n"
+    },
+    {
+      "url": "https://api.xguardgate.com/",
+      "method": "HEAD",
+      "status": 200,
+      "ms": 104,
+      "headers": {
+        "cache-control": "public, max-age=60",
+        "cf-ray": "a5a51f69a9b1ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": ""
+    },
+    {
+      "url": "https://api.xguardgate.com/readyz",
+      "method": "HEAD",
+      "status": 404,
+      "ms": 24,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f6a4b00ff48-MSP",
+        "content-type": "text/html; charset=utf-8",
+        "x-robots-tag": "noindex",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "excerpt": ""
+    },
+    {
+      "url": "https://xguardgate.com/evidence/npm/react/14e28f2c-985c-4066-bffb-63bb73d06646",
+      "method": "GET",
+      "status": 200,
+      "ms": 4890,
+      "headers": {
+        "cache-control": "no-store",
+        "cf-ray": "a5a51f887db4ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-robots-tag": "noindex, follow",
+        "x-xguard-cache": "BYPASS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "id": "426a780d-2420-4abf-9573-74095770c1d3",
+        "source_hash": "ecf8c02b9096a7813842d87fae50a707a8809c5c3d0ec6b359ac51d40188ff6f",
+        "source_url": "https://registry.npmjs.org/react/latest",
+        "source_domain": "registry.npmjs.org",
+        "source_type": "official-registry",
+        "retrieved_at": "2026-10-16T02:40:54.347Z",
+        "method": "conditional-https",
+        "fetch_id": "e230ea35-81d5-444e-b8ad-ef18f80e1d9f",
+        "normalized_json": "{\"deprecated\":false,\"latest-version\":\"19.3.1\",\"license\":\"MIT\",\"node-requirement\":\">=0.10.0\"}",
+        "fact_id": "npm/react/latest-version",
+        "value_json": "\"19.3.1\"",
+        "observed_at": "2026-10-16T02:40:54.347Z",
+        "verification": "verified"
+      }
+    },
+    {
+      "url": "https://xguardgate.com/changes/npm/@transcend-io/mcp-server-preferences/b0457066-66b2-41bd-88fa-b7ab907d85c2",
+      "method": "GET",
+      "status": 200,
+      "ms": 93,
+      "headers": {
+        "cache-control": "public, max-age=60, must-revalidate",
+        "cf-ray": "a5a51f890ed1ff48-MSP",
+        "content-type": "application/json; charset=utf-8",
+        "x-xguard-cache": "MISS",
+        "x-xguard-worker-version-id": "a1974689-4772-4b19-b55a-d06c0aafeba7",
+        "x-xguard-worker-version-tag": "git-e1528aa1bc5a"
+      },
+      "body": {
+        "title": "Observed change",
+        "changes": [
+          {
+            "id": "b0457066-66b2-41bd-88fa-b7ab907d85c2",
+            "fact_id": "npm/@transcend-io/mcp-server-preferences/latest-version",
+            "entity_id": "npm/@transcend-io/mcp-server-preferences",
+            "observed_at": "2026-11-14T09:19:20.609Z",
+            "change_type": "released",
+            "observation_id": "b0457066-66b2-41bd-88fa-b7ab907d85c2",
+            "label": "Latest release version",
+            "source_url": "https://registry.npmjs.org/%40transcend-io%2Fmcp-server-preferences/latest",
+            "source_hash": "15aad7b4e9925ae5e8c31dd21d40ba4142883484d5d8ca2f18a9b2265c902f97",
+            "previous_value": "0.7.22",
+            "current_value": "0.7.23"
+          }
+        ],
+        "page": 1
+      }
+    }
+  ]
+}
