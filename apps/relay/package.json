@@ -30,6 +30,6 @@
     "@x402/mcp": "2.30.0",
     "esbuild": "0.28.1",
     "typescript": "^5.9.3",
-    "wrangler": "4.147.0"
+    "wrangler": "4.162.0"
   }
 }
