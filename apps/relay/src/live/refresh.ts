@@ -18,7 +18,8 @@ export async function refreshOne(store: Store, env: Env, source: Row): Promise<v
     const delay = Math.max(300000, Number(lease.retry_after_ms) || 0) + Math.random() * 300000;
     // No source has been claimed yet. Persist one domain backoff instead of
     // writing a source lease and immediately undoing it on every contention.
-    store.collectionWrite(4, () => store.deferDomain(spec.domain, delay)); return;
+    // This one bounded scheduling write already exists in the stable release.
+    store.deferDomain(spec.domain, delay); return;
   }
   const fetchId = crypto.randomUUID(), started = performance.now(); let status: number | null = null, retryAfter: string | null = null;
   let claimed = false;

@@ -44,7 +44,9 @@ export class LiveShard {
       try { this.flushTelemetry(); } catch { console.warn(JSON.stringify({ event: 'telemetry_flush_unavailable' })); }
       const budget = this.store.collectionBudget();
       if (budget.paused || budget.rows_written + 48 > budget.allocation) return;
-      this.store.collectionWrite(2, () => this.store.set('last-tick', iso()));
+      // Existing bounded scheduling metadata is outside the source allocation.
+      // Do not add another checkpoint to every contended alarm.
+      this.store.set('last-tick', iso());
       for (let i = 0; i < 4; i++) {
         const source = this.store.peekDue(); if (!source) break;
         try { await refreshOne(this.store, this.env, source); }

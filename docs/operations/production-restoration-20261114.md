@@ -71,8 +71,9 @@ user-agent/browser labels alone do not establish human or verified-agent identit
   restart and schedule the next eligible UTC day instead of retrying writes in
   a tight loop. Failed transactions keep a conservative reservation.
 - Apply this to admission, changed/unchanged source observations, failure and
-  fetch records, domain contention and new discovery candidates. Keep existing
-  bounded analytics/retention separate. Alarm metadata and LiveControl operations
+  fetch records and new discovery candidates. Preserve the existing one-write
+  domain backoff and ten-minute minimum alarm spacing. Keep existing bounded
+  analytics/retention separate. Scheduling metadata and LiveControl operations
   still consume provider resources; this is not an account-wide quota guarantee.
 - Preserve existing observations and public reads during collection deferral.
   Deferred verification ages normally to STALE; freshness is never fabricated.

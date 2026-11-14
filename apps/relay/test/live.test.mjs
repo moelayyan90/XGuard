@@ -479,7 +479,7 @@ test('a busy upstream domain backs off without claiming or rewriting individual 
     const exec = store.storage.sql.exec; let mutations = 0;
     store.storage.sql.exec = (query, ...args) => { if (!query.startsWith('SELECT ')) mutations++; return exec(query, ...args); };
     await refreshOne(store, h.env, store.peekDue());
-    assert.equal(mutations, 2, 'one domain backoff and its persistent capacity checkpoint, with no claim/defer source writes');
+    assert.equal(mutations, 1, 'only one domain backoff is persisted, with no claim/defer source writes');
     assert.deepEqual(store.one('SELECT * FROM sources WHERE id=?', spec.id), before);
     assert.equal(store.get(`manual-refresh:${spec.id}`), true, 'an unperformed owner refresh remains queued');
     assert.equal(store.one('SELECT count(*) AS n FROM fact_observations').n, observations);
