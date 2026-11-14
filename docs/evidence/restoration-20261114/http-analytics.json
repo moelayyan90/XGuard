@@ -1,0 +1,50 @@
+{
+  "provider": "Cloudflare zone HTTP Analytics",
+  "scope": "Dashboard aggregate estimates across the zone, including bots and multiple subdomains. No proof of human visitors, sales or causal traffic recovery. Routine diagnostic requests are not demand.",
+  "before_5_minutes": {
+    "local_timezone": "Asia/Amman",
+    "date": "2026-11-14",
+    "start": "12:30",
+    "end": "12:35",
+    "utc_start": "2026-11-14T09:30:00Z",
+    "utc_end": "2026-11-14T09:35:00Z",
+    "total_requests": 29,
+    "http_2xx": 24,
+    "http_3xx": 0,
+    "http_4xx": 5,
+    "http_5xx": 0
+  },
+  "before_15_minutes": {
+    "utc_start": "2026-11-14T09:30:00Z",
+    "utc_end": "2026-11-14T09:45:00Z",
+    "total_requests": 352,
+    "http_2xx": 332,
+    "http_3xx": 0,
+    "http_4xx": 20,
+    "http_5xx": 0
+  },
+  "historical_24h_observation": {
+    "total_requests_approx": 32160,
+    "http_2xx_approx": 23520,
+    "http_3xx_approx": 297,
+    "http_4xx_approx": 2840,
+    "http_5xx_approx": 5510,
+    "http_5xx_rate_percent": 17.13
+  },
+  "after": {
+    "local_timezone": "Asia/Amman",
+    "date": "2026-11-14",
+    "start": "13:22",
+    "end": "13:27",
+    "utc_start": "2026-11-14T10:22:00Z",
+    "utc_end": "2026-11-14T10:27:00Z",
+    "total_requests": 104,
+    "http_2xx": 99,
+    "http_3xx": 0,
+    "http_4xx": 5,
+    "http_5xx": 0,
+    "dashboard_url": "https://dash.cloudflare.com/00cabdcb100ef4a88e4c7b5948939389/xguardgate.com/analytics/requests?time=2026-11-14T10:22:00Z/2026-11-14T10:27:00Z"
+  },
+  "recorded_at": "2026-11-14T10:31:28.132876+00:00",
+  "interpretation": "Both short matched windows already have zero server errors. Successful requests are observed traffic including automation, not proof of humans, sustained growth, payment revenue, causal uplift or no future quota exhaustion. Recovery diagnostic matrix ended at 10:21:47 UTC and the GET-only witness audit at 10:22:00 UTC; they are separate evidence, not demand."
+}

@@ -1,0 +1,140 @@
+{
+  "observed_at": "2026-11-14T10:22:00.556Z",
+  "result": "passed",
+  "mode": "GET-only; no checkpoint submission or financial request",
+  "http": [
+    {
+      "url": "https://api.xguardgate.com/witness",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "response_date": "Sat, 14 Nov 2026 10:21:31 GMT",
+      "worker_tag": "git-1fc67a45aefc"
+    },
+    {
+      "url": "https://api.xguardgate.com/witness/verifier-key",
+      "status": 200,
+      "content_type": "text/plain; charset=utf-8",
+      "response_date": "Sat, 14 Nov 2026 10:21:32 GMT",
+      "worker_tag": "git-1fc67a45aefc"
+    },
+    {
+      "url": "https://mcp.gblin.digital/log/checkpoint",
+      "status": 200,
+      "content_type": "text/plain; charset=utf-8",
+      "response_date": "Sat, 14 Nov 2026 10:21:40 GMT",
+      "worker_tag": null
+    },
+    {
+      "url": "https://api.xguardgate.com/witness/cb6e6f270f915689e63aaa0e4e65e077518dfd3dffe76e2485d2a0047c4bfdfe/checkpoint",
+      "status": 200,
+      "content_type": "text/plain; charset=utf-8",
+      "response_date": "Sat, 14 Nov 2026 10:21:46 GMT",
+      "worker_tag": "git-1fc67a45aefc"
+    },
+    {
+      "url": "https://mcp.gblin.digital/log/witnesses",
+      "status": 200,
+      "content_type": "application/json",
+      "response_date": "Sat, 14 Nov 2026 10:21:50 GMT",
+      "worker_tag": null
+    },
+    {
+      "url": "https://api.xguardgate.com/witness/cb6e6f270f915689e63aaa0e4e65e077518dfd3dffe76e2485d2a0047c4bfdfe/status",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "response_date": "Sat, 14 Nov 2026 10:21:55 GMT",
+      "worker_tag": "git-1fc67a45aefc"
+    },
+    {
+      "url": "https://mcp.gblin.digital/log/consistency?old=212&new=213",
+      "status": 200,
+      "content_type": "application/json",
+      "response_date": "Sat, 14 Nov 2026 10:22:00 GMT",
+      "worker_tag": null
+    },
+    {
+      "url": "https://mcp.gblin.digital/log/consistency?old=213&new=218",
+      "status": 200,
+      "content_type": "application/json",
+      "response_date": "Sat, 14 Nov 2026 10:22:00 GMT",
+      "worker_tag": null
+    }
+  ],
+  "verifier_key": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q",
+  "production_identity_policy": "pinned_existing_production_key",
+  "gblin_verifier_key": "gblin.digital/receipts-log+00c6e18c+AY8/YnCHXTnsECT2EGv0M5RTqlVvFobctLv3WSihYkoG",
+  "latest_size": 218,
+  "latest_root": "BPnRkrFAoHf1Xv4cQPNbE3853P5sr0Rd1KhDXXB0QQE=",
+  "gblin_push_record": {
+    "witness": "xguardgate.com/witness",
+    "vkey": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q",
+    "endpoint": "https://api.xguardgate.com/witness/add-checkpoint",
+    "cosigned_size": 218,
+    "at": "2026-11-14T01:20:12.354Z",
+    "last_error": null
+  },
+  "gblin_checkpoint_cosignature_at": "2026-11-14T01:20:12.000Z",
+  "xguard_monitor_cosignature_at": "2026-11-14T01:20:12.000Z",
+  "log_signature_verified_independently": true,
+  "xguard_cosignatures_verified_independently": true,
+  "monitor_size_root_match": true,
+  "current_push_error": null,
+  "monitored_note": "gblin.digital/receipts-log\n218\nBPnRkrFAoHf1Xv4cQPNbE3853P5sr0Rd1KhDXXB0QQE=\n\n— gblin.digital/receipts-log AMbhjD+ZQUjYuVu9kVnwKckc2k2FqFQqmYSgjoo8BoQlCMjESLkzB3xMH/1Nr9zT0lGEivUKQQYEpZewySsipnoi2Qs=\n— xguardgate.com/witness TL3LQQAAAABq97dM9OpXGXePev4pxJXcLHdHXZGpxOf8YlwJgeTdOAS5nsyvwJA6E/uB/+bO8lXn5zwLBRefyXXDoWoNWf6JYGrKCg==\n",
+  "upstream_note": "gblin.digital/receipts-log\n218\nBPnRkrFAoHf1Xv4cQPNbE3853P5sr0Rd1KhDXXB0QQE=\n\n— gblin.digital/receipts-log AMbhjD+ZQUjYuVu9kVnwKckc2k2FqFQqmYSgjoo8BoQlCMjESLkzB3xMH/1Nr9zT0lGEivUKQQYEpZewySsipnoi2Qs=\n— markovianprotocol.com/witness QbiCfwAAAABq96bmNoPKcrxOfSo7jYeSb6KYBM0piAFRarID3XgHurNjX9CaCmyYg+NVAZSnams8d8kBUX8lpLiSlWJGm6AlaQQ+Bg==\n— xguardgate.com/witness TL3LQQAAAABq97dM9OpXGXePev4pxJXcLHdHXZGpxOf8YlwJgeTdOAS5nsyvwJA6E/uB/+bO8lXn5zwLBRefyXXDoWoNWf6JYGrKCg==\n",
+  "log_only_growth": [
+    {
+      "old": 212,
+      "size": 213,
+      "old_root": "wMgzoTObtTLa/GRgjE6QYDONndz/X0h5pc+A1rdotq4=",
+      "root": "gyLdGHVexCWV4P5gIozIm8cCAwk4+6qhihTyorKgkfM=",
+      "consistency_verified": true
+    },
+    {
+      "old": 213,
+      "size": 218,
+      "old_root": "gyLdGHVexCWV4P5gIozIm8cCAwk4+6qhihTyorKgkfM=",
+      "root": "BPnRkrFAoHf1Xv4cQPNbE3853P5sr0Rd1KhDXXB0QQE=",
+      "consistency_verified": true
+    }
+  ],
+  "history_status": {
+    "origin": "gblin.digital/receipts-log",
+    "verifier_key": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q",
+    "size": 218,
+    "root": "BPnRkrFAoHf1Xv4cQPNbE3853P5sr0Rd1KhDXXB0QQE=",
+    "head_last_persisted_at": "2026-11-14T01:20:12.309Z",
+    "history_started_at": "2026-11-13T01:20:11.693Z",
+    "observed_growth_events": 2,
+    "recent_growth": [
+      {
+        "old_size": 214,
+        "size": 216,
+        "root": "5Oc25UDVZ7KR8/6zmaIHI4M3osrLHAKMB6xxOaiRl2E=",
+        "accepted_at": "2026-11-13T01:20:11.693Z",
+        "signed_body": "gblin.digital/receipts-log\n216\n5Oc25UDVZ7KR8/6zmaIHI4M3osrLHAKMB6xxOaiRl2E=\n",
+        "cosignature": "— xguardgate.com/witness TL3LQQAAAABq9mXL1x2NuEORZWi9/nE/p2eFXBAluqzjFCAbEB3b2SWqPK2a8+nIbU0m89maoo5RiOa9NcYggafDn9o52/i70E/HDg=="
+      },
+      {
+        "old_size": 216,
+        "size": 218,
+        "root": "BPnRkrFAoHf1Xv4cQPNbE3853P5sr0Rd1KhDXXB0QQE=",
+        "accepted_at": "2026-11-14T01:20:12.309Z",
+        "signed_body": "gblin.digital/receipts-log\n218\nBPnRkrFAoHf1Xv4cQPNbE3853P5sr0Rd1KhDXXB0QQE=\n",
+        "cosignature": "— xguardgate.com/witness TL3LQQAAAABq97dM9OpXGXePev4pxJXcLHdHXZGpxOf8YlwJgeTdOAS5nsyvwJA6E/uB/+bO8lXn5zwLBRefyXXDoWoNWf6JYGrKCg=="
+      }
+    ],
+    "storage_read": "ok",
+    "scope": "Bounded successful growth observed since instrumentation. Earlier sizes and failures are not reconstructed. A log signature authenticates the checkpoint, not its HTTP sender. Repeated same-body requests do not update the head."
+  },
+  "observed_distinct_growth_sizes_after_212": [
+    216,
+    218
+  ],
+  "several_witness_growth_events_proven": true,
+  "history_limit": "Only recorded successful growth is counted. Historical deliveries such as 213 cannot be inferred from the current head or our own replay probes.",
+  "sender_attribution": "Pinned signatures authenticate checkpoints. The public GBLIN push state supplies operator-reported delivery status; HTTP sender identity is not independently authenticated.",
+  "financial_settlements_submitted": 0,
+  "canary_route": null,
+  "canary_fixture": null,
+  "reverse_proofrail_c2sp_feed_claimed": false
+}

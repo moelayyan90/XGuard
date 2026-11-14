@@ -111,5 +111,63 @@ measured 1,466 SQL writes under a conservative 1,552-row charge, then performed
 zero writes across 20 restart/deferral attempts while keeping the fact readable.
 See [source-budget.json](../evidence/restoration-20261114/source-budget.json).
 
-Production deployment, post-release probes, equal-window analytics and provider
-usage follow-up must be recorded after they actually occur.
+## Verified production release
+
+- Restored behavior through compatible corrective commit
+  [`1fc67a45aefc0828e7b1434a82f002de556ac562`](https://github.com/moelayyan90/XGuard/commit/1fc67a45aefc0828e7b1434a82f002de556ac562),
+  merged as [PR #613](https://github.com/moelayyan90/XGuard/pull/613).
+- [Main CI](https://github.com/moelayyan90/XGuard/actions/runs/43584351306)
+  and [CodeQL](https://github.com/moelayyan90/XGuard/actions/runs/43584351316) passed.
+- [Deployment 43584571718](https://github.com/moelayyan90/XGuard/actions/runs/43584571718)
+  passed. Candidate 0% validation, 5% canary and 100% promotion completed. Active
+  Worker version `7623ee76-af23-4f23-9c8d-db5b7df94aef` at 100% from
+  **2026-11-14 10:20:08 UTC / 13:20:08 Asia/Amman**. Existing version is retained.
+- [After probes](../evidence/restoration-20261114/production-after.json): 54
+  synthetic unsigned checks, 50 HTTP 200 and 4 expected HTTP 400 (empty verify
+  and checkpoint ingest), no 404/410/5xx. All returned version tags match
+  `git-1fc67a45aefc`. Both origins now return 200 on GET/HEAD readiness; actual
+  fact/history/change/evidence paths remain public and readable.
+- The deployment also exercised real MCP clients (current and legacy protocol),
+  a free fact tool, explicit unpaid 402 boundaries, A2A greetings/fact reads and
+  the existing gateway contract. No transaction was signed or settled. Authority
+  public contract passed with the live fee gate closed; authenticated authority
+  lifecycle was not run because no existing operator credential was available.
+- [C2SP audit](../evidence/restoration-20261114/c2sp-after.json) passed GET-only:
+  checkpoint 218, matching root, original pinned key, independently verified
+  cosignatures, GBLIN `last_error: null`, two recorded growth events 216/218.
+  [Automatic witness verification](https://github.com/moelayyan90/XGuard/actions/runs/43584804598)
+  and [MCP Registry publication](https://github.com/moelayyan90/XGuard/actions/runs/43584804534)
+  both passed.
+- [Provider follow-up](../evidence/restoration-20261114/provider-after.json) at
+  10:21:33 UTC: 2,047,577 reads, 59,813 writes, 40,187 writes remaining under the
+  100,000 allowance. The [pre-release audit](../evidence/restoration-20261114/pre-release-audit.json)
+  measured 58,310 writes at 10:03:46 UTC. These are cumulative day counters over
+  unequal workloads; no production percentage reduction or full-day safety is
+  inferred. Existing provider monitoring remains enabled.
+- The site identity, domains, namespace placement, financial records, balances,
+  witness identity and payment boundaries remain intact. Nothing was upgraded,
+  deleted, transferred, signed with a payment key or billed as a real transaction.
+- Collection can defer source refreshes and let facts become STALE when capacity
+  runs out. Short successful probes cannot prove no future account-wide exhaustion
+  or restoration of 9,000 daily human visits. Equal-window HTTP observations are
+  recorded separately in [http-analytics.json](../evidence/restoration-20261114/http-analytics.json).
+
+## Matched HTTP observations after release
+
+Cloudflare zone HTTP analytics, same 5-minute duration on 2026-11-14,
+Asia/Amman. These aggregate counts include bots and multiple subdomains.
+
+| Window | Total | 2xx successful | 3xx | 4xx | 5xx |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Before, 12:30–12:35 | 29 | 24 | 0 | 5 | 0 |
+| After, 13:22–13:27 | 104 | 99 | 0 | 5 | 0 |
+
+The after window includes MCP discovery, gateway checkout, published fact,
+change, history and evidence traffic. It does not establish human audience,
+sustained recovery or an effect caused by this release. The earlier window was
+already healthy after the UTC quota reset. There is no claim of 9,000 human
+visits/day. The release fixes the confirmed missing readiness routes and adds
+persistent collection admission to reduce the risk of another quota outage;
+a complete UTC day remains necessary to evaluate recurrence.
+
+![Verified 100% deployment](../evidence/restoration-20261114/deployment.png)

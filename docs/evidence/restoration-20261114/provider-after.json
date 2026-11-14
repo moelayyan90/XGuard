@@ -1,0 +1,41 @@
+{
+  "utc_start": "2026-11-14T00:00:00Z",
+  "utc_end": "2026-11-14T10:21:33.017Z",
+  "totals": {
+    "rows_read": 2047577,
+    "rows_written": 59813
+  },
+  "allowances": {
+    "rows_read": 5000000,
+    "rows_written": 100000
+  },
+  "headroom_rows_written": 40187,
+  "scope": "UTC-day cumulative provider counters, not a matched workload comparison or proof of no future exhaustion.",
+  "run": "https://github.com/moelayyan90/XGuard/actions/runs/43529158280/attempts/2",
+  "components": [
+    {
+      "component": "LiveShard",
+      "rowsRead": 1957659,
+      "rowsWritten": 56297,
+      "storageReadUnits": 0,
+      "storageWriteUnits": 0,
+      "subrequests": 18324
+    },
+    {
+      "component": "LiveControl",
+      "rowsRead": 89780,
+      "rowsWritten": 3463,
+      "storageReadUnits": 0,
+      "storageWriteUnits": 0,
+      "subrequests": 429
+    },
+    {
+      "component": "C2SPWitness",
+      "rowsRead": 12,
+      "rowsWritten": 1,
+      "storageReadUnits": 0,
+      "storageWriteUnits": 0,
+      "subrequests": 0
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "utc_end": "2026-11-14T10:03:46.187Z",
+  "totals": {
+    "rows_read": 1985793,
+    "rows_written": 58310
+  },
+  "allowances": {
+    "rows_read": 5000000,
+    "rows_written": 100000
+  },
+  "run": "https://github.com/moelayyan90/XGuard/actions/runs/43530506237/attempts/2",
+  "mainnet_live_shard": {
+    "rowsRead": 1898871,
+    "rowsWritten": 54948,
+    "storageReadUnits": 0,
+    "storageWriteUnits": 0,
+    "subrequests": 17726
+  },
+  "historical_production_failure": {
+    "run": "https://github.com/moelayyan90/XGuard/actions/runs/43529158280",
+    "utc": "2026-11-13T23:43:06Z",
+    "revision": "git-e1528aa1bc5a",
+    "healthz": {
+      "http": 503,
+      "reason": "storage_write_quota_exhausted",
+      "reset_at": "2026-11-14T00:00:00Z"
+    },
+    "paid_purchase": {
+      "http": 503,
+      "reasons": [
+        "storage_write_quota_exhausted",
+        "proof_authority_unavailable"
+      ]
+    }
+  }
+}
