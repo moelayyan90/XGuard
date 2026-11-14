@@ -1,0 +1,34 @@
+{
+  "writes": 1466,
+  "admitted": 83,
+  "budget": {
+    "day": "2026-11-14",
+    "rows_written": 1552,
+    "allocation": 1600,
+    "limit": 1600,
+    "paused": true
+  },
+  "reservations": [
+    {
+      "operation": "observe-with-30-relations",
+      "writes": 129,
+      "reserve": 314
+    },
+    {
+      "operation": "revalidation-and-log",
+      "writes": 14,
+      "reserve": 64
+    }
+  ],
+  "paused_restart_writes": 0,
+  "public_value": "1.0.0",
+  "immutable_observation_preserved": true,
+  "forbidden_write": null,
+  "reset_budget": {
+    "day": "2026-11-15",
+    "rows_written": 0,
+    "paused": false,
+    "allocation": 1599,
+    "limit": 1600
+  }
+}

@@ -11,20 +11,21 @@ export function refreshInterval(source: Row, reliability: Row | null, demand = 0
   return Math.min(spec.maxAge / 2, Math.max(spec.adapter === 'status' ? 300 : 3600, spec.interval * factor));
 }
 export async function refreshOne(store: Store, env: Env, source: Row): Promise<void> {
+  if (store.collectionBudget().paused) return;
   const spec = sourceSpec(JSON.parse(source.spec_json).adapter, JSON.parse(source.spec_json).identifier);
   const lease = await rpc(env.LIVE_CONTROL, controlName, 'source-lease', { domain: spec.domain });
   if (!lease.token) {
     const delay = Math.max(300000, Number(lease.retry_after_ms) || 0) + Math.random() * 300000;
     // No source has been claimed yet. Persist one domain backoff instead of
     // writing a source lease and immediately undoing it on every contention.
-    store.deferDomain(spec.domain, delay); return;
+    store.collectionWrite(4, () => store.deferDomain(spec.domain, delay)); return;
   }
   const fetchId = crypto.randomUUID(), started = performance.now(); let status: number | null = null, retryAfter: string | null = null;
   let claimed = false;
   try {
     // Recheck after the remote await: an owner action or another pending source
     // may have changed eligibility. Never fetch an unclaimed/disabled source.
-    const current = store.claimDue(Date.now(), source.id);
+    const current = store.collectionWrite(8, () => store.claimDue(Date.now(), source.id));
     if (!current) return;
     source = current; claimed = true;
     await checkRobots(spec.url, env);
@@ -36,27 +37,38 @@ export async function refreshOne(store: Store, env: Env, source: Row): Promise<v
     const recentDemand = store.recentDemand(`/live/${spec.id}`);
     const interval = refreshInterval(source, store.one('SELECT * FROM source_reliability WHERE source_id=?', spec.id), recentDemand);
     const next = Date.now() + Math.floor(interval * 1000 * (.9 + Math.random() * .1));
+    const existingFacts = Number(store.one('SELECT count(*) AS n FROM fact_definitions WHERE entity_id=?', spec.id)?.n || 0);
     if (status === 304) {
-      store.revalidated(source, verified, next); store.fetchLog(source, fetchId, status, 0, performance.now() - started, source.last_hash, null); return;
+      store.collectionWrite(32 + existingFacts * 6, () => {
+        store.revalidated(source, verified, next); store.fetchLog(source, fetchId, status, 0, performance.now() - started, source.last_hash, null);
+      }); return;
     }
     if (!response.ok) { await response.body?.cancel(); throw new Error(`source_http_${status}`); }
     const body = await boundedBody(response);
     const parsed = parseSource(spec, body), digest = await hash(body);
-    if (digest === source.last_hash && store.matchesCurrent({ spec, facts: parsed.facts })) {
-      store.revalidated(source, verified, next);
-      const etag = response.headers.get('etag') || null, modified = response.headers.get('last-modified') || null;
-      store.run('UPDATE sources SET etag=?,last_modified=? WHERE id=? AND (etag IS NOT ? OR last_modified IS NOT ?)', etag, modified, spec.id, etag, modified);
-    } else store.observe({ spec, facts: parsed.facts, observedAt: verified, hash: digest, fetchId, method: 'conditional-https',
-      etag: response.headers.get('etag') || undefined, lastModified: response.headers.get('last-modified') || undefined,
-      related: parsed.related, exhaustive: parsed.exhaustive }, next);
-    store.fetchLog(source, fetchId, status, new TextEncoder().encode(body).length, performance.now() - started, digest, null);
-    store.run('UPDATE sources SET last_interval=? WHERE id=? AND last_interval!=?', interval, spec.id, interval);
+    const unchanged = digest === source.last_hash && store.matchesCurrent({ spec, facts: parsed.facts });
+    const reserve = unchanged ? 40 + existingFacts * 6 : 128 + 24 * (existingFacts + parsed.facts.length) + parsed.related.length * 3;
+    store.collectionWrite(reserve, () => {
+      if (unchanged) {
+        store.revalidated(source, verified, next);
+        const etag = response.headers.get('etag') || null, modified = response.headers.get('last-modified') || null;
+        store.run('UPDATE sources SET etag=?,last_modified=? WHERE id=? AND (etag IS NOT ? OR last_modified IS NOT ?)', etag, modified, spec.id, etag, modified);
+      } else store.observe({ spec, facts: parsed.facts, observedAt: verified, hash: digest, fetchId, method: 'conditional-https',
+        etag: response.headers.get('etag') || undefined, lastModified: response.headers.get('last-modified') || undefined,
+        related: parsed.related, exhaustive: parsed.exhaustive }, next);
+      store.fetchLog(source, fetchId, status, new TextEncoder().encode(body).length, performance.now() - started, digest, null);
+      store.run('UPDATE sources SET last_interval=? WHERE id=? AND last_interval!=?', interval, spec.id, interval);
+    });
     console.log(JSON.stringify({ event: 'source_refreshed', source: spec.id, facts: parsed.facts.length, bytes: body.length, status }));
   } catch (error) {
+    if (error instanceof Error && error.message === 'source_collection_capacity_deferred') return;
     if (!claimed) throw error;
     const code = error instanceof Error ? error.message.slice(0, 160) : 'fetch_failed';
     const delay = retryDelay(source.failures, spec.interval, retryAfter);
-    store.failed(source, code, delay); store.fetchLog(source, fetchId, status, 0, performance.now() - started, null, code);
+    const facts = Number(store.one('SELECT count(*) AS n FROM fact_definitions WHERE entity_id=?', source.id)?.n || 0);
+    store.collectionWrite(40 + facts * 6, () => {
+      store.failed(source, code, delay); store.fetchLog(source, fetchId, status, 0, performance.now() - started, null, code);
+    });
     console.warn(JSON.stringify({ event: 'source_fetch_failed', source: spec.id, code, retry_ms: delay }));
     if (status === 429 || status === 403) await rpc(env.LIVE_CONTROL, controlName, 'source-cooldown', { domain: spec.domain, until: Date.now() + delay });
   } finally {

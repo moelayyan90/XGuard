@@ -23,6 +23,12 @@ export class LiveShard {
     const existing = await this.state.storage.getAlarm(), now = Date.now();
     // A pending automatic alarm already owns the next scheduling decision.
     if (!urgent && existing !== null && existing > now) return;
+    const budget = this.store.collectionBudget();
+    if (budget.paused || budget.rows_written + 48 > budget.allocation) {
+      const reset = Date.parse(budget.day + 'T00:00:00Z') + 86400000;
+      if (existing === null || existing < reset) await this.state.storage.setAlarm(reset + 1000 + Math.random() * 180000);
+      return;
+    }
     // Alarm invocations also consume the provider request quota. Bound automatic
     // work even when thousands of sources compete for one upstream domain lease.
     const next = this.store.nextDue();
@@ -36,10 +42,14 @@ export class LiveShard {
     this.running = true;
     try {
       try { this.flushTelemetry(); } catch { console.warn(JSON.stringify({ event: 'telemetry_flush_unavailable' })); }
-      this.store.set('last-tick', iso());
+      const budget = this.store.collectionBudget();
+      if (budget.paused || budget.rows_written + 48 > budget.allocation) return;
+      this.store.collectionWrite(2, () => this.store.set('last-tick', iso()));
       for (let i = 0; i < 4; i++) {
         const source = this.store.peekDue(); if (!source) break;
-        await refreshOne(this.store, this.env, source);
+        try { await refreshOne(this.store, this.env, source); }
+        catch (error) { if (error instanceof Error && error.message === 'source_collection_capacity_deferred') break; throw error; }
+        if (this.store.collectionBudget().paused) break;
       }
       if (this.store.get('cleanup-day') !== iso().slice(0, 10)) { this.store.cleanOperationalData(); this.store.set('cleanup-day', iso().slice(0, 10)); }
     } finally { this.running = false; await this.wake(); }
@@ -50,7 +60,10 @@ export class LiveShard {
       const { op } = body;
       if (op === 'seed') {
         let queued = 0;
-        for (const input of (body.sources || []).slice(0, 1500)) if (this.store.enqueue(sourceSpec(input.adapter, input.identifier), body.provenance)) queued++;
+        for (const input of (body.sources || []).slice(0, 1500)) {
+          try { if (this.store.enqueue(sourceSpec(input.adapter, input.identifier), body.provenance)) queued++; }
+          catch (error) { if (error instanceof Error && error.message === 'source_collection_capacity_deferred') break; throw error; }
+        }
         await this.wake(); return json({ queued });
       }
       if (op === 'tick') { try { this.flushTelemetry(); } catch { console.warn(JSON.stringify({ event: 'telemetry_flush_unavailable' })); } await this.wake(); return json({ scheduled: true }); }
@@ -72,7 +85,7 @@ export class LiveShard {
       }
       if (op === 'sitemap') return json(this.store.sitemap(integer(body.offset, 0), 1000));
       if (op === 'stats') return json(this.store.stats());
-      if (op === 'summary') return json(this.store.publicSummary(body.compact_changes === true));
+      if (op === 'summary') return json({ ...this.store.publicSummary(body.compact_changes === true), source_capacity: this.store.collectionBudget() });
       if (op === 'change-heads') {
         if (!Number.isSafeInteger(body.limit) || body.limit < 1 || body.limit > 100) return json({ error: 'invalid_change_limit' }, 400);
         const before = this.store.rowsRead, heads = this.store.changeHeads(body.limit);
@@ -156,7 +169,7 @@ export class LiveControl {
         if (part.changes) return { items: part.changes.filter((change: any) => ids.includes(change.id)), profile: { rows_read: 0 } };
         return rpc(this.env.LIVE_SHARDS, shardName(shard), 'changes-selected', { ids });
       }));
-      const value = { as_of: iso(), profile_version: 2, profile: { rows_read: headReads + [...parts, ...selected].reduce((n, p) => n + Number(p.profile?.rows_read || 0), 0) }, shards: parts.map(p => ({ stats: p.stats, topics: p.topics })), items: parts.flatMap(p => p.items.slice(0, 4)), search_items: parts.flatMap(p => p.items), examples: parts.flatMap(p => p.examples).slice(0, 6), changes: selected.flatMap(p => p.items).sort(order) };
+      const value = { as_of: iso(), profile_version: 2, profile: { rows_read: headReads + [...parts, ...selected].reduce((n, p) => n + Number(p.profile?.rows_read || 0), 0) }, shards: parts.map(p => ({ stats: p.stats, topics: p.topics, source_capacity: p.source_capacity })), items: parts.flatMap(p => p.items.slice(0, 4)), search_items: parts.flatMap(p => p.items), examples: parts.flatMap(p => p.examples).slice(0, 6), changes: selected.flatMap(p => p.items).sort(order) };
       const paced = { ...value, capacity: catalogCapacity(value.profile.rows_read) };
       try { this.store.set('public-catalog-v1', paced); }
       catch (error) {

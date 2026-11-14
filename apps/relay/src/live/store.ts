@@ -31,10 +31,49 @@ export class Store {
   run(sql: string, ...values: any[]): void { this.rows(sql, ...values); }
   get(key: string, fallback: any = null): any { const row = this.one('SELECT value FROM settings WHERE key=?', key); return row ? JSON.parse(row.value) : fallback; }
   set(key: string, value: any): void { this.run('INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify(value)); }
+  collectionBudget(now = Date.now()): Row {
+    const day = iso(now).slice(0, 10), prior = this.get('source-write-budget-v1');
+    // Fixed shard placement: at most 51,200 SQL rows/day across all 32 shards.
+    // Starting mid-day gets only the remaining fraction, never a fresh full day.
+    return prior?.day === day ? prior : { day, rows_written: 0, paused: false,
+      allocation: Math.floor(1600 * (1 - (now % 86400000) / 86400000)), limit: 1600 };
+  }
+  collectionWrite<T>(reserve: number, fn: () => T): T {
+    const budget = this.collectionBudget(); let deferred = false;
+    let result: T | undefined;
+    try { result = this.storage.transactionSync(() => {
+      const start = this.rowsWritten;
+      if (budget.paused || budget.rows_written + reserve + 2 > budget.allocation) {
+        if (!budget.paused && budget.rows_written + 2 <= budget.allocation) {
+          budget.paused = true; budget.rows_written += 2;
+          this.set('source-write-budget-v1', budget);
+          console.warn(JSON.stringify({ event: 'source_collection_budget_paused', ...budget }));
+        }
+        deferred = true; return undefined;
+      }
+      const result = fn(), writes = this.rowsWritten - start;
+      // Reservations cover indexes/triggers; real cursor counters are charged.
+      budget.rows_written += writes + 2;
+      if (writes > reserve) {
+        budget.paused = true;
+        console.error(JSON.stringify({ event: 'source_write_reserve_exceeded', reserve, writes }));
+      }
+      this.set('source-write-budget-v1', budget);
+      return result;
+    }); } catch (error) {
+      // An aborted SQL transaction may still consume provider operations. Keep
+      // its conservative reservation instead of refunding an unmeasured failure.
+      budget.rows_written += reserve + 2;
+      this.set('source-write-budget-v1', budget);
+      throw error;
+    }
+    if (deferred) throw new Error('source_collection_capacity_deferred');
+    return result as T;
+  }
   audit(action: string, detail: any, actor = 'system'): void { this.run('INSERT INTO audit_log VALUES(?,?,?,?,?)', crypto.randomUUID(), iso(), actor, action, JSON.stringify(detail)); }
   enqueue(spec: SourceSpec, provenance = 'curated-primary-source'): boolean {
     if (this.one('SELECT id FROM sources WHERE id=?', spec.id)) return false;
-    this.storage.transactionSync(() => {
+    this.collectionWrite(12, () => {
       this.run('INSERT INTO discovery_candidates(id,spec_json,provenance,created_at) VALUES(?,?,?,?)', spec.id, JSON.stringify(spec), provenance, iso());
       this.run('INSERT INTO sources(id,spec_json,domain,last_interval) VALUES(?,?,?,?)', spec.id, JSON.stringify(spec), spec.domain, spec.interval);
     }); return true;

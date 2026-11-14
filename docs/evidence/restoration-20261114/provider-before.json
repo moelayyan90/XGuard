@@ -1,0 +1,84 @@
+{
+  "source_runs": [
+    "https://github.com/moelayyan90/XGuard/actions/runs/43530506237",
+    "https://github.com/moelayyan90/XGuard/actions/runs/43566198917"
+  ],
+  "snapshots": [
+    {
+      "utc_start": "2026-11-13T00:00:00Z",
+      "utc_end": "2026-11-13T23:54:31.642Z",
+      "totals": {
+        "rows_read": 3306749,
+        "rows_written": 101688
+      },
+      "allowances": {
+        "rows_read": 5000000,
+        "rows_written": 100000
+      },
+      "usage": [
+        {
+          "component": "LiveShard",
+          "rowsRead": 3159260,
+          "rowsWritten": 96000,
+          "storageReadUnits": 0,
+          "storageWriteUnits": 0,
+          "subrequests": 29940
+        },
+        {
+          "component": "LiveControl",
+          "rowsRead": 147327,
+          "rowsWritten": 5628,
+          "storageReadUnits": 0,
+          "storageWriteUnits": 0,
+          "subrequests": 733
+        },
+        {
+          "component": "C2SPWitness",
+          "rowsRead": 8,
+          "rowsWritten": 1,
+          "storageReadUnits": 0,
+          "storageWriteUnits": 0,
+          "subrequests": 0
+        }
+      ]
+    },
+    {
+      "utc_start": "2026-11-14T00:00:00Z",
+      "utc_end": "2026-11-14T06:24:48.037Z",
+      "totals": {
+        "rows_read": 1216977,
+        "rows_written": 38283
+      },
+      "allowances": {
+        "rows_read": 5000000,
+        "rows_written": 100000
+      },
+      "usage": [
+        {
+          "component": "LiveShard",
+          "rowsRead": 1164772,
+          "rowsWritten": 36233,
+          "storageReadUnits": 0,
+          "storageWriteUnits": 0,
+          "subrequests": 10900
+        },
+        {
+          "component": "LiveControl",
+          "rowsRead": 52151,
+          "rowsWritten": 2046,
+          "storageReadUnits": 0,
+          "storageWriteUnits": 0,
+          "subrequests": 239
+        },
+        {
+          "component": "C2SPWitness",
+          "rowsRead": 2,
+          "rowsWritten": 1,
+          "storageReadUnits": 0,
+          "storageWriteUnits": 0,
+          "subrequests": 0
+        }
+      ]
+    }
+  ]
+}
