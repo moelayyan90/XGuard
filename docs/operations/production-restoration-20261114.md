@@ -66,7 +66,10 @@ user-agent/browser labels alone do not establish human or verified-agent identit
 
 - Persist an independent 1,600-row source mutation allocation per fixed shard/day,
   51,200 across 32 shards, conservatively counting indexes, triggers and budget
-  checkpoints. A first use mid-day receives the remaining day's fraction.
+  checkpoints. A first use mid-day receives the remaining day's fraction;
+  first-ever enforcement withholds another 25% for pre-release writes. Subsequent
+  UTC days use the normal allocation. The pre-release 10:03 UTC audit already
+  measured 58,310 writes, so deployment cannot assume a fresh daily allowance.
 - Reserve before a synchronous collection mutation. Persist deferral across
   restart and schedule the next eligible UTC day instead of retrying writes in
   a tight loop. Failed transactions keep a conservative reservation.
@@ -100,7 +103,7 @@ the provider's daily reset. A post-release interval must be collected before
 claiming any before/after change; neither a deployment nor a short successful
 window proves recovery to 9,000 human visits/day or no future exhaustion.
 
-Local evidence: 97 unit tests, 6 infrastructure safety tests, 11 witness/canary
+Local evidence: 97 unit tests, 7 infrastructure safety tests, 11 witness/canary
 contract tests, strict types and dry-run build passed. Paired real workerd kept
 24 public compatibility cases, 2,048 buffered telemetry events and immutable
 history behavior. The new source-budget fixture admitted 83 revalidations,

@@ -35,8 +35,9 @@ export class Store {
     const day = iso(now).slice(0, 10), prior = this.get('source-write-budget-v1');
     // Fixed shard placement: at most 51,200 SQL rows/day across all 32 shards.
     // Starting mid-day gets only the remaining fraction, never a fresh full day.
+    // First deployment also withholds 25% for writes from the previous release.
     return prior?.day === day ? prior : { day, rows_written: 0, paused: false,
-      allocation: Math.floor(1600 * (1 - (now % 86400000) / 86400000)), limit: 1600 };
+      allocation: Math.floor(1600 * (1 - (now % 86400000) / 86400000) * (prior ? 1 : .75)), limit: 1600 };
   }
   collectionWrite<T>(reserve: number, fn: () => T): T {
     const budget = this.collectionBudget(); let deferred = false;

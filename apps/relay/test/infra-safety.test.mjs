@@ -81,3 +81,12 @@ test('collection capacity survives restart, defers writes before mutation and le
     }
   }finally{await h.drain();h.close();}
 });
+test('first deployment reserves headroom for old writes and a later UTC day receives its normal allocation',()=>{
+  const db=sqlStorage();try{
+    const store=new Store(db),noon=Date.parse('2030-01-02T12:00:00Z');
+    assert.equal(store.collectionBudget(noon).allocation,600);
+    store.set('source-write-budget-v1',{day:'2030-01-01',rows_written:1600,allocation:1600,limit:1600,paused:true});
+    assert.equal(store.collectionBudget(noon).allocation,800);
+    assert.equal(store.collectionBudget(noon).paused,false);
+  }finally{db.db.close();}
+});
