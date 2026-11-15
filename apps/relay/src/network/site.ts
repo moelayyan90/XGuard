@@ -23,17 +23,16 @@ export function networkHome(data: any): string {
   const stats = data.stats || {};
   return `<section class="home-hero" aria-labelledby="home-title"><div class="hero-inner"><div class="hero-copy">
     <p class="eyebrow"><span class="signal-dot"></span>AI routing & execution infrastructure</p>
-    <h1 id="home-title">From intent<br>to <span>execution.</span></h1>
-    <p class="lead">Find the tools. Understand the cost. Keep your task moving with durable execution and source-backed evidence.</p>
-    <form class="intent-form" action="/network" method="get"><label for="task-intent">What should your agent do next?</label><input id="task-intent" name="intent" placeholder="Describe a task to find its route…" maxlength="2000" required><button type="submit">Find a route <span aria-hidden="true">→</span></button></form>
-    <div class="hero-examples"><span>Try:</span><a href="/network?service=crawl">Extract a webpage</a><a href="/network?service=fact">Check a live fact</a><a href="/network?service=verify">Verify a URL</a></div>
-    <p class="hero-price">Route resolution: 0.005 USDC · Execution quoted separately</p>
+    <h1 id="home-title">Instant AI inference.<br><span>GPU execution.</span></h1>
+    <p class="lead">Pay per request with USDC via x402. Automatic routing across eligible providers, bounded costs and signed execution receipts.</p>
+    <div class="actions"><a class="button" href="/compute">Explore compute &amp; get a quote ↗</a><a class="text-link" href="/network">Existing execution routes →</a></div>
+    <p class="hero-price">Compute provider configuration is in progress. Check live availability before purchase.</p>
   </div><section class="route-console" aria-label="Illustrative execution path">
     <div class="console-title">xguard.route <span>ILLUSTRATIVE WORKFLOW</span></div><div class="console-body">
-    <p class="console-caption">OBJECTIVE / PUBLIC WEB EVIDENCE</p><h2>A clear path to the next action.</h2>
-    <div class="path-step"><span class="step-number">01</span><div><h3>Resolve the intent</h3><p>Match the task to a supported capability.</p></div><span class="step-kind">ROUTE</span></div>
-    <div class="path-step"><span class="step-number">02</span><div><h3>Review cost & execute</h3><p>Approve the quote. Preserve execution state.</p></div><span class="step-kind">EXECUTE</span></div>
-    <div class="path-step"><span class="step-number">03</span><div><h3>Return verifiable evidence</h3><p>Inspect source digests and explicit checks.</p></div><span class="step-kind">VERIFY</span></div></div>
+    <p class="console-caption">COMPUTE / ILLUSTRATIVE EXECUTION FLOW</p><h2>A clear path to the next action.</h2>
+    <div class="path-step"><span class="step-number">01</span><div><h3>Review a bounded quote</h3><p>Select an eligible model or GPU template.</p></div><span class="step-kind">ROUTE</span></div>
+    <div class="path-step"><span class="step-number">02</span><div><h3>Settle USDC &amp; route</h3><p>Confirm payment before upstream execution.</p></div><span class="step-kind">EXECUTE</span></div>
+    <div class="path-step"><span class="step-number">03</span><div><h3>Return result &amp; receipt</h3><p>Verify the result digest and signed execution record.</p></div><span class="step-kind">VERIFY</span></div></div>
     <pre class="console-code"><span class="code-blue">POST</span> /v1/routes/resolve
 {
   "intent": "Extract evidence from a public webpage",

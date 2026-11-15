@@ -1,5 +1,24 @@
 # XGuard Live
 
+## XGuard Compute — x402 USDC inference and GPU gateway
+
+The compute product is implemented inside the existing XGuard Worker, with
+input-bound quotes, a default 25% markup, atomic prepaid spending caps,
+settlement-before-execution, compatible-provider routing and signed receipts.
+Provider connections are not activated without funded credentials, eligible
+models/templates and applicable resale permission. Check
+[production compute health](https://api.xguardgate.com/v1/compute/health) before
+purchase; unavailable compute never requests payment.
+
+- [Product](https://xguardgate.com/compute) · [Providers](https://api.xguardgate.com/v1/compute/providers)
+- [JavaScript, Python, cURL and MCP examples](integrations/compute/README.md)
+- [Activation requirements and current limits](docs/operations/compute-gateway-20261115.md)
+
+Local fixture success is not a real paid canary, upstream execution or proof of
+profit. Existing XGuard public facts, routing, witness and payment services
+remain available through their current contracts.
+
+
 **[XGuard Extract](https://xguardgate.com/extract): up to 3 public web pages → clean text, metadata, links and source evidence in one JSON result. 0.012 USDC per request, paid with x402 v2 on Base.**
 
 Use the browser wallet checkout or `POST https://api.xguardgate.com/api/paid/v1/extract` with an `Idempotency-Key` and `{"urls":["https://example.com/"],"max_amount_atomic":"12000"}`. The initial request returns 402 without retrieving the supplied pages. A funded x402 client authorizes the exact offer, then retries the same body and key with `Payment-Signature` and `X-XGuard-Quote`.

@@ -1,0 +1,40 @@
+{
+  "openrouter": {
+    "enabled": false,
+    "resale_approved": false,
+    "permission_reference": "",
+    "reviewed_at": "",
+    "allowed_countries": [],
+    "hard_cost_bound_verified": false,
+    "request_cap_atomic": 10000,
+    "daily_cap_atomic": 100000,
+    "prepaid_available_atomic": 0,
+    "balance_epoch": "initial",
+    "low_balance_atomic": 10000,
+    "models": []
+  },
+  "together": {
+    "enabled": false,
+    "resale_approved": false,
+    "permission_reference": "",
+    "reviewed_at": "",
+    "allowed_countries": [],
+    "hard_cost_bound_verified": false,
+    "request_cap_atomic": 10000,
+    "daily_cap_atomic": 100000,
+    "prepaid_available_atomic": 0,
+    "models": []
+  },
+  "runpod": {
+    "enabled": false,
+    "resale_approved": false,
+    "permission_reference": "",
+    "reviewed_at": "",
+    "allowed_countries": [],
+    "hard_cost_bound_verified": false,
+    "request_cap_atomic": 10000,
+    "daily_cap_atomic": 100000,
+    "prepaid_available_atomic": 0,
+    "jobs": []
+  }
+}

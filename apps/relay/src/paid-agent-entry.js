@@ -1,4 +1,5 @@
 import { FEE_SERVICE } from './financial-authority/fees.js';
+import { computeState, computeAlarm } from './compute/state.js';
 import { claimAuthorityInvoice } from './financial-authority/paid.js';
 import { VERSION } from "./core/identity.js";
 import { isPrivateIpv4, isPrivateIpv6, hostnameAllowed, publicDns } from "./core/network-policy.js";
@@ -1064,6 +1065,7 @@ export class PaidGatewayState {
     if (request.method !== "POST") return doJson({ error: "method_not_allowed" }, 405);
     let body;
     try { body = await request.json(); } catch { return doJson({ error: "invalid_json" }, 400); }
+    if (path.startsWith('/compute/')) return computeState(this.state, this.env, path.slice('/compute/'.length), body);
     if (path.startsWith("/seller/")) {
       try { return await sellerStateRoute(this.state, this.env, path, body); }
       catch (cause) { return doJson({ error: /^[a-z_]{1,80}$/.test(cause.code || "") ? cause.code : "seller_state_unavailable" }, cause.status || 503); }
@@ -1379,6 +1381,7 @@ export class PaidGatewayState {
   }
 
   async alarm() {
+    if (await computeAlarm(this.state)) return;
     if (await networkAlarm(this.state, performWebFetch)) return;
     if (await sellerPayoutAlarm(this.state, this.env)) return;
     const journey = await this.state.storage.get("journey:v1");

@@ -42,7 +42,7 @@ export function render(kind: string, data: any, path: string, noindex = false): 
   let title = data.title || 'Current facts', description = 'Current facts, primary-source evidence and immutable change history.', content = '', schema: any = { '@context': 'https://schema.org', '@type': 'WebPage', name: title, url: ORIGIN + path };
   if (kind === 'home') {
     title = 'The Route Layer for AI';
-    description = 'AI task routing, capability discovery and durable public-web execution. Know the cost, preserve task state and inspect the evidence.';
+    description = 'AI inference and bounded GPU execution with USDC via x402, automatic eligible-provider routing and signed receipts. Check provider readiness before purchase.';
     content = networkHome(data);
     schema = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'XGuard', url: ORIGIN, description };
   } else if (kind === 'entity') {
