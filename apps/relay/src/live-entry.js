@@ -1,4 +1,5 @@
 import { financialAuthorityFetch } from './financial-authority/http.js';
+import { computeFetch } from './compute/gateway.js';
 // Existing Durable Object classes must remain exported so old durable records,
 // alarms, receipts and financial recovery state are preserved across deployment.
 export * from './canonical-entry.js';
@@ -22,6 +23,10 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+    if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
+      const compute = await computeFetch(request, env);
+      if (compute) return compute;
+    }
     const authority = await financialAuthorityFetch(request, env);
     if (authority) return authority;
     const witness = await c2spWitnessRoute(request, env);

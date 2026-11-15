@@ -1,7 +1,7 @@
 import { escape } from '../live/util.ts';
 export const siteBrand = () => '<a class="brand" href="/" aria-label="XGuard home"><span class="brand-symbol" aria-hidden="true">x</span><span class="brand-word">XGuard</span></a>';
 export function siteHeader(path: string) {
-  const links = [['/authority', 'Authority'], ['/routes', 'Routes'], ['/network?service=discover', 'Discover'], ['/network', 'Execute'], ['/network/docs', 'Developers']];
+  const links = [['/compute', 'Compute'], ['/authority', 'Authority'], ['/routes', 'Routes'], ['/network?service=discover', 'Discover'], ['/network', 'Execute'], ['/network/docs', 'Developers']];
   return `<a class="skip-link" href="#main-content">Skip to content</a><header class="site-header"><nav class="site-nav" aria-label="Main navigation">${siteBrand()}<div class="links">${links.map(([href,label])=>`<a href="${href}"${path === href ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</div><a class="nav-cta" href="/install">Connect agent <span aria-hidden="true">↗</span></a></nav></header>`;
 }
 export function siteFooter() {

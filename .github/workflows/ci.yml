@@ -39,6 +39,7 @@ jobs:
           WRANGLER_SEND_METRICS: "false"
         run: |
           npm run build
+          node apps/relay/test/compute-workerd.mjs
           node scripts/native-production-boundary.mjs
           npm run --prefix apps/relay live:test-runtime
           node apps/relay/test/agent402-workerd.mjs

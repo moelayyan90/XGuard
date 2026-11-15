@@ -8,5 +8,11 @@ xguard-response-*.json
 .live-local/
 .production-build/
 live-paid-*.private.json
+xguard-compute-recovery.json
+integrations/compute/__pycache__/
+integrations/compute/quote.headers
+integrations/compute/quote.json
+integrations/compute/quote-token.txt
+integrations/compute/payment-signature.txt
 .live-build/
 apps/relay/src/live/extract-client.generated.js

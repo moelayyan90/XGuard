@@ -19,6 +19,10 @@ try {
       async fetch(request) {
         const body = await request.clone().json();
         if (body.op === 'fixture-seed') {
+          // Materialize the same catalog at every CI wall-clock time. Source
+          // admission limits are exercised separately by source-capacity-workerd;
+          // this fixture measures SQL indexes, reads and observation writes.
+          this.store.set('source-write-budget-v1', { day: new Date().toISOString().slice(0, 10), rows_written: 0, allocation: 1600, limit: 1600, paused: false });
           for (let j = 0; j < 80; j++) {
             const spec = sourceSpec('npm', 'budget-' + body.shard + '-' + String(j).padStart(3, '0'));
             const raw = JSON.stringify({ name: spec.identifier, version: '1.0.0', license: 'MIT', engines: { node: '>=18' } });
