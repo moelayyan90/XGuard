@@ -16,6 +16,9 @@ try {
       constructor(state) { this.state = state; this.store = new Store(state.storage); }
       async fetch() {
         const store = this.store, spec = sourceSpec('npm', 'recovery-fixture');
+        // Deterministic fixture admission; source quota enforcement has its own
+        // workerd test. This must not depend on remaining hours in the UTC day.
+        store.set('source-write-budget-v1', { day: new Date().toISOString().slice(0, 10), rows_written: 0, allocation: 1600, limit: 1600, paused: false });
         const raw = JSON.stringify({ name: spec.identifier, version: '1.0.0', license: 'MIT', engines: { node: '>=18' } });
         store.enqueue(spec); store.observe({ spec, ...parseSource(spec, raw), observedAt: new Date().toISOString(), hash: await hash(raw), fetchId: crypto.randomUUID(), method: 'offline-fixture' }, 0);
         const source = store.one('SELECT * FROM sources WHERE id=?', spec.id);
