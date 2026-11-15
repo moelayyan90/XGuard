@@ -8,7 +8,7 @@ import { ExactEvmScheme } from '@x402/evm/exact/client';
 import { encodeAbiParameters, encodeEventTopics, parseAbiItem, verifyTypedData } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { canonicalize, digest } from '../src/compute/common.js';
-import { verifyComputeReceipt } from '../../../sdk/compute.js';
+import { createComputeClient, verifyComputeReceipt } from '../../../sdk/compute.js';
 
 // Real Worker/SQLite, ES256 receipts and official x402 client. Every external
 // call is intercepted. These simulated settlements cannot establish cash,
@@ -149,5 +149,13 @@ try {
   assert.equal((await dispatch('/v1/compute/metrics')).status, 401);
   const spec = await (await dispatch('/openapi.json')).json(); assert.ok(spec.paths['/v1/gpu/execute']);
   const health = await dispatch('/v1/compute/health'); assert.equal(health.status, 200);
+  let prepared;
+  const settlementCount = counts.settlements;
+  const sdk = createComputeClient({ payer, maxAmountAtomic: '10000', fetchImpl: (url, init) => mf.dispatchFetch(url, { ...init, cf: { country: 'JO' } }), onPaymentPrepared: value => { prepared = value; throw new Error('simulated client interruption before submission'); } });
+  await assert.rejects(() => sdk.request('inference', input), /simulated client interruption/);
+  assert.equal(counts.settlements, settlementCount);
+  const resumedPurchase = await sdk.recover(prepared);
+  assert.equal(resumedPurchase.status, 200, await resumedPurchase.clone().text()); assert.equal(counts.settlements, settlementCount + 1);
+  assert.equal(await verifyComputeReceipt(await resumedPurchase.json(), publicKey.jwk), true);
   console.log(JSON.stringify({ compute_workerd: 'passed', official_x402_signer: true, real_sqlite_claims: true, canonical_settlement_before_execution: true, receipt_signature_verified: true, concurrent_retries_execute_once: true, uncertain_execution_never_failed_over: true, explicit_429_failover: true, access_denial_not_bypassed: true, settlement_recovery_without_repayment: true, unknown_cost_not_profit: true, production_money_moved: false, actual_upstream_execution: false }));
 } finally { await mf.dispose(); }

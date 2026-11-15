@@ -20,11 +20,19 @@ if maximum <= 0:
 recovery = Path(os.environ.get("XGUARD_COMPUTE_RECOVERY_FILE", "xguard-compute-recovery.json"))
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+opener = urllib.request.build_opener(NoRedirect)
+
+
 def request(path, body=None, headers=None):
     headers = {"Content-Type": "application/json", **(headers or {})}
     req = urllib.request.Request(API + path, data=None if body is None else json.dumps(body).encode(), headers=headers)
     try:
-        response = urllib.request.urlopen(req, timeout=60)
+        response = opener.open(req, timeout=60)
     except urllib.error.HTTPError as error:
         response = error
     return response.status, json.loads(response.read())
@@ -33,6 +41,11 @@ def request(path, body=None, headers=None):
 if recovery.exists():
     saved = json.loads(recovery.read_text())
     status, result = request("/v1/compute/executions/" + saved["quote_id"], headers={"X-XGuard-Quote": saved["quote"]})
+    if status == 202 and result.get("status") == "QUOTED":
+        original = json.loads(base64.b64decode(saved["payment_signature"]))
+        if not 0 < int(original["accepted"]["amount"]) <= maximum:
+            raise ValueError("Saved authorization exceeds the current budget")
+        status, result = request("/v1/inference/execute", saved["body"], {"Idempotency-Key": saved["idempotency_key"], "X-XGuard-Quote": saved["quote"], "Payment-Signature": saved["payment_signature"]})
 else:
     from eth_account import Account
 

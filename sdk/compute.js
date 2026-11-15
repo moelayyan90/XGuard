@@ -17,7 +17,7 @@ export function createComputeClient({ payer, maxAmountAtomic, fetchImpl = fetch,
       if (!['inference', 'gpu'].includes(kind)) throw new Error('Unsupported compute kind');
       const body = { ...input, max_amount_atomic: maxAmountAtomic };
       const headers = { 'content-type': 'application/json', 'idempotency-key': idempotencyKey };
-      const quoteResponse = await fetchImpl(API + '/v1/' + kind + '/quote', { method: 'POST', headers, body: JSON.stringify(body) });
+      const quoteResponse = await fetchImpl(API + '/v1/' + kind + '/quote', { method: 'POST', headers, body: JSON.stringify(body), redirect: 'error' });
       if (!quoteResponse.ok) return quoteResponse;
       const q = await quoteResponse.json(), requirements = q.payment?.accepts?.[0];
       const expected = API + '/v1/' + kind + '/execute';
@@ -27,11 +27,19 @@ export function createComputeClient({ payer, maxAmountAtomic, fetchImpl = fetch,
       // Persist before sending. An interrupted purchase must recover this exact
       // quote/authorization rather than signing a fresh one automatically.
       await onPaymentPrepared(prepared);
-      return fetchImpl(expected, { method: 'POST', headers: { ...headers, 'X-XGuard-Quote': prepared.quote, 'Payment-Signature': prepared.payment_signature }, body: JSON.stringify(body) });
+      return fetchImpl(expected, { method: 'POST', headers: { ...headers, 'X-XGuard-Quote': prepared.quote, 'Payment-Signature': prepared.payment_signature }, body: JSON.stringify(body), redirect: 'error' });
     },
-    recover(prepared) {
+    async recover(prepared) {
       if (!/^xcq_[a-f0-9]{32}$/.test(prepared.quote_id || '')) throw new Error('Invalid quote ID');
-      return fetchImpl(API + '/v1/compute/executions/' + prepared.quote_id, { headers: { 'X-XGuard-Quote': prepared.quote } });
+      const response = await fetchImpl(API + '/v1/compute/executions/' + prepared.quote_id, { headers: { 'X-XGuard-Quote': prepared.quote }, redirect: 'error' });
+      if (response.status === 202 && (await response.clone().json()).status === 'QUOTED' && prepared.payment_signature) {
+        const original = JSON.parse(new TextDecoder().decode(decode(prepared.payment_signature)));
+        if (![API + '/v1/inference/execute', API + '/v1/gpu/execute'].includes(prepared.url) || !/^[1-9][0-9]*$/.test(original.accepted?.amount || '') || BigInt(original.accepted.amount) > BigInt(maxAmountAtomic)) throw new Error('Prepared purchase does not match the current budget or endpoint.');
+        // A crash before the first POST is safe to resume with the SAME signed
+        // authorization. This never creates a replacement payment.
+        return fetchImpl(prepared.url, { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': prepared.idempotency_key, 'X-XGuard-Quote': prepared.quote, 'Payment-Signature': prepared.payment_signature }, body: JSON.stringify(prepared.body), redirect: 'error' });
+      }
+      return response;
     },
   };
 }

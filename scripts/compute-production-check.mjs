@@ -18,4 +18,13 @@ const mcp = await fetch('https://xguardgate.com/mcp', { method: 'POST', headers:
 assert.equal(mcp.status, 200);
 const list = await mcp.json(); assert.ok(list.result.tools.some(t => t.name === 'execute_inference'));
 evidence.results.mcp_compute_tools = 'present';
+if (!evidence.ready_for_compute) {
+  const body = { model: 'unavailable-readiness-probe', input: 'Unsigned availability check.', max_tokens: 1, max_amount_atomic: '1', accept_provider_terms: true };
+  for (const action of ['quote', 'execute']) {
+    const r = await fetch(base + '/v1/inference/' + action, { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'compute-readiness-probe', 'x-xguard-traffic-class': 'synthetic' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+    assert.equal(r.status, 503); assert.equal(r.headers.has('payment-required'), false);
+    const result = await r.json(); assert.equal(result.new_payment_required, false);
+    evidence.results['unavailable_' + action] = { status: r.status, error: result.error, payment_requested: false };
+  }
+}
 console.log(JSON.stringify(evidence, null, 2));
