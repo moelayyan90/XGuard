@@ -67,7 +67,7 @@ export async function actionState(state, env, action, body) {
     if (action === 'update') return json(await state.storage.transaction(async tx => {
       const row = await tx.get('action:v1');
       if (!body.expected.includes(row.status)) return { order: view(row) };
-      const permitted = ['status', 'paypal_order_id', 'capture', 'error', 'liability'];
+      const permitted = ['status', 'paypal_order_id', 'capture', 'error', 'liability', 'attempts'];
       for (const key of permitted) if (body.patch[key] !== undefined) row[key] = body.patch[key];
       row.updated_at = stamp(); row.events.push({ state: row.status, at: row.updated_at });
       row.events = row.events.slice(-32);
@@ -98,7 +98,7 @@ export async function reconcilePaypalOrder(env, q) {
   const capture = validatePaypalOrder(order, q, env, true);
   if (capture) {
     await actionCall(env, 'references', 'map', { reference: capture.id, id: q.id });
-    return actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAYMENT_UNKNOWN'], patch: { status: 'PAID', capture } });
+    return actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAYMENT_UNKNOWN', 'REVIEW_REQUIRED'], patch: { status: 'PAID', capture, attempts: 0, error: null } });
   }
   return { order: view(q) };
 }
@@ -111,7 +111,7 @@ export async function capturePaypalOrder(env, id, token_hash) {
     const capture = validatePaypalOrder(order, q, env, true);
     if (!capture) throw fail('capture_not_completed', 409);
     await actionCall(env, 'references', 'map', { reference: capture.id, id: q.id });
-    return actionCall(env, id, 'update', { expected: ['CAPTURING'], patch: { status: 'PAID', capture } });
+    return actionCall(env, id, 'update', { expected: ['CAPTURING'], patch: { status: 'PAID', capture, attempts: 0 } });
   } catch {
     return actionCall(env, id, 'update', { expected: ['CAPTURING'], patch: { status: 'PAYMENT_UNKNOWN', error: 'capture_requires_reconciliation' } });
   }

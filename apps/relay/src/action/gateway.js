@@ -13,7 +13,7 @@ function response(request, env, value, status = 200, contentType = 'application/
   const origin = request.headers.get('origin');
   const headers = { 'content-type': contentType, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'x-robots-tag': 'noindex', 'referrer-policy': 'no-referrer', 'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-xguard-worker-version-id': env.CF_VERSION_METADATA?.id || '', 'x-xguard-worker-version-tag': env.CF_VERSION_METADATA?.tag || '' };
   if (origin && allowedOrigins.includes(origin)) Object.assign(headers, { 'access-control-allow-origin': origin, vary: 'Origin', 'access-control-allow-methods': 'GET, HEAD, POST, OPTIONS', 'access-control-allow-headers': 'Content-Type, Idempotency-Key, X-XGuard-Checkout-Token' });
-  return new Response(request.method === 'HEAD' ? null : typeof value === 'string' ? value : JSON.stringify(value), { status, headers });
+  return new Response(request.method === 'HEAD' || [204, 205, 304].includes(status) ? null : typeof value === 'string' ? value : JSON.stringify(value), { status, headers });
 }
 function assertOrigin(request) {
   const origin = request.headers.get('origin');

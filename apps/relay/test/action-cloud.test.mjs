@@ -41,4 +41,6 @@ test('unconfigured checkout exposes truthful prices without payment, storage or 
   const blocked = await actionFetch(request('/v1/checkout/orders', { service: 'csv-clean', input: { csv: 'h\na' } }, { 'idempotency-key': 'fixture-unique-value', 'x-xguard-checkout-token': 'a'.repeat(64) }), {});
   assert.equal(blocked.status, 503);
   assert.equal((await actionFetch(request('/v1/checkout/quote', { service: 'csv-clean', input: { csv: 'h\na' } }, { origin: 'https://evil.example' }), {})).status, 403);
+  const preflight = await actionFetch(new Request('https://xguardgate.com/v1/checkout/orders', { method: 'OPTIONS', headers: { origin: 'https://xguardgate.com' } }), {});
+  assert.equal(preflight.status, 204); assert.equal(await preflight.text(), ''); assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://xguardgate.com');
 });
