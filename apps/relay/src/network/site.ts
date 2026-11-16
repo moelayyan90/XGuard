@@ -51,6 +51,7 @@ export function networkHome(data: any): string {
 function workspace(service: string, intent: string) {
   const d = OPERATIONS.find(o=>o.route === service) || OPERATIONS[0];
   return heading('Execution workspace', 'Your next action starts here.', 'Choose an operation, define the input, and review its payment quote before anything runs.') + `
+  <p><a class="button" id="card-checkout" href="/checkout?service=${escape(d.id)}">Pay with Card</a> · <a href="/marketplace">All tasks & final card prices</a></p>
   <div class="workspace-layout"><section class="workspace-editor"><div class="panel-heading"><h2>Configure your request</h2><span>PAY PER OPERATION</span></div><form id="network-form" class="panel-content">
   <div class="field"><label for="service">Operation</label><select id="service">${OPERATIONS.map(o=>'<option value="'+o.route+'"'+(o.route===d.route?' selected':'')+'>'+friendly[o.route].name+' — '+prices(o.amount)+'</option>').join('')}</select><p class="field-hint" id="service-description">${escape(friendly[d.route].description)}</p></div>
   <div class="field service-field" data-services="route-resolve route-compare"><label for="intent">What do you want to accomplish?</label><textarea id="intent" maxlength="2000" placeholder="e.g. Extract text and links from a public website with source evidence.">${escape(intent)}</textarea></div>
@@ -135,6 +136,7 @@ if (form) {
     return {url:value('target-url'),...(route==='verify'?{expected_status:Number(value('expected-status'))}:{}),...base};
   }
   function sync() {
+    const card = document.getElementById('card-checkout'); if (card) card.setAttribute('href', '/checkout?service=' + (service.value === 'route-resolve' ? 'network-resolve' : service.value === 'route-compare' ? 'network-compare' : service.value === 'platform-discovery' ? 'network-platforms' : 'network-' + service.value));
     const d=definitions.find(d=>d.route===select.value);
     document.querySelector('#service-description').textContent=d.description;
     document.querySelector('#operation-price').textContent=(Number(d.amount)/1e6).toFixed(3)+' USDC';

@@ -1,0 +1,44 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { cleanCsv, normalizeCsv, parseCsv } from '../src/action/csv.js';
+import { actionCatalog, normalizeAction } from '../src/action/catalog.js';
+import { LIVE_PAID } from '../src/live/paid-data.ts';
+import { paypalConfig, validatePaypalOrder } from '../src/action/paypal.js';
+import { actionFetch } from '../src/action/gateway.js';
+
+test('CSV transformation keeps every retained and duplicate row, parses quoted records and escapes formulas', () => {
+  const r = cleanCsv({ csv: 'email,name,note\r\na@x.test, Alice ,"hello, world"\r\na@x.test,Alice,same key\r\nb@x.test,Bob,"multi\nline"\r\nc@x.test,=SUM(1),"say ""hi"""\r\n,,\r\n', key_columns: ['email'] });
+  assert.equal(r.report.input_rows, 5); assert.equal(r.report.output_rows, 3); assert.equal(r.report.duplicate_rows, 1); assert.equal(r.report.blank_rows_removed, 1); assert.equal(r.report.cells_trimmed, 1); assert.equal(r.report.formula_cells_escaped, 1);
+  assert.match(r.files[0].content, /'=SUM\(1\)/); assert.match(r.files[1].content, /same key/);
+  assert.equal(parseCsv(r.files[0].content)[2][2], 'multi\nline');
+  assert.equal(cleanCsv({ csv: 'n;value\n1;x\n1;x\n', delimiter: ';', dedupe: false }).report.output_rows, 2);
+});
+test('bad and excessive CSV input is rejected before purchase', () => {
+  for (const csv of ['h,h\n1,2', 'h\n"bad', 'h\n"x" trailing', 'h\nx,y', 'h\na"b', 'h\n' + 'a'.repeat(65536), 'h\n' + Array(2001).fill('a').join('\n')]) assert.throws(() => normalizeCsv({ csv }));
+  assert.throws(() => normalizeCsv({ csv: 'h\na', key_columns: ['missing'] }));
+  assert.throws(() => normalizeCsv({ csv: 'h\na', command: 'execute' }));
+});
+test('all current paid services derive their card checkout from one registry and preserve x402 amounts', () => {
+  const catalog = actionCatalog();
+  for (const d of LIVE_PAID) { const p = catalog.find(p => p.id === d.id); assert.ok(p); assert.equal(p.amount, d.amount); assert.ok(p.card_amount_cents >= 200); assert.equal(p.checkout_url, '/checkout?service=' + d.id); const example = { ...d.example }; if (example.run_at) example.run_at = new Date(Date.now() + 60000).toISOString(); assert.equal(normalizeAction(d.id, example).input.capability, d.id); }
+  assert.equal(normalizeAction('csv-clean', { csv: 'h\na' }).product.card_amount_cents, 200);
+  assert.throws(() => normalizeAction('unbounded-shell', {}));
+});
+test('merchant activation fails closed and the receiving email cannot be replaced by config', () => {
+  assert.equal(paypalConfig({}).ready, false);
+  assert.equal(paypalConfig({ PAYPAL_VERIFIED_EMAIL: 'other@example.com' }).ready, false);
+  const env = { PAYPAL_ENVIRONMENT: 'sandbox', PAYPAL_CLIENT_ID: 'fixture', PAYPAL_CLIENT_SECRET: 'fixture', PAYPAL_WEBHOOK_ID: 'fixture', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_VERIFIED_EMAIL: 'moelayyan2026@gmail.com', PAYPAL_ENABLED: 'on' };
+  assert.equal(paypalConfig(env).ready, true);
+  const q = { id: 'xgo_' + 'a'.repeat(40), amount_cents: 200 }, unit = { reference_id: q.id, custom_id: q.id, invoice_id: q.id, amount: { currency_code: 'USD', value: '2.00' }, payee: { merchant_id: env.PAYPAL_MERCHANT_ID, email_address: 'moelayyan2026@gmail.com' } };
+  const order = { id: 'PAYPALORDER1', intent: 'CAPTURE', purchase_units: [unit] };
+  assert.equal(validatePaypalOrder(order, q, env, true), null);
+  assert.throws(() => validatePaypalOrder({ ...order, purchase_units: [{ ...unit, payee: { ...unit.payee, email_address: 'other@example.com' } }] }, q, env));
+  assert.throws(() => validatePaypalOrder({ ...order, purchase_units: [{ ...unit, amount: { currency_code: 'USD', value: '0.01' } }] }, q, env));
+});
+test('unconfigured checkout exposes truthful prices without payment, storage or a buyer account', async () => {
+  const request = (path, body, headers = {}) => new Request('https://xguardgate.com' + path, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json', ...headers }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const r = await actionFetch(request('/v1/checkout/quote', { service: 'csv-clean', input: { csv: 'h\na' } }), {}); assert.equal(r.status, 200); assert.equal((await r.json()).card_ready, false);
+  const blocked = await actionFetch(request('/v1/checkout/orders', { service: 'csv-clean', input: { csv: 'h\na' } }, { 'idempotency-key': 'fixture-unique-value', 'x-xguard-checkout-token': 'a'.repeat(64) }), {});
+  assert.equal(blocked.status, 503);
+  assert.equal((await actionFetch(request('/v1/checkout/quote', { service: 'csv-clean', input: { csv: 'h\na' } }, { origin: 'https://evil.example' }), {})).status, 403);
+});
