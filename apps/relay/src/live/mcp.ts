@@ -1,5 +1,6 @@
 import { financialAuthorityFetch, authorityCatalog, authorityEnvelopeSchema } from '../financial-authority/http.js';
 import { computeTools, computeToolNames, computeTool } from '../compute/discovery.js';
+import { actionTools, actionToolNames, actionTool } from '../action/discovery.js';
 import { createMcpHandler, Server, type ListToolsResult } from '@modelcontextprotocol/server';
 import { handlePaidWebFetch, handlePreflight, issueQuote, jsonBody, mcpToolsForEnv } from '../paid-agent-entry.js';
 import { logNormalization } from '../core/public-contract.js';
@@ -17,6 +18,7 @@ const methods = ['GET', 'HEAD', 'POST', 'OPTIONS'];
 const factTool = 'xguard.fact.get';
 const toolNames = new Set(['xguard.capabilities', 'xguard.preflight', 'xguard.pricing.quote', 'xguard.web.fetch', 'xguard.extract']);
 for (const name of computeToolNames) toolNames.add(name);
+for (const name of actionToolNames) toolNames.add(name);
 for (const name of ['catalog', 'command', 'verify_receipt']) toolNames.add('xguard.authority.' + name);
 for (const d of OPERATIONS) toolNames.add('xguard.' + d.route.replaceAll('-', '_'));
 const paymentHeaders = ['Payment-Required', 'Payment-Response', 'X-XGuard-Quote', 'X-XGuard-Request-Id',
@@ -88,7 +90,7 @@ function list(env: Env): ListToolsResult {
     if (meta?.['xguard/next']) delete meta['xguard/next'].quote_url_optional;
     return { ...tool, inputSchema: { ...tool.inputSchema, type: 'object' as const } };
   }) as ListToolsResult['tools'];
-  return { tools: [...computeTools as ListToolsResult['tools'], {
+  return { tools: [...actionTools as unknown as ListToolsResult['tools'], ...computeTools as ListToolsResult['tools'], {
     name: factTool,
     description: 'Read one free published software fact by canonical ID. Returns the primary source, verification status and timestamp. Use xguard.web.fetch for a separate paid fetch of a public URL.',
     inputSchema: { type: 'object', properties: { factId: factIdSchema }, required: ['factId'], additionalProperties: false },
@@ -218,7 +220,9 @@ async function transport(request: Request, env: Env, readPublishedFact: (request
       if (!toolNames.has(name)) return fail(Response.json({ error: 'unknown_tool' }, { status: 400 }));
       try {
         const networkOperation = OPERATIONS.find(d => name === 'xguard.' + d.route.replaceAll('-', '_'));
-        if (computeToolNames.has(name)) {
+        if (actionToolNames.has(name)) {
+          response = await actionTool(request, env, name, args) || Response.json({ error: 'action_unavailable' }, { status: 503 });
+        } else if (computeToolNames.has(name)) {
           response = await computeTool(request, env, name, args) || Response.json({ error: 'compute_unavailable' }, { status: 503 });
         } else if (name.startsWith('xguard.authority.')) {
           if (name === 'xguard.authority.catalog') {

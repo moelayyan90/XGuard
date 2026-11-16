@@ -1,4 +1,26 @@
-# XGuard Live
+# XGuard Action Cloud
+
+Bounded digital tasks with one human checkout, private result recovery and signed
+receipts, inside the existing XGuard Worker and domains.
+
+- [Marketplace](https://xguardgate.com/marketplace)
+- [CSV cleanup checkout](https://xguardgate.com/checkout?service=csv-clean): $2 USD,
+  up to 64 KiB / 2000 rows / 40 columns; clean CSV, duplicate rows and a report.
+- [Live task catalog and card readiness](https://xguardgate.com/v1/checkout/catalog)
+- [Developer API](https://xguardgate.com/action/docs) / [OpenAPI](https://xguardgate.com/openapi.json)
+- [Operations, market evidence and payment activation](docs/operations/action-cloud-20261116.md)
+
+**Activation state:** this is a supporting reader release. New live card purchases
+are blocked until the PayPal account is connected and a separate writer-5 release
+is verified. Guest card checkout depends on PayPal eligibility. No independent
+customer sale or positive realized profit has been established by the test suite.
+
+All eligible current paid task definitions inherit the same checkout. Human card
+prices have a $2 minimum; legacy x402 prices and recovery remain compatible.
+Compute/GPU purchasing still requires its approved, funded upstream and does not
+become available merely by connecting PayPal.
+
+
 
 ## XGuard Compute — x402 USDC inference and GPU gateway
 

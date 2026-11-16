@@ -40,6 +40,7 @@ jobs:
         run: |
           npm run build
           node apps/relay/test/compute-workerd.mjs
+          node apps/relay/test/action-cloud-workerd.mjs
           node scripts/native-production-boundary.mjs
           npm run --prefix apps/relay live:test-runtime
           node apps/relay/test/agent402-workerd.mjs

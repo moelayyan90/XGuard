@@ -26,7 +26,7 @@ async function get(path, accept = 'application/json') {
 }
 const identity = await (await get('/identity')).json(); assert.equal(identity.name, 'XGuard Live');
 const health = await (await get('/healthz')).json(); assert.equal(health.storage, 'reachable');
-const home = await get('/', 'text/html'); const html = await home.text(); assert.match(html, /The live facts/); assert.doesNotMatch(html, /MONETIZE MY API|Paid API Gateway/);
+const home = await get('/', 'text/html'); const html = await home.text(); assert.match(html, /XGUARD ACTION CLOUD|The live facts/); assert.doesNotMatch(html, /MONETIZE MY API|Paid API Gateway/);
 if (process.env.EXPECTED_XGUARD_TAG) assert.equal(home.headers.get('x-xguard-worker-version-tag'), process.env.EXPECTED_XGUARD_TAG);
 if (process.env.EXPECT_LIVE_OPENAPI === 'true') {
   const manifest = await (await get('/.well-known/xguard-live.json')).json();

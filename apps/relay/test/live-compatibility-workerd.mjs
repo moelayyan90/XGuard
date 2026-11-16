@@ -48,12 +48,18 @@ try {
     } else assert.ok(Math.abs(Number(cachePolicy[0].match(/max-age=(\d+)/)?.[1] || 0) - Number(cachePolicy[1].match(/max-age=(\d+)/)?.[1] || 0)) <= 1, 'Only the elapsed one-second cache boundary may differ');
     assert.equal(pair[1].headers.has('payment-required'), false);
     const texts = pair.map(r => r.body);
-    if (path === '/robots.txt') assert.equal(texts[0], texts[1]);
+    if (path === '/robots.txt') {
+      const legacy = text => text.replace(/^Disallow: \/(?:checkout|dashboard|v1\/checkout\/orders)\n/gm, '');
+      assert.equal(legacy(texts[0]), legacy(texts[1]));
+      for (const privatePath of ['/checkout', '/dashboard', '/v1/checkout/orders']) assert.ok(texts[1].includes('Disallow: ' + privatePath));
+    }
     if (path === '/llms.txt') {
       for (const line of ['Connect an AI client', 'MCP server card', 'A2A agent card']) assert.ok(texts[1].includes(line));
       const withoutIntegrationLinks = text => text.split('\n## Paid web extraction\n')[0].replace(/^- \[(?:Connect an AI client|MCP server card|A2A agent card)\].*\n/gm, '');
       const normalizeIdentity = text => withoutIntegrationLinks(text).replace('XGuard — Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface.\n\n', '');
-      assert.equal(normalizeIdentity(texts[1]), normalizeIdentity(texts[0]));
+      const legacy = text => { const value = normalizeIdentity(text); const start = value.indexOf('Public primary-source facts'); assert.ok(start >= 0, 'Legacy factual retrieval contract remains published'); return value.slice(start); };
+      assert.match(texts[1], /XGuard Action Cloud/);
+      assert.equal(legacy(texts[1]), legacy(texts[0]));
     }
     if (path === '/identity') {
       assert.match(texts[1], /Mohammad Elayyan/); assert.match(texts[1], /mo.elayyan2023@gmail.com/);

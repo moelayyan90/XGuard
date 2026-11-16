@@ -11,3 +11,9 @@ for (const file of readdirSync(root).filter(x => x.endsWith('.ts'))) {
   execFileSync(process.execPath, ['--check', `${root}/${file}`], { stdio: 'inherit' });
 }
 console.log('Live syntax and security-sensitive source checks passed.');
+for (const file of readdirSync('apps/relay/src/action').filter(x => x.endsWith('.js'))) {
+  execFileSync(process.execPath, ['--check', 'apps/relay/src/action/' + file], { stdio: 'inherit' });
+}
+
+const { ACTION_BROWSER } = await import('../apps/relay/src/action/site.js');
+execFileSync(process.execPath, ['--check', '--input-type=module'], { input: ACTION_BROWSER, stdio: ['pipe', 'inherit', 'inherit'] });

@@ -1,5 +1,6 @@
 import { financialAuthorityFetch } from '../financial-authority/http.js';
 import { computeSkills, computeToolNames, computeTool } from '../compute/discovery.js';
+import { actionSkills, actionToolNames, actionTool } from '../action/discovery.js';
 import type { AgentCard } from '@a2a-js/sdk';
 import { readPublicJson, parsePublicJson } from '../core/public-contract.js';
 import { factExample, isPublicFactId, readPublicFact } from './public-fact.ts';
@@ -19,7 +20,7 @@ const maxRequestBytes = 16 * 1024;
 
 const card: AgentCard = {
   name: 'XGuard Live',
-  description: 'Discover XGuard, read legacy published facts, or purchase bounded route, discovery and durable public-read execution through x402 v2. Paid actions use an explicit spending cap and the canonical HTTP payment resource.',
+  description: 'XGuard Action Cloud: bounded digital tasks, human checkout, private result recovery and signed receipts. Existing public facts, x402 contracts and compute discovery remain compatible. Check actual payment and provider readiness.',
   version: VERSION,
   provider: { organization: 'XGuard', url: ORIGIN },
   documentationUrl: ORIGIN + '/install',
@@ -30,7 +31,7 @@ const card: AgentCard = {
   capabilities: { streaming: false, pushNotifications: false, extendedAgentCard: false, extensions: [] },
   securitySchemes: {}, securityRequirements: [], signatures: [],
   defaultInputModes: inputModes, defaultOutputModes: outputModes,
-  skills: [...computeSkills, { id: 'xguard.authority', name: 'Signed agent financial authority', description: 'Submit a signed delegation sandbox envelope over the same HTTP authority contract; no live payment or custody is implied.', tags: ['delegation', 'budgets', 'sandbox'], examples: [JSON.stringify({ action: 'xguard.authority', envelope: {} })], inputModes: ['application/json'], outputModes: ['application/json'], securityRequirements: [] }, {
+  skills: [...actionSkills, ...computeSkills, { id: 'xguard.authority', name: 'Signed agent financial authority', description: 'Submit a signed delegation sandbox envelope over the same HTTP authority contract; no live payment or custody is implied.', tags: ['delegation', 'budgets', 'sandbox'], examples: [JSON.stringify({ action: 'xguard.authority', envelope: {} })], inputModes: ['application/json'], outputModes: ['application/json'], securityRequirements: [] }, {
     id: discoveryAction, name: 'Discover XGuard Live',
     description: 'List the supported A2A actions and the current public XGuard links.',
     tags: ['discovery', 'a2a'], examples: ['Hello', JSON.stringify({ action: discoveryAction })],
@@ -143,6 +144,14 @@ export async function liveA2aFetch(request: Request, env: Env, readPublishedFact
     return json({ jsonrpc: '2.0', id: rpcId, result: { message: { messageId: crypto.randomUUID(), role: 'ROLE_AGENT', parts: [{ data }] } } });
   }
   const paid = OPERATIONS.find(d => action.action === 'xguard.network.' + d.route.replaceAll('-', '_'));
+  if (actionToolNames.has(String(action.action))) {
+    if (!record(action.input)) return error(rpcId, -32602, 'Expected Action Cloud input');
+    const response = await actionTool(request, env, String(action.action), action.input);
+    if (!response) return error(rpcId, -32603, 'Action unavailable', 503);
+    const data = await response.json();
+    if (!response.ok) return error(rpcId, -32000, 'Action request rejected', response.status, data);
+    return json({ jsonrpc: '2.0', id: rpcId, result: { message: { messageId: crypto.randomUUID(), role: 'ROLE_AGENT', parts: [{ data }] } } });
+  }
   const computeName = typeof action.action === 'string' && action.action.startsWith('xguard.compute.') ? action.action.slice('xguard.compute.'.length) : '';
   if (computeToolNames.has(computeName)) {
     if (!record(action.input)) return error(rpcId, -32602, 'Expected compute input');

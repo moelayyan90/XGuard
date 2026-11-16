@@ -113,6 +113,14 @@ test('public content GET representations delegate to the original Live router', 
   for (const path of paths) for (const accept of ['application/json', 'text/html', 'text/markdown']) {
     const request = () => new Request(`https://xguardgate.com${path}`, { headers: { accept, 'user-agent': 'XGuardLiveSmoke/1.0' } });
     const before = await live.fetch(request(), h.env, h.ctx), after = await app.fetch(request(), h.env, h.ctx);
+    if (path === '/' && accept === 'text/html') {
+      assert.equal(after.status, 200);
+      const html = await after.text();
+      assert.match(html, /XGUARD ACTION CLOUD/);
+      assert.match(html, /Card checkout activation in progress/);
+      assert.equal(after.headers.has('payment-required'), false);
+      continue;
+    }
     assert.equal(after.status, before.status, `${path} ${accept}`);
     assert.equal(after.headers.get('content-type'), before.headers.get('content-type'));
     assert.equal(after.headers.has('payment-required'), false);

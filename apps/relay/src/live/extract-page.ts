@@ -6,6 +6,7 @@ export function extractPage(recipient: string): { title: string; html: string } 
   return { title: 'Web pages, ready for your agent.', html: `
   <p class="eyebrow">XGuard Extract · pay per result</p>
   <p class="lead">Give your agent up to 3 public pages. Get clean main text, titles, links and source evidence in one structured result.</p>
+  <p><a class="button" href="/checkout?service=live-extract">Pay with Card</a> · <a href="/v1/checkout/catalog">Card availability and final price</a></p>
   <div class="detail"><section class="card" data-extract-checkout data-cap="${EXTRACT_SERVICE.amount}" data-recipient="${escape(recipient)}">
     <h2>Your sources. One usable result.</h2><p><strong>${price} USDC per request</strong> · 1–3 pages · Base network · no subscription</p>
     <form id="extract-form"><label for="extract-urls">Public HTTPS URLs, one per line</label><textarea id="extract-urls" rows="5" maxlength="6200" required placeholder="https://example.com/"></textarea>

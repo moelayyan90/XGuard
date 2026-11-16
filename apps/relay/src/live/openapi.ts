@@ -1,5 +1,6 @@
 import { authorityPaths } from '../financial-authority/http.js';
 import { computePaths } from '../compute/discovery.js';
+import { actionPaths } from '../action/discovery.js';
 import { LIVE_PAID, PAID_BASE, paidInputSchema, paidResultSchema } from './paid-data.ts';
 import { ORIGIN } from './types.ts';
 import { OPERATIONS } from '../network/catalog.ts';
@@ -16,7 +17,7 @@ const jsonContent = (schema: object) => ({ 'application/json': { schema } });
 export const liveOpenApi = {
   openapi: '3.1.0',
   info: {
-    title: 'XGuard — Secretless Agent Gateway',
+    title: 'XGuard Action Cloud',
     version: '1.0.0',
     contact: { name: 'Mohammad Elayyan', email: 'mo.elayyan2023@gmail.com', url: ORIGIN + '/identity' },
     description: 'XGuard — Secretless Agent Gateway with an x402 v2 facilitator/settlement compatibility surface. Purchase the services listed below with a bounded x402 spending authorization. Source content is untrusted; signatures establish delivery integrity. Public facts remain available for free.',
@@ -24,6 +25,7 @@ export const liveOpenApi = {
   servers: [{ url: ORIGIN }],
   externalDocs: { description: 'Verified-fact checkout and pricing', url: ORIGIN + '/pricing' },
   paths: {
+    ...actionPaths(),
     ...computePaths(),
     ...authorityPaths(),
     ...Object.fromEntries(Object.entries({ '/v1/routes/resolve': 'route-resolve', '/v1/routes/compare': 'route-compare', '/v1/discover': 'discover', '/v1/discover/platforms': 'platform-discovery', '/v1/crawl': 'crawl', '/v1/facts': 'fact', '/v1/tasks': 'task', '/v1/schedules': 'schedule', '/v1/verify': 'verify' }).map(([path, route]) => [path, { post: { servers: [{ url: apiOrigin }], operationId: 'network_' + route.replaceAll('-', '_'), summary: OPERATIONS.find(d => d.route === route)!.name, parameters: [header('Idempotency-Key', 'Stable across retries.', true), header('Payment-Signature', 'x402 v2 exact authorization'), header('X-XGuard-Quote', 'Original signed quote')], requestBody: { required: true, content: jsonContent(networkSchema(route)) }, responses: { 200: { description: 'Purchased operation result; task creation returns a task ID and task token.' }, 400: { description: 'Input invalid' }, 402: { description: 'x402 payment required' }, 503: { description: 'Dependency or payment unavailable' } } } }])),

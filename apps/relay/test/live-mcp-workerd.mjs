@@ -130,8 +130,14 @@ try {
   await client.connect(new StreamableHTTPClientTransport(new URL(endpoint), { fetch: trackedFetch }));
   assert.equal(client.getServerVersion()?.name, 'xguard-live');
   assert.equal(client.getNegotiatedProtocolVersion(), version);
-  assert.equal((await client.listTools()).tools.length, 16 + OPERATIONS.length + Number(LIVE_PAID.some(d => d.route === 'extract')));
+  assert.equal((await client.listTools()).tools.length, 19 + OPERATIONS.length + Number(LIVE_PAID.some(d => d.route === 'extract')));
   for (const name of ['catalog', 'command', 'verify_receipt']) assert.ok((await client.listTools()).tools.some(t => t.name === 'xguard.authority.' + name));
+  for (const name of ['catalog', 'quote', 'result']) assert.ok((await client.listTools()).tools.some(t => t.name === 'xguard.action.' + name));
+  const actions = await client.callTool({ name: 'xguard.action.catalog' });
+  assert.equal(actions.structuredContent.name, 'XGuard Action Cloud');
+  assert.equal(actions.structuredContent.payment.ready, false);
+  const actionQuote = await client.callTool({ name: 'xguard.action.quote', arguments: { service: 'csv-clean', input: { csv: 'h\na' } } });
+  assert.equal(actionQuote.structuredContent.amount_cents, 200);
   const authority = await client.callTool({ name: 'xguard.authority.catalog' });
   assert.equal(authority.structuredContent.status, 'sandbox_operator_enrollment');
   assert.equal(authority.structuredContent.pricing.live_billing, 'not_activated');
@@ -141,7 +147,7 @@ try {
   assert.ok(versions.some(r => r.type?.startsWith('application/json') && r.status === 200));
   await old.connect(new LegacyTransport(new URL(endpoint), { fetch: trackedFetch }));
   assert.equal(old.getServerVersion()?.name, 'xguard-live');
-  assert.equal((await old.listTools()).tools.length, 16 + OPERATIONS.length + Number(LIVE_PAID.some(d => d.route === 'extract')));
+  assert.equal((await old.listTools()).tools.length, 19 + OPERATIONS.length + Number(LIVE_PAID.some(d => d.route === 'extract')));
   assert.ok(versions.some(r => r.type?.startsWith('text/event-stream') && r.status === 200));
   const negotiation = await dispatch(endpoint, { method: 'POST', headers: { ...common, 'mcp-protocol-version': legacy },
     body: JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'initialize',
@@ -155,7 +161,7 @@ try {
   const recoveredTools = await dispatch(endpoint, { method: 'POST',
     headers: { accept: 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 13, method: 'tools/list' }) });
   assert.equal(recoveredTools.status, 200, await recoveredTools.clone().text());
-  assert.equal((await recoveredTools.json()).result.tools.length, 16 + OPERATIONS.length + Number(LIVE_PAID.some(d => d.route === 'extract')));
+  assert.equal((await recoveredTools.json()).result.tools.length, 19 + OPERATIONS.length + Number(LIVE_PAID.some(d => d.route === 'extract')));
   const recoveredCaps = await dispatch(endpoint, { method: 'POST',
     headers: { 'content-type': 'application/json', 'mcp-protocol-version': version },
     body: JSON.stringify({ jsonrpc: '2.0', id: 14, method: 'tools/call', params: { name: 'xguard.capabilities' } }) });
