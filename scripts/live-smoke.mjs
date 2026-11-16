@@ -48,5 +48,8 @@ if (index.items.length) {
   await get(new URL(fact.history_url).pathname);
 }
 const admin = await fetch(origin + '/admin', { headers, signal: AbortSignal.timeout(15000) }); assert.equal(admin.status, 401);
-const retired = await fetch(origin + '/marketplace', { headers, signal: AbortSignal.timeout(15000) }); assert.equal(retired.status, 410);
+const marketplace = await fetch(origin + '/marketplace', { headers, signal: AbortSignal.timeout(15000) });
+const actionCloud = html.includes('XGUARD ACTION CLOUD');
+assert.equal(marketplace.status, actionCloud ? 200 : 410);
+if (actionCloud) assert.match(await marketplace.text(), /Choose the work/);
 console.log(JSON.stringify({ ok: true, origin, verified_facts: health.verified, published_facts: health.facts, collector: health.collector, last_cron: health.last_cron, revenue_test_requests: 0 }, null, 2));

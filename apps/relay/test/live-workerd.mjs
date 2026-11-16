@@ -44,5 +44,13 @@ try {
   assert.equal((await rpc('history',{id:'npm/react/latest-version',page:1})).length,2,'identical HTTP 200 responses revalidate existing evidence without duplicate observations');
   assert.equal((await mf.dispatchFetch('https://xguardgate.com/', { headers: { accept: 'application/json' } })).headers.get('content-type'), 'application/json; charset=utf-8');
   assert.match(await (await mf.dispatchFetch('https://xguardgate.com/', { headers: { accept: 'text/html' } })).text(), /XGUARD ACTION CLOUD/);
+  // Exercise the actual release smoke programs against the isolated Worker.
+  // This catches stale retired-route assumptions before a production canary.
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (input, init) => mf.dispatchFetch(input, init);
+    await import('../../../scripts/live-smoke.mjs');
+    await import('../../../scripts/action-production-check.mjs');
+  } finally { globalThis.fetch = originalFetch; }
   console.log('workerd integration: 32 SQLite shards, durable alarms, source collection, changed-value history, auth and format cache verified; isolated source fixtures only.');
 } finally { await mf.dispose(); }
