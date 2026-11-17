@@ -102,3 +102,11 @@ All existing CI checks remain required, including typecheck, full unit suite, ru
 ## Canary recovery record
 
 The first supporting upload was not promoted: an older paid-smoke assertion mistook the new adapters for network routes. A transient prior-version public response also failed candidate identity verification. The existing rollback returned 100% traffic to the previous version. The follow-up keeps strict candidate identity, legacy price and no-payment checks, adds an exact commerce contract assertion and scopes public canary URLs to the candidate. See docs/evidence/commerce/canary-recovery-20261117.json. This is an operational recovery, not a payment failure or a successful new sale.
+
+## Reader verification and activation release
+
+Reader 6 / writer 4 was production verified at source aaebc283813d7bccf18c18efd545bf3b542e48ba, Worker cebcd744-c885-4ad6-aaa9-8b5709390253. Deployment run 44044934810 passed; 24 scopes and 13 adapters were discoverable, all 13 USD quotes validated, the new-service unpaid probe returned the expected writer gate (503), legacy x402 readiness returned ready, and the existing public GBLIN verifier key matched its baseline exactly. Evidence: reader6-production-20261117.json and reader6-health-20261117.json. Post-activation rollback branch: restore/commerce-reader6-20261117.
+
+The separate activation release changes the committed writer from 4 to 6. The actual previous production reader supports version 6, so newly paid commerce obligations remain readable and recoverable at the approved rollback target. A rollback to the original reader-5 version is no longer an allowed financial recovery. Card checkout remains blocked by missing verified merchant configuration. Activation is not evidence of a completed buyer payment.
+
+The official registry publisher rejected the pre-existing 129-character source description against its current maximum of 100 characters. The activation release shortens that description without changing namespace, remote endpoint, website or project identity. A new registry listing is not claimed until publication and read-back succeed.

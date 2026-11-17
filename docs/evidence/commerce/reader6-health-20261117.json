@@ -1,0 +1,328 @@
+{
+  "observed_at": "2026-11-17T08:17:12.693Z",
+  "witness_identity_preserved": true,
+  "probes": [
+    {
+      "path": "/healthz",
+      "status": 200,
+      "version": "cebcd744-c885-4ad6-aaa9-8b5709390253",
+      "tag": "git-aaebc283813d",
+      "body": {
+        "service": "XGuard Live",
+        "version": "6.0.0",
+        "storage": "reachable",
+        "owner_access": "configured",
+        "collector": "scheduled",
+        "last_cron": "2026-11-17T08:10:59.247Z",
+        "catalog_as_of": "2026-11-17T08:14:19.259Z",
+        "aggregate_interval_seconds": 4557,
+        "catalog_capacity": {
+          "policy": "measured-catalog-read-reserve-v1",
+          "component": "public-catalog",
+          "allocated_rows_per_day": 1000000,
+          "measured_rows_per_refresh": 42192,
+          "minimum_refresh_interval_seconds": 900,
+          "refresh_interval_seconds": 4557,
+          "projected_rows_per_day": 800000,
+          "projected_rows_at_minimum_interval": 4050432,
+          "pacing_active": true,
+          "scope": "Projection for catalog SQL reads only. Not measured account-wide usage, a hard quota reservation, an invoice, or a guarantee of daily availability."
+        },
+        "collection_min_interval_seconds": 600,
+        "facts": 9902,
+        "verified": 9177,
+        "stale": 725,
+        "entities": 2758,
+        "sources": 2822,
+        "changes_today": 103,
+        "fetch_errors": 66,
+        "pending": 64,
+        "due": 781,
+        "fetches_24h": 2351,
+        "last_update": "2026-11-17T08:14:01.984Z",
+        "shards": 32,
+        "source_collection": {
+          "scope": "Local source-write allocations, not account-wide remaining quota. Deferred sources age normally; public reads and payment state are independent.",
+          "shards": [
+            {
+              "day": "2026-11-17",
+              "rows_written": 850,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 923,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 937,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 5,
+              "paused": true,
+              "allocation": 1596,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 815,
+              "paused": false,
+              "allocation": 1572,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 918,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 1424,
+              "paused": true,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 750,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 928,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 904,
+              "paused": false,
+              "allocation": 1596,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 887,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 897,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 965,
+              "paused": false,
+              "allocation": 1585,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 763,
+              "paused": false,
+              "allocation": 1584,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 1002,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 758,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 886,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 889,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 910,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 828,
+              "paused": false,
+              "allocation": 1596,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 847,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 932,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 775,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 853,
+              "paused": false,
+              "allocation": 1596,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 882,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 864,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 794,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 799,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 837,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 909,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 826,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 738,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/witness/verifier-key",
+      "status": 200,
+      "version": "cebcd744-c885-4ad6-aaa9-8b5709390253",
+      "tag": "git-aaebc283813d",
+      "body": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q\n"
+    },
+    {
+      "path": "/api/paid/v1/readiness",
+      "status": 200,
+      "version": null,
+      "tag": "git-aaebc283813d",
+      "body": {
+        "ready": true,
+        "checked_at": "2026-11-17T08:17:12.684Z",
+        "checks": {
+          "enabled": true,
+          "payment_configuration": true,
+          "source_data": true,
+          "proof_authority": true,
+          "financial_storage": true,
+          "facilitator": true
+        },
+        "errors": [],
+        "network": "eip155:8453",
+        "currency": "USDC",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "receiving_address": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
+        "receiving_address_verification": "Configured receiving address; this check does not prove owner control or a real purchase.",
+        "cost_budget": {
+          "basis": "configured_cost_budgets_not_measured_profit",
+          "configured": true,
+          "available": true,
+          "rejection_reason": null,
+          "customer_price_usd_micros": 10000,
+          "provider_cost_usd_micros": 0,
+          "provider_cost_basis": "built_in_public_https_fetch_without_a_paid_provider",
+          "infrastructure_cost_budget_usd_micros": 1500,
+          "payment_cost_budget_usd_micros": 0,
+          "minimum_contribution_bps": 2000,
+          "minimum_price_usd_micros": 1875,
+          "estimated_contribution_usd_micros": 8500,
+          "estimated_contribution_margin_bps": 8500,
+          "actual_infrastructure_cost_usd_micros": null,
+          "actual_payment_cost_usd_micros": null,
+          "gross_profit_usd_micros": null,
+          "net_profit_usd_micros": null
+        },
+        "real_sale": "Not established by readiness. Consult authenticated revenue records.",
+        "free_service_dependency": false
+      }
+    }
+  ]
+}
