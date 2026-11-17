@@ -16,24 +16,31 @@ export async function runReconcileSmoke({ fetchImpl = globalThis.fetch, expected
   assert.match(expectedTag || "", /^git-[0-9a-f]{12,40}$/, "Expected deployed git tag is required");
   let checks = 0;
   const get = (path, init = {}) => fetchImpl(`${ORIGIN}${path}`, { ...init, redirect: "error", signal: AbortSignal.timeout(10000),
-    headers: { accept: "application/json", "user-agent": "XGuardReconcileSmoke/1.0", ...init.headers } });
+    headers: { accept: "application/json", "cache-control": "no-cache", "user-agent": "XGuardReconcileSmoke/1.0", ...init.headers } });
   const revision = response => assert.equal(response.headers.get("x-xguard-worker-version-tag"), expectedTag, "Response is not from the tested deployment");
-  let health;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    health = await get("/healthz");
-    if (health.headers.get("x-xguard-worker-version-tag") === expectedTag) break;
-    await health.body?.cancel();
-    if (attempt < 7) await pause(3000);
-  }
-  revision(health); assert.equal(health.status, 200);
+  const versioned = async (path, init = {}) => {
+    let response;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      response = await get(path, init);
+      if (response.headers.get("x-xguard-worker-version-tag") === expectedTag) return response;
+      if (attempt < 7) {
+        await response.body?.cancel();
+        await pause(3000);
+      }
+    }
+    // Never accept an old revision for paid routes or public discovery.
+    revision(response);
+    return response;
+  };
+  const health = await versioned("/healthz"); assert.equal(health.status, 200);
   const status = await health.json();
   assert.equal(status.status, "ok"); assert.equal(status.payment_ready, true);
   assert.equal(status.network, NETWORK); assert.equal(status.price, "$0.002"); checks++;
   for (const path of ["/", "/docs", "/openapi.json", "/llms.txt", "/robots.txt", "/sitemap.xml"]) {
-    const response = await get(path); revision(response); assert.equal(response.status, 200, path);
+    const response = await versioned(path); revision(response); assert.equal(response.status, 200, path);
     assert.ok((await response.text()).length > 0); checks++;
   }
-  const document = await get("/.well-known/x402.json"); revision(document); assert.equal(document.status, 200);
+  const document = await versioned("/.well-known/x402.json"); revision(document); assert.equal(document.status, 200);
   const discovery = await document.json();
   assert.equal(discovery.x402Version, 2); assert.ok(discovery.resources[0].extensions.bazaar); checks++;
   const checkRequirements = required => {
@@ -44,7 +51,7 @@ export async function runReconcileSmoke({ fetchImpl = globalThis.fetch, expected
   };
   checkRequirements(discovery.resources[0] && { x402Version: 2, accepts: discovery.resources[0].accepts });
   for (const path of ["/v1/reconcile", `/v1/reconcile${QUERY}`]) {
-    const response = await get(path); revision(response); assert.equal(response.status, 402, path);
+    const response = await versioned(path); revision(response); assert.equal(response.status, 402, path);
     const required = decodePaymentRequiredHeader(response.headers.get("payment-required")); checkRequirements(required);
     if (path.includes("?")) {
       assert.equal(required.resource.url, `${ORIGIN}/v1/reconcile`);
@@ -59,7 +66,7 @@ export async function runReconcileSmoke({ fetchImpl = globalThis.fetch, expected
     ["/v1/reconcile", { method: "HEAD" }, 404],
     ["/v1/reconcile", { method: "POST" }, 404]
   ]) {
-    const response = await get(path, init); revision(response); assert.equal(response.status, expected, path);
+    const response = await versioned(path, init); revision(response); assert.equal(response.status, expected, path);
     assert.equal(response.headers.has("payment-response"), false); await response.text(); checks++;
   }
   return { reconcile_production_smoke: "passed", revision: expectedTag, checks, payment_authorizations_submitted: 0, production_money_moved: false };
