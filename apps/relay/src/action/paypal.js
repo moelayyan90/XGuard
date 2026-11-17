@@ -21,18 +21,19 @@ export async function paypalApi(env, method, path, body, requestId) {
   const config = paypalConfig(env);
   if (!config.ready) throw fail('card_payments_not_activated', 503, { blockers: config.blockers });
   if (!/^\/v[12]\/[a-z0-9/_-]+$/i.test(path)) throw fail('invalid_paypal_path', 503);
-  const tokenResponse = await fetch(config.origin + '/v1/oauth2/token', { method: 'POST', headers: { authorization: 'Basic ' + btoa(env.PAYPAL_CLIENT_ID + ':' + env.PAYPAL_CLIENT_SECRET), 'content-type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials', redirect: 'manual', signal: AbortSignal.timeout(12000) });
+  const tokenResponse = await fetch(config.origin + '/v1/oauth2/token', { method: 'POST', headers: { authorization: 'Basic ' + btoa(env.PAYPAL_CLIENT_ID + ':' + env.PAYPAL_CLIENT_SECRET), accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials', redirect: 'manual', signal: AbortSignal.timeout(12000) });
   if (!tokenResponse.ok) {
     let failure;
     try { failure = await boundedJson(tokenResponse, 16384); } catch {}
     // OAuth's fixed error names identify the remediation without disclosing a
     // provider description, client ID, secret or response body to recovery UI.
     const codes = { invalid_client: 'paypal_oauth_invalid_client', invalid_request: 'paypal_oauth_invalid_request', invalid_scope: 'paypal_oauth_invalid_scope', unsupported_grant_type: 'paypal_oauth_unsupported_grant', access_denied: 'paypal_oauth_access_denied' };
-    throw fail(Object.hasOwn(codes, failure?.error) ? codes[failure.error] : 'paypal_authentication_unavailable', 503);
+    const statuses = { 400: 'paypal_oauth_bad_request', 401: 'paypal_oauth_unauthorized', 403: 'paypal_oauth_forbidden', 404: 'paypal_oauth_not_found', 429: 'paypal_oauth_rate_limited' };
+    throw fail(Object.hasOwn(codes, failure?.error) ? codes[failure.error] : statuses[tokenResponse.status] || 'paypal_authentication_unavailable', 503);
   }
   const token = await boundedJson(tokenResponse, 16384);
-  if (typeof token.access_token !== 'string') throw fail('paypal_authentication_unavailable', 503);
-  const response = await fetch(config.origin + path, { method, headers: { authorization: 'Bearer ' + token.access_token, 'content-type': 'application/json', prefer: 'return=representation', ...(requestId ? { 'PayPal-Request-Id': requestId } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: 'manual', signal: AbortSignal.timeout(20000) });
+  if (typeof token.access_token !== 'string') throw fail('paypal_oauth_token_missing', 503);
+  const response = await fetch(config.origin + path, { method, headers: { authorization: 'Bearer ' + token.access_token, accept: 'application/json', 'content-type': 'application/json', prefer: 'return=representation', ...(requestId ? { 'PayPal-Request-Id': requestId } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: 'manual', signal: AbortSignal.timeout(20000) });
   const value = await boundedJson(response);
   if (!response.ok) throw fail('paypal_request_unconfirmed', 503);
   return value;

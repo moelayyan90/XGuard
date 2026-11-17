@@ -35,16 +35,22 @@ test('a refused provider OAuth client cannot create an order or leak its descrip
   let calls = 0;
   const env = { PAYPAL_ENVIRONMENT: 'sandbox', PAYPAL_CLIENT_ID: 'fixture', PAYPAL_CLIENT_SECRET: 'private-fixture-secret', PAYPAL_WEBHOOK_ID: 'fixture', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_VERIFIED_EMAIL: 'moelayyan2026@gmail.com', PAYPAL_ENABLED: 'on' };
   try {
-    globalThis.fetch = async url => {
-      calls++; assert.equal(url, 'https://api-m.sandbox.paypal.com/v1/oauth2/token');
-      return Response.json({ error: 'invalid_client', error_description: 'private-fixture-description' }, { status: 401 });
-    };
-    await assert.rejects(() => paypalApi(env, 'POST', '/v2/checkout/orders', {}), error => {
-      assert.equal(error.code, 'paypal_oauth_invalid_client');
-      assert.equal(error.status, 503);
-      assert.doesNotMatch(JSON.stringify(error), /private-fixture/); return true;
-    });
-    assert.equal(calls, 1, 'No provider order request after rejected authentication');
+    for (const [reply, expected] of [
+      [Response.json({ error: 'invalid_client', error_description: 'private-fixture-description' }, { status: 401 }), 'paypal_oauth_invalid_client'],
+      [new Response('<html>private-fixture-description</html>', { status: 403, headers: { 'content-type': 'text/html' } }), 'paypal_oauth_forbidden'],
+      [Response.json({ token_type: 'Bearer' }), 'paypal_oauth_token_missing'],
+    ]) {
+      const before = calls;
+      globalThis.fetch = async (url, init) => {
+        calls++; assert.equal(url, 'https://api-m.sandbox.paypal.com/v1/oauth2/token');
+        assert.equal(init.headers.accept, 'application/json'); return reply;
+      };
+      await assert.rejects(() => paypalApi(env, 'POST', '/v2/checkout/orders', {}), error => {
+        assert.equal(error.code, expected); assert.equal(error.status, 503);
+        assert.doesNotMatch(JSON.stringify(error), /private-fixture/); return true;
+      });
+      assert.equal(calls, before + 1, 'No provider order request after rejected authentication');
+    }
   } finally { globalThis.fetch = original; }
 });
 
