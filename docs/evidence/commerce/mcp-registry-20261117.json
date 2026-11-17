@@ -1,0 +1,34 @@
+{
+  "observed_at": "2026-11-17T07:46:10.926Z",
+  "url": "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.moelayyan90%2Fxguard/versions/6.0.0",
+  "status": 200,
+  "response": {
+    "server": {
+      "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+      "name": "io.github.moelayyan90/xguard",
+      "description": "Read current software facts with primary-source evidence and verification timestamps.",
+      "title": "XGuard Live",
+      "repository": {
+        "url": "https://github.com/moelayyan90/XGuard",
+        "source": "github"
+      },
+      "version": "6.0.0",
+      "websiteUrl": "https://xguardgate.com/install",
+      "remotes": [
+        {
+          "type": "streamable-http",
+          "url": "https://xguardgate.com/mcp"
+        }
+      ]
+    },
+    "_meta": {
+      "io.modelcontextprotocol.registry/official": {
+        "status": "active",
+        "statusChangedAt": "2026-11-04T09:11:21.625607Z",
+        "publishedAt": "2026-11-04T09:11:21.625607Z",
+        "updatedAt": "2026-11-04T09:11:21.625607Z",
+        "isLatest": true
+      }
+    }
+  }
+}

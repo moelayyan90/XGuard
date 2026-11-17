@@ -3,6 +3,7 @@ import { actionCatalog, normalizeAction, actionPreflight, actionFingerprint } fr
 import { actionCall, createPaypalOrder, capturePaypalOrder, reconcilePaypalOrder } from './state.js';
 import { paypalConfig, verifyPaypalWebhook } from './paypal.js';
 import { actionPage, ACTION_CSS, ACTION_BROWSER } from './site.js';
+import { productModule, commerceSaleEnabled } from '../products/registry.js';
 
 const allowedOrigins = ['https://xguardgate.com', 'https://api.xguardgate.com'];
 const base = '/v1/checkout';
@@ -57,13 +58,35 @@ export async function actionFetch(request, env) {
     if (path === base + '/webhooks/paypal' && request.method === 'POST') {
       const event = await boundedJson(request, 65536);
       await verifyPaypalWebhook(env, request, event);
-      const reference = event.resource?.disputed_transactions?.[0]?.seller_transaction_id || event.resource?.supplementary_data?.related_ids?.order_id || event.resource?.supplementary_data?.related_ids?.capture_id || event.resource?.id;
+      const related = event.resource?.supplementary_data?.related_ids;
+      // Refunds may identify their capture through the official "up" link.
+      // Parse its reference only; never fetch an event-supplied URL.
+      let parentCapture;
+      for (const link of Array.isArray(event.resource?.links) ? event.resource.links : []) if (link.rel === 'up' && typeof link.href === 'string') {
+        try { const u = new URL(link.href); if (['api.paypal.com', 'api-m.paypal.com', 'api.sandbox.paypal.com', 'api-m.sandbox.paypal.com'].includes(u.hostname) && u.protocol === 'https:' && !u.username && !u.password && !u.port) parentCapture = /^\/v2\/payments\/captures\/([A-Z0-9]{8,32})$/.exec(u.pathname)?.[1]; } catch {}
+      }
+      const reference = event.resource?.disputed_transactions?.[0]?.seller_transaction_id || related?.order_id || related?.capture_id || parentCapture || event.resource?.id;
       if (!/^[A-Z0-9]{8,32}$/.test(reference || '')) return response(request, env, { accepted: true });
       const found = await actionCall(env, 'references', 'lookup', { reference });
       if (!found.id) return response(request, env, { accepted: true });
       const { record: q } = await actionCall(env, found.id, 'inspect');
+      if (event.resource?.payee?.merchant_id && event.resource.payee.merchant_id !== config.merchant_id) throw fail('paypal_webhook_payee_mismatch', 409);
+      if (related?.order_id && related.order_id !== q.paypal_order_id) throw fail('paypal_webhook_order_mismatch', 409);
       if (['PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.CAPTURE.REVERSED', 'CUSTOMER.DISPUTE.CREATED'].includes(event.event_type)) {
-        await actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAID', 'EXECUTING', 'RUNNING', 'DELIVERY_PENDING', 'SUCCEEDED', 'REFUND_REQUIRED', 'REVIEW_REQUIRED', 'PAYMENT_UNKNOWN'], patch: { status: event.event_type === 'PAYMENT.CAPTURE.REFUNDED' ? 'REFUNDED' : 'REVERSED', error: 'provider_refund_reversal_or_dispute' } });
+        const refund = event.event_type === 'PAYMENT.CAPTURE.REFUNDED';
+        let status = refund ? 'REFUNDED' : 'REVERSED', error = 'provider_refund_reversal_or_dispute';
+        if (refund) {
+          const amount = event.resource?.amount;
+          if (amount?.currency_code !== 'USD' || !/^(0|[1-9]\d{0,10})\.\d{2}$/.test(amount.value || '')) throw fail('paypal_refund_amount_invalid', 409);
+          const cents = Number(amount.value.replace('.', ''));
+          if (cents < 1 || cents > q.amount_cents) throw fail('paypal_refund_amount_invalid', 409);
+          if (cents < q.amount_cents) { status = 'REVIEW_REQUIRED'; error = 'provider_partial_refund_requires_reconciliation'; }
+        }
+        await actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAID', 'EXECUTING', 'RUNNING', 'DELIVERY_PENDING', 'SUCCEEDED', 'REFUND_REQUIRED', 'REVIEW_REQUIRED', 'PAYMENT_UNKNOWN'], patch: { status, error } });
+      } else if (['PAYMENT.CAPTURE.DENIED', 'CHECKOUT.PAYMENT-APPROVAL.REVERSED'].includes(event.event_type)) {
+        await actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAID', 'EXECUTING', 'RUNNING', 'DELIVERY_PENDING', 'SUCCEEDED', 'PAYMENT_UNKNOWN', 'REVIEW_REQUIRED'], patch: { status: 'REVIEW_REQUIRED', error: 'provider_payment_denied_or_approval_reversed' } });
+      } else if (event.event_type === 'PAYMENT.CAPTURE.PENDING') {
+        await actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING'], patch: { status: 'PAYMENT_UNKNOWN', error: 'capture_pending_final_confirmation' } });
       } else if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') await reconcilePaypalOrder(env, q);
       return response(request, env, { accepted: true });
     }
@@ -88,6 +111,7 @@ export async function actionFetch(request, env) {
         return response(request, env, await actionCall(env, id, 'get', { token_hash }));
       } catch (e) { if (e.code !== 'order_not_found') throw e; }
       if (!config.ready) throw fail('card_payments_not_activated', 503, { blockers: config.blockers });
+      if (productModule(product.id) && !commerceSaleEnabled(env) && env.PAYPAL_ENVIRONMENT !== 'sandbox') throw fail('commerce_writer_activation_pending', 503);
       await actionPreflight(env, product.id, input);
       const actor = await digest(new Date().toISOString().slice(0, 10) + ':' + (request.headers.get('cf-connecting-ip') || 'unattributed'));
       await actionCall(env, 'admission', 'admit', { actor });

@@ -7,6 +7,9 @@ import { factExample, isPublicFactId, readPublicFact } from './public-fact.ts';
 import { securityHeaders } from './security.ts';
 import { ORIGIN, VERSION, type Env } from './types.ts';
 import { OPERATIONS } from '../network/catalog.ts';
+import { PRODUCT_SERVICES } from '../products/registry.js';
+
+const commercialA2aSkills = PRODUCT_SERVICES.map(d => ({ id: 'xguard.commerce.' + d.route.replaceAll('-', '_'), name: d.name, description: d.description + ' Price: 0.100000 USDC; check activation and payment readiness first.', tags: ['paid', 'bounded-commerce'], examples: [JSON.stringify({ action: 'xguard.commerce.' + d.route.replaceAll('-', '_'), input: d.example, idempotency_key: 'stable-client-key' })], inputModes: ['application/json'], outputModes: ['application/json'], securityRequirements: [] }));
 import { livePaidFetch } from '../live-paid-entry.js';
 
 export const A2A_CARD_PATH = '/.well-known/agent-card.json';
@@ -31,7 +34,7 @@ const card: AgentCard = {
   capabilities: { streaming: false, pushNotifications: false, extendedAgentCard: false, extensions: [] },
   securitySchemes: {}, securityRequirements: [], signatures: [],
   defaultInputModes: inputModes, defaultOutputModes: outputModes,
-  skills: [...actionSkills, ...computeSkills, { id: 'xguard.authority', name: 'Signed agent financial authority', description: 'Submit a signed delegation sandbox envelope over the same HTTP authority contract; no live payment or custody is implied.', tags: ['delegation', 'budgets', 'sandbox'], examples: [JSON.stringify({ action: 'xguard.authority', envelope: {} })], inputModes: ['application/json'], outputModes: ['application/json'], securityRequirements: [] }, {
+  skills: [...actionSkills, ...commercialA2aSkills, ...computeSkills, { id: 'xguard.authority', name: 'Signed agent financial authority', description: 'Submit a signed delegation sandbox envelope over the same HTTP authority contract; no live payment or custody is implied.', tags: ['delegation', 'budgets', 'sandbox'], examples: [JSON.stringify({ action: 'xguard.authority', envelope: {} })], inputModes: ['application/json'], outputModes: ['application/json'], securityRequirements: [] }, {
     id: discoveryAction, name: 'Discover XGuard Live',
     description: 'List the supported A2A actions and the current public XGuard links.',
     tags: ['discovery', 'a2a'], examples: ['Hello', JSON.stringify({ action: discoveryAction })],
@@ -143,7 +146,7 @@ export async function liveA2aFetch(request: Request, env: Env, readPublishedFact
     if (!response.ok) return error(rpcId, -32000, 'Signed authority command rejected', response.status, data);
     return json({ jsonrpc: '2.0', id: rpcId, result: { message: { messageId: crypto.randomUUID(), role: 'ROLE_AGENT', parts: [{ data }] } } });
   }
-  const paid = OPERATIONS.find(d => action.action === 'xguard.network.' + d.route.replaceAll('-', '_'));
+  const paid = OPERATIONS.find(d => action.action === 'xguard.network.' + d.route.replaceAll('-', '_')) || PRODUCT_SERVICES.find(d => action.action === 'xguard.commerce.' + d.route.replaceAll('-', '_'));
   if (actionToolNames.has(String(action.action))) {
     if (!record(action.input)) return error(rpcId, -32602, 'Expected Action Cloud input');
     const response = await actionTool(request, env, String(action.action), action.input);

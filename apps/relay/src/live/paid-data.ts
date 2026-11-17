@@ -7,6 +7,7 @@ import { normalizeOutcome } from '../outcome-catalog.js';
 import { executeOutcome } from '../outcome-engine.js';
 import { OPERATIONS, operation } from '../network/catalog.ts';
 import { normalizeNetwork, networkSchema, executeNetwork } from '../network/engine.ts';
+import { PRODUCT_SERVICES, productModule, productSchema, normalizeProduct, executeProduct } from '../products/registry.js';
 
 export const PAID_BASE = 'https://api.xguardgate.com/api/paid/v1';
 // Deploy the compatible reader first. Activation adds this service to LIVE_PAID.
@@ -17,6 +18,7 @@ export const LIVE_PAID = [
   { id: 'live-compare', route: 'compare', name: 'Observed-value comparison', amount: '20000', description: 'Compare the last stored observation at or before each of two times. Reports observation times and evidence; unavailable historical values remain UNKNOWN.', example: { fact: 'npm/react/latest-version', from: '2026-10-01T00:00:00Z', to: '2026-10-19T00:00:00Z', max_amount_atomic: '20000' } },
   EXTRACT_SERVICE,
   ...OPERATIONS,
+  ...PRODUCT_SERVICES,
 ] as const;
 export function livePaidDefinition(id: string): any { return LIVE_PAID.find(d => d.id === id) || (id === EXTRACT_SERVICE.id ? EXTRACT_SERVICE : id === FEE_SERVICE.id ? FEE_SERVICE : null); }
 export function canonicalFact(value: unknown): string | null {
@@ -31,6 +33,7 @@ function timestamp(value: unknown): string | null {
   return normalized.slice(0, 19) === value.slice(0, 19) ? normalized : null;
 }
 export function normalizeLivePaid(route: string, raw: any): Row {
+  if (productModule(route)) return normalizeProduct(route, raw);
   if (route === FEE_SERVICE.route) return normalizeAuthorityFee(raw);
   if (operation(route)) return normalizeNetwork(route, raw);
   const def = LIVE_PAID.find(d => d.route === route) || (route === 'extract' ? EXTRACT_SERVICE : null);
@@ -61,6 +64,7 @@ export function normalizeLivePaid(route: string, raw: any): Row {
   return { ...base, fact, from, to, ...(route === 'history' ? { limit: raw.limit ?? 300, cursor } : {}) };
 }
 export function paidInputSchema(route: string): Row {
+  if (productModule(route)) return productSchema(route)!;
   if (route === FEE_SERVICE.route) return authorityFeeSchema;
   if (operation(route)) return networkSchema(route);
   if (route === 'extract') return { type: 'object', additionalProperties: false, required: ['urls', 'max_amount_atomic'], properties: { urls: { type: 'array', minItems: 1, maxItems: 3, uniqueItems: true, items: { type: 'string', format: 'uri', pattern: '^https://', maxLength: 2048 } }, max_amount_atomic: { type: 'string', pattern: '^\\d{1,12}$', description: 'Explicit spending cap in 6-decimal USDC atomic units.' } } };
@@ -72,6 +76,7 @@ export function paidInputSchema(route: string): Row {
 }
 export const paidResultSchema = { type: 'object', required: ['ok', 'result', 'receipt', 'settlement', 'proofrail'], properties: { ok: { const: true }, result: { type: 'object' }, receipt: { type: 'object' }, settlement: { type: 'object' }, proofrail: { type: 'object' } } };
 export async function livePaidCapacity(env: Env, input: Row): Promise<void> {
+  if (productModule(input.capability)) return; // Pure transformations never fetch a buyer's source or require fact storage.
   if (input.capability === FEE_SERVICE.id) { await authorityInvoicePreflight(env, input); return; }
   if (operation(input.capability)) { if (!env.PAID_GATEWAY) throw Object.assign(new Error('durable_storage_unavailable'), { code: 'durable_storage_unavailable', status: 503 }); return; }
   if (input.capability === EXTRACT_SERVICE.id) return; // Never access a buyer's source before settlement.
@@ -80,6 +85,7 @@ export async function livePaidCapacity(env: Env, input: Row): Promise<void> {
   if (!fact) throw Object.assign(new Error('fact_not_published'), { code: 'fact_not_published', status: 404 });
 }
 export async function executeLivePaid(input: Row, env: Env, fetchSource?: any, context: Row = {}): Promise<any> {
+  if (productModule(input.capability)) return executeProduct(input);
   if (input.capability === FEE_SERVICE.id) return completeAuthorityInvoice(env, input, context);
   if (operation(input.capability)) return executeNetwork(input, env, fetchSource, context);
   if (input.capability === EXTRACT_SERVICE.id) {

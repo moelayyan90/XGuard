@@ -1,0 +1,356 @@
+{
+  "observed_at": "2026-11-17T07:25:55.027Z",
+  "source_sha": "0f72c33c6bea0e138e24f48d5dc6397fe66e7fe4",
+  "rollback_branch": "restore/pre-commercial-20261117-0f72c33",
+  "probes": [
+    {
+      "path": "/status",
+      "status": 200,
+      "version_id": "80a0005e-457b-4bb2-9087-46d507b0f6c4",
+      "tag": "git-0f72c33c6bea",
+      "body": "<!doctype html><html lang=\"en\" dir=\"ltr\"><head>\n    <meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n    <title>System status | XGuard</title><meta name=\"description\" content=\"Current facts, primary-source evidence and immutable change history.\">\n    <meta name=\"robots\" content=\"noindex,follow\">\n    <link rel=\"canonical\" href=\"https://xguardgate.com/status\"><link rel=\"stylesheet\" href=\"/assets/live-v8.css\">\n    <link rel=\"alternate\" type=\"application/atom+xml\" title=\"XGuard source changes\" href=\"/changes.atom\">\n    <meta name=\"color-scheme\" content=\"dark\"><meta name=\"theme-color\" content=\"#090e17\">\n    <script type=\"application/ld+json\" nonce=\"8554a1e67e68446480eb80c2fc8ab273\">{\"@context\":\"https://schema.org\",\"@type\":\"WebPage\",\"name\":\"System status\",\"url\":\"https://xguardgate.com/status\"}</script>\n  </head><body><a class=\"skip-link\" href=\"#main-content\">Skip to content</a><header class=\"site-header\"><nav class=\"site-nav\" aria-label=\"Main navigation\"><a class=\"brand\" href=\"/\" aria-label=\"XGuard home\"><span class=\"brand-symbol\" aria-hidden=\"true\">x</span><span class=\"brand-word\">XGuard</span></a><div class=\"links\"><a href=\"/marketplace\">Marketplace</a><a href=\"/action/pricing\">Pricing</a><a href=\"/compute\">Compute</a><a href=\"/network\">Execute</a><a href=\"/action/docs\">Developers</a></div><a class=\"nav-cta\" href=\"/install\">Connect agent <span aria-hidden=\"true\">↗</span></a></nav></header><main id=\"main-content\" class=\"wrap\"><p class=\"eyebrow\">XGuard Live</p><h1>System status</h1><div class=\"prose\"><p>Control storage is reachable. The 32-shard catalog was checked at 2026-11-17T06:57:49.487Z.</p><p>Collector: scheduled. Last scheduler heartbeat: 2026-11-17T07:21:00.167Z.</p><pre>{\n  &quot;facts&quot;: 9902,\n  &quot;verified&quot;: 9177,\n  &quot;stale&quot;: 725,\n  &quot;entities&quot;: 2758,\n  &quot;sources&quot;: 2822,\n  &quot;changes_today&quot;: 88,\n  &quot;fetch_errors&quot;: 66,\n  &quot;pending&quot;: 64,\n  &quot;due&quot;: 850,\n  &quot;fetches_24h&quot;: 2355,\n  &quot;last_update&quot;: &quot;2026-11-17T06:57:38.924Z&quot;,\n  &quot;shards&quot;: 32\n}</pre></div><p class=\"sub\">Index and totals as of <time datetime=\"2026-11-17T06:57:49.487Z\">2026-11-17 06:57:49 UTC</time>; aggregate refresh timing adapts to storage capacity. Open a fact for its latest verification.</p></main><footer class=\"site-footer\"><div class=\"site-footer-inner\"><section><a class=\"brand\" href=\"/\" aria-label=\"XGuard home\"><span class=\"brand-symbol\" aria-hidden=\"true\">x</span><span class=\"brand-word\">XGuard</span></a><p>XGuard Action Cloud.<br>Defined work. Verifiable results.</p><span class=\"footer-protocol\">MCP / A2A / x402 / HTTP</span></section><section><h2>Platform</h2><a href=\"/marketplace\">Action marketplace</a><a href=\"/dashboard\">My tasks</a><a href=\"/network\">Execution workspace</a><a href=\"/topics\">Source index</a><a href=\"/authority\">Financial authority sandbox</a><a href=\"/api/gateway/v1/checkout\">Verification receipts</a></section><section><h2>Build with XGuard</h2><a href=\"/network/docs\">Documentation</a><a href=\"/install\">Connect an agent</a><a href=\"/openapi.json\">OpenAPI</a><a href=\"/v1/payments/coverage\">Payment coverage</a></section><section><h2>Company</h2><a href=\"/identity\">Operator & contact</a><a href=\"/status\">System status</a><a href=\"/pricing\">Pricing</a><a href=\"/terms\">Terms</a><a href=\"/privacy\">Privacy</a><a href=\"/refund-policy\">Refund policy</a></section></div><div class=\"footer-bottom\"><span>© 2026 XGuard</span><span>Pay per operation. Know the cost before you run.</span></div></footer></body></html>"
+    },
+    {
+      "path": "/v1/checkout/config",
+      "status": 200,
+      "version_id": "80a0005e-457b-4bb2-9087-46d507b0f6c4",
+      "tag": "git-0f72c33c6bea",
+      "body": {
+        "ready": false,
+        "blockers": [
+          "paypal_client_id_missing",
+          "paypal_client_secret_missing",
+          "paypal_merchant_id_missing",
+          "paypal_webhook_id_missing",
+          "receiver_ownership_unverified",
+          "merchant_activation_pending",
+          "card_writer_activation_pending",
+          "payment_environment_unverified"
+        ],
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/api/paid/v1/readiness",
+      "status": 200,
+      "version_id": null,
+      "tag": "git-0f72c33c6bea",
+      "body": {
+        "ready": true,
+        "checked_at": "2026-11-17T07:25:54.792Z",
+        "checks": {
+          "enabled": true,
+          "payment_configuration": true,
+          "source_data": true,
+          "proof_authority": true,
+          "financial_storage": true,
+          "facilitator": true
+        },
+        "errors": [],
+        "network": "eip155:8453",
+        "currency": "USDC",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "receiving_address": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
+        "receiving_address_verification": "Configured receiving address; this check does not prove owner control or a real purchase.",
+        "cost_budget": {
+          "basis": "configured_cost_budgets_not_measured_profit",
+          "configured": true,
+          "available": true,
+          "rejection_reason": null,
+          "customer_price_usd_micros": 10000,
+          "provider_cost_usd_micros": 0,
+          "provider_cost_basis": "built_in_public_https_fetch_without_a_paid_provider",
+          "infrastructure_cost_budget_usd_micros": 1500,
+          "payment_cost_budget_usd_micros": 0,
+          "minimum_contribution_bps": 2000,
+          "minimum_price_usd_micros": 1875,
+          "estimated_contribution_usd_micros": 8500,
+          "estimated_contribution_margin_bps": 8500,
+          "actual_infrastructure_cost_usd_micros": null,
+          "actual_payment_cost_usd_micros": null,
+          "gross_profit_usd_micros": null,
+          "net_profit_usd_micros": null
+        },
+        "real_sale": "Not established by readiness. Consult authenticated revenue records.",
+        "free_service_dependency": false
+      }
+    },
+    {
+      "path": "/a2a/health",
+      "status": 200,
+      "version_id": "80a0005e-457b-4bb2-9087-46d507b0f6c4",
+      "tag": "git-0f72c33c6bea",
+      "body": {
+        "service": "XGuard Live",
+        "version": "6.0.0",
+        "storage": "reachable",
+        "owner_access": "configured",
+        "collector": "scheduled",
+        "last_cron": "2026-11-17T07:21:00.167Z",
+        "catalog_as_of": "2026-11-17T06:57:49.487Z",
+        "aggregate_interval_seconds": 4561,
+        "catalog_capacity": {
+          "policy": "measured-catalog-read-reserve-v1",
+          "component": "public-catalog",
+          "allocated_rows_per_day": 1000000,
+          "measured_rows_per_refresh": 42231,
+          "minimum_refresh_interval_seconds": 900,
+          "refresh_interval_seconds": 4561,
+          "projected_rows_per_day": 800000,
+          "projected_rows_at_minimum_interval": 4054176,
+          "pacing_active": true,
+          "scope": "Projection for catalog SQL reads only. Not measured account-wide usage, a hard quota reservation, an invoice, or a guarantee of daily availability."
+        },
+        "collection_min_interval_seconds": 600,
+        "facts": 9902,
+        "verified": 9177,
+        "stale": 725,
+        "entities": 2758,
+        "sources": 2822,
+        "changes_today": 88,
+        "fetch_errors": 66,
+        "pending": 64,
+        "due": 850,
+        "fetches_24h": 2355,
+        "last_update": "2026-11-17T06:57:38.924Z",
+        "shards": 32,
+        "source_collection": {
+          "scope": "Local source-write allocations, not account-wide remaining quota. Deferred sources age normally; public reads and payment state are independent.",
+          "shards": [
+            {
+              "day": "2026-11-17",
+              "rows_written": 721,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 772,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 817,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 5,
+              "paused": true,
+              "allocation": 1596,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 670,
+              "paused": false,
+              "allocation": 1572,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 769,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 1424,
+              "paused": true,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 672,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 748,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 767,
+              "paused": false,
+              "allocation": 1596,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 755,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 799,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 851,
+              "paused": false,
+              "allocation": 1585,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 651,
+              "paused": false,
+              "allocation": 1584,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 866,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 664,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 747,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 771,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 753,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 668,
+              "paused": false,
+              "allocation": 1596,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 731,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 816,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 635,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 758,
+              "paused": false,
+              "allocation": 1596,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 716,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 729,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 682,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 660,
+              "paused": false,
+              "allocation": 1597,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 719,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 773,
+              "paused": false,
+              "allocation": 1599,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 646,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            },
+            {
+              "day": "2026-11-17",
+              "rows_written": 586,
+              "paused": false,
+              "allocation": 1598,
+              "limit": 1600
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/witness/verifier-key",
+      "status": 200,
+      "version_id": "80a0005e-457b-4bb2-9087-46d507b0f6c4",
+      "tag": "git-0f72c33c6bea",
+      "body": "xguardgate.com/witness+4cbdcb41+BGR+T6u+czYHsxrFwXaOkfMFlzoAFNeHmYmSbwBlqY2Q\n"
+    }
+  ]
+}

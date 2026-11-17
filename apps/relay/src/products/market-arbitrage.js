@@ -1,0 +1,11 @@
+import { definition, object, list, reference, number, currency, unique, subtotal, safeNumber, fail } from './common.js';
+
+const leg = object({ id: reference, buy_cents: number(), sell_cents: number(), quantity: { ...number(1000000), minimum: 1 }, payment_fees_cents: number(), provider_fees_cents: number(), other_costs_cents: number(), resale_authorized: { type: 'boolean' }, costs_complete: { type: 'boolean' } });
+export const marketArbitrage = definition('market-spread', 'Commercial resale margin calculation', 'Calculate candidate resale spreads in integer USD cents from your offers, costs and resale-rights attestations. Reject negative or incomplete margins. Does not trade, reserve capacity or spend capital.', object({ currency, minimum_margin_bps: number(10000), candidates: list(leg, 30) }), { currency: 'USD', minimum_margin_bps: 2000, candidates: [{ id: 'compute-quote-1', buy_cents: 700, sell_cents: 1000, quantity: 10, payment_fees_cents: 100, provider_fees_cents: 0, other_costs_cents: 100, resale_authorized: true, costs_complete: true }] }, input => ({ currency: input.currency, candidates: input.candidates.map(c => {
+  const revenue = BigInt(c.sell_cents) * BigInt(c.quantity), cost = BigInt(c.buy_cents) * BigInt(c.quantity) + BigInt(c.payment_fees_cents) + BigInt(c.provider_fees_cents) + BigInt(c.other_costs_cents), profit = revenue - cost, reasons = [];
+  if (!c.resale_authorized) reasons.push('resale_rights_missing');
+  if (!c.costs_complete) reasons.push('costs_incomplete');
+  if (profit < 0n) reasons.push('negative_margin');
+  if (revenue === 0n || profit * 10000n < revenue * BigInt(input.minimum_margin_bps)) reasons.push('margin_below_target');
+  return { id: c.id, estimated_revenue_cents: safeNumber(revenue), estimated_cost_cents: safeNumber(cost), estimated_profit_cents: Number(profit), eligible: reasons.length === 0, reasons, realized_profit_cents: null, rights_independently_verified: false };
+}), executed_orders: 0 }), input => { unique(input.candidates); for (const c of input.candidates) { safeNumber(BigInt(c.sell_cents) * BigInt(c.quantity)); safeNumber(BigInt(c.buy_cents) * BigInt(c.quantity) + BigInt(c.payment_fees_cents) + BigInt(c.provider_fees_cents) + BigInt(c.other_costs_cents)); } });

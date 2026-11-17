@@ -1,14 +1,14 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard",
-  "title": "XGuard Action Cloud",
+  "title": "XGuard",
   "description": "Bounded digital tasks, unified human checkout, private result recovery and signed receipts. Check payment and provider readiness.",
   "repository": {
     "url": "https://github.com/moelayyan90/XGuard",
     "source": "github"
   },
   "websiteUrl": "https://xguardgate.com/install",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "remotes": [
     {
       "type": "streamable-http",

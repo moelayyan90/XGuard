@@ -11,6 +11,8 @@ import { hash } from '../src/live/util.ts';
 import { parseHTML } from 'linkedom';
 import { verifyLiveDelivery } from '../../../sdk/live-paid.js';
 import { livePaidLedgerRoute } from '../src/live-paid-ledger.js';
+import { PRODUCT_SERVICES } from '../src/products/registry.js';
+import deployment from '../deployment-state.json' with { type: 'json' };
 import SwaggerParser from '@apidevtools/swagger-parser';
 
 test('OpenAPI discovery describes active paid routes using the catalog schemas', async () => {
@@ -37,6 +39,29 @@ test('OpenAPI discovery describes active paid routes using the catalog schemas',
     }
     assert.equal((await get('/v1/pricing/quote')).status, 410);
   } finally { await h.drain(); h.close(); }
+});
+
+test('a commercial redaction task requires exact x402 settlement and recovers the signed result without another charge', async t => {
+  const previous = deployment.payment_state_write_version; deployment.payment_state_write_version = 6; t.after(() => { deployment.payment_state_write_version = previous; });
+  const h = await fixture(t);
+  const task = await h.challenge('redact', 'commerce-redaction-payment-test');
+  assert.equal(h.counts.settle, 0);
+  const response = await task.send(), body = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(h.counts.settle, 1);
+  assert.equal(body.result.service, 'commerce-redact');
+  assert.equal(body.result.text.includes('alice@example.com'), false);
+  const replay = await task.send(); assert.equal(replay.status, 200); assert.equal(h.counts.settle, 1);
+});
+
+test('new commerce settlements use the existing deduplicated per-service revenue ledger', async t => {
+  const previous = deployment.payment_state_write_version; deployment.payment_state_write_version = 6; t.after(() => { deployment.payment_state_write_version = previous; });
+  const h = await fixture(t), q = await h.challenge('redact', 'commercial-accounting-001');
+  assert.equal((await q.send({ 'x-xguard-traffic-class': 'external' })).status, 200);
+  assert.equal((await q.send({ 'x-xguard-traffic-class': 'external' })).status, 200);
+  const summary = await livePaidState(h.env, '/live/summary');
+  assert.equal(summary.commerce.services['commerce-redact'].settled_cash_usd_micros, 100000);
+  assert.equal(summary.confirmed_cash_usdc_atomic, 100000); assert.equal(summary.signed_results_delivered, 1); assert.equal(summary.net_profit_usd, null);
 });
 
 class Storage {

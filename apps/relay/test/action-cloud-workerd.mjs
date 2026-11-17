@@ -5,6 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions, Response as MFResponse } from 'miniflare';
+import { PRODUCT_SERVICES } from '../src/products/registry.js';
 
 const root = fileURLToPath(new URL('../src/live-entry.js', import.meta.url));
 const paid = fileURLToPath(new URL('../src/paid-agent-entry.js', import.meta.url));
@@ -89,11 +90,33 @@ try {
   await dispatch('/v1/checkout/orders/' + quota.id + '/capture', { body: {} });
   const captured = count.capture; await alarm(quota.id); await alarm(quota.id); assert.equal(count.capture, captured);
   assert.equal((await (await dispatch('/v1/checkout/orders/' + quota.id)).json()).order.status, 'SUCCEEDED');
+  // Exercise every new service through real SQLite order/capture/delivery state.
+  // Different fixture actors avoid conflating per-actor admission with execution.
+  for (const [index, service] of PRODUCT_SERVICES.entries()) {
+    const created = await dispatch('/v1/checkout/orders', { body: { service: service.id, input: Object.fromEntries(Object.entries(service.example).filter(([key]) => key !== 'max_amount_atomic')) }, key: 'commercial-fixture-order-' + index, headers: { 'cf-connecting-ip': '198.51.100.' + (20 + index) } });
+    assert.equal(created.status, 200, await created.clone().text());
+    const task = (await created.json()).order;
+    await dispatch('/v1/checkout/orders/' + task.id + '/capture', { body: {} }); await alarm(task.id);
+    const deliveredTask = await (await dispatch('/v1/checkout/orders/' + task.id)).json();
+    assert.equal(deliveredTask.order.status, 'SUCCEEDED', service.id + ': ' + JSON.stringify(deliveredTask.order));
+    assert.equal(deliveredTask.result.data.service, service.id); assert.equal(deliveredTask.order.receipt.payload.environment, 'sandbox');
+    assert.equal(deliveredTask.order.receipt.payload.result_sha256.length, 64);
+  }
   captureMode = 'wrong-amount'; const mismatch = await create('mismatched-capture-amount-order');
   await dispatch('/v1/checkout/orders/' + mismatch.id + '/capture', { body: {} }); await alarm(mismatch.id);
   assert.notEqual((await (await dispatch('/v1/checkout/orders/' + mismatch.id)).json()).order.status, 'SUCCEEDED');
   const unsigned = await dispatch('/v1/checkout/webhooks/paypal', { body: { event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } } }); assert.equal(unsigned.status, 401);
   const bad = await dispatch('/v1/checkout/webhooks/paypal', { body: { event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } }, headers: { 'paypal-auth-algo': 'SHA256withRSA', 'paypal-cert-url': 'https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-fixture', 'paypal-transmission-id': 'fixture', 'paypal-transmission-time': new Date().toISOString(), 'paypal-transmission-sig': 'bad' } }); assert.equal(bad.status, 401);
+  const webhookHeaders = { 'paypal-auth-algo': 'SHA256withRSA', 'paypal-cert-url': 'https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-fixture', 'paypal-transmission-id': 'fixture', 'paypal-transmission-time': new Date().toISOString(), 'paypal-transmission-sig': 'synthetic-valid' };
+  const webhook = body => dispatch('/v1/checkout/webhooks/paypal', { body, headers: webhookHeaders });
+  const partial = { event_type: 'PAYMENT.CAPTURE.REFUNDED', resource: { id: 'TESTREFUND001', status: 'COMPLETED', amount: { currency_code: 'USD', value: '1.00' }, links: [{ rel: 'up', href: 'https://api-m.sandbox.paypal.com/v2/payments/captures/' + delivered.order.receipt.payload.paypal_capture_id }] } };
+  assert.equal((await webhook(partial)).status, 200);
+  const held = await (await dispatch('/v1/checkout/orders/' + q.id)).json(); assert.equal(held.order.status, 'REVIEW_REQUIRED'); assert.equal(held.result, undefined);
+  await webhook({ event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } });
+  assert.equal((await (await dispatch('/v1/checkout/orders/' + q.id)).json()).order.status, 'REVIEW_REQUIRED', 'Delayed completion cannot release a partial refund hold');
+  partial.resource.amount.value = '2.00'; await webhook(partial); await webhook(partial);
+  assert.equal((await (await dispatch('/v1/checkout/orders/' + q.id)).json()).order.status, 'REFUNDED');
+  await webhook({ event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } }); assert.equal((await (await dispatch('/v1/checkout/orders/' + q.id)).json()).order.status, 'REFUNDED');
   for (let i = 0; i < 12; i++) await dispatch('/v1/checkout/orders', { body: input, key: 'daily-cap-fixture-order-' + i });
   assert.equal((await dispatch('/v1/checkout/orders', { body: input, key: 'daily-cap-final-fixture-order' })).status, 429);
   assert.equal((await dispatch('/openapi.json')).status, 200);

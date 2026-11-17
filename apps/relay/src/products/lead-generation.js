@@ -1,0 +1,11 @@
+import { definition, object, list, text, reference, number, rights, unique, iso } from './common.js';
+
+const schema = object({ rights, minimum_budget_cents: number(), required_tags: { type: 'array', minItems: 0, maxItems: 10, items: reference }, leads: list(object({ id: reference, company_domain: { ...text(253), pattern: '^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$' }, budget_cents: number(), requested_at: text(30), consent_to_route: { type: 'boolean' }, intent_evidence_reference: text(1500), tags: { type: 'array', minItems: 0, maxItems: 20, items: reference } }), 30) });
+export const leadGeneration = definition('lead-qualify', 'Permissioned B2B lead qualification', 'Score your owned or licensed company demand records against budget, routing consent and required tags. Preserves evidence references. Does not scrape contacts or verify that a buyer will purchase.', schema, { rights: 'owned_or_licensed', minimum_budget_cents: 10000, required_tags: ['gpu'], leads: [{ id: 'rfq-1', company_domain: 'example.com', budget_cents: 15000, requested_at: '2026-11-17T00:00:00Z', consent_to_route: true, intent_evidence_reference: 'customer-supplied-rfq-1', tags: ['gpu'] }] }, input => ({ leads: input.leads.map(lead => {
+  const reasons = [];
+  if (!lead.consent_to_route) reasons.push('routing_consent_missing');
+  if (lead.budget_cents < input.minimum_budget_cents) reasons.push('budget_below_threshold');
+  const matched = input.required_tags.filter(tag => lead.tags.includes(tag));
+  if (matched.length < input.required_tags.length) reasons.push('required_capability_missing');
+  return { id: lead.id, company_domain: lead.company_domain.toLowerCase(), qualified: reasons.length === 0, score: (lead.consent_to_route ? 40 : 0) + (lead.budget_cents >= input.minimum_budget_cents ? 30 : 0) + (input.required_tags.length ? Math.floor(30 * matched.length / input.required_tags.length) : 30), reasons, intent_evidence_reference: lead.intent_evidence_reference, requested_at: iso(lead.requested_at), buyer_intent_independently_verified: false };
+}), outbound_messages_sent: 0, personal_contacts_sold: 0 }), input => { unique(input.leads); input.leads.forEach(lead => iso(lead.requested_at)); });

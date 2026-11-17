@@ -94,6 +94,8 @@ export async function createPaypalOrder(env, id, token_hash) {
   }
 }
 export async function reconcilePaypalOrder(env, q) {
+  // A delayed completion event cannot release a refund, dispute or denial hold.
+  if (['REFUNDED', 'REVERSED'].includes(q.status) || q.error?.startsWith('provider_')) return { order: view(q) };
   const order = await paypalApi(env, 'GET', '/v2/checkout/orders/' + q.paypal_order_id);
   const capture = validatePaypalOrder(order, q, env, true);
   if (capture) {
