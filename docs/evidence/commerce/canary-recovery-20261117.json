@@ -1,0 +1,17 @@
+{
+  "workflow_url": "https://github.com/moelayyan90/XGuard/actions/runs/44043332422",
+  "source_sha": "88879b1f8313051304ff4b1c65823c177ba4057f",
+  "candidate_version": "a131d547-4656-4199-85ee-2b433b34134a",
+  "result": "not promoted; rollback confirmed",
+  "active_version_after_rollback": "80a0005e-457b-4bb2-9087-46d507b0f6c4",
+  "findings": [
+    "The paid smoke incorrectly treated the 13 commerce catalog entries as network routes and rejected the extension.",
+    "One overridden public entity read returned the previous version identifier; later retries reached the candidate. Root cause of the upstream cache/routing behavior is not independently established."
+  ],
+  "correction": [
+    "Validate exact commerce prices separately while preserving the exact nine-route legacy network contract.",
+    "Use a candidate-scoped URL query on public smoke reads to avoid prior zone/CDN responses, retaining strict candidate revision assertions."
+  ],
+  "payments_submitted": 0,
+  "new_commerce_sales_enabled": false
+}

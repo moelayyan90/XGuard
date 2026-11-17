@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 const base = 'https://api.xguardgate.com/api/paid/v1';
 const headers = { accept: 'application/json', 'user-agent': 'XGuardLiveSmoke/1.0', 'x-xguard-traffic-class': 'synthetic' };
+const commerceRoutes = ['burn-breaker', 'context-capsule', 'dom-to-api', 'prompt-firewall', 'redact', 'lead-qualify', 'governance-check', 'iam-check', 'audit-manifest', 'reconcile-invoices', 'compare-offers', 'market-spread', 'latency-plan'];
 export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag = process.env.EXPECTED_XGUARD_TAG, candidate = process.env.CANDIDATE_WORKER_ID, requireReady = false, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   if (candidate) {
     assert.match(candidate, /^[0-9a-f-]{36}$/);
@@ -22,14 +23,16 @@ export async function runPaidSmoke({ fetchImpl = globalThis.fetch, expectedTag =
   const catalog = await catalogResponse.json(); assert.equal(catalog.public_facts_remain_free, true);
   const legacyRoutes = ['batch', 'history', 'compare'];
   assert.deepEqual(catalog.services.filter(x => legacyRoutes.includes(x.route)).map(x => [x.route, x.price.amount_atomic]), [['batch', '10000'], ['history', '20000'], ['compare', '20000']]);
-  const network = catalog.services.filter(x => ![...legacyRoutes, 'extract'].includes(x.route));
+  const commerce = catalog.services.filter(x => commerceRoutes.includes(x.route));
+  if (commerce.length) assert.deepEqual(commerce.map(x => [x.route, x.price.amount_atomic]).sort(), commerceRoutes.map(route => [route, '100000']).sort(), 'The complete bounded commerce contract and exact prices must match');
+  const network = catalog.services.filter(x => ![...legacyRoutes, 'extract', ...commerceRoutes].includes(x.route));
   // Accept the exact previous catalog during rollback, or the complete new one.
   if (network.length) assert.deepEqual(network.map(x => [x.route, x.price.amount_atomic]).sort(), [
     ['route-resolve', '5000'], ['route-compare', '5000'], ['discover', '10000'],
     ['platform-discovery', '15000'], ['crawl', '15000'], ['fact', '10000'],
     ['task', '30000'], ['schedule', '30000'], ['verify', '10000'],
   ].sort());
-  assert.equal(catalog.services.length, 3 + Number(catalog.services.some(x => x.route === 'extract')) + network.length);
+  assert.equal(catalog.services.length, 3 + Number(catalog.services.some(x => x.route === 'extract')) + network.length + commerce.length);
   if (catalog.services.some(x => x.route === 'extract')) assert.equal(catalog.services.find(x => x.route === 'extract').price.amount_atomic, '12000');
   const unpaid = await get('/batch', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': `monitor-${crypto.randomUUID()}` }, body: JSON.stringify({ facts: ['npm/react/latest-version'], max_amount_atomic: '10000' }) });
   const raw = await unpaid.text();
