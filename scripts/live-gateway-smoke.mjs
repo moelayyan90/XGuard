@@ -20,7 +20,7 @@ assert.equal(challenge.x402Version, 2);
 assert.equal(challenge.resource.url, host + path);
 assert.equal(challenge.accepts[0].network, "eip155:8453");
 assert.equal(challenge.accepts[0].amount, "1000");
-assert.equal(challenge.accepts[0].payTo.toLowerCase(), "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07");
+assert.equal(challenge.accepts[0].payTo.toLowerCase(), "0x8e526ba9b0b348c1b6935176719d7acf0225aabf");
 assert.equal(challenge.source, undefined);
 assert.equal((await request(path, { "Payment-Signature": "invalid", "Idempotency-Key": "production-smoke-invalid" })).status, 402);
 
