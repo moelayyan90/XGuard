@@ -89,8 +89,11 @@ export async function createPaypalOrder(env, id, token_hash) {
     await actionCall(env, 'references', 'map', { reference: order.id, id: q.id });
     return actionCall(env, id, 'update', { expected: ['CREATING'], patch: { status: 'AWAITING_PAYMENT', paypal_order_id: order.id } });
   } catch (error) {
-    console.warn(JSON.stringify({ event: 'checkout_order_creation_unconfirmed', code: /^[a-z_]{1,80}$/.test(error.code || '') ? error.code : 'provider_or_storage_unavailable' }));
-    return actionCall(env, id, 'update', { expected: ['CREATING'], patch: { status: 'REVIEW_REQUIRED', error: 'paypal_order_creation_unconfirmed' } });
+    const code = /^[a-z_]{1,80}$/.test(error.code || '') ? error.code : 'paypal_order_creation_unconfirmed';
+    console.warn(JSON.stringify({ event: 'checkout_order_creation_unconfirmed', code }));
+    // Keep the bounded reason on the authenticated recovery record. Do not
+    // expose raw provider bodies, credentials or merchant/buyer identity.
+    return actionCall(env, id, 'update', { expected: ['CREATING'], patch: { status: 'REVIEW_REQUIRED', error: code } });
   }
 }
 export async function reconcilePaypalOrder(env, q) {
