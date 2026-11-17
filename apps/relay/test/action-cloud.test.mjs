@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { cleanCsv, normalizeCsv, parseCsv } from '../src/action/csv.js';
 import { actionCatalog, normalizeAction } from '../src/action/catalog.js';
 import { LIVE_PAID } from '../src/live/paid-data.ts';
-import { paypalConfig, paypalOrderBody, validatePaypalOrder, verifyPaypalWebhook } from '../src/action/paypal.js';
+import { paypalApi, paypalConfig, paypalOrderBody, validatePaypalOrder, verifyPaypalWebhook } from '../src/action/paypal.js';
 import { actionFetch } from '../src/action/gateway.js';
 import { checkoutPreviewFetch } from '../src/action/checkout-preview.js';
 import { PAYPAL_CHECKOUT_PREVIEW_ORIGIN } from '../src/action/paypal.js';
@@ -29,6 +29,23 @@ test('Sandbox preview preserves same-origin protection, merchant binding and ret
   const q = { id: 'xgo_' + 'b'.repeat(40), amount_cents: 200 };
   assert.equal(paypalOrderBody(q, env).payment_source.paypal.experience_context.return_url, PAYPAL_CHECKOUT_PREVIEW_ORIGIN + '/dashboard');
   assert.equal(paypalOrderBody(q, { ...env, PAYPAL_ENVIRONMENT: 'live' }).payment_source.paypal.experience_context.return_url, 'https://xguardgate.com/dashboard');
+});
+test('a refused provider OAuth client cannot create an order or leak its description', async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  const env = { PAYPAL_ENVIRONMENT: 'sandbox', PAYPAL_CLIENT_ID: 'fixture', PAYPAL_CLIENT_SECRET: 'private-fixture-secret', PAYPAL_WEBHOOK_ID: 'fixture', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_VERIFIED_EMAIL: 'moelayyan2026@gmail.com', PAYPAL_ENABLED: 'on' };
+  try {
+    globalThis.fetch = async url => {
+      calls++; assert.equal(url, 'https://api-m.sandbox.paypal.com/v1/oauth2/token');
+      return Response.json({ error: 'invalid_client', error_description: 'private-fixture-description' }, { status: 401 });
+    };
+    await assert.rejects(() => paypalApi(env, 'POST', '/v2/checkout/orders', {}), error => {
+      assert.equal(error.code, 'paypal_oauth_invalid_client');
+      assert.equal(error.status, 503);
+      assert.doesNotMatch(JSON.stringify(error), /private-fixture/); return true;
+    });
+    assert.equal(calls, 1, 'No provider order request after rejected authentication');
+  } finally { globalThis.fetch = original; }
 });
 
 test('CSV transformation keeps every retained and duplicate row, parses quoted records and escapes formulas', () => {

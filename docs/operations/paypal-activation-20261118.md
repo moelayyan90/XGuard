@@ -60,6 +60,16 @@ one actual Sandbox order, repeats its idempotent request, checks tenant isolatio
 and rejects an unsigned webhook. It contains no approval or capture request and
 must never be reported as a completed payment.
 
+The deployed Preview now returns `ready:true` for Sandbox configuration. Actual
+provider checks stopped at OAuth authentication, before creating a PayPal order.
+The protected ledger correctly retains an unconfirmed/review state and delivers
+no result. A bounded provider error code is retained for diagnosis without raw
+response bodies. The repository token cannot read Workers Observability events
+(403), so this recovery code supplies the safe diagnostic instead. The connected
+browser became unavailable; credentials must be rechecked in the existing PayPal
+app and encrypted Preview configuration when that connection is restored. Live
+purchasing remains off, with no real capture, refund or payout attempted.
+
 Primary references checked:
 - https://www.paypal.com/jo/cshelp/article/how-do-i-accept-cards-with-checkout-using-the-guest-checkout-option--help307?locale.x=en_JO
 - https://developer.paypal.com/expanded/eligibility

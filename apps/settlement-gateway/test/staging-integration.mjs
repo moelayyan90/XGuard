@@ -4,12 +4,14 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createRequire } from "node:module";
 import { shardOf, shardName } from "../../relay/src/live/util.ts";
+import { collectorFixture } from "../../relay/test/collector-fixture.mjs";
 
 // Use the relay's workerd version to preserve its production compatibility date.
 const { Miniflare, Response: MFResponse, convertV4MiniflareOptions } =
   createRequire(new URL("../../relay/package.json", import.meta.url))("miniflare");
 const originBundle = resolve(process.env.LIVE_WORKER_BUNDLE ??
   fileURLToPath(new URL("../../../.live-build/live-entry.js", import.meta.url)));
+const originFixture = await collectorFixture(originBundle);
 const stageBundle = fileURLToPath(new URL("../dist-stage/staging.js", import.meta.url));
 const probeKey = "8c".repeat(32);
 let outboundStage = 0;
@@ -24,7 +26,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({ host: "127.0.0.1", port: 0,
       WEB2_TOKEN_SECRET: Buffer.alloc(32, 19).toString("base64url") },
     outboundService: async () => { outboundStage++; throw new Error("Staging attempted outbound payment"); },
   },
-  { name: "xguard-mainnet", modules: true, modulesRoot: dirname(originBundle), scriptPath: originBundle,
+  { name: "xguard-mainnet", modules: true, modulesRoot: dirname(originFixture.path), scriptPath: originFixture.path,
     compatibilityDate: "2026-08-25", compatibilityFlags: ["nodejs_compat"],
     durableObjects: { LIVE_SHARDS: { className: "LiveShard", useSQLite: true },
       LIVE_CONTROL: { className: "LiveControl", useSQLite: true } },
@@ -71,4 +73,4 @@ try {
     synthetic_credit_read: 200, replay: 200, exhausted: 402, real_transfers: 0 });
   assert.equal(outboundStage, 0);
   console.log("Staging integration: real XGuard Live Worker, Service Binding, atomic credits, replay and no outbound payment verified.");
-} finally { await mf.dispose(); }
+} finally { await mf.dispose(); await originFixture.dispose(); }
