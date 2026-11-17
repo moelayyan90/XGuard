@@ -1,0 +1,23 @@
+{
+  "observed_at": "2026-11-17T08:17:23.244Z",
+  "source_tag": "git-aaebc283813d",
+  "commerce_products": 24,
+  "bounded_new_adapters": 13,
+  "new_service_purchase_enabled": false,
+  "unpaid_http_status": 503,
+  "card_ready": false,
+  "card_blockers": [
+    "paypal_client_id_missing",
+    "paypal_client_secret_missing",
+    "paypal_merchant_id_missing",
+    "paypal_webhook_id_missing",
+    "receiver_ownership_unverified",
+    "merchant_activation_pending",
+    "card_writer_activation_pending",
+    "payment_environment_unverified"
+  ],
+  "configured_partners": 0,
+  "actual_payments_executed": 0,
+  "real_sales_established": false,
+  "scope": "Read-only discovery, input/price validation and an unpaid challenge or writer gate. No capture, authorization signature, settlement, refund or supplier action."
+}

@@ -10,10 +10,32 @@ receipts, inside the existing XGuard Worker and domains.
 - [Developer API](https://xguardgate.com/action/docs) / [OpenAPI](https://xguardgate.com/openapi.json)
 - [Operations, market evidence and payment activation](docs/operations/action-cloud-20261116.md)
 
-**Activation state:** this is a supporting reader release. New live card purchases
-are blocked until the PayPal account is connected and a separate writer-5 release
-is verified. Guest card checkout depends on PayPal eligibility. No independent
-customer sale or positive realized profit has been established by the test suite.
+**Payment state:** agent services use the existing x402 Base USDC route. Inspect
+[live readiness](https://api.xguardgate.com/api/paid/v1/readiness) before paying.
+Human card/PayPal checkout remains unavailable until verified merchant
+credentials, eligibility, webhooks and an approved funded canary are connected.
+No independent sale or positive realized profit is established by tests.
+
+## Bounded commercial execution
+
+13 additional adapters cover spend/loop decisions, attributed context capsules,
+supplied HTML-to-JSON, prompt triage, sensitive-text redaction, permissioned B2B
+qualification, governance/IAM decisions, evidence manifests, invoice matching,
+RFQ comparison, resale-margin calculation and cost-bounded provider planning.
+New agent adapters cost **0.100000 USDC/request**; human checkout is **$2/task**
+when the PayPal merchant is activated. Broader markets, custody, identities and
+supplier actions require their explicitly documented providers and contracts.
+
+- [All product scopes and dependencies](https://xguardgate.com/products)
+- [Commercial catalog](https://xguardgate.com/v1/commerce/catalog)
+- [Payment availability](https://xguardgate.com/v1/commerce/providers)
+- [Engineering and recovery evidence](docs/operations/commerce-engine-20261117.md)
+- [Arabic execution report](docs/operations/commerce-report-ar-20261117.md)
+
+MCP exposes `xguard.commerce_<operation>` and A2A exposes
+`xguard.commerce.<operation>` using the same exact paid HTTP contract. Free
+supplier search/compare starts empty until real agreements are configured.
+No quotation, supplied invoice, grant target or listing is recognized as cash.
 
 All eligible current paid task definitions inherit the same checkout. Human card
 prices have a $2 minimum; legacy x402 prices and recovery remain compatible.
