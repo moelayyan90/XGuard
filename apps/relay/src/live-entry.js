@@ -4,6 +4,7 @@ import { actionFetch } from './action/gateway.js';
 import { commerceFetch } from './business/http.js';
 import { glamaOwnershipFetch } from './glama-ownership.js';
 import { publicAnalyticsResponse } from './public-analytics.js';
+import { checkoutPreviewFetch } from './action/checkout-preview.js';
 // Existing Durable Object classes must remain exported so old durable records,
 // alarms, receipts and financial recovery state are preserved across deployment.
 export * from './canonical-entry.js';
@@ -25,6 +26,8 @@ const worker = {
     ctx.waitUntil(refreshCapabilityGraph(env, performWebFetch).catch(() => console.warn(JSON.stringify({event:'network_graph_refresh_unavailable'}))));
   },
   async fetch(request, env, ctx) {
+    const preview = await checkoutPreviewFetch(request, env);
+    if (preview) return preview;
     const url = new URL(request.url);
     const path = url.pathname;
     // Public ownership proof must run before product routing, auth and the

@@ -2,6 +2,7 @@ import { boundedJson, fail } from '../compute/common.js';
 import deployment from '../../deployment-state.json' with { type: 'json' };
 
 export const PAYPAL_RECEIVER = 'moelayyan2026@gmail.com';
+export const PAYPAL_CHECKOUT_PREVIEW_ORIGIN = 'https://paypal-sandbox-xguard-mainnet.maqamapp.workers.dev';
 export function paypalConfig(env) {
   const sandbox = env.PAYPAL_ENVIRONMENT === 'sandbox';
   // A real Sandbox merchant has its own test email. Never allow this override
@@ -31,7 +32,8 @@ export async function paypalApi(env, method, path, body, requestId) {
 }
 export function paypalOrderBody(q, env) {
   const config = paypalConfig(env);
-  return { intent: 'CAPTURE', purchase_units: [{ reference_id: q.id, custom_id: q.id, invoice_id: q.id, description: q.name, payee: { email_address: config.receiver, merchant_id: config.merchant_id }, amount: { currency_code: 'USD', value: (q.amount_cents / 100).toFixed(2) } }], payment_source: { paypal: { experience_context: { brand_name: 'XGuard', shipping_preference: 'NO_SHIPPING', user_action: 'PAY_NOW', landing_page: 'BILLING', return_url: 'https://xguardgate.com/dashboard', cancel_url: 'https://xguardgate.com/dashboard' } } } };
+  const origin = config.sandbox && env.XGUARD_CHECKOUT_SANDBOX_PREVIEW === 'on' ? PAYPAL_CHECKOUT_PREVIEW_ORIGIN : 'https://xguardgate.com';
+  return { intent: 'CAPTURE', purchase_units: [{ reference_id: q.id, custom_id: q.id, invoice_id: q.id, description: q.name, payee: { email_address: config.receiver, merchant_id: config.merchant_id }, amount: { currency_code: 'USD', value: (q.amount_cents / 100).toFixed(2) } }], payment_source: { paypal: { experience_context: { brand_name: 'XGuard', shipping_preference: 'NO_SHIPPING', user_action: 'PAY_NOW', landing_page: 'BILLING', return_url: origin + '/dashboard', cancel_url: origin + '/dashboard' } } } };
 }
 export function validatePaypalOrder(order, q, env, requireCapture = false) {
   const config = paypalConfig(env), units = order?.purchase_units;

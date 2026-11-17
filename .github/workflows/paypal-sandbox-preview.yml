@@ -1,0 +1,42 @@
+name: XGuard isolated PayPal Sandbox
+on:
+  push:
+    branches: [fix/paypal-sandbox-preview-20261118]
+permissions:
+  contents: read
+concurrency:
+  group: xguard-production
+  cancel-in-progress: false
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --prefix apps/relay --no-audit --no-fund
+      - run: npm audit --prefix apps/relay --omit=dev --audit-level=moderate
+      - name: Verify checkout boundaries before provider deployment
+        run: |
+          npm run check
+          npm test
+          npm run build
+          node apps/relay/test/action-cloud-workerd.mjs
+      - name: Preserve proven production source metadata after secret provisioning
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/paypal-preview-metadata.mjs
+      - name: Deploy isolated Sandbox storage under the existing Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          apps/relay/node_modules/.bin/wrangler preview --name paypal-sandbox --config apps/relay/wrangler.paypal-preview.jsonc

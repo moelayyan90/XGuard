@@ -399,6 +399,10 @@ test('aggregate snapshots age expired examples and invalidate suppressed entitie
 });
 
 test('automatic alarms and domain contention cannot create a seconds-long retry loop', async () => {
+  const originalNow = Date.now;
+  // Source allocations shrink late in the UTC day. This scheduling regression
+  // needs a full test-day allocation, independent of the CI runner's clock.
+  Date.now = () => Date.UTC(2026, 0, 2);
   const h = environment({ LIVE_SOURCE_FETCHES: 'on' });
   try {
     const { object, store } = await seed(h), now = Date.now();
@@ -417,7 +421,7 @@ test('automatic alarms and domain contention cannot create a seconds-long retry 
     assert.ok(store.claimDue(now + 601000), 'the source becomes eligible after backoff');
     await object.wake(true);
     assert.equal(dueScans, 2, 'an urgent refresh still checks the due sources');
-  } finally { h.close(); }
+  } finally { Date.now = originalNow; h.close(); }
 });
 
 test('existing schema opens read-only and additive migration preserves observations', async () => {

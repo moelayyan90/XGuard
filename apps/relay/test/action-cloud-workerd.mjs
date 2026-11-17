@@ -117,6 +117,11 @@ try {
   partial.resource.amount.value = '2.00'; await webhook(partial); await webhook(partial);
   assert.equal((await (await dispatch('/v1/checkout/orders/' + q.id)).json()).order.status, 'REFUNDED');
   await webhook({ event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } }); assert.equal((await (await dispatch('/v1/checkout/orders/' + q.id)).json()).order.status, 'REFUNDED');
+  captureMode = 'ok'; const declined = await create('provider-declined-event-order');
+  await webhook({ event_type: 'PAYMENT.CAPTURE.DECLINED', resource: { id: declined.paypal_order_id } });
+  assert.equal((await (await dispatch('/v1/checkout/orders/' + declined.id)).json()).order.status, 'REVIEW_REQUIRED');
+  await webhook({ event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: declined.paypal_order_id } });
+  assert.equal((await (await dispatch('/v1/checkout/orders/' + declined.id)).json()).order.status, 'REVIEW_REQUIRED', 'Late completion cannot release a declined-payment hold');
   for (let i = 0; i < 12; i++) await dispatch('/v1/checkout/orders', { body: input, key: 'daily-cap-fixture-order-' + i });
   assert.equal((await dispatch('/v1/checkout/orders', { body: input, key: 'daily-cap-final-fixture-order' })).status, 429);
   assert.equal((await dispatch('/openapi.json')).status, 200);
