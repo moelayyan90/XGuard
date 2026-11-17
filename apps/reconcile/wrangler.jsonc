@@ -12,7 +12,7 @@
     "ajv/dist/2020.js": "./src/ajv2020-standalone.js"
   },
   "vars": {
-    "XGUARD_TREASURY_USDC_ADDRESS": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
+    "XGUARD_TREASURY_USDC_ADDRESS": "0x8e526ba9b0b348c1b6935176719d7acf0225aabf",
     "X402_FACILITATOR": "https://facilitator.xpay.sh",
     "BASE_RPC_URL": "https://mainnet.base.org"
   },
