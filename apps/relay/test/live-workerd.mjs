@@ -2,9 +2,29 @@ import { Miniflare, convertV4MiniflareOptions, Response as MFResponse } from 'mi
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { build } from 'esbuild';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const path = process.env.LIVE_WORKER_BUNDLE || fileURLToPath(new URL('../../../.live-build/live-entry.js', import.meta.url));
+const fixtureDir = await mkdtemp(join(tmpdir(), 'xguard-live-collector-'));
+const fixturePath = join(fixtureDir, 'entry.js');
+// Keep the actual release fetch/alarm implementation. Only this test subclass
+// seeds a full allowance in ephemeral SQLite: the UTC quota policy has its own
+// Store tests, and late-day proration must not delay this alarm test overnight.
+await build({ stdin: { resolveDir: resolve(path, '..'), contents: `
+  import worker, { LiveShard as ReleaseLiveShard } from ${JSON.stringify(path)};
+  export * from ${JSON.stringify(path)};
+  export default worker;
+  export class LiveShard extends ReleaseLiveShard {
+    constructor(state, env) {
+      super(state, env);
+      this.store.set('source-write-budget-v1', {day:new Date().toISOString().slice(0,10),rows_written:0,paused:false,allocation:1600,limit:1600});
+    }
+  }
+` }, bundle: true, format: 'esm', platform: 'browser', external: ['url', 'node:*', 'cloudflare:*'], target: 'es2022', outfile: fixturePath });
 let fixtureVersion = '1.0.0', sourceCalls = 0;
-const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, rootPath: resolve(path, '..'), workers: [{ name: 'live-test', modules: true, modulesRoot: resolve(path, '..'), scriptPath: path, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
+const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, rootPath: fixtureDir, workers: [{ name: 'live-test', modules: true, modulesRoot: fixtureDir, scriptPath: fixturePath, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: { LIVE_SHARDS: { className: 'LiveShard', useSQLite: true }, LIVE_CONTROL: { className: 'LiveControl', useSQLite: true } },
   bindings: { LIVE_BOOTSTRAP: 'off', LIVE_SOURCE_FETCHES: 'on', MONETIZATION_MODE: 'observe' },
   outboundService: async request => {
@@ -53,4 +73,4 @@ try {
     await import('../../../scripts/action-production-check.mjs');
   } finally { globalThis.fetch = originalFetch; }
   console.log('workerd integration: 32 SQLite shards, durable alarms, source collection, changed-value history, auth and format cache verified; isolated source fixtures only.');
-} finally { await mf.dispose(); }
+} finally { await mf.dispose(); await rm(fixtureDir, {recursive:true,force:true}); }

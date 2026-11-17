@@ -32,14 +32,19 @@ to enable Sandbox checkout. Live receiving identity remains fixed.
 
 Dashboard encrypted-binding updates omit source annotations. Before the normal
 production pipeline runs again, a narrowly scoped metadata repair compares the
-current provider code ETag with the last known CI deployment and preserves every
-binding. It refuses unknown versions or different source bytes. It restores the
-proven git tag only; it does not upload code or change payment gates.
+current provider runtime modules with the last known CI deployment and preserves
+every binding. The first attempt stopped because the ETag changed; it made no
+production mutation. The revised check requires a matching SHA-256 for every
+provider-returned runtime module and equal runtime compatibility settings. It
+refuses unknown versions or different source bytes. It restores the proven git
+tag only; it does not upload code or change payment gates.
 
 Local tests also fix an existing UTC-clock-dependent alarm test: a late-day
 prorated source allowance could pause its fixture before the intended scheduling
-assertion. The test now uses a fixed full-allocation test day; production budgets
-and alarm pacing are unchanged.
+assertion. The unit test now uses a fixed test day. The actual workerd collector
+test seeds its isolated SQLite fixture with a full daily allowance in a test-only
+subclass, while retaining the release fetch/alarm implementation. Production
+budgets and alarm pacing are unchanged.
 
 Actual Sandbox provider approval, capture, webhook verification, signed delivery
 and duplicate recovery must be recorded separately before activating the live
@@ -51,3 +56,4 @@ Primary references checked:
 - https://developers.cloudflare.com/workers/previews/configuration/
 - https://developers.cloudflare.com/workers/previews/resources/
 - https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/script_and_version_settings/methods/edit/
+- https://developers.cloudflare.com/api/resources/workers/subresources/beta/subresources/workers/subresources/versions/methods/get/
