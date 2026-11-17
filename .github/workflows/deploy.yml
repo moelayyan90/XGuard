@@ -37,6 +37,13 @@ jobs:
         if: hashFiles('apps/settlement-gateway/package-lock.json') != ''
         run: npm ci --prefix apps/settlement-gateway --no-audit --no-fund
 
+      - name: Require owner-issued Glama proof before any production change
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          npm run build
+          node apps/relay/test/glama-workerd.mjs --require-configured
+
       - name: Snapshot current production version
         id: previous
         env:
@@ -204,6 +211,10 @@ jobs:
             sleep 5
           done
           exit 1
+
+      - name: Verify public Glama ownership proof without claiming account acceptance
+        id: glama_smoke
+        run: EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node scripts/glama-production-check.mjs
 
       - name: Verify compute discovery and truthful availability without payment
         run: node scripts/compute-production-check.mjs
