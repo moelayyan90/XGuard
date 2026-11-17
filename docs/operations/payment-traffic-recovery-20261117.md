@@ -94,7 +94,7 @@ Twitter summary metadata and nonced WebPage/WebSite structured data. Structured
 data makes no unverified sale or availability claim. Private pages explicitly
 remain noindex. The site sitemap now includes existing product detail pages,
 compute availability, operator identity and payment policy pages; no retired API
-or unsafe legacy route is restored.
+or unsafe legacy route is restored. A direct HTTP probe also found that the apex served HTML over HTTP; the entrypoint now redirects all public HTTP domains to canonical HTTPS before any storage or payment operation, preserving paths, query strings and API host identity.
 
 ## Verification
 

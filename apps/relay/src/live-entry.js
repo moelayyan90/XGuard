@@ -96,6 +96,12 @@ const worker = {
 export default {
   ...worker,
   async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (url.protocol === 'http:' && ['xguardgate.com', 'www.xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
+      url.protocol = 'https:';
+      if (url.hostname === 'www.xguardgate.com') url.hostname = 'xguardgate.com';
+      return Response.redirect(url.href, 308);
+    }
     return publicAnalyticsResponse(request, await worker.fetch(request, env, ctx));
   },
 };

@@ -9,6 +9,16 @@ const script = 'https://static.cloudflareinsights.com';
 const collector = 'https://cloudflareinsights.com';
 const directives = r => new Map((r.headers.get('content-security-policy') || '').split(';').map(x => { const [key, ...values] = x.trim().split(/\s+/); return [key, values]; }));
 
+test('public HTTP domains redirect to canonical HTTPS before touching storage or payment providers', async () => {
+  for (const [host, target] of [['xguardgate.com', 'xguardgate.com'], ['www.xguardgate.com', 'xguardgate.com'], ['api.xguardgate.com', 'api.xguardgate.com']]) {
+    for (const method of ['GET', 'HEAD', 'POST']) {
+      const response = await app.fetch(new Request('http://' + host + '/marketplace?source=test', { method }), {}, {});
+      assert.equal(response.status, 308);
+      assert.equal(response.headers.get('location'), 'https://' + target + '/marketplace?source=test');
+    }
+  }
+});
+
 test('all public HTML routers permit the existing Cloudflare beacon without a second injection or financial storage', async () => {
   const h = environment();
   try {
