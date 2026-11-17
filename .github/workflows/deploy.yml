@@ -178,6 +178,10 @@ jobs:
           if [[ "$LIVE_RECOVERY" == true ]]; then
             export EXPECT_LIVE_OPENAPI=true
             "$wrangler" versions deploy "$PREVIOUS_VERSION@100" "$candidate@0" --yes --config "$config" --message "XGuard Live recovery 0% preflight"
+            # Newly uploaded version overrides can propagate after the control
+            # plane acknowledges deployment. Keep all exact-version checks;
+            # allow the edge routing state to arrive before evaluating them.
+            sleep 30
             if [[ -f scripts/c2sp-stability-audit.mjs ]]; then node scripts/c2sp-stability-audit.mjs; fi
             for attempt in {1..3}; do
               if node scripts/live-smoke.mjs && node scripts/live-paid-smoke.mjs --require-ready; then break; fi
@@ -197,6 +201,10 @@ jobs:
             node scripts/live-paid-smoke.mjs --require-ready
           fi
           "$wrangler" versions deploy "$candidate@100" --yes --config "$config" --message "Promote verified XGuard canary"
+          # Promotion also propagates independently across apex/API routes.
+          # Keep rollback armed during this hold and run every existing public,
+          # financial-boundary and authenticated sandbox check afterwards.
+          sleep 60
           trap - EXIT
 
       - name: Verify public Live deployment
