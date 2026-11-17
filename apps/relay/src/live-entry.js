@@ -3,6 +3,7 @@ import { computeFetch } from './compute/gateway.js';
 import { actionFetch } from './action/gateway.js';
 import { commerceFetch } from './business/http.js';
 import { glamaOwnershipFetch } from './glama-ownership.js';
+import { publicAnalyticsResponse } from './public-analytics.js';
 // Existing Durable Object classes must remain exported so old durable records,
 // alarms, receipts and financial recovery state are preserved across deployment.
 export * from './canonical-entry.js';
@@ -17,7 +18,7 @@ import { facilitatorSurface } from './facilitator-surface.js';
 import { networkFetch } from './network-entry.js';
 import { refreshCapabilityGraph } from './network/engine.ts';
 import { c2spWitnessRoute } from './c2sp-witness.js';
-export default {
+const worker = {
   ...live,
   async scheduled(event, env, ctx) {
     await live.scheduled(event, env, ctx);
@@ -90,5 +91,11 @@ export default {
       return new Response(request.method === 'HEAD' ? null : response.body, { status: response.status, headers });
     }
     return live.fetch(request, env, ctx);
+  },
+};
+export default {
+  ...worker,
+  async fetch(request, env, ctx) {
+    return publicAnalyticsResponse(request, await worker.fetch(request, env, ctx));
   },
 };
