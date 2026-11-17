@@ -1,3 +1,4 @@
+import { XGUARD_TREASURY_OWNERSHIP_PROOF } from './treasury-ownership.js';
 // Coverage is based on configured integrations. Never infer merchant approval
 // from a person's possession of a bank account, card or Payoneer account.
 export interface PaymentProvider {
@@ -11,9 +12,10 @@ export interface PayoutProvider {
   reconcile(reference: string): Promise<unknown>;
 }
 export function paymentCoverage(env: Record<string, any>) {
+  const ownerVerified = String(env.XGUARD_TREASURY_USDC_ADDRESS || '').toLowerCase() === XGUARD_TREASURY_OWNERSHIP_PROOF.address.toLowerCase();
   return { as_of: new Date().toISOString(), receiving: [{ id: 'x402-base-usdc', method: 'USDC', network: 'eip155:8453', currency: 'USDC', decimals: 6,
     configured: Boolean(env.XGUARD_TREASURY_USDC_ADDRESS && env.XGUARD_PAID_FACILITATOR), readiness: 'https://api.xguardgate.com/api/paid/v1/readiness',
-    destination: env.XGUARD_TREASURY_USDC_ADDRESS || null, owner_control_verified: false, settlement_basis: 'Existing x402 engine; per-transaction evidence required.' }],
+    destination: env.XGUARD_TREASURY_USDC_ADDRESS || null, owner_control_verified: ownerVerified, owner_control_verified_at: ownerVerified ? XGUARD_TREASURY_OWNERSHIP_PROOF.signed_date : null, owner_control_verification: ownerVerified ? 'ERC-191 message signature; point-in-time proof only' : null, settlement_basis: 'Existing x402 engine; per-transaction evidence required.' }],
     unavailable: [
       { id: 'payoneer', state: 'OWNER_ACCOUNT_AND_PROGRAM_AUTHORIZATION_REQUIRED', automatic_checkout: false, reason: 'Business payment requests cannot be used as consumer-store checkout. No authorized API connection is configured.', source: 'https://payoneer.custhelp.com/app/answers/detail/a_id/12280' },
       { id: 'arab-bank-gateway', state: 'MERCHANT_APPROVAL_REQUIRED', reason: 'Requires merchant onboarding and an official integration credential.', source: 'https://www.arabbank.com.jo/mainmenu/home/SMEs_Banking/digitalization-and-innovation/payment-gateway' },

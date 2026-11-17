@@ -6,7 +6,7 @@ import { validateDiscoveryExtension } from "@x402/extensions/bazaar";
 const ORIGIN = "https://reconcile.xguardgate.com";
 const NETWORK = "eip155:8453";
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const TREASURY = "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07";
+const TREASURY = "0x8e526ba9b0b348c1b6935176719d7acf0225aabf";
 const QUERY = `?from=0x${"1".repeat(40)}&nonce=0x${"2".repeat(64)}`;
 
 // Never prepare a payment authorization. These probes must not execute a paid

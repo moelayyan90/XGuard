@@ -12,7 +12,7 @@
     "GATEWAY_PATH_PREFIX": "/api/gateway/v1",
     "PUBLIC_ORIGIN": "https://xguardgate.com",
     "MERCHANT_ID": "xguard-live",
-    "PAY_TO": "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07",
+    "PAY_TO": "0x8e526ba9b0b348c1b6935176719d7acf0225aabf",
     "BASE_CONFIRMATIONS": "12",
     "BASE_RPC_URL": "https://mainnet.base.org"
   },

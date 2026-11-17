@@ -4,7 +4,7 @@ import entry from "../src/discovery-entry.js";
 import { runReconcileSmoke } from "../scripts/production-smoke.mjs";
 
 const tag = "git-0123456789ab";
-const treasury = "0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07";
+const treasury = "0x8e526ba9b0b348c1b6935176719d7acf0225aabf";
 const env = { XGUARD_TREASURY_USDC_ADDRESS: treasury, CF_VERSION_METADATA: { tag } };
 
 test("deployment revision header covers public, error and challenge responses", async () => {
