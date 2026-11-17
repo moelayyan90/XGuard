@@ -50,6 +50,14 @@ Actual Sandbox provider approval, capture, webhook verification, signed delivery
 and duplicate recovery must be recorded separately before activating the live
 writer. Passing mocked tests or creating apps is not evidence of revenue.
 
+The first isolated Preview deployed successfully but Cloudflare reported no
+active URL. Its routing setup enables `previews_enabled` through the documented
+subdomain API, preserving the production `enabled` setting and checking that
+the deployed production version remains identical. The provider smoke creates
+one actual Sandbox order, repeats its idempotent request, checks tenant isolation
+and rejects an unsigned webhook. It contains no approval or capture request and
+must never be reported as a completed payment.
+
 Primary references checked:
 - https://www.paypal.com/jo/cshelp/article/how-do-i-accept-cards-with-checkout-using-the-guest-checkout-option--help307?locale.x=en_JO
 - https://developer.paypal.com/expanded/eligibility
@@ -57,3 +65,4 @@ Primary references checked:
 - https://developers.cloudflare.com/workers/previews/resources/
 - https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/script_and_version_settings/methods/edit/
 - https://developers.cloudflare.com/api/resources/workers/subresources/beta/subresources/workers/subresources/versions/methods/get/
+- https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/subdomain/methods/create/
