@@ -307,7 +307,15 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes wrangler@4.147.0 rollback "$PREVIOUS_VERSION" --yes --config apps/relay/wrangler.jsonc --message "Automatic rollback after failed XGuard ${DEPLOY_SHA} verification"
-          EXPECTED_XGUARD_TAG="git-${PREVIOUS_GIT_REF:0:12}" node scripts/live-paid-smoke.mjs
+          rollback_verified=false
+          for attempt in {1..6}; do
+            if EXPECTED_XGUARD_TAG="git-${PREVIOUS_GIT_REF:0:12}" node scripts/live-paid-smoke.mjs; then
+              rollback_verified=true
+              break
+            fi
+            if [[ "$attempt" != 6 ]]; then sleep 5; fi
+          done
+          [[ "$rollback_verified" == "true" ]] || { echo '::error::Rollback revision or financial contract never converged'; exit 1; }
           if [[ "$PUBLIC_QUOTA_EXHAUSTED" == 'true' ]]; then
             echo '::warning::Rollback revision and paid contract verified. Public data verification remains failed on the previously observed provider quota; no recovery is claimed.'
             exit 0
