@@ -19,6 +19,9 @@ try {
       import { sourceSpec } from ${JSON.stringify(join(root, 'apps/relay/src/live/adapters.ts'))};
       export class CapacityShard extends LiveShard {
         async fetch() {
+          // Measure domain-contention writes under equal admitted capacity,
+          // independently of how many UTC minutes remain when CI starts.
+          this.store.set('source-write-budget-v1', {day:new Date().toISOString().slice(0,10),rows_written:0,paused:false,allocation:1600,limit:1600});
           this.store.enqueue(sourceSpec('npm', 'react'));
           this.store.set('cleanup-day', new Date().toISOString().slice(0, 10));
           const before = this.store.rowsWritten;

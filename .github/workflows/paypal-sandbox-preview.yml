@@ -47,3 +47,9 @@ jobs:
           apps/relay/node_modules/.bin/wrangler preview --name paypal-sandbox --config apps/relay/wrangler.paypal-preview.jsonc
       - name: Create one actual Sandbox provider order without buyer approval or capture
         run: node scripts/paypal-sandbox-provider-check.mjs
+      - name: Read bounded safe provider diagnostics when checkout is unconfirmed
+        if: failure()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/paypal-sandbox-diagnostics.mjs

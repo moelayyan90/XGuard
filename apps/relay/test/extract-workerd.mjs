@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createExtractionCheckout, EXTRACT_ENDPOINT } from '../src/live/extract-checkout.js';
 import { verifyLiveDelivery } from '../../../sdk/live-paid.js';
 import { shardName, shardOf } from '../src/live/util.ts';
+import { collectorFixture } from './collector-fixture.mjs';
 
 const bundle = fileURLToPath(new URL('../../../.live-build/live-entry.js', import.meta.url));
 const fixture = bundle.replace('live-entry.js', 'extract-test-entry.js');
@@ -18,12 +19,13 @@ assert.equal((code.match(/var LIVE_PAID = \[/g) || []).length, 1);
 const listStart = code.indexOf('var LIVE_PAID = ['), listEnd = code.indexOf('];', listStart);
 if (!code.slice(listStart, listEnd).includes('EXTRACT_SERVICE')) code = code.replace('var LIVE_PAID = [', 'var LIVE_PAID = [EXTRACT_SERVICE,');
 await writeFile(fixture, code);
+const collector = await collectorFixture(fixture);
 const treasury = '0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07';
 const account = privateKeyToAccount(generatePrivateKey()); // Ephemeral, never funded or printed.
 const counts = { settle: 0, verify: 0, source: 0, signature: 0 };
 let sourceUnavailable = false;
 const types = { TransferWithAuthorization: ['from:address', 'to:address', 'value:uint256', 'validAfter:uint256', 'validBefore:uint256', 'nonce:bytes32'].map(x => { const [name, type] = x.split(':'); return { name, type }; }) };
-const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, workers: [{ name: 'extract-test', modules: true, modulesRoot: dirname(fixture), scriptPath: fixture, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
+const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, workers: [{ name: 'extract-test', modules: true, modulesRoot: dirname(collector.path), scriptPath: collector.path, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: Object.fromEntries(Object.entries({ LiveShard: 'LIVE_SHARDS', LiveControl: 'LIVE_CONTROL', PaidGatewayState: 'PAID_GATEWAY', ProofAuthority: 'PROOF_AUTHORITY' }).map(([className, name]) => [name, { className, useSQLite: true }])),
   bindings: { LIVE_BOOTSTRAP: 'off', LIVE_SOURCE_FETCHES: 'on', LIVE_PAID_SERVICES: 'on', XGUARD_PAYMENT_ENVIRONMENT: 'production', XGUARD_PAID_FACILITATOR: 'https://facilitator.test', XGUARD_TREASURY_USDC_ADDRESS: treasury, XGUARD_PAYMENT_COST_BUDGET_USD_MICROS: '0', XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: '100', XGUARD_MIN_CONTRIBUTION_BPS: '2000' },
   outboundService: async request => {
@@ -94,4 +96,4 @@ try {
   assert.equal(page.status, 200); assert.match(await page.text(), /Get exact price/);
   assert.match(page.headers.get('content-security-policy'), /connect-src 'self' https:\/\/api.xguardgate.com/);
   console.log(JSON.stringify({ extraction_workerd: 'passed', source_access_before_payment: 0, signed_authorizations: counts.signature, simulated_settlements: counts.settle, lost_response_recovered_without_second_payment: true, failed_source_credit_retry_without_payment: true, mcp_unpaid_challenge: true, signed_delivery_verified: true, production_money_moved: false }));
-} finally { await mf.dispose(); await rm(fixture, { force: true }); }
+} finally { await mf.dispose(); await collector.dispose(); await rm(fixture, { force: true }); }

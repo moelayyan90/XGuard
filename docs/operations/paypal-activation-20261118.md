@@ -42,9 +42,11 @@ tag only; it does not upload code or change payment gates.
 Local tests also fix an existing UTC-clock-dependent alarm test: a late-day
 prorated source allowance could pause its fixture before the intended scheduling
 assertion. The unit test now uses a fixed test day. The actual workerd collector
-test seeds its isolated SQLite fixture with a full daily allowance in a test-only
-subclass, while retaining the release fetch/alarm implementation. Production
-budgets and alarm pacing are unchanged.
+tests share an isolated SQLite fixture with a full daily allowance in a test-only
+subclass, while retaining the release fetch/alarm implementation. This covers the
+collector, x402 reads, extraction, MCP/A2A and paired compatibility fixtures.
+The domain-contention measurement uses equal admitted capacity on both releases.
+Production budgets, source-quota enforcement tests and alarm pacing are unchanged.
 
 Actual Sandbox provider approval, capture, webhook verification, signed delivery
 and duplicate recovery must be recorded separately before activating the live
