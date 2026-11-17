@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard",
   "title": "XGuard",
-  "description": "Bounded digital tasks, unified human checkout, private result recovery and signed receipts. Check payment and provider readiness.",
+  "description": "Bounded digital tasks, simple checkout, private result recovery and signed receipts.",
   "repository": {
     "url": "https://github.com/moelayyan90/XGuard",
     "source": "github"

@@ -2,6 +2,10 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 process.chdir(fileURLToPath(new URL('..', import.meta.url)));
+const registryDescription = JSON.parse(readFileSync('server.json', 'utf8')).description;
+if (typeof registryDescription !== 'string' || !registryDescription.trim() || [...registryDescription].length > 100) {
+  throw new Error('MCP Registry requires a non-empty server.json description of at most 100 characters.');
+}
 const root = 'apps/relay/src/live';
 for (const file of readdirSync(root).filter(x => x.endsWith('.ts'))) {
   const content = readFileSync(`${root}/${file}`, 'utf8');
