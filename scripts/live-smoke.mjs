@@ -8,7 +8,11 @@ if (candidate) {
   headers['cloudflare-workers-version-overrides'] = `xguard-mainnet="${candidate}"`;
 }
 async function get(path, accept = 'application/json') {
-  const response = await fetch(origin + path, { headers: { ...headers, accept }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
+  const target = new URL(origin + path);
+  // A canary must exercise its Worker instead of reusing a zone/CDN response
+  // produced before the version override. Keep the exact candidate-ID check.
+  if (candidate) target.searchParams.set('__xguard_canary', candidate);
+  const response = await fetch(target, { headers: { ...headers, accept }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
   if (!response.ok) {
     const body = response.headers.get('content-type')?.includes('application/json')
       ? await response.clone().json().catch(() => null) : null;

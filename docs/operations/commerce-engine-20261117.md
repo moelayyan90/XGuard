@@ -98,3 +98,7 @@ No real payment, refund, upstream purchase or supplier payout was executed in th
 Unit contracts cover all 13 adapters, amount/rights/input boundaries, source attribution, exact policy decisions, redaction coverage, hash-chain integrity, RFQ economics, supplier registry integrity and absent-provider purchase rejection. Real workerd SQLite tests exercise synthetic PayPal capture through delivery for all 13, signed receipts, concurrency, recovery, failed capture/storage, partial/full refunds and delayed callback holds. An isolated x402 test settles mock authorizations, delivers a new product, replays without another charge and verifies per-service ledger attribution.
 
 All existing CI checks remain required, including typecheck, full unit suite, runtime, financial recovery, C2SP, MCP/A2A, baseline compatibility/capacity and production dry-run. Deployment acceptance is recorded separately from these simulated payment tests.
+
+## Canary recovery record
+
+The first supporting upload was not promoted: an older paid-smoke assertion mistook the new adapters for network routes. A transient prior-version public response also failed candidate identity verification. The existing rollback returned 100% traffic to the previous version. The follow-up keeps strict candidate identity, legacy price and no-payment checks, adds an exact commerce contract assertion and scopes public canary URLs to the candidate. See docs/evidence/commerce/canary-recovery-20261117.json. This is an operational recovery, not a payment failure or a successful new sale.

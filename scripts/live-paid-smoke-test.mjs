@@ -66,3 +66,13 @@ test('network canary checks all nine prices and rejects unpaid execution without
   await assert.rejects(check(402, '1'));
   await assert.rejects(check(402, '5000', { ...expanded, services: expanded.services.slice(0, -1) }));
 });
+
+test('commerce catalog extension preserves all legacy prices and rejects missing, changed or unknown routes', async () => {
+  const names = ['burn-breaker', 'context-capsule', 'dom-to-api', 'prompt-firewall', 'redact', 'lead-qualify', 'governance-check', 'iam-check', 'audit-manifest', 'reconcile-invoices', 'compare-offers', 'market-spread', 'latency-plan'];
+  const services = names.map(route => ({ route, price: { amount_atomic: '100000' } }));
+  const run = extra => runPaidSmoke({ fetchImpl: async url => url.endsWith('/catalog') ? response({ ...catalog, services: [...catalog.services, ...extra] }) : response({ x402Version: 2, accepts: [{ amount: '10000' }] }, 402, 'git-current', { 'payment-required': 'fixture' }) });
+  assert.equal((await run(services)).payments_submitted, 0);
+  await assert.rejects(run(services.slice(0, -1)), /complete bounded commerce contract/);
+  await assert.rejects(run(services.map((s, i) => i ? s : { ...s, price: { amount_atomic: '1' } })), /complete bounded commerce contract/);
+  await assert.rejects(run([...services, { route: 'unknown-paid-route', price: { amount_atomic: '1' } }]));
+});
