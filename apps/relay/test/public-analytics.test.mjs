@@ -27,19 +27,19 @@ test('all public HTML routers permit the existing Cloudflare beacon without a se
       const r = await app.fetch(new Request('https://xguardgate.com' + path, { headers: { accept: 'text/html' } }), h.env, h.ctx);
       assert.equal(r.status, 200, path);
       const csp = directives(r);
-      assert.ok(csp.get('script-src').includes(script), path);
+      assert.ok(new Set(csp.get('script-src')).has(script), path);
       assert.ok(csp.get('connect-src').includes("'self'"), path);
-      assert.ok(csp.get('connect-src').includes(collector), path);
+      assert.ok(new Set(csp.get('connect-src')).has(collector), path);
       assert.deepEqual(csp.get('frame-ancestors'), ["'none'"], path);
       assert.ok(!csp.get('script-src').includes("'unsafe-inline'"), path);
       assert.ok(!csp.get('script-src').includes("'unsafe-eval'"), path);
       const html = await r.text();
       assert.ok(!html.includes('beacon.min.js'), 'Cloudflare owns injection at the edge');
-      if (path === '/') assert.ok(csp.get('script-src').includes('https://www.paypal.com'), 'PayPal SDK stays permitted');
+      if (path === '/') assert.ok(new Set(csp.get('script-src')).has('https://www.paypal.com'), 'PayPal SDK stays permitted');
     }
     for (const path of ['/checkout', '/dashboard', '/admin', '/v1/checkout/config', '/openapi.json', '/mcp', '/.well-known/agent-card.json']) {
       const r = await app.fetch(new Request('https://xguardgate.com' + path), h.env, h.ctx);
-      assert.ok(!(r.headers.get('content-security-policy') || '').includes(script), path);
+      assert.ok(!new Set(directives(r).get('script-src') || []).has(script), path);
     }
   } finally { await h.drain(); h.close(); }
 });

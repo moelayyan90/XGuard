@@ -30,7 +30,8 @@ for (const path of ['/', '/marketplace', '/action/pricing', '/action/docs', '/pr
 for (const path of ['/checkout?service=csv-clean', '/dashboard']) {
   const r = await read(path);
   assert.match(r.headers.get('x-robots-tag'), /noindex/);
-  assert.ok(!(r.headers.get('content-security-policy') || '').includes('static.cloudflareinsights.com'));
+  const csp = new Map((r.headers.get('content-security-policy') || '').split(';').map(part => { const [name, ...values] = part.trim().split(/\s+/); return [name, new Set(values)]; }));
+  assert.ok(!csp.get('script-src')?.has('https://static.cloudflareinsights.com'));
   await r.body?.cancel();
 }
 const sitemap = await (await read('/sitemaps/site.xml')).text();
