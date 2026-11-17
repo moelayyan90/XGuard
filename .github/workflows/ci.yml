@@ -24,6 +24,7 @@ jobs:
         run: |
           npm run check
           npm test
+          node --test apps/relay/test/glama-ownership.test.mjs scripts/glama-production-check-test.mjs
           node --test apps/relay/test/infra-safety.test.mjs
           node --test apps/relay/test/native-settlement.test.mjs
           node --test scripts/live-capacity-preflight-test.mjs
@@ -39,6 +40,7 @@ jobs:
           WRANGLER_SEND_METRICS: "false"
         run: |
           npm run build
+          node apps/relay/test/glama-workerd.mjs
           node apps/relay/test/compute-workerd.mjs
           node apps/relay/test/action-cloud-workerd.mjs
           node scripts/native-production-boundary.mjs
