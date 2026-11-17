@@ -33,3 +33,23 @@ test("smoke rejects missing revision, stale rollout, changed price and non-402 p
     } }));
   }
 });
+
+
+test("smoke retries an initially stale public document before accepting the revision", async () => {
+  let docs = 0;
+  const result = await runReconcileSmoke({
+    expectedTag: tag,
+    pause: async () => {},
+    fetchImpl: async (url, init) => {
+      const response = await entry.fetch(new Request(url, init), env, {});
+      if (url.endsWith("/docs") && ++docs === 1) {
+        const headers = new Headers(response.headers);
+        headers.set("x-xguard-worker-version-tag", "git-ffffffffffff");
+        return new Response(response.body, { status: response.status, headers });
+      }
+      return response;
+    },
+  });
+  assert.equal(docs, 2);
+  assert.equal(result.reconcile_production_smoke, "passed");
+});
