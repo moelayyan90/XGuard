@@ -4,14 +4,17 @@ import deployment from '../../deployment-state.json' with { type: 'json' };
 export const PAYPAL_RECEIVER = 'moelayyan2026@gmail.com';
 export function paypalConfig(env) {
   const sandbox = env.PAYPAL_ENVIRONMENT === 'sandbox';
+  // A real Sandbox merchant has its own test email. Never allow this override
+  // to redirect live receipts away from the owner's requested account.
+  const receiver = sandbox ? env.PAYPAL_SANDBOX_RECEIVER_EMAIL || PAYPAL_RECEIVER : PAYPAL_RECEIVER;
   const blockers = [];
   for (const k of ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_MERCHANT_ID', 'PAYPAL_WEBHOOK_ID']) if (!env[k]) blockers.push(k.toLowerCase() + '_missing');
-  if (env.PAYPAL_VERIFIED_EMAIL !== PAYPAL_RECEIVER) blockers.push('receiver_ownership_unverified');
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(receiver) || receiver.length > 254 || env.PAYPAL_VERIFIED_EMAIL !== receiver) blockers.push('receiver_ownership_unverified');
   if (env.PAYPAL_ENABLED !== 'on') blockers.push('merchant_activation_pending');
   if (!sandbox && deployment.payment_state_write_version < 5) blockers.push('card_writer_activation_pending');
   if (!['live', 'sandbox'].includes(env.PAYPAL_ENVIRONMENT)) blockers.push('payment_environment_unverified');
   if (env.PAYPAL_MERCHANT_ID && !/^[A-Z0-9]{8,32}$/.test(env.PAYPAL_MERCHANT_ID)) blockers.push('merchant_identity_invalid');
-  return { ready: blockers.length === 0, blockers, sandbox, origin: sandbox ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com', sdk: 'https://www.paypal.com/sdk/js', merchant_id: env.PAYPAL_MERCHANT_ID, receiver: PAYPAL_RECEIVER };
+  return { ready: blockers.length === 0, blockers, sandbox, origin: sandbox ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com', sdk: 'https://www.paypal.com/sdk/js', merchant_id: env.PAYPAL_MERCHANT_ID, receiver };
 }
 export async function paypalApi(env, method, path, body, requestId) {
   const config = paypalConfig(env);
@@ -46,7 +49,8 @@ export function validatePaypalOrder(order, q, env, requireCapture = false) {
 export async function verifyPaypalWebhook(env, request, event) {
   const config = paypalConfig(env), headerNames = ['paypal-auth-algo', 'paypal-cert-url', 'paypal-transmission-id', 'paypal-transmission-sig', 'paypal-transmission-time'];
   if (headerNames.some(k => !request.headers.get(k))) throw fail('invalid_webhook_signature', 401);
-  const cert = new URL(request.headers.get('paypal-cert-url'));
+  let cert;
+  try { cert = new URL(request.headers.get('paypal-cert-url')); } catch { throw fail('invalid_webhook_certificate', 401); }
   const allowed = config.sandbox ? ['api.paypal.com', 'api.sandbox.paypal.com', 'api-m.sandbox.paypal.com'] : ['api.paypal.com', 'api-m.paypal.com'];
   if (cert.protocol !== 'https:' || cert.username || cert.password || cert.port || !allowed.includes(cert.hostname) || !cert.pathname.startsWith('/v1/notifications/certs/')) throw fail('invalid_webhook_certificate', 401);
   const verified = await paypalApi(env, 'POST', '/v1/notifications/verify-webhook-signature', { auth_algo: request.headers.get('paypal-auth-algo'), cert_url: cert.href, transmission_id: request.headers.get('paypal-transmission-id'), transmission_sig: request.headers.get('paypal-transmission-sig'), transmission_time: request.headers.get('paypal-transmission-time'), webhook_id: env.PAYPAL_WEBHOOK_ID, webhook_event: event });

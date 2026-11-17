@@ -43,9 +43,11 @@ export async function actionFetch(request, env) {
     if (publicPage && ['GET', 'HEAD'].includes(request.method)) {
       // Preserve legacy JSON/Markdown discovery on the root for existing clients.
       if (path === '/' && /application\/json|text\/markdown/.test(request.headers.get('accept') || '')) return null;
-      const html = actionPage(path, url.searchParams.get('service'), config);
+      const nonce = crypto.randomUUID().replaceAll('-', '');
+      const scriptNonce = ['/checkout', '/dashboard'].includes(path) ? '' : `'nonce-${nonce}' `;
+      const html = actionPage(path, url.searchParams.get('service'), config, nonce);
       const r = response(request, env, html, 200, 'text/html; charset=utf-8');
-      r.headers.set('content-security-policy', "default-src 'self'; script-src 'self' https://www.paypal.com https://www.sandbox.paypal.com https://*.paypalobjects.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.paypal.com https://*.paypalobjects.com; frame-src https://*.paypal.com https://*.paypalobjects.com; connect-src 'self' https://*.paypal.com https://*.paypalobjects.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https://*.paypal.com");
+      r.headers.set('content-security-policy', `default-src 'self'; script-src 'self' ${scriptNonce}https://www.paypal.com https://www.sandbox.paypal.com https://*.paypalobjects.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.paypal.com https://*.paypalobjects.com; frame-src https://*.paypal.com https://*.paypalobjects.com; connect-src 'self' https://*.paypal.com https://*.paypalobjects.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https://*.paypal.com`);
       if (!['/checkout', '/dashboard'].includes(path)) r.headers.delete('x-robots-tag');
       return r;
     }

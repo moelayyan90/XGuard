@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { cleanCsv, normalizeCsv, parseCsv } from '../src/action/csv.js';
 import { actionCatalog, normalizeAction } from '../src/action/catalog.js';
 import { LIVE_PAID } from '../src/live/paid-data.ts';
-import { paypalConfig, validatePaypalOrder } from '../src/action/paypal.js';
+import { paypalConfig, paypalOrderBody, validatePaypalOrder, verifyPaypalWebhook } from '../src/action/paypal.js';
 import { actionFetch } from '../src/action/gateway.js';
 
 test('CSV transformation keeps every retained and duplicate row, parses quoted records and escapes formulas', () => {
@@ -43,4 +43,17 @@ test('unconfigured checkout exposes truthful prices without payment, storage or 
   assert.equal((await actionFetch(request('/v1/checkout/quote', { service: 'csv-clean', input: { csv: 'h\na' } }, { origin: 'https://evil.example' }), {})).status, 403);
   const preflight = await actionFetch(new Request('https://xguardgate.com/v1/checkout/orders', { method: 'OPTIONS', headers: { origin: 'https://xguardgate.com' } }), {});
   assert.equal(preflight.status, 204); assert.equal(await preflight.text(), ''); assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://xguardgate.com');
+});
+test('real Sandbox receiver identities cannot redirect the live merchant', async () => {
+  const receiver = 'merchant@business.example.com';
+  const env = { PAYPAL_ENVIRONMENT: 'sandbox', PAYPAL_CLIENT_ID: 'fixture', PAYPAL_CLIENT_SECRET: 'fixture', PAYPAL_WEBHOOK_ID: 'fixture', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_SANDBOX_RECEIVER_EMAIL: receiver, PAYPAL_VERIFIED_EMAIL: receiver, PAYPAL_ENABLED: 'on' };
+  assert.equal(paypalConfig(env).ready, true);
+  const q = { id: 'xgo_' + 'b'.repeat(40), name: 'Sandbox CSV cleanup', amount_cents: 200 };
+  const body = paypalOrderBody(q, env);
+  assert.equal(body.purchase_units[0].payee.email_address, receiver);
+  validatePaypalOrder({ ...body, id: 'SANDBOXORDER1' }, q, env);
+  assert.equal(paypalConfig({ ...env, PAYPAL_ENVIRONMENT: 'live' }).receiver, 'moelayyan2026@gmail.com');
+  assert.ok(paypalConfig({ ...env, PAYPAL_ENVIRONMENT: 'live' }).blockers.includes('receiver_ownership_unverified'));
+  const request = new Request('https://xguardgate.com/v1/checkout/webhooks/paypal', { headers: Object.fromEntries(['paypal-auth-algo', 'paypal-cert-url', 'paypal-transmission-id', 'paypal-transmission-sig', 'paypal-transmission-time'].map(k => [k, 'invalid'])) });
+  await assert.rejects(() => verifyPaypalWebhook(env, request, {}), e => e.code === 'invalid_webhook_certificate' && e.status === 401);
 });

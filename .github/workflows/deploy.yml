@@ -226,6 +226,9 @@ jobs:
       - name: Verify commercial product scope and no-charge payment boundary
         run: EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node scripts/commerce-production-check.mjs
 
+      - name: Verify public analytics policy and product discovery without generating browser visits
+        run: EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node scripts/traffic-production-check.mjs
+
       - name: Verify Agent402 production acceptance without payment
         id: agent402_smoke
         run: node scripts/agent402-smoke.mjs
