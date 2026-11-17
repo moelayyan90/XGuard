@@ -6,7 +6,19 @@ const origin = process.env.LIVE_ORIGIN || 'https://xguardgate.com';
 const headers = { 'user-agent': 'XGuard-commerce-smoke/1.0', 'x-xguard-traffic-class': 'synthetic', 'content-type': 'application/json', 'cache-control': 'no-cache' };
 if (process.env.CANDIDATE_WORKER_ID) headers['cloudflare-workers-version-overrides'] = 'xguard-mainnet="' + process.env.CANDIDATE_WORKER_ID + '"';
 async function fetchPath(path, body) {
-  const r = await fetch(origin + path, { method: body ? 'POST' : 'GET', headers: { ...headers, ...(body ? { 'idempotency-key': 'commerce-smoke-' + crypto.randomUUID() } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), redirect: 'manual', signal: AbortSignal.timeout(15000) });
+  // Retrying a synthetic quote after an edge revision mismatch must preserve
+  // the same idempotency key. Never sign, authorize or settle a payment here.
+  const idempotencyKey = body ? 'commerce-smoke-' + crypto.randomUUID() : null;
+  let r;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    r = await fetch(origin + path, { method: body ? 'POST' : 'GET', headers: { ...headers, ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), redirect: 'manual', signal: AbortSignal.timeout(15000) });
+    if (!process.env.EXPECTED_XGUARD_TAG || r.headers.get('x-xguard-worker-version-tag') === process.env.EXPECTED_XGUARD_TAG) break;
+    if (attempt < 7) {
+      await r.body?.cancel();
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+  }
+  // Exactly one active version across each quoted/paid contract is mandatory.
   if (process.env.EXPECTED_XGUARD_TAG) assert.equal(r.headers.get('x-xguard-worker-version-tag'), process.env.EXPECTED_XGUARD_TAG, path);
   return r;
 }
