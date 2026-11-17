@@ -1,5 +1,5 @@
 {
-  "payment_state_version": 5,
+  "payment_state_version": 6,
   "payment_state_write_version": 4,
-  "description": "Reader supports existing state and Action Cloud v1 PayPal orders, exact capture verification, resumable tasks, private recovery, receipts and refund liabilities. This supporting release retains writer 4 and refuses live card purchases even if credentials are present. Activate writer 5 only in a separate release after this reader is verified on production. Once writer 5 is active, rollback requires a reader supporting version 5. No existing bindings, migrations or financial records are removed."
+  "description": "Compatible reader 6 supports existing records, Action Cloud PayPal state and bounded commerce capabilities. Supporting release retains writer 4: new commerce purchases and live card purchases remain gated. Activate writer 6 only after this reader is production verified. Following activation, rollback targets must support reader 6; old pre-commerce code cannot fulfill a newly paid commerce obligation. No existing bindings, migrations or financial records are removed."
 }

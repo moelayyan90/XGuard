@@ -14,6 +14,9 @@ console.log('Live syntax and security-sensitive source checks passed.');
 for (const file of readdirSync('apps/relay/src/action').filter(x => x.endsWith('.js'))) {
   execFileSync(process.execPath, ['--check', 'apps/relay/src/action/' + file], { stdio: 'inherit' });
 }
+for (const dir of ['products', 'business', 'payments/orchestrator']) for (const file of readdirSync('apps/relay/src/' + dir).filter(x => x.endsWith('.js'))) {
+  execFileSync(process.execPath, ['--check', 'apps/relay/src/' + dir + '/' + file], { stdio: 'inherit' });
+}
 
 const { ACTION_BROWSER } = await import('../apps/relay/src/action/site.js');
 execFileSync(process.execPath, ['--check', '--input-type=module'], { input: ACTION_BROWSER, stdio: ['pipe', 'inherit', 'inherit'] });

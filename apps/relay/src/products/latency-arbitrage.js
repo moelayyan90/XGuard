@@ -1,0 +1,6 @@
+import { definition, object, list, reference, number, unique } from './common.js';
+
+export const latencyArbitrage = definition('latency-plan', 'Cost-bounded provider selection', 'Choose a candidate from supplied provider latency measurements, costs and capacity flags. Returns an execution plan without launching speculative jobs or buying resources. Measurements are caller-supplied.', object({ max_cost_micros: number(), max_latency_ms: number(3600000), providers: list(object({ id: reference, p95_latency_ms: number(3600000), cost_micros: number(), capacity_available: { type: 'boolean' } }), 30) }), { max_cost_micros: 100000, max_latency_ms: 2000, providers: [{ id: 'provider-1', p95_latency_ms: 1000, cost_micros: 50000, capacity_available: true }] }, input => {
+  const eligible = input.providers.filter(p => p.capacity_available && p.cost_micros <= input.max_cost_micros && p.p95_latency_ms <= input.max_latency_ms).sort((a, b) => a.p95_latency_ms - b.p95_latency_ms || a.cost_micros - b.cost_micros || a.id.localeCompare(b.id));
+  return { selected_provider: eligible[0]?.id ?? null, eligible, parallel_executions: 0, upstream_cost_incurred: 0, measured_speedup_ms: null };
+}, input => unique(input.providers));

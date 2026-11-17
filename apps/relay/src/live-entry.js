@@ -1,6 +1,7 @@
 import { financialAuthorityFetch } from './financial-authority/http.js';
 import { computeFetch } from './compute/gateway.js';
 import { actionFetch } from './action/gateway.js';
+import { commerceFetch } from './business/http.js';
 // Existing Durable Object classes must remain exported so old durable records,
 // alarms, receipts and financial recovery state are preserved across deployment.
 export * from './canonical-entry.js';
@@ -24,6 +25,8 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+    const commerce = await commerceFetch(request, env);
+    if (commerce) return commerce;
     const action = await actionFetch(request, env);
     if (action) return action;
     if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {

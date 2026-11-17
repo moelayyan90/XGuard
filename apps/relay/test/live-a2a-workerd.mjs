@@ -42,6 +42,8 @@ try {
   const count = sourceCalls;
   const fetcher = (url, init) => mf.dispatchFetch(url instanceof Request ? url.url : String(url), init);
   console.log(JSON.stringify(await checkA2a(fetcher)));
+  const commercialCard = await (await fetcher(origin + '/.well-known/agent-card.json')).json();
+  for (const id of ['xguard.commerce.redact', 'xguard.commerce.burn_breaker', 'xguard_request_quote']) assert.ok(commercialCard.skills.some(s => s.id === id));
   assert.equal(sourceCalls, count, 'A2A reads must not initiate source collection or paid execution');
 
   const alias = await fetcher('https://api.xguardgate.com/.well-known/agent-card.json');
