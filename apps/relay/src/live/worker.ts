@@ -15,6 +15,7 @@ import { FACILITATOR_IDENTITY } from '../facilitator-surface.js';
 import { BUSINESS_PRODUCTS } from '../business/catalog.js';
 
 const control = (env: Env, op: string, body = {}) => rpc(env.LIVE_CONTROL, controlName, op, body);
+const publicCatalog = (env: Env) => control(env, 'catalog', { public_snapshot: true });
 const shard = (env: Env, id: string, op: string, body = {}) => rpc(env.LIVE_SHARDS, shardName(shardOf(id)), op, body);
 const all = (env: Env, op: string, body = {}) => Promise.all(Array.from({ length: SHARDS }, (_, i) => rpc(env.LIVE_SHARDS, shardName(i), op, body)));
 const READ = new Set(['GET', 'HEAD']);
@@ -62,6 +63,7 @@ function pageResponse(request: Request, kind: string, data: any, path: string, n
   const remaining = visibleFacts.filter((f: any) => f.verification === 'VERIFIED').map((f: any) => Math.max(0, Math.floor((Date.parse(f.verified_at) + f.max_age_seconds * 1000 - Date.now()) / 1000)));
   const ttl = Math.min(60, ...remaining);
   const common: Record<string, string> = { vary: 'Accept', link: `<${ORIGIN}${path}>; rel="canonical"`, 'cache-control': status === 200 && !noindex && ttl > 0 ? `public, max-age=${ttl}` : 'no-store' };
+  if (data.catalog_degraded) { common['cache-control'] = 'no-store'; common.warning = '110 - "Previously published public index; refresh unavailable"'; common['x-xguard-catalog-as-of'] = data.catalog_as_of; }
   if (noindex || explicit || hasPage(url)) common['x-robots-tag'] = 'noindex, follow';
   if (format === 'json') return json(data, status, common);
   if (format === 'markdown') return new Response(markdown(kind, data), { status, headers: { ...common, 'content-type': 'text/markdown; charset=utf-8' } });
@@ -225,8 +227,8 @@ async function route(request: Request, env: Env): Promise<Response> {
     return xml(`<feed xmlns="http://www.w3.org/2005/Atom"><title>XGuard Live changes</title><id>${ORIGIN}/changes.atom</id><link href="${ORIGIN}/changes.atom" rel="self"/><updated>${escape(changes[0].observed_at)}</updated><author><name>XGuard Live</name></author>${changes.map((x: any) => `<entry><id>${ORIGIN}/changes/${escape(x.entity_id)}/${escape(x.id)}</id><title>${escape(x.label)}: ${escape(x.change_type)}</title><updated>${escape(x.observed_at)}</updated><link href="${ORIGIN}/changes/${escape(x.entity_id)}/${escape(x.id)}"/><summary>${escape(JSON.stringify({ before: x.previous_value, after: x.current_value, source: x.source_url }))}</summary></entry>`).join('')}</feed>`, 'application/atom+xml');
   }
   if (path === '/') {
-    const catalog = await control(env, 'catalog');
-    return pageResponse(request, 'home', { title: 'XGuard Live', catalog_as_of: catalog.as_of, stats: sumStats(catalog.shards.map((s: any) => s.stats)), examples: catalog.examples.map((f: any) => agePublicFact(f)), changes: catalog.changes.slice(0, 8) }, path);
+    const catalog = await publicCatalog(env);
+    return pageResponse(request, 'home', { title: 'XGuard Live', catalog_degraded: catalog.degraded, catalog_as_of: catalog.as_of, stats: sumStats(catalog.shards.map((s: any) => s.stats)), examples: catalog.examples.map((f: any) => agePublicFact(f)), changes: catalog.changes.slice(0, 8) }, path);
   }
   if (ARTICLES[path]) return pageResponse(request, 'prose', ARTICLES[path], path);
   if (path === '/corrections') return pageResponse(request, 'corrections', { fact: url.searchParams.get('fact') || '' }, path, url.searchParams.has('fact'));
@@ -234,24 +236,24 @@ async function route(request: Request, env: Env): Promise<Response> {
     const topic = path.slice('/topics/'.length), parts = topic.split('/page/');
     if (path !== '/topics' && !TOPICS[parts[0]]) return errorPage(404, 'Topic not found', 'This topic is not in the verified index.');
     const page = parts[1] ? integer(parts[1], 0, 1, 100000) : 1; if (!page) return errorPage(404, 'Page not found', 'Invalid page number.');
-    const catalog = await control(env, 'catalog'), counts = catalog.shards.map((s: any) => s.topics);
+    const catalog = await publicCatalog(env), counts = catalog.shards.map((s: any) => s.topics);
     const pages: { shard: number; page: number }[] = [];
     counts.forEach((rows: any[], i: number) => { const count = rows.find((x: any) => x.topic === parts[0])?.count || 0;
       for (let p = 1; p <= Math.ceil(count / 50); p++) pages.push({ shard: i, page: p }); });
     if (path !== '/topics' && page > Math.max(1, pages.length)) return errorPage(404, 'Page not found', 'This index page has no published records.');
     const placement = pages[page - 1];
     const items = path === '/topics' ? catalog.items : placement ? await rpc(env.LIVE_SHARDS, shardName(placement.shard), 'list', { topic: parts[0], page: placement.page, size: 50 }) : [];
-    return pageResponse(request, 'index', { title: path === '/topics' ? 'Explore current facts.' : TOPICS[parts[0]], description: 'Only primary-source observations are published.', catalog_as_of: catalog.as_of, items, next: path !== '/topics' && page < pages.length ? `/topics/${parts[0]}/page/${page + 1}` : null }, path, !items.length);
+    return pageResponse(request, 'index', { title: path === '/topics' ? 'Explore current facts.' : TOPICS[parts[0]], description: 'Only primary-source observations are published.', catalog_as_of: catalog.as_of, catalog_degraded: catalog.degraded, items, next: path !== '/topics' && page < pages.length ? `/topics/${parts[0]}/page/${page + 1}` : null }, path, !items.length);
   }
   if (path === '/search') {
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
-    const catalog = q.length >= 2 ? await control(env, 'catalog') : null, term = q.toLowerCase();
+    const catalog = q.length >= 2 ? await publicCatalog(env) : null, term = q.toLowerCase();
     const items = (catalog?.search_items || []).filter((item: any) => item.id.toLowerCase().includes(term) || item.title.toLowerCase().includes(term)).slice(0, 100);
-    return pageResponse(request, 'index', { title: `Search: ${q}`, items, catalog_as_of: catalog?.as_of }, path, true);
+    return pageResponse(request, 'index', { title: `Search: ${q}`, items, catalog_as_of: catalog?.as_of, catalog_degraded: catalog?.degraded }, path, true);
   }
   if (path === '/changes') {
-    const { changes, as_of } = await control(env, 'catalog');
-    return pageResponse(request, 'changes', { title: 'What changed', changes, catalog_as_of: as_of }, path, !changes.length);
+    const { changes, as_of, degraded } = await publicCatalog(env);
+    return pageResponse(request, 'changes', { title: 'What changed', changes, catalog_as_of: as_of, catalog_degraded: degraded }, path, !changes.length);
   }
   const type = path.split('/')[1];
   if (['live', 'fact', 'history', 'changes', 'evidence'].includes(type)) {

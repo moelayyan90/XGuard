@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { runInNewContext } from 'node:vm';
+import { parseHTML } from 'linkedom';
+import { ACTION_BROWSER } from '../src/action/site.js';
 import { cleanCsv, normalizeCsv, parseCsv } from '../src/action/csv.js';
 import { actionCatalog, normalizeAction } from '../src/action/catalog.js';
 import { LIVE_PAID } from '../src/live/paid-data.ts';
@@ -7,6 +10,23 @@ import { paypalApi, paypalConfig, paypalOrderBody, validatePaypalOrder, verifyPa
 import { actionFetch } from '../src/action/gateway.js';
 import { checkoutPreviewFetch } from '../src/action/checkout-preview.js';
 import { PAYPAL_CHECKOUT_PREVIEW_ORIGIN } from '../src/action/paypal.js';
+
+test('operator-only credential check never activates checkout, exposes a token or submits a transaction', async () => {
+  const original=globalThis.fetch, key='private-operator-fixture-'.repeat(2); let calls=0;
+  const env={LIVE_ADMIN_KEY:key,PAYPAL_ENVIRONMENT:'live',PAYPAL_CLIENT_ID:'fixture',PAYPAL_CLIENT_SECRET:'private-fixture-secret',PAYPAL_MERCHANT_ID:'TESTMERCHANT1',PAYPAL_WEBHOOK_ID:'fixture',PAYPAL_VERIFIED_EMAIL:'moelayyan2026@gmail.com',PAYPAL_ENABLED:'off'};
+  const request=(secret)=>new Request('https://xguardgate.com/admin/action-cloud/paypal-readiness',{headers:secret?{authorization:'Bearer '+secret}:{}});
+  try {
+    globalThis.fetch=async (url,init)=>{calls++;assert.equal(url,'https://api-m.paypal.com/v1/oauth2/token');assert.equal(init.method,'POST');return Response.json({access_token:'private-fixture-access-token'});};
+    for(const bad of [undefined,'wrong'])assert.equal((await actionFetch(request(bad),env)).status,401);
+    assert.equal(calls,0);
+    const r=await actionFetch(request(key),env), text=await r.text(), value=JSON.parse(text);
+    assert.equal(r.status,200);assert.equal(value.credentials_valid,true);assert.equal(value.checkout_enabled,false);assert.equal(value.transactions_submitted,0);assert.equal(calls,1);
+    assert.doesNotMatch(text,/private-fixture|TESTMERCHANT1|access_token|client_secret/);assert.match(r.headers.get('cache-control'),/no-store/);
+    assert.equal((await actionFetch(request(key),{...env,PAYPAL_VERIFIED_EMAIL:'unverified@example.com'})).status,503);assert.equal(calls,1);
+    globalThis.fetch=async()=>Response.json({error:'invalid_client',error_description:'private-fixture-description'},{status:401});
+    const rejected=await actionFetch(request(key),env);assert.equal(rejected.status,503);assert.doesNotMatch(await rejected.text(),/private-fixture/);
+  } finally {globalThis.fetch=original;}
+});
 
 test('isolated checkout preview cannot enable live payments or expose production routes', async () => {
   const env = { XGUARD_CHECKOUT_SANDBOX_PREVIEW: 'on', PAYPAL_ENVIRONMENT: 'sandbox' };
@@ -27,8 +47,9 @@ test('Sandbox preview preserves same-origin protection, merchant binding and ret
   assert.equal(response.headers.get('access-control-allow-origin'), PAYPAL_CHECKOUT_PREVIEW_ORIGIN);
   assert.equal((await checkoutPreviewFetch(new Request(PAYPAL_CHECKOUT_PREVIEW_ORIGIN + '/v1/checkout/config', { headers: { origin: 'https://evil.example' } }), env)).status, 403);
   const q = { id: 'xgo_' + 'b'.repeat(40), amount_cents: 200 };
-  assert.equal(paypalOrderBody(q, env).payment_source.paypal.experience_context.return_url, PAYPAL_CHECKOUT_PREVIEW_ORIGIN + '/dashboard');
-  assert.equal(paypalOrderBody(q, { ...env, PAYPAL_ENVIRONMENT: 'live' }).payment_source.paypal.experience_context.return_url, 'https://xguardgate.com/dashboard');
+  assert.equal(paypalOrderBody(q, env).payment_source.paypal.experience_context.return_url, PAYPAL_CHECKOUT_PREVIEW_ORIGIN + '/dashboard?paypal=return');
+  assert.equal(paypalOrderBody(q, env).payment_source.paypal.experience_context.cancel_url, PAYPAL_CHECKOUT_PREVIEW_ORIGIN + '/dashboard?paypal=cancel');
+  assert.equal(paypalOrderBody(q, { ...env, PAYPAL_ENVIRONMENT: 'live' }).payment_source.paypal.experience_context.return_url, 'https://xguardgate.com/dashboard?paypal=return');
 });
 test('a refused provider OAuth client cannot create an order or leak its description', async () => {
   const original = globalThis.fetch;
@@ -104,4 +125,49 @@ test('real Sandbox receiver identities cannot redirect the live merchant', async
   assert.ok(paypalConfig({ ...env, PAYPAL_ENVIRONMENT: 'live' }).blockers.includes('receiver_ownership_unverified'));
   const request = new Request('https://xguardgate.com/v1/checkout/webhooks/paypal', { headers: Object.fromEntries(['paypal-auth-algo', 'paypal-cert-url', 'paypal-transmission-id', 'paypal-transmission-sig', 'paypal-transmission-time'].map(k => [k, 'invalid'])) });
   await assert.rejects(() => verifyPaypalWebhook(env, request, {}), e => e.code === 'invalid_webhook_certificate' && e.status === 401);
+});
+
+test('verified results download with their signed receipt and survive a repeat recovery', async () => {
+  const { document } = parseHTML('<html><body><section id="task-result" hidden><div id="downloads"></div><pre id="result-json"></pre></section></body></html>');
+  const context = { document, URL, Blob };
+  runInNewContext(ACTION_BROWSER, context);
+  const receipt = { payload: { order_id: 'fixture' }, proof: 'signed-fixture' };
+  const result = { data: { rows: 1 } };
+  const output = { order: { id: 'fixture', receipt }, result };
+  context.showResult(output);
+  context.showResult(output);
+  const links = [...document.querySelectorAll('#downloads a')];
+  assert.deepEqual(links.map(link => link.download), ['result-fixture.json', 'receipt-fixture.json']);
+  try {
+    assert.deepEqual(await (await fetch(links[0].href)).json(), result);
+    assert.deepEqual(await (await fetch(links[1].href)).json(), receipt);
+  } finally {
+    for (const link of links) URL.revokeObjectURL(link.href);
+  }
+});
+
+test('PayPal returns resume only the original local purchase and cancellations perform no capture', async () => {
+  const { document } = parseHTML('<html><body><div id="task-history"></div><div id="quote-status"></div></body></html>');
+  const saved = { key: 'fixture-key', id: 'xgo_' + 'a'.repeat(40), token: 'r'.repeat(64), paypal_order_id: 'PAYPALORDER1', status: 'AWAITING_PAYMENT' };
+  const calls = [];
+  const location = { pathname: '/dashboard', search: '' };
+  const context = {
+    document, location, URLSearchParams, window: { history: { replaceState() {} } },
+    localStorage: { getItem: () => JSON.stringify([saved]), setItem() {} },
+    fetch: async (url, options) => {
+      calls.push([url, options.method, options.headers['X-XGuard-Checkout-Token']]);
+      return Response.json({ order: saved });
+    },
+  };
+  runInNewContext(ACTION_BROWSER, context);
+  for (const search of ['?paypal=cancel&token=PAYPALORDER1', '?paypal=return&token=UNRELATED', '?token=PAYPALORDER1']) {
+    location.search = search;
+    await context.resumePaypalReturn();
+  }
+  assert.deepEqual(calls, []);
+  for (const search of ['?paypal=return&token=PAYPALORDER1', '?token=PAYPALORDER1&PayerID=legacy']) {
+    location.search = search;
+    await context.resumePaypalReturn();
+  }
+  assert.deepEqual(calls, Array(2).fill(['/v1/checkout/orders/' + saved.id + '/capture', 'POST', saved.token]));
 });

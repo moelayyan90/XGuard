@@ -1,0 +1,46 @@
+{
+  "baseline_sha": "6a7c27ed9da0489a104c215aff28e514b18f86f4",
+  "scope": "Paired real workerd SQLite: 32 shards, 2,560 sources and 10,240 facts per build. Same global latest 100 changes and entity catalog. Application SQL counters only; not account-wide billing or a daily availability guarantee.",
+  "before": {
+    "catalog_rows_read": 51188,
+    "schema_version": 4,
+    "revalidation_writes": 11,
+    "candidate_reads": 3,
+    "changed_observation_writes": 31,
+    "history_added": 1,
+    "value": "2.0.0",
+    "fact_preview_reads": 40,
+    "entity_preview_reads": 52,
+    "fact_preview_matches": true,
+    "entity_preview_matches": true,
+    "history_page_sizes": [
+      100,
+      15
+    ],
+    "repeated_public_reads": 768,
+    "identical_public_values": true,
+    "paid_reads_uncached": 12
+  },
+  "after": {
+    "catalog_rows_read": 51188,
+    "schema_version": 4,
+    "revalidation_writes": 11,
+    "candidate_reads": 3,
+    "changed_observation_writes": 31,
+    "history_added": 1,
+    "value": "2.0.0",
+    "fact_preview_reads": 40,
+    "entity_preview_reads": 52,
+    "fact_preview_matches": true,
+    "entity_preview_matches": true,
+    "history_page_sizes": [
+      100,
+      15
+    ],
+    "repeated_public_reads": 6,
+    "identical_public_values": true,
+    "paid_reads_uncached": 12
+  },
+  "source_fetches": 0,
+  "payments": 0
+}

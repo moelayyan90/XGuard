@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 // Actual release routing, storage, alarms and collection; only the ephemeral
-// source allowance is seeded. Quota/proration tests use the unmodified Store.
+// source allowances are seeded. Quota/proration tests use the unmodified Store.
 export async function collectorFixture(bundle) {
   const directory = await mkdtemp(join(tmpdir(), 'xguard-collector-fixture-'));
   const path = join(directory, 'entry.js');
@@ -17,6 +17,7 @@ export async function collectorFixture(bundle) {
         constructor(state, env) {
           super(state, env);
           this.store.set('source-write-budget-v1', {day:new Date().toISOString().slice(0,10),rows_written:0,paused:false,allocation:1600,limit:1600});
+          this.store.set('source-read-budget-v1', {day:new Date().toISOString().slice(0,10),rows_read:0,paused:false,allocation:100000,limit:100000});
         }
       }
     ` }, bundle: true, format: 'esm', platform: 'browser', external: ['url', 'node:*', 'cloudflare:*'], target: 'es2022', outfile: path });

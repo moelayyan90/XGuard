@@ -67,6 +67,7 @@ export async function actionState(state, env, action, body) {
     if (action === 'update') return json(await state.storage.transaction(async tx => {
       const row = await tx.get('action:v1');
       if (!body.expected.includes(row.status)) return { order: view(row) };
+      if (body.patch.status === 'PAID' && row.error?.startsWith('provider_')) return { order: view(row) };
       const permitted = ['status', 'paypal_order_id', 'capture', 'error', 'liability', 'attempts'];
       for (const key of permitted) if (body.patch[key] !== undefined) row[key] = body.patch[key];
       row.updated_at = stamp(); row.events.push({ state: row.status, at: row.updated_at });
@@ -96,10 +97,10 @@ export async function createPaypalOrder(env, id, token_hash) {
     return actionCall(env, id, 'update', { expected: ['CREATING'], patch: { status: 'REVIEW_REQUIRED', error: code } });
   }
 }
-export async function reconcilePaypalOrder(env, q) {
+export async function reconcilePaypalOrder(env, q, confirmedOrder) {
   // A delayed completion event cannot release a refund, dispute or denial hold.
   if (['REFUNDED', 'REVERSED'].includes(q.status) || q.error?.startsWith('provider_')) return { order: view(q) };
-  const order = await paypalApi(env, 'GET', '/v2/checkout/orders/' + q.paypal_order_id);
+  const order = confirmedOrder ?? await paypalApi(env, 'GET', '/v2/checkout/orders/' + q.paypal_order_id);
   const capture = validatePaypalOrder(order, q, env, true);
   if (capture) {
     await actionCall(env, 'references', 'map', { reference: capture.id, id: q.id });
@@ -108,6 +109,16 @@ export async function reconcilePaypalOrder(env, q) {
   return { order: view(q) };
 }
 export async function capturePaypalOrder(env, id, token_hash) {
+  const { record } = await actionCall(env, id, 'inspect');
+  if (record.token_hash !== token_hash) throw fail('order_not_found', 404);
+  if (record.status !== 'AWAITING_PAYMENT') return { order: view(record) };
+  // The SDK callback and the browser return can arrive concurrently or be replayed.
+  // Only PayPal's own order representation can authorize the transition.
+  const approvedOrder = await paypalApi(env, 'GET', '/v2/checkout/orders/' + record.paypal_order_id);
+  validatePaypalOrder(approvedOrder, record, env);
+  if (approvedOrder.status === 'COMPLETED') return reconcilePaypalOrder(env, record, approvedOrder);
+  if (approvedOrder.status !== 'APPROVED') return { order: view(record) };
+  if (!paypalConfig(env).ready) throw fail('card_payments_not_activated', 503);
   const claim = await actionCall(env, id, 'claim', { kind: 'capture', token_hash });
   if (!claim.claimed) return { order: view(claim.record) };
   const q = claim.record;
@@ -146,6 +157,7 @@ export async function actionAlarm(state, env, fetchSource) {
     else if (['CAPTURING', 'PAYMENT_UNKNOWN'].includes(q.status)) {
       await reconcilePaypalOrder(env, q);
       q = await state.storage.get('action:v1');
+      if (!['CAPTURING', 'PAYMENT_UNKNOWN', 'PAID'].includes(q.status)) return true;
       if (q.status !== 'PAID') {
         q.attempts++;
         if (q.attempts >= 3) { q.status = 'REVIEW_REQUIRED'; q.error = 'payment_outcome_unknown'; }

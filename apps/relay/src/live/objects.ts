@@ -2,7 +2,7 @@ import { Store } from './store.ts';
 import { refreshOne } from './refresh.ts';
 import { sourceSpec } from './adapters.ts';
 import { SOURCE_HOSTS } from './security.ts';
-import { iso, json, integer, rpc, shardName, storageQuotaCode } from './util.ts';
+import { agePublicFact, iso, json, integer, rpc, shardName, storageQuotaCode } from './util.ts';
 import { SHARDS } from './types.ts';
 import type { Env, Row, State } from './types.ts';
 import { canonicalFact } from './paid-data.ts';
@@ -11,7 +11,25 @@ import { catalogCapacity } from './capacity.ts';
 export class LiveShard {
   state: State; env: Env; store: Store; running = false;
   telemetryBuffer: Row[] = []; telemetryFlushedAt = Date.now(); telemetryRetryAt = 0;
+  publicReads = new Map<string, { until: number; writes: number; value: string }>();
   constructor(state: State, env: Env) { this.state = state; this.env = env; this.store = new Store(state.storage); }
+  publicRead(body: Row, read: () => any): any {
+    // This cache is used only by the six public observation operations below.
+    // Paid reads, authorizations, balances, signatures and readiness never use it.
+    const key = JSON.stringify(body), now = Date.now(), cached = this.publicReads.get(key);
+    if (cached && cached.until > now && cached.writes === this.store.rowsWritten) {
+      // Re-evaluate observation expiry even inside the short cache window.
+      return JSON.parse(cached.value, (_key, value) => value && typeof value === 'object' && typeof value.max_age_seconds === 'number' && typeof value.verified_at === 'string' ? agePublicFact(value, now) : value);
+    }
+    const value = read(), serialized = JSON.stringify(value);
+    // Bound both key cardinality and payload size. All writes invalidate entries,
+    // including source failures and owner suppression, without durable writes.
+    if (key.length <= 512 && serialized && serialized.length <= 8192) {
+      if (this.publicReads.size >= 128) this.publicReads.delete(this.publicReads.keys().next().value!);
+      this.publicReads.set(key, { until: now + 15000, writes: this.store.rowsWritten, value: serialized });
+    }
+    return value;
+  }
   flushTelemetry(): void {
     if (!this.telemetryBuffer.length || Date.now() < this.telemetryRetryAt) return;
     try { this.store.telemetryBatch(this.telemetryBuffer); }
@@ -23,8 +41,8 @@ export class LiveShard {
     const existing = await this.state.storage.getAlarm(), now = Date.now();
     // A pending automatic alarm already owns the next scheduling decision.
     if (!urgent && existing !== null && existing > now) return;
-    const budget = this.store.collectionBudget();
-    if (budget.paused || budget.rows_written + 48 > budget.allocation) {
+    const budget = this.store.collectionBudget(), reads = this.store.collectionReadBudget();
+    if (budget.paused || budget.rows_written + 48 > budget.allocation || reads.paused || reads.rows_read + 4096 > reads.allocation) {
       const reset = Date.parse(budget.day + 'T00:00:00Z') + 86400000;
       if (existing === null || existing < reset) await this.state.storage.setAlarm(reset + 1000 + Math.random() * 180000);
       return;
@@ -40,21 +58,30 @@ export class LiveShard {
   async alarm(): Promise<void> {
     if (this.running || this.env.LIVE_SOURCE_FETCHES === 'off') return;
     this.running = true;
+    let readStart: number | null = null;
     try {
       try { this.flushTelemetry(); } catch { console.warn(JSON.stringify({ event: 'telemetry_flush_unavailable' })); }
-      const budget = this.store.collectionBudget();
-      if (budget.paused || budget.rows_written + 48 > budget.allocation) return;
+      const start = this.store.rowsRead, budget = this.store.collectionBudget(), reads = this.store.collectionReadBudget();
+      if (budget.paused || budget.rows_written + 48 > budget.allocation || reads.paused || reads.rows_read + 4096 > reads.allocation) return;
+      readStart = start;
       // Existing bounded scheduling metadata is outside the source allocation.
       // Do not add another checkpoint to every contended alarm.
       this.store.set('last-tick', iso());
       for (let i = 0; i < 4; i++) {
+        if (reads.rows_read + this.store.rowsRead - start + 4096 > reads.allocation) break;
         const source = this.store.peekDue(); if (!source) break;
         try { await refreshOne(this.store, this.env, source); }
         catch (error) { if (error instanceof Error && error.message === 'source_collection_capacity_deferred') break; throw error; }
         if (this.store.collectionBudget().paused) break;
       }
       if (this.store.get('cleanup-day') !== iso().slice(0, 10)) { this.store.cleanOperationalData(); this.store.set('cleanup-day', iso().slice(0, 10)); }
-    } finally { this.running = false; await this.wake(); }
+    } finally {
+      this.running = false;
+      try { await this.wake(); }
+      finally {
+        if (readStart !== null && this.store.checkpointCollectionReads(readStart).paused) await this.wake(true);
+      }
+    }
   }
   async fetch(request: Request): Promise<Response> {
     try {
@@ -69,17 +96,17 @@ export class LiveShard {
         await this.wake(); return json({ queued });
       }
       if (op === 'tick') { try { this.flushTelemetry(); } catch { console.warn(JSON.stringify({ event: 'telemetry_flush_unavailable' })); } await this.wake(); return json({ scheduled: true }); }
-      if (op === 'entity') return json(this.store.entity(body.id));
-      if (op === 'entity-page') { const entity = this.store.entity(body.id); return json(entity ? { ...entity, changes: this.store.changes(body.id, null, 1, 8) } : null); }
-      if (op === 'fact') return json(this.store.fact(body.id));
+      if (op === 'entity') return json(this.publicRead(body, () => this.store.entity(body.id)));
+      if (op === 'entity-page') return json(this.publicRead(body, () => { const entity = this.store.entity(body.id); return entity ? { ...entity, changes: this.store.changes(body.id, null, 1, 8) } : null; }));
+      if (op === 'fact') return json(this.publicRead(body, () => this.store.fact(body.id)));
       if (op === 'paid-read') {
         if (!['batch', 'history', 'compare'].includes(body.kind) || !Array.isArray(body.facts) || body.facts.length < 1 || body.facts.length > (body.kind === 'batch' ? 20 : 1) || body.facts.some((id: any) => !canonicalFact(id))) return json({ error: 'invalid_paid_read' }, 400);
         return json(body.facts.map((id: string) => this.store.paidRead(id, body)));
       }
-      if (op === 'fact-page') { const fact = this.store.fact(body.id); return json(fact ? { fact, history: this.store.history(body.id, 1, 10) } : null); }
-      if (op === 'history') return json(this.store.history(body.id, integer(body.page, 1, 1, 1000000)));
+      if (op === 'fact-page') return json(this.publicRead(body, () => { const fact = this.store.fact(body.id); return fact ? { fact, history: this.store.history(body.id, 1, 10) } : null; }));
+      if (op === 'history') return json(this.publicRead(body, () => this.store.history(body.id, integer(body.page, 1, 1, 1000000))));
       if (op === 'evidence') return json(this.store.evidence(body.entity, body.observation));
-      if (op === 'changes') return json(this.store.changes(body.entity, body.id, integer(body.page, 1, 1, 1000000)));
+      if (op === 'changes') return json(this.publicRead(body, () => this.store.changes(body.entity, body.id, integer(body.page, 1, 1, 1000000))));
       if (op === 'list') return json(this.store.list(body.topic || null, integer(body.page, 1, 1, 1000000), integer(body.size, 100, 1, 1000)));
       if (op === 'search') {
         const term = '%' + String(body.q || '').slice(0, 100).replace(/[\\%_]/g, '\\$&') + '%';
@@ -141,7 +168,20 @@ export class LiveShard {
 export class LiveControl {
   state: State; env: Env; store: Store;
   catalogValue: any = null; catalogFlight: Promise<any> | null = null;
+  publicCatalogRetryAt = 0;
+  publicCatalogQuota: string | null = null;
   constructor(state: State, env: Env) { this.state = state; this.env = env; this.store = new Store(state.storage); }
+  async publicCatalog(): Promise<any> {
+    const fallback = (error: unknown, remember = false) => {
+      const code = storageQuotaCode(error), snapshot = this.catalogValue;
+      const age = Date.now() - Date.parse(snapshot?.as_of || '');
+      if (!code || !snapshot || snapshot.profile_version !== 2 || age < 0 || age > 21600000) throw error;
+      if (remember) { this.publicCatalogRetryAt = Date.now() + 60000; this.publicCatalogQuota = code; }
+      return { ...snapshot, degraded: { code, source_as_of: snapshot.as_of, scope: 'Previously published public index only; not current health, financial state or authorization.', retry_after_seconds: 60 } };
+    };
+    if (Date.now() < this.publicCatalogRetryAt) return fallback(new Error(this.publicCatalogQuota!));
+    try { return await this.catalog(); } catch (error) { return fallback(error, true); }
+  }
   async catalog(): Promise<any> {
     if (!this.catalogValue) this.catalogValue = this.store.get('public-catalog-v1');
     const capacity = catalogCapacity(this.catalogValue?.profile?.rows_read);
@@ -203,7 +243,9 @@ export class LiveControl {
   async fetch(request: Request): Promise<Response> {
     try {
       const body = await request.json() as Row, { op } = body;
-      if (op === 'catalog') return json({ ...await this.catalog(), last_cron: this.store.get('last-cron') });
+      // Old readers ignore this additional public-only flag during a rolling
+      // deployment and keep returning their existing authoritative catalog.
+      if (op === 'catalog') return body.public_snapshot === true ? json(await this.publicCatalog()) : json({ ...await this.catalog(), last_cron: this.store.get('last-cron') });
       if (op === 'catalog-invalidate') { await this.catalogFlight?.catch(() => {}); this.catalogValue = null; this.store.set('public-catalog-v1', null); return json({ ok: true }); }
       if (op === 'get') return json(this.store.get(body.key));
       if (op === 'set') { this.store.set(body.key, body.value); return json({ ok: true }); }

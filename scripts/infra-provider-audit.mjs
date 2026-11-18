@@ -1,5 +1,7 @@
 // Read-only provider audit. Output contains aggregate counters and capability
 // failures only. Never print credentials, request bodies, settings or raw logs.
+import { appendFileSync } from 'node:fs';
+import { capacitySignals } from './infra-capacity-policy.mjs';
 const token = (process.env.CLOUDFLARE_API_TOKEN || '').trim().replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '').trim();
 const account = process.env.CLOUDFLARE_ACCOUNT_ID || '';
 if (!token || !/^[a-f0-9]{32}$/i.test(account)) throw Error('Provider audit credentials unavailable');
@@ -55,13 +57,15 @@ const dailyUsage = await inspect('daily_durable_usage', async () => {
   }
   const periodic = results.find(r => r.dataset === 'durableObjectsPeriodicGroups')?.groups;
   const totals = periodic?.reduce((a, r) => ({ rows_read: a.rows_read + Number(r.sum?.rowsRead || 0), rows_written: a.rows_written + Number(r.sum?.rowsWritten || 0) }), { rows_read: 0, rows_written: 0 });
-  if (totals) for (const [metric, allowance] of [['rows_read', 5000000], ['rows_written', 100000]]) {
-    const percent = totals[metric] * 100 / allowance;
-    const threshold = [90, 75, 50].find(t => percent >= t) || 0;
+  const signals = capacitySignals(totals, start, end);
+  if (!signals) throw Error('Daily SQLite row counters unavailable or invalid');
+  for (const {metric, allowance, used, threshold, projected_day_total, projected_exhaustion_at} of signals) {
     if (threshold) console.log(`::warning title=Durable Objects ${metric} ${threshold}%::Provider UTC-day counter ${totals[metric]}; free allowance ${allowance}. Review workload before exhaustion.`);
+    if (projected_exhaustion_at && threshold < 90) console.log(`::warning title=Projected Durable Objects ${metric} exhaustion::Observed ${used} rows so far; the UTC-day average projects ${projected_day_total} by midnight. Estimated exhaustion ${projected_exhaustion_at}; not a guarantee or a measured remaining balance.`);
     if (threshold >= 90 && process.env.GITHUB_ACTIONS === 'true') process.exitCode = 1;
   }
-  return { available: results.some(r => r.groups), utc_start: start, utc_end: end, totals, free_plan_allowances: { rows_read: 5000000, rows_written: 100000 }, datasets: datasets.map(d => ({ name: d.name, metrics: d.metrics })), results };
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Durable Objects provider counters\n\nObserved UTC window: ${start} to ${end}.\n\n| Counter | Used | Free daily allowance | Projected UTC-day total |\n| --- | ---: | ---: | ---: |\n${signals.map(s=>`| ${s.metric} | ${s.used} | ${s.allowance} | ${s.projected_day_total ?? 'Too early to project'} |`).join('\n')}\n\nProjection uses the average rate so far and is not account-wide capacity assurance. Optional billing/subscription visibility is separate from SQLite analytics.\n`);
+  return { available: true, utc_start: start, utc_end: end, totals, signals, free_plan_allowances: { rows_read: 5000000, rows_written: 100000 }, datasets: datasets.map(d => ({ name: d.name, metrics: d.metrics })), results };
 });
 if (process.env.PROVIDER_USAGE_REQUIRED === 'true' && (!dailyUsage.available || !dailyUsage.totals)) {
   console.log('::error title=Provider usage visibility unavailable::Daily SQLite counters could not be read. Missing usage evidence is not healthy capacity.');

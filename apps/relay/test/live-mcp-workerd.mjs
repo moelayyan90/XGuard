@@ -130,7 +130,13 @@ try {
   await client.connect(new StreamableHTTPClientTransport(new URL(endpoint), { fetch: trackedFetch }));
   assert.equal(client.getServerVersion()?.name, 'xguard-live');
   assert.equal(client.getNegotiatedProtocolVersion(), version);
-  const toolNames = (await client.listTools()).tools.map(t => t.name).sort();
+  const advertisedTools = (await client.listTools()).tools;
+  const toolNames = advertisedTools.map(t => t.name).sort();
+  for (const tool of advertisedTools) {
+    assert.ok(tool.title && tool.title !== tool.name, 'A directory-ready human title is required: ' + tool.name);
+    assert.ok(typeof tool.annotations?.readOnlyHint === 'boolean' || typeof tool.annotations?.destructiveHint === 'boolean', 'Preserve explicit safety annotations: ' + tool.name);
+  }
+  for (const name of ['execute_inference', 'execute_gpu_job', 'xguard.web.fetch', 'xguard.authority.command']) assert.equal(advertisedTools.find(tool => tool.name === name).annotations.readOnlyHint, false);
   assert.ok(toolNames.length >= 29); assert.equal(new Set(toolNames).size, toolNames.length);
   for (const name of ['xguard.commerce_redact', 'xguard.commerce_burn_breaker', 'xguard.commerce_reconcile_invoices', 'xguard_purchase_service']) assert.ok(toolNames.includes(name));
   for (const name of ['catalog', 'command', 'verify_receipt']) assert.ok((await client.listTools()).tools.some(t => t.name === 'xguard.authority.' + name));

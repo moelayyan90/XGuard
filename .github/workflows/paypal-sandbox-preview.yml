@@ -2,6 +2,7 @@ name: XGuard isolated PayPal Sandbox
 on:
   push:
     branches: [fix/paypal-sandbox-preview-20261118]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -26,11 +27,12 @@ jobs:
           npm test
           npm run build
           node apps/relay/test/action-cloud-workerd.mjs
-      - name: Preserve proven production source metadata after secret provisioning
+      - name: Snapshot production without modifying source metadata or bindings
+        id: production_snapshot
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node scripts/paypal-preview-metadata.mjs
+        run: node scripts/paypal-preview-production-guard.mjs snapshot "$RUNNER_TEMP/xguard-sandbox-production.json"
       - name: Enable the approved Sandbox Preview URL without redeploying production
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -53,3 +55,9 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node scripts/paypal-sandbox-diagnostics.mjs
+      - name: Prove the isolated Sandbox workflow preserved production
+        if: always() && steps.production_snapshot.outcome == 'success'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/paypal-preview-production-guard.mjs verify "$RUNNER_TEMP/xguard-sandbox-production.json"

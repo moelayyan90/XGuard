@@ -8,9 +8,7 @@ const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 assert.ok(token && /^[a-f0-9]{32}$/i.test(account || ''), 'Provider credentials unavailable');
 const accountRoot = `https://api.cloudflare.com/client/v4/accounts/${account}`;
 const root = '/workers/scripts/xguard-mainnet';
-const knownVersion = '07f811dc-752d-4281-821d-8defa6d7c8f9';
-const configuredVersion = '7575edeb-8949-496a-83a3-103401538499';
-const expectedTag = 'git-6a7c27ed9da0';
+const validTag = value => /^git-[0-9a-f]{12,40}$/.test(value || '');
 async function accountApi(path, body) {
   const r = await fetch(accountRoot + path, { method: body ? 'PATCH' : 'GET', headers: { authorization: `Bearer ${token}` }, ...(body ? { body } : {}), redirect: 'error', signal: AbortSignal.timeout(30000) });
   const data = await r.json();
@@ -41,17 +39,27 @@ async function assertSameModules(previousId, currentId) {
   assert.equal(current.compatibility_date, known.compatibility_date, 'Runtime compatibility differs');
   assert.equal(JSON.stringify(current.compatibility_flags || []), JSON.stringify(known.compatibility_flags || []), 'Runtime compatibility flags differ');
 }
-const active = (await api('/deployments')).deployments?.[0];
+const deployments = (await api('/deployments')).deployments || [];
+const active = deployments[0];
 assert.equal(active?.versions?.length, 1, 'Require one production version');
 assert.equal(active.versions[0].percentage, 100);
 const current = await api('/versions/' + active.versions[0].version_id);
-if (current.annotations?.['workers/tag'] === expectedTag) {
-  console.log(JSON.stringify({ source_metadata: 'already_verified', tag: expectedTag }));
+if (validTag(current.annotations?.['workers/tag'])) {
+  console.log(JSON.stringify({ source_metadata: 'already_verified', tag: current.annotations['workers/tag'], production_mutations: 0 }));
 } else {
-  assert.equal(active.versions[0].version_id, configuredVersion, 'Production changed; inspect before annotation');
-  assert.ok(!current.annotations?.['workers/tag']);
-  const known = await api('/versions/' + knownVersion);
-  assert.equal(known.annotations?.['workers/tag'], expectedTag);
+  assert.ok(!current.annotations?.['workers/tag'], 'Unknown source annotation; inspect before repair');
+  const configuredVersion = active.versions[0].version_id;
+  let knownVersion, expectedTag;
+  // Use the most recent previously deployed, tagged source. Do not guess a
+  // current commit or relabel changed runtime bytes after a dashboard update.
+  for (const previous of deployments.slice(1, 15)) {
+    if (previous.versions?.length !== 1 || previous.versions[0].percentage !== 100) continue;
+    const id = previous.versions[0].version_id;
+    if (id === configuredVersion) continue;
+    const candidate = await api('/versions/' + id);
+    if (validTag(candidate.annotations?.['workers/tag'])) { knownVersion = id; expectedTag = candidate.annotations['workers/tag']; break; }
+  }
+  assert.ok(knownVersion && expectedTag, 'No proven previous deployed source; manual source comparison required');
   // A settings update changed the version ETag. Do not infer code identity from
   // that hash: compare every provider-returned runtime module byte instead.
   await assertSameModules(knownVersion, configuredVersion);

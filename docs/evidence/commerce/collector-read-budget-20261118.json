@@ -1,0 +1,66 @@
+{
+  "baseline_sha": "d2672ff1cbddc7be1d1a43365464ce1babeaeed5",
+  "scope": "Paired real workerd SQLite; 80 equally seeded sources, 64 forced contended collector alarms, a 4500-row test allocation and persistent restart. Not account-wide billing or a production-volume guarantee.",
+  "before": {
+    "alarm_reads": 20936,
+    "alarm_writes": 69,
+    "budget": {
+      "day": "2026-11-18",
+      "rows_read": 0,
+      "allocation": 4500,
+      "limit": 100000,
+      "paused": false
+    },
+    "persisted": {
+      "day": "2026-11-18",
+      "rows_read": 0,
+      "allocation": 4500,
+      "limit": 100000,
+      "paused": false
+    },
+    "paused_writes": 0,
+    "alarm": 1794982109847,
+    "utc_reset": 1795046400000,
+    "reset": null,
+    "invalid_closed": null,
+    "read_budget_supported": false,
+    "public_value": "1.0.0",
+    "history_count": 1,
+    "paid_reads": 12
+  },
+  "after": {
+    "alarm_reads": 920,
+    "alarm_writes": 9,
+    "budget": {
+      "day": "2026-11-18",
+      "rows_read": 672,
+      "allocation": 4500,
+      "limit": 100000,
+      "paused": true
+    },
+    "persisted": {
+      "day": "2026-11-18",
+      "rows_read": 672,
+      "allocation": 4500,
+      "limit": 100000,
+      "paused": true
+    },
+    "paused_writes": 0,
+    "alarm": 1795046573922,
+    "utc_reset": 1795046400000,
+    "reset": {
+      "day": "2026-11-19",
+      "rows_read": 0,
+      "allocation": 99998,
+      "limit": 100000,
+      "paused": false
+    },
+    "invalid_closed": true,
+    "read_budget_supported": true,
+    "public_value": "1.0.0",
+    "history_count": 1,
+    "paid_reads": 12
+  },
+  "external_requests": 0,
+  "payments": 0
+}

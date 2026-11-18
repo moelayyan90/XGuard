@@ -30,6 +30,7 @@ jobs:
           node --test apps/relay/test/infra-safety.test.mjs
           node --test apps/relay/test/native-settlement.test.mjs
           node --test scripts/live-capacity-preflight-test.mjs
+          node --test scripts/infra-capacity-policy-test.mjs
           node --test scripts/live-owner-bootstrap-test.mjs
           node --test scripts/live-paid-smoke-test.mjs scripts/action-production-check-test.mjs
           node --test scripts/c2sp-stability-contract-test.mjs scripts/gblin-canary-compare-test.mjs
@@ -73,10 +74,12 @@ jobs:
           LIVE_BASELINE_BUNDLE="$baseline_dir/.live-build/live-entry.js" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/live-compatibility-workerd.mjs
           LIVE_BASELINE_ROOT="$baseline_dir" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/live-capacity-workerd.mjs
           LIVE_BASELINE_ROOT="$baseline_dir" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/live-sql-budget-workerd.mjs
+          LIVE_BASELINE_ROOT="$baseline_dir" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/collector-read-budget-workerd.mjs
           LIVE_BASELINE_ROOT="$baseline_dir" LIVE_BASELINE_SHA="$BASELINE_SHA" node apps/relay/test/infra-budget-workerd.mjs
       - name: Preserve financial state and recovery invariants
         run: |
           node --test scripts/durable-object-deploy-guard-test.mjs
+          node --test scripts/canary-release-policy-test.mjs
           node --test apps/relay/test/payment-context.mjs
           node apps/relay/test/settlement-safety.mjs
           node --test apps/relay/src/core/payment-rail-test.js apps/relay/src/core/reconcile-payment-test.js apps/relay/src/core/settlement-proof-test.js

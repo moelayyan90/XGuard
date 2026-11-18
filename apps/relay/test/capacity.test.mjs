@@ -4,6 +4,36 @@ import { catalogCapacity } from '../src/live/capacity.ts';
 import { LiveControl } from '../src/live/objects.ts';
 import { Store } from '../src/live/store.ts';
 import { storage } from './live-harness.mjs';
+import worker from '../src/live/worker.ts';
+import { environment, seed } from './live-harness.mjs';
+import { controlName } from '../src/live/util.ts';
+
+test('quota fallback serves a dated public index while health fails closed and retries stay bounded', async () => {
+  const h = environment(), oldNow = Date.now;
+  try {
+    const at = oldNow(); Date.now = () => at;
+    await seed(h);
+    const control = h.env.LIVE_CONTROL.get(controlName), snapshot = await control.catalog();
+    Date.now = () => at + 7200000;
+    let attempts = 0;
+    h.env.LIVE_SHARDS.get = () => ({ async fetch() { attempts++; throw Error('Exceeded allowed rows read in Durable Objects free tier.'); } });
+    const request = (path, accept = 'application/json') => worker.fetch(new Request('https://xguardgate.com' + path, {headers:{accept,'user-agent':'XGuardLive-fallback-regression'}}),h.env,h.ctx);
+    const response = await request('/topics'), data = await response.json();
+    assert.equal(response.status,200); assert.equal(response.headers.get('cache-control'),'no-store');
+    assert.match(response.headers.get('warning'),/Previously published/);
+    assert.equal(data.catalog_as_of,snapshot.as_of); assert.equal(data.catalog_degraded.code,'storage_read_quota_exhausted');
+    const firstAttempts=attempts;
+    Date.now = () => at + 7200000 + 30000;
+    assert.equal((await request('/topics')).status,200); assert.equal(attempts,firstAttempts);
+    Date.now = () => at + 7200000 + 60001;
+    await request('/topics'); assert.ok(attempts>firstAttempts,'public reads retry after the original deadline');
+    const health=await request('/healthz'); assert.equal(health.status,503);
+    assert.equal((await health.json()).error,'storage_read_quota_exhausted');
+    const html=await request('/topics','text/html'); assert.match(await html.text(),/previously published public snapshot/);
+    Date.now=()=>at+21600001;
+    assert.equal((await request('/topics')).status,503,'an expired snapshot is never extended');
+  } finally {Date.now=oldNow;await h.drain();h.close();}
+});
 
 test('measured catalog pacing leaves most of the daily SQL allowance for other work', () => {
   const plan = catalogCapacity(51188);
