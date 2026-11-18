@@ -35,6 +35,10 @@ try {
   await client.connect(new StreamableHTTPClientTransport(url, { fetch: fetcher }));
   assert.equal(client.getNegotiatedProtocolVersion(), version);
   const list = await client.listTools();
+  for (const tool of list.tools) {
+    assert.ok(tool.title && tool.title !== tool.name, 'Missing human tool title: ' + tool.name);
+    assert.ok(typeof tool.annotations?.readOnlyHint === 'boolean' || typeof tool.annotations?.destructiveHint === 'boolean');
+  }
   assert.ok(list.tools.some(tool => tool.name === 'xguard.web.fetch'));
   assert.equal(list.tools.find(tool => tool.name === 'xguard.fact.get')?.annotations.readOnlyHint, true);
   const factId = 'npm/react/latest-version';
