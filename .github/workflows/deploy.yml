@@ -53,6 +53,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Dashboard-only secret updates can omit the git tag on otherwise identical code.
+          node scripts/paypal-preview-metadata.mjs
           deployments="$(npx --yes wrangler@4.147.0 deployments list --json --config apps/relay/wrangler.jsonc)"
           version_id="$(printf '%s' "$deployments" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const versions=JSON.parse(s).at(-1)?.versions;if(versions?.length!==1||Number(versions[0].percentage)!==100||!versions[0].version_id)throw Error("Expected a single active production version");process.stdout.write(versions[0].version_id)})')"
           version="$(npx --yes wrangler@4.147.0 versions view "$version_id" --json --config apps/relay/wrangler.jsonc)"

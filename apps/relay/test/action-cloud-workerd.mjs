@@ -68,6 +68,10 @@ try {
   assert.equal((await dispatch('/v1/checkout/orders/' + q.id, { capability: otherToken })).status, 404);
   assert.equal((await dispatch('/v1/checkout/orders/' + q.id + '/capture', { capability: otherToken, body: {} })).status, 404);
   await alarm(q.id); assert.equal((await (await dispatch('/v1/checkout/orders/' + q.id)).json()).order.status, 'AWAITING_PAYMENT');
+  const unapproved = await dispatch('/v1/checkout/orders/' + q.id + '/capture', { body: {} });
+  assert.equal((await unapproved.json()).order.status, 'AWAITING_PAYMENT');
+  assert.equal(count.capture, 0, 'Browser return data alone cannot authorize a capture');
+  orders.get(q.paypal_order_id).status = 'APPROVED';
   await Promise.all([dispatch('/v1/checkout/orders/' + q.id + '/capture', { body: {} }), dispatch('/v1/checkout/orders/' + q.id + '/capture', { body: {} })]);
   assert.equal(count.capture, 1); await alarm(q.id);
   const delivered = await (await dispatch('/v1/checkout/orders/' + q.id)).json();
@@ -81,11 +85,13 @@ try {
   await alarm(q.id); assert.equal(count.capture, 1);
   assert.equal((await dispatch('/v1/checkout/orders', { body: { ...input, input: { csv: 'h\nchanged' } }, key: 'first-synthetic-order' })).status, 409);
   captureMode = 'timeout'; const interrupted = await create('lost-capture-response-order');
+  orders.get(interrupted.paypal_order_id).status = 'APPROVED';
   await dispatch('/v1/checkout/orders/' + interrupted.id + '/capture', { body: {} });
   const before = count.capture; await alarm(interrupted.id); await alarm(interrupted.id);
   assert.equal(count.capture, before, 'Read-only reconciliation must never submit another capture');
   assert.equal((await (await dispatch('/v1/checkout/orders/' + interrupted.id)).json()).order.status, 'SUCCEEDED');
   captureMode = 'ok'; const quota = await create('storage-fails-after-capture-order');
+  orders.get(quota.paypal_order_id).status = 'APPROVED';
   await stub(quota.id).fetch('https://fixture/fixture/fail-next-update');
   await dispatch('/v1/checkout/orders/' + quota.id + '/capture', { body: {} });
   const captured = count.capture; await alarm(quota.id); await alarm(quota.id); assert.equal(count.capture, captured);
@@ -96,6 +102,7 @@ try {
     const created = await dispatch('/v1/checkout/orders', { body: { service: service.id, input: Object.fromEntries(Object.entries(service.example).filter(([key]) => key !== 'max_amount_atomic')) }, key: 'commercial-fixture-order-' + index, headers: { 'cf-connecting-ip': '198.51.100.' + (20 + index) } });
     assert.equal(created.status, 200, await created.clone().text());
     const task = (await created.json()).order;
+    orders.get(task.paypal_order_id).status = 'APPROVED';
     await dispatch('/v1/checkout/orders/' + task.id + '/capture', { body: {} }); await alarm(task.id);
     const deliveredTask = await (await dispatch('/v1/checkout/orders/' + task.id)).json();
     assert.equal(deliveredTask.order.status, 'SUCCEEDED', service.id + ': ' + JSON.stringify(deliveredTask.order));
@@ -103,6 +110,7 @@ try {
     assert.equal(deliveredTask.order.receipt.payload.result_sha256.length, 64);
   }
   captureMode = 'wrong-amount'; const mismatch = await create('mismatched-capture-amount-order');
+  orders.get(mismatch.paypal_order_id).status = 'APPROVED';
   await dispatch('/v1/checkout/orders/' + mismatch.id + '/capture', { body: {} }); await alarm(mismatch.id);
   assert.notEqual((await (await dispatch('/v1/checkout/orders/' + mismatch.id)).json()).order.status, 'SUCCEEDED');
   const unsigned = await dispatch('/v1/checkout/webhooks/paypal', { body: { event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } } }); assert.equal(unsigned.status, 401);

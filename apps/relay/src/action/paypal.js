@@ -42,7 +42,11 @@ export async function paypalCredentialCheck(env) {
 }
 export async function paypalApi(env, method, path, body, requestId) {
   const config = paypalConfig(env);
-  if (!config.ready) throw fail('card_payments_not_activated', 503, { blockers: config.blockers });
+  // Existing captures and signed refund/dispute notices still need to reconcile during a sales pause.
+  const recoveryRead = (method === 'GET' && /^\/v2\/checkout\/orders\/[A-Z0-9]{8,32}$/.test(path)) ||
+    (method === 'POST' && path === '/v1/notifications/verify-webhook-signature');
+  const blockers = recoveryRead ? config.blockers.filter(code => !['merchant_activation_pending', 'card_writer_activation_pending'].includes(code)) : config.blockers;
+  if (blockers.length) throw fail('card_payments_not_activated', 503, { blockers });
   if (!/^\/v[12]\/[a-z0-9/_-]+$/i.test(path)) throw fail('invalid_paypal_path', 503);
   const token = await paypalAccessToken(env, config);
   const response = await fetch(config.origin + path, { method, headers: { authorization: 'Bearer ' + token, accept: 'application/json', 'content-type': 'application/json', prefer: 'return=representation', ...(requestId ? { 'PayPal-Request-Id': requestId } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: 'manual', signal: AbortSignal.timeout(20000) });
@@ -53,7 +57,7 @@ export async function paypalApi(env, method, path, body, requestId) {
 export function paypalOrderBody(q, env) {
   const config = paypalConfig(env);
   const origin = config.sandbox && env.XGUARD_CHECKOUT_SANDBOX_PREVIEW === 'on' ? PAYPAL_CHECKOUT_PREVIEW_ORIGIN : 'https://xguardgate.com';
-  return { intent: 'CAPTURE', purchase_units: [{ reference_id: q.id, custom_id: q.id, invoice_id: q.id, description: q.name, payee: { email_address: config.receiver, merchant_id: config.merchant_id }, amount: { currency_code: 'USD', value: (q.amount_cents / 100).toFixed(2) } }], payment_source: { paypal: { experience_context: { brand_name: 'XGuard', shipping_preference: 'NO_SHIPPING', user_action: 'PAY_NOW', landing_page: 'BILLING', return_url: origin + '/dashboard', cancel_url: origin + '/dashboard' } } } };
+  return { intent: 'CAPTURE', purchase_units: [{ reference_id: q.id, custom_id: q.id, invoice_id: q.id, description: q.name, payee: { email_address: config.receiver, merchant_id: config.merchant_id }, amount: { currency_code: 'USD', value: (q.amount_cents / 100).toFixed(2) } }], payment_source: { paypal: { experience_context: { brand_name: 'XGuard', shipping_preference: 'NO_SHIPPING', user_action: 'PAY_NOW', landing_page: 'BILLING', return_url: origin + '/dashboard?paypal=return', cancel_url: origin + '/dashboard?paypal=cancel' } } } };
 }
 export function validatePaypalOrder(order, q, env, requireCapture = false) {
   const config = paypalConfig(env), units = order?.purchase_units;
