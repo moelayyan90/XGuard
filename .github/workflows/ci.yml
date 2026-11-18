@@ -30,6 +30,7 @@ jobs:
           node --test apps/relay/test/infra-safety.test.mjs
           node --test apps/relay/test/native-settlement.test.mjs
           node --test scripts/live-capacity-preflight-test.mjs
+          node --test scripts/infra-capacity-policy-test.mjs
           node --test scripts/live-owner-bootstrap-test.mjs
           node --test scripts/live-paid-smoke-test.mjs scripts/action-production-check-test.mjs
           node --test scripts/c2sp-stability-contract-test.mjs scripts/gblin-canary-compare-test.mjs

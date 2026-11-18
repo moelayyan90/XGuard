@@ -298,6 +298,37 @@ test('public indexes share one durable snapshot across concurrent requests and o
   } finally { await h.drain(); h.close(); }
 });
 
+test('short public read caching expires, ages facts, and invalidates on source failure and suppression', async () => {
+  const h = environment(), originalNow = Date.now;
+  try {
+    const at = originalNow(); Date.now = () => at;
+    const { object, store, spec } = await seed(h, '1.0.0', new Date(at).toISOString());
+    store.run('UPDATE fact_definitions SET max_age=1 WHERE id=?', spec.id + '/latest-version');
+    let queries = 0; const rows = store.rows.bind(store);
+    store.rows = (...args) => { queries++; return rows(...args); };
+    const request = async (op = 'fact') => (await object.fetch(new Request('https://fixture.test/', { method: 'POST', body: JSON.stringify({ op, id: spec.id + '/latest-version' }) }))).json();
+    const first = await request(), firstQueries = queries;
+    assert.equal(first.current_value, '1.0.0');
+    assert.deepEqual(await request(), first); assert.equal(queries, firstQueries);
+    Date.now = () => at + 1001;
+    const aged = await request(); assert.equal(aged.verification, 'STALE'); assert.equal(aged.current_value, null); assert.equal(queries, firstQueries);
+    Date.now = () => at + 15001;
+    await request(); assert.ok(queries > firstQueries, 'a cache hit cannot extend its deadline');
+    Date.now = () => at;
+    await seed(h, '2.0.0', new Date(at).toISOString());
+    // The node:sqlite harness has no cursor write metrics; mark this real write
+    // as workerd does. Production invalidation uses measured cursor counters.
+    store.rowsWritten++;
+    assert.equal((await request()).current_value, '2.0.0');
+    const source = store.one('SELECT * FROM sources WHERE id=?', spec.id);
+    store.failed(source, 'source_http_503', 10000); store.rowsWritten++;
+    assert.equal((await request()).verification, 'STALE');
+    store.run('UPDATE entities SET suppressed=1 WHERE id=?', spec.id); store.rowsWritten++;
+    assert.equal(await request(), null);
+    assert.ok(object.publicReads.size <= 128);
+  } finally { Date.now = originalNow; h.close(); }
+});
+
 test('edge entries cannot outlive the application freshness deadline when zone headers expand TTL', async () => {
   const h = environment(), originalNow = Date.now, originalCaches = globalThis.caches, entries = new Map();
   globalThis.caches = { default: { async put(key, value) { entries.set(key.url, value.clone()); }, async match(key) { const value = entries.get(key.url); if (!value) return undefined; const headers = new Headers(value.headers); headers.set('cache-control', 'public, max-age=14400'); return new Response(await value.clone().arrayBuffer(), { status: value.status, headers }); } } };

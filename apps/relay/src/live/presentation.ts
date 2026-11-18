@@ -78,6 +78,7 @@ export function render(kind: string, data: any, path: string, noindex = false): 
     title = data.title; description = data.description || description;
     content = `<p class="eyebrow">XGuard Live</p><h1>${e(title)}</h1><div class="prose">${data.html || `<p>${e(data.message || '')}</p>`}</div>`;
   }
+  if (data.catalog_degraded) content += '<p class="note">Index refresh is temporarily unavailable. This is a previously published public snapshot. Current service health and payment availability are checked separately.</p>';
   if (data.catalog_as_of) content += `<p class="sub${kind === 'home' ? ' wrap home-meta' : ''}">Index and totals as of ${when(data.catalog_as_of)}; aggregate refresh timing adapts to storage capacity. Open a fact for its latest verification.</p>`;
   const page = layout(title, path, content, description, schema, noindex, kind === 'home');
   if (path === '/extract') page.body = page.body.replace('</body>', `<script src="/assets/extract-client.js" nonce="${page.nonce}" defer></script></body>`);
