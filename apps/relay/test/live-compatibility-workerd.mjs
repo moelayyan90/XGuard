@@ -4,9 +4,11 @@ import { resolve } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { shardName, shardOf } from '../src/live/util.ts';
+import { collectorFixture } from './collector-fixture.mjs';
 const current = fileURLToPath(new URL('../../../.live-build/live-entry.js', import.meta.url));
 assert.ok(process.env.LIVE_BASELINE_BUNDLE, 'Build the exact pre-change revision separately and supply LIVE_BASELINE_BUNDLE');
 const bundles = { before: resolve(process.env.LIVE_BASELINE_BUNDLE), after: current };
+const fixtures = Object.fromEntries(await Promise.all(Object.entries(bundles).map(async ([name, path]) => [name, await collectorFixture(path)])));
 const worker = (name, scriptPath) => ({ name, modules: true, modulesRoot: resolve(scriptPath, '..'), scriptPath, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: { LIVE_SHARDS: { className: 'LiveShard', useSQLite: true }, LIVE_CONTROL: { className: 'LiveControl', useSQLite: true } },
   bindings: { LIVE_BOOTSTRAP: 'off', LIVE_SOURCE_FETCHES: 'on', MONETIZATION_MODE: 'observe', CF_VERSION_METADATA: { id: name } },
@@ -17,7 +19,7 @@ const worker = (name, scriptPath) => ({ name, modules: true, modulesRoot: resolv
     throw new Error('Unexpected external request during compatibility test');
   },
 });
-const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, workers: Object.entries(bundles).map(([name, path]) => worker(name, path)) }));
+const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, workers: Object.entries(fixtures).map(([name, fixture]) => worker(name, fixture.path)) }));
 try {
   await mf.ready;
   const fetchers = Object.fromEntries(await Promise.all(Object.keys(bundles).map(async name => [name, await mf.getWorker(name)])));
@@ -80,4 +82,4 @@ try {
   assert.equal(cache.before.HIT, cache.after.HIT);
   console.log(JSON.stringify(result));
   if (process.env.LIVE_COMPATIBILITY_REPORT) await writeFile(process.env.LIVE_COMPATIBILITY_REPORT, JSON.stringify(result, null, 2));
-} finally { await mf.dispose(); }
+} finally { await mf.dispose(); await Promise.all(Object.values(fixtures).map(fixture => fixture.dispose())); }

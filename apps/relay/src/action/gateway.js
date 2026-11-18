@@ -85,7 +85,7 @@ export async function actionFetch(request, env) {
           if (cents < q.amount_cents) { status = 'REVIEW_REQUIRED'; error = 'provider_partial_refund_requires_reconciliation'; }
         }
         await actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAID', 'EXECUTING', 'RUNNING', 'DELIVERY_PENDING', 'SUCCEEDED', 'REFUND_REQUIRED', 'REVIEW_REQUIRED', 'PAYMENT_UNKNOWN'], patch: { status, error } });
-      } else if (['PAYMENT.CAPTURE.DENIED', 'CHECKOUT.PAYMENT-APPROVAL.REVERSED'].includes(event.event_type)) {
+      } else if (['PAYMENT.CAPTURE.DENIED', 'PAYMENT.CAPTURE.DECLINED', 'CHECKOUT.PAYMENT-APPROVAL.REVERSED'].includes(event.event_type)) {
         await actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAID', 'EXECUTING', 'RUNNING', 'DELIVERY_PENDING', 'SUCCEEDED', 'PAYMENT_UNKNOWN', 'REVIEW_REQUIRED'], patch: { status: 'REVIEW_REQUIRED', error: 'provider_payment_denied_or_approval_reversed' } });
       } else if (event.event_type === 'PAYMENT.CAPTURE.PENDING') {
         await actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING'], patch: { status: 'PAYMENT_UNKNOWN', error: 'capture_pending_final_confirmation' } });

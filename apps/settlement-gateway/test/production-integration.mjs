@@ -7,10 +7,12 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createRequire } from "node:module";
 import { Script } from "node:vm";
 import { shardOf, shardName } from "../../relay/src/live/util.ts";
+import { collectorFixture } from "../../relay/test/collector-fixture.mjs";
 
 const { Miniflare, Response: MFResponse, convertV4MiniflareOptions } =
   createRequire(new URL("../../relay/package.json", import.meta.url))("miniflare");
 const originBundle = resolve(fileURLToPath(new URL("../../../.live-build/live-entry.js", import.meta.url)));
+const originFixture = await collectorFixture(originBundle);
 const gatewayBundle = fileURLToPath(new URL("../dist/xguard-gateway.js", import.meta.url));
 // This is the source matching the live 0.3.0 billing contract.
 const legacy = execFileSync("git", ["show", "ac6f321:apps/lemonhook/src/index.js"], { encoding: "utf8" });
@@ -20,7 +22,7 @@ const site = "https://xguardgate.com";
 const basePath = "/fact/npm/react/latest-version";
 const paidPath = "/api/gateway/v1" + basePath;
 const mf = new Miniflare(convertV4MiniflareOptions({ host: "127.0.0.1", port: 0, workers: [
-  { name: "xguard-mainnet", modules: true, modulesRoot: dirname(originBundle), scriptPath: originBundle,
+  { name: "xguard-mainnet", modules: true, modulesRoot: dirname(originFixture.path), scriptPath: originFixture.path,
     compatibilityDate: "2026-08-25", compatibilityFlags: ["nodejs_compat"],
     durableObjects: { LIVE_SHARDS: { className: "LiveShard", useSQLite: true },
       LIVE_CONTROL: { className: "LiveControl", useSQLite: true } },
@@ -179,4 +181,4 @@ try {
   assert.match(elements.get("details").textContent, /xga_[a-f0-9]{24}/);
   assert.equal((await (await ledgerFor(buyerLicense).fetch("https://ledger/balance")).json()).consumed, 1);
   console.log("Production route integration: existing free routes, mandatory x402/credits, actual Lemon 0.3 contract, lost acknowledgement recovery and exactly one fixture debit verified.");
-} finally { await mf.dispose(); }
+} finally { await mf.dispose(); await originFixture.dispose(); }

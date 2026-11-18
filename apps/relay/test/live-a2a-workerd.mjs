@@ -5,11 +5,13 @@ import { Miniflare, convertV4MiniflareOptions, Response as MFResponse } from 'mi
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { checkA2a, origin } from './live-a2a-smoke.mjs';
 import { shardName, shardOf } from '../src/live/util.ts';
+import { collectorFixture } from './collector-fixture.mjs';
 
 const bundle = fileURLToPath(new URL('../../../.live-build/live-entry.js', import.meta.url));
+const fixture = await collectorFixture(bundle);
 let sourceCalls = 0;
 const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, workers: [{
-  name: 'xguard-live-a2a', modules: true, modulesRoot: dirname(bundle), scriptPath: bundle,
+  name: 'xguard-live-a2a', modules: true, modulesRoot: dirname(fixture.path), scriptPath: fixture.path,
   compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: {
     LIVE_SHARDS: { className: 'LiveShard', useSQLite: true },
@@ -101,4 +103,4 @@ try {
   assert.equal((await fetcher(origin + '/a2a', { method: 'POST', headers, body: ' '.repeat(17000) })).status, 413);
   assert.equal((await fetcher(origin + '/.well-known/unknown-agent', { headers })).status, 410);
   assert.equal(sourceCalls, count);
-} finally { await mf.dispose(); }
+} finally { await mf.dispose(); await fixture.dispose(); }

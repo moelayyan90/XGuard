@@ -64,6 +64,19 @@ try {
             history_page_sizes: [history.length, this.store.history(factId, 2).length],
           });
         }
+        if (body.op === 'fixture-repeat-reads') {
+          const id = 'npm/budget-0-000/latest-version', start = this.store.rowsRead;
+          const requestFor = op => new Request(request.url, { method: 'POST', body: JSON.stringify({ op, id }) });
+          let first, same = true;
+          for (let i = 0; i < 128; i++) {
+            const value = await (await super.fetch(requestFor('fact'))).json();
+            if (!first) first = value; else if (JSON.stringify(first) !== JSON.stringify(value)) same = false;
+          }
+          const reads = this.store.rowsRead - start;
+          const beforePaid = this.store.rowsRead;
+          for (let i = 0; i < 2; i++) await super.fetch(new Request(request.url, { method: 'POST', body: JSON.stringify({ op: 'paid-read', kind: 'batch', facts: [id] }) }));
+          return Response.json({ repeated_public_reads: reads, identical_public_values: same, paid_reads_uncached: this.store.rowsRead - beforePaid });
+        }
         return super.fetch(request);
       }
     }
@@ -89,17 +102,21 @@ try {
     const stub = namespace.get(namespace.idFromName(shardName(0)));
     const workload = await stub.fetch('https://fixture.test/', { method: 'POST', body: JSON.stringify({ op: 'fixture-workload' }) });
     const previews = await stub.fetch('https://fixture.test/', { method: 'POST', body: JSON.stringify({ op: 'fixture-previews' }) });
-    measured[name] = { catalog_rows_read: catalog.profile.rows_read, schema_version: catalog.shards[0].stats.schema_version, ...await workload.json(), ...await previews.json() };
+    const repeats = await stub.fetch('https://fixture.test/', { method: 'POST', body: JSON.stringify({ op: 'fixture-repeat-reads' }) });
+    measured[name] = { catalog_rows_read: catalog.profile.rows_read, schema_version: catalog.shards[0].stats.schema_version, ...await workload.json(), ...await previews.json(), ...await repeats.json() };
     assert.equal(measured[name].history_added, 1); assert.equal(measured[name].value, '2.0.0');
     assert.equal(measured[name].fact_preview_matches, true);
     assert.equal(measured[name].entity_preview_matches, true);
     assert.deepEqual(measured[name].history_page_sizes, [100, 15]);
+    assert.equal(measured[name].identical_public_values, true);
   }
   const changes = catalog => catalog.changes.map(({ fact_id, entity_id, observed_at, previous_value, current_value, label, source_url, source_hash, change_type }) => ({ fact_id, entity_id, observed_at, previous_value, current_value, label, source_url, source_hash, change_type })).sort((a, b) => a.fact_id.localeCompare(b.fact_id));
   assert.deepEqual(changes(catalogues.after), changes(catalogues.before)); assert.equal(catalogues.after.changes.length, 100);
   assert.deepEqual(catalogues.after.search_items, catalogues.before.search_items);
   for (const metric of ['catalog_rows_read', 'revalidation_writes', 'candidate_reads', 'changed_observation_writes']) assert.ok(measured.after[metric] <= measured.before[metric], JSON.stringify({ metric, measured }));
   for (const metric of ['fact_preview_reads', 'entity_preview_reads']) assert.ok(measured.after[metric] <= measured.before[metric], JSON.stringify({ metric, measured }));
+  assert.ok(measured.after.repeated_public_reads < measured.before.repeated_public_reads / 10, JSON.stringify(measured));
+  assert.equal(measured.after.paid_reads_uncached, measured.before.paid_reads_uncached);
   if (measured.before.schema_version < 4) for (const metric of ['catalog_rows_read', 'revalidation_writes', 'candidate_reads', 'changed_observation_writes']) assert.ok(measured.after[metric] < measured.before[metric], JSON.stringify({ metric, measured }));
   const report = { baseline_sha: process.env.LIVE_BASELINE_SHA || null, scope: 'Paired real workerd SQLite: 32 shards, 2,560 sources and 10,240 facts per build. Same global latest 100 changes and entity catalog. Application SQL counters only; not account-wide billing or a daily availability guarantee.', before: measured.before, after: measured.after, source_fetches: 0, payments: 0 };
   console.log(JSON.stringify(report)); if (process.env.LIVE_SQL_REPORT) await writeFile(process.env.LIVE_SQL_REPORT, JSON.stringify(report, null, 2));

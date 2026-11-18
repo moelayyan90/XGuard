@@ -2,9 +2,11 @@ import { Miniflare, convertV4MiniflareOptions, Response as MFResponse } from 'mi
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { collectorFixture } from './collector-fixture.mjs';
 const path = process.env.LIVE_WORKER_BUNDLE || fileURLToPath(new URL('../../../.live-build/live-entry.js', import.meta.url));
+const fixture = await collectorFixture(path);
 let fixtureVersion = '1.0.0', sourceCalls = 0;
-const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, rootPath: resolve(path, '..'), workers: [{ name: 'live-test', modules: true, modulesRoot: resolve(path, '..'), scriptPath: path, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
+const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, rootPath: resolve(fixture.path, '..'), workers: [{ name: 'live-test', modules: true, modulesRoot: resolve(fixture.path, '..'), scriptPath: fixture.path, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: { LIVE_SHARDS: { className: 'LiveShard', useSQLite: true }, LIVE_CONTROL: { className: 'LiveControl', useSQLite: true } },
   bindings: { LIVE_BOOTSTRAP: 'off', LIVE_SOURCE_FETCHES: 'on', MONETIZATION_MODE: 'observe' },
   outboundService: async request => {
@@ -53,4 +55,4 @@ try {
     await import('../../../scripts/action-production-check.mjs');
   } finally { globalThis.fetch = originalFetch; }
   console.log('workerd integration: 32 SQLite shards, durable alarms, source collection, changed-value history, auth and format cache verified; isolated source fixtures only.');
-} finally { await mf.dispose(); }
+} finally { await mf.dispose(); await fixture.dispose(); }

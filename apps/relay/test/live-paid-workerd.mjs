@@ -8,13 +8,15 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createLivePaidClient, verifyLiveDelivery } from '../../../sdk/live-paid.js';
 import { shardName, shardOf } from '../src/live/util.ts';
+import { collectorFixture } from './collector-fixture.mjs';
 
 // All financial provider calls are intercepted. The transient signer is never
 // funded or printed. A simulated settlement is not a production transaction.
 const bundle = fileURLToPath(new URL('../../../.live-build/live-entry.js', import.meta.url));
+const fixture = await collectorFixture(bundle);
 let settlements = 0, verified = 0, sourceCalls = 0, networkSourceCalls = 0;
 const types = { TransferWithAuthorization: [{ name: 'from', type: 'address' }, { name: 'to', type: 'address' }, { name: 'value', type: 'uint256' }, { name: 'validAfter', type: 'uint256' }, { name: 'validBefore', type: 'uint256' }, { name: 'nonce', type: 'bytes32' }] };
-const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, workers: [{ name: 'live-paid-test', modules: true, modulesRoot: resolve(bundle, '..'), scriptPath: bundle, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
+const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, workers: [{ name: 'live-paid-test', modules: true, modulesRoot: resolve(fixture.path, '..'), scriptPath: fixture.path, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: Object.fromEntries(['LiveShard', 'LiveControl', 'ProofAuthority', 'PaidGatewayState'].map(className => [{ LiveShard: 'LIVE_SHARDS', LiveControl: 'LIVE_CONTROL', ProofAuthority: 'PROOF_AUTHORITY', PaidGatewayState: 'PAID_GATEWAY' }[className], { className, useSQLite: true }])),
   bindings: { LIVE_BOOTSTRAP: 'off', LIVE_SOURCE_FETCHES: 'on', LIVE_PAID_SERVICES: 'on', XGUARD_PAYMENT_ENVIRONMENT: 'production', XGUARD_PAID_FACILITATOR: 'https://facilitator.test', XGUARD_TREASURY_USDC_ADDRESS: '0x4f32f8fe1ee3e9f5c5a6587dc019a13bb453ba07', XGUARD_PAYMENT_COST_BUDGET_USD_MICROS: '0', XGUARD_MIN_CONTRIBUTION_BPS: '2000', XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: '100' },
   outboundService: async request => {
@@ -82,4 +84,4 @@ try {
   assert.equal(await verifyLiveDelivery(created, key.jwk), true);
   console.log(JSON.stringify({ network_workerd: 'passed', paid_route_resolution: true, task_completed_with_failover: true, source_calls_before_task_payment: 0, task_recovery_without_second_settlement: true, production_money_moved: false }));
   console.log(JSON.stringify({ workerd: 'passed', official_x402_client: true, cryptographic_authorization_verified: true, simulated_settlements: settlements, new_source_calls_from_paid_request: 0, recovery_without_second_settlement: true, production_money_moved: false }));
-} finally { await mf.dispose(); }
+} finally { await mf.dispose(); await fixture.dispose(); }

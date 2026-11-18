@@ -1,0 +1,63 @@
+name: XGuard isolated PayPal Sandbox
+on:
+  push:
+    branches: [fix/paypal-sandbox-preview-20261118]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: xguard-production
+  cancel-in-progress: false
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --prefix apps/relay --no-audit --no-fund
+      - run: npm audit --prefix apps/relay --omit=dev --audit-level=moderate
+      - name: Verify checkout boundaries before provider deployment
+        run: |
+          npm run check
+          npm test
+          npm run build
+          node apps/relay/test/action-cloud-workerd.mjs
+      - name: Snapshot production without modifying source metadata or bindings
+        id: production_snapshot
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/paypal-preview-production-guard.mjs snapshot "$RUNNER_TEMP/xguard-sandbox-production.json"
+      - name: Enable the approved Sandbox Preview URL without redeploying production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/paypal-preview-access.mjs
+      - name: Deploy isolated Sandbox storage under the existing Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          apps/relay/node_modules/.bin/wrangler preview --name paypal-sandbox --config apps/relay/wrangler.paypal-preview.jsonc
+      - name: Create one actual Sandbox provider order without buyer approval or capture
+        run: node scripts/paypal-sandbox-provider-check.mjs
+      - name: Read bounded safe provider diagnostics when checkout is unconfirmed
+        if: failure()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/paypal-sandbox-diagnostics.mjs
+      - name: Prove the isolated Sandbox workflow preserved production
+        if: always() && steps.production_snapshot.outcome == 'success'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/paypal-preview-production-guard.mjs verify "$RUNNER_TEMP/xguard-sandbox-production.json"

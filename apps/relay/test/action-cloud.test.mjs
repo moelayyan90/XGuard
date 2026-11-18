@@ -3,8 +3,56 @@ import assert from 'node:assert/strict';
 import { cleanCsv, normalizeCsv, parseCsv } from '../src/action/csv.js';
 import { actionCatalog, normalizeAction } from '../src/action/catalog.js';
 import { LIVE_PAID } from '../src/live/paid-data.ts';
-import { paypalConfig, paypalOrderBody, validatePaypalOrder, verifyPaypalWebhook } from '../src/action/paypal.js';
+import { paypalApi, paypalConfig, paypalOrderBody, validatePaypalOrder, verifyPaypalWebhook } from '../src/action/paypal.js';
 import { actionFetch } from '../src/action/gateway.js';
+import { checkoutPreviewFetch } from '../src/action/checkout-preview.js';
+import { PAYPAL_CHECKOUT_PREVIEW_ORIGIN } from '../src/action/paypal.js';
+
+test('isolated checkout preview cannot enable live payments or expose production routes', async () => {
+  const env = { XGUARD_CHECKOUT_SANDBOX_PREVIEW: 'on', PAYPAL_ENVIRONMENT: 'sandbox' };
+  const request = (path, origin = PAYPAL_CHECKOUT_PREVIEW_ORIGIN) => new Request(origin + path);
+  assert.equal(await checkoutPreviewFetch(request('/'), {}), null);
+  assert.equal((await checkoutPreviewFetch(request('/'), { ...env, PAYPAL_ENVIRONMENT: 'live' })).status, 503);
+  assert.equal((await checkoutPreviewFetch(request('/', 'https://xguardgate.com'), env)).status, 503);
+  for (const path of ['/mcp', '/witness', '/admin/paid-revenue', '/api/paid/v1/extract']) assert.equal((await checkoutPreviewFetch(request(path), env)).status, 404);
+  const page = await checkoutPreviewFetch(request('/checkout?service=csv-clean'), env);
+  assert.equal(page.status, 200); assert.match(page.headers.get('x-robots-tag'), /noindex/);
+  assert.doesNotMatch(page.headers.get('content-security-policy'), /cloudflareinsights/);
+});
+test('Sandbox preview preserves same-origin protection, merchant binding and return URLs', async () => {
+  const receiver = 'sandbox@business.example.com';
+  const env = { XGUARD_CHECKOUT_SANDBOX_PREVIEW: 'on', PAYPAL_ENVIRONMENT: 'sandbox', PAYPAL_CLIENT_ID: 'fixture', PAYPAL_CLIENT_SECRET: 'private-fixture-secret', PAYPAL_WEBHOOK_ID: 'fixture', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_SANDBOX_RECEIVER_EMAIL: receiver, PAYPAL_VERIFIED_EMAIL: receiver, PAYPAL_ENABLED: 'on' };
+  const response = await checkoutPreviewFetch(new Request(PAYPAL_CHECKOUT_PREVIEW_ORIGIN + '/v1/checkout/config', { headers: { origin: PAYPAL_CHECKOUT_PREVIEW_ORIGIN } }), env);
+  const body = await response.json(); assert.equal(body.ready, true); assert.equal(body.environment, 'sandbox'); assert.equal(body.client_secret, undefined);
+  assert.equal(response.headers.get('access-control-allow-origin'), PAYPAL_CHECKOUT_PREVIEW_ORIGIN);
+  assert.equal((await checkoutPreviewFetch(new Request(PAYPAL_CHECKOUT_PREVIEW_ORIGIN + '/v1/checkout/config', { headers: { origin: 'https://evil.example' } }), env)).status, 403);
+  const q = { id: 'xgo_' + 'b'.repeat(40), amount_cents: 200 };
+  assert.equal(paypalOrderBody(q, env).payment_source.paypal.experience_context.return_url, PAYPAL_CHECKOUT_PREVIEW_ORIGIN + '/dashboard');
+  assert.equal(paypalOrderBody(q, { ...env, PAYPAL_ENVIRONMENT: 'live' }).payment_source.paypal.experience_context.return_url, 'https://xguardgate.com/dashboard');
+});
+test('a refused provider OAuth client cannot create an order or leak its description', async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  const env = { PAYPAL_ENVIRONMENT: 'sandbox', PAYPAL_CLIENT_ID: 'fixture', PAYPAL_CLIENT_SECRET: 'private-fixture-secret', PAYPAL_WEBHOOK_ID: 'fixture', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_VERIFIED_EMAIL: 'moelayyan2026@gmail.com', PAYPAL_ENABLED: 'on' };
+  try {
+    for (const [reply, expected] of [
+      [Response.json({ error: 'invalid_client', error_description: 'private-fixture-description' }, { status: 401 }), 'paypal_oauth_invalid_client'],
+      [new Response('<html>private-fixture-description</html>', { status: 403, headers: { 'content-type': 'text/html' } }), 'paypal_oauth_forbidden'],
+      [Response.json({ token_type: 'Bearer' }), 'paypal_oauth_token_missing'],
+    ]) {
+      const before = calls;
+      globalThis.fetch = async (url, init) => {
+        calls++; assert.equal(url, 'https://api-m.sandbox.paypal.com/v1/oauth2/token');
+        assert.equal(init.headers.accept, 'application/json'); return reply;
+      };
+      await assert.rejects(() => paypalApi(env, 'POST', '/v2/checkout/orders', {}), error => {
+        assert.equal(error.code, expected); assert.equal(error.status, 503);
+        assert.doesNotMatch(JSON.stringify(error), /private-fixture/); return true;
+      });
+      assert.equal(calls, before + 1, 'No provider order request after rejected authentication');
+    }
+  } finally { globalThis.fetch = original; }
+});
 
 test('CSV transformation keeps every retained and duplicate row, parses quoted records and escapes formulas', () => {
   const r = cleanCsv({ csv: 'email,name,note\r\na@x.test, Alice ,"hello, world"\r\na@x.test,Alice,same key\r\nb@x.test,Bob,"multi\nline"\r\nc@x.test,=SUM(1),"say ""hi"""\r\n,,\r\n', key_columns: ['email'] });
