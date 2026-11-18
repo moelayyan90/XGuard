@@ -8,6 +8,23 @@ import { actionFetch } from '../src/action/gateway.js';
 import { checkoutPreviewFetch } from '../src/action/checkout-preview.js';
 import { PAYPAL_CHECKOUT_PREVIEW_ORIGIN } from '../src/action/paypal.js';
 
+test('operator-only credential check never activates checkout, exposes a token or submits a transaction', async () => {
+  const original=globalThis.fetch, key='private-operator-fixture-'.repeat(2); let calls=0;
+  const env={LIVE_ADMIN_KEY:key,PAYPAL_ENVIRONMENT:'live',PAYPAL_CLIENT_ID:'fixture',PAYPAL_CLIENT_SECRET:'private-fixture-secret',PAYPAL_MERCHANT_ID:'TESTMERCHANT1',PAYPAL_WEBHOOK_ID:'fixture',PAYPAL_VERIFIED_EMAIL:'moelayyan2026@gmail.com',PAYPAL_ENABLED:'off'};
+  const request=(secret)=>new Request('https://xguardgate.com/admin/action-cloud/paypal-readiness',{headers:secret?{authorization:'Bearer '+secret}:{}});
+  try {
+    globalThis.fetch=async (url,init)=>{calls++;assert.equal(url,'https://api-m.paypal.com/v1/oauth2/token');assert.equal(init.method,'POST');return Response.json({access_token:'private-fixture-access-token'});};
+    for(const bad of [undefined,'wrong'])assert.equal((await actionFetch(request(bad),env)).status,401);
+    assert.equal(calls,0);
+    const r=await actionFetch(request(key),env), text=await r.text(), value=JSON.parse(text);
+    assert.equal(r.status,200);assert.equal(value.credentials_valid,true);assert.equal(value.checkout_enabled,false);assert.equal(value.transactions_submitted,0);assert.equal(calls,1);
+    assert.doesNotMatch(text,/private-fixture|TESTMERCHANT1|access_token|client_secret/);assert.match(r.headers.get('cache-control'),/no-store/);
+    assert.equal((await actionFetch(request(key),{...env,PAYPAL_VERIFIED_EMAIL:'unverified@example.com'})).status,503);assert.equal(calls,1);
+    globalThis.fetch=async()=>Response.json({error:'invalid_client',error_description:'private-fixture-description'},{status:401});
+    const rejected=await actionFetch(request(key),env);assert.equal(rejected.status,503);assert.doesNotMatch(await rejected.text(),/private-fixture/);
+  } finally {globalThis.fetch=original;}
+});
+
 test('isolated checkout preview cannot enable live payments or expose production routes', async () => {
   const env = { XGUARD_CHECKOUT_SANDBOX_PREVIEW: 'on', PAYPAL_ENVIRONMENT: 'sandbox' };
   const request = (path, origin = PAYPAL_CHECKOUT_PREVIEW_ORIGIN) => new Request(origin + path);

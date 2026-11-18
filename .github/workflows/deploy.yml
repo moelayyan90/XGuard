@@ -77,21 +77,7 @@ jobs:
           PREVIOUS_GIT_REF: ${{ steps.previous.outputs.git_ref }}
           ROLLBACK_ALLOWED: ${{ steps.do_guard.outputs.rollback_allowed }}
         shell: bash
-        run: |
-          set -euo pipefail
-          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/openapi.ts apps/relay/src/live/paid-data.ts apps/relay/src/c2sp-witness.js apps/relay/package.json apps/relay/package-lock.json; then
-            if [[ "$ROLLBACK_ALLOWED" != 'true' ]] ||
-               ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/wrangler.jsonc apps/settlement-gateway apps/billing; then
-              echo '::error::Live recovery requires a compatible code-only canary. No deployment was attempted.'
-              exit 1
-            fi
-            echo 'gradual=true' >> "$GITHUB_OUTPUT"
-            echo 'live_recovery=true' >> "$GITHUB_OUTPUT"
-          elif [[ "$ROLLBACK_ALLOWED" == 'true' ]] &&
-               ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/live/mcp.ts apps/relay/src/live/a2a.ts server.json apps/relay/src/live/capacity.ts apps/relay/src/live/presentation.ts apps/relay/src/live/objects.ts apps/relay/src/live/store.ts apps/relay/src/live/refresh.ts apps/relay/src/facilitator-surface.js apps/relay/src/native-settlement/policy.js &&
-               git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/wrangler.jsonc apps/settlement-gateway; then
-            echo 'gradual=true' >> "$GITHUB_OUTPUT"
-          fi
+        run: node scripts/canary-release-policy.mjs "$PREVIOUS_GIT_REF" "$DEPLOY_SHA"
 
       - name: Provision owner access from the existing repository secret
         if: steps.protocol_release.outputs.gradual != 'true'

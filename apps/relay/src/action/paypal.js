@@ -17,10 +17,7 @@ export function paypalConfig(env) {
   if (env.PAYPAL_MERCHANT_ID && !/^[A-Z0-9]{8,32}$/.test(env.PAYPAL_MERCHANT_ID)) blockers.push('merchant_identity_invalid');
   return { ready: blockers.length === 0, blockers, sandbox, origin: sandbox ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com', sdk: 'https://www.paypal.com/sdk/js', merchant_id: env.PAYPAL_MERCHANT_ID, receiver };
 }
-export async function paypalApi(env, method, path, body, requestId) {
-  const config = paypalConfig(env);
-  if (!config.ready) throw fail('card_payments_not_activated', 503, { blockers: config.blockers });
-  if (!/^\/v[12]\/[a-z0-9/_-]+$/i.test(path)) throw fail('invalid_paypal_path', 503);
+async function paypalAccessToken(env, config) {
   const tokenResponse = await fetch(config.origin + '/v1/oauth2/token', { method: 'POST', headers: { authorization: 'Basic ' + btoa(env.PAYPAL_CLIENT_ID + ':' + env.PAYPAL_CLIENT_SECRET), accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials', redirect: 'manual', signal: AbortSignal.timeout(12000) });
   if (!tokenResponse.ok) {
     let failure;
@@ -33,7 +30,22 @@ export async function paypalApi(env, method, path, body, requestId) {
   }
   const token = await boundedJson(tokenResponse, 16384);
   if (typeof token.access_token !== 'string') throw fail('paypal_oauth_token_missing', 503);
-  const response = await fetch(config.origin + path, { method, headers: { authorization: 'Bearer ' + token.access_token, accept: 'application/json', 'content-type': 'application/json', prefer: 'return=representation', ...(requestId ? { 'PayPal-Request-Id': requestId } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: 'manual', signal: AbortSignal.timeout(20000) });
+  return token.access_token;
+}
+export async function paypalCredentialCheck(env) {
+  const config = paypalConfig(env), blockers = config.blockers.filter(code => !['merchant_activation_pending', 'card_writer_activation_pending'].includes(code));
+  if (blockers.length) throw fail('paypal_credentials_not_configured', 503, { blockers });
+  // Operator-only authentication check: no order, approval, capture or payout.
+  // The short-lived access token is discarded and never returned or logged.
+  await paypalAccessToken(env, config);
+  return { environment: config.sandbox ? 'sandbox' : 'live', credentials_valid: true, checkout_enabled: config.ready, checkout_blockers: config.blockers, merchant_eligibility_verified_by_this_check: false, transactions_submitted: 0 };
+}
+export async function paypalApi(env, method, path, body, requestId) {
+  const config = paypalConfig(env);
+  if (!config.ready) throw fail('card_payments_not_activated', 503, { blockers: config.blockers });
+  if (!/^\/v[12]\/[a-z0-9/_-]+$/i.test(path)) throw fail('invalid_paypal_path', 503);
+  const token = await paypalAccessToken(env, config);
+  const response = await fetch(config.origin + path, { method, headers: { authorization: 'Bearer ' + token, accept: 'application/json', 'content-type': 'application/json', prefer: 'return=representation', ...(requestId ? { 'PayPal-Request-Id': requestId } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: 'manual', signal: AbortSignal.timeout(20000) });
   const value = await boundedJson(response);
   if (!response.ok) throw fail('paypal_request_unconfirmed', 503);
   return value;

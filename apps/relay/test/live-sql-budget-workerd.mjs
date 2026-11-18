@@ -115,7 +115,10 @@ try {
   assert.deepEqual(catalogues.after.search_items, catalogues.before.search_items);
   for (const metric of ['catalog_rows_read', 'revalidation_writes', 'candidate_reads', 'changed_observation_writes']) assert.ok(measured.after[metric] <= measured.before[metric], JSON.stringify({ metric, measured }));
   for (const metric of ['fact_preview_reads', 'entity_preview_reads']) assert.ok(measured.after[metric] <= measured.before[metric], JSON.stringify({ metric, measured }));
-  assert.ok(measured.after.repeated_public_reads < measured.before.repeated_public_reads / 10, JSON.stringify(measured));
+  assert.ok(measured.after.repeated_public_reads <= measured.before.repeated_public_reads, JSON.stringify(measured));
+  // Once the base already has this cache, require no regression rather than a
+  // fresh 90% improvement from every subsequent unrelated release.
+  if (measured.before.repeated_public_reads >= 128) assert.ok(measured.after.repeated_public_reads < measured.before.repeated_public_reads / 10, JSON.stringify(measured));
   assert.equal(measured.after.paid_reads_uncached, measured.before.paid_reads_uncached);
   if (measured.before.schema_version < 4) for (const metric of ['catalog_rows_read', 'revalidation_writes', 'candidate_reads', 'changed_observation_writes']) assert.ok(measured.after[metric] < measured.before[metric], JSON.stringify({ metric, measured }));
   const report = { baseline_sha: process.env.LIVE_BASELINE_SHA || null, scope: 'Paired real workerd SQLite: 32 shards, 2,560 sources and 10,240 facts per build. Same global latest 100 changes and entity catalog. Application SQL counters only; not account-wide billing or a daily availability guarantee.', before: measured.before, after: measured.after, source_fetches: 0, payments: 0 };
