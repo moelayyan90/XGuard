@@ -263,7 +263,16 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (type === 'live') { const entity = await shard(env, id, 'entity-page', { id }); if (entity && !key) return pageResponse(request, 'entity', entity, path); }
     if (type === 'fact' && key) { const page = await shard(env, id, 'fact-page', { id: `${id}/${key}` }); if (page) return pageResponse(request, 'fact', page, path, page.fact.verification === 'REMOVED'); }
     if (type === 'history') {
-      if (key) { const fact = await shard(env, id, 'fact', { id: `${id}/${key}` }); if (fact) return pageResponse(request, 'history', { title: `${fact.label} history`, history: await shard(env, id, 'history', { id: fact.id, page: integer(url.searchParams.get('page'), 1, 1, 1000000) }), page: integer(url.searchParams.get('page'), 1, 1, 1000000) }, path); }
+      if (key) {
+        const factId = `${id}/${key}`, page = integer(url.searchParams.get('page'), 1, 1, 1000000);
+        let result = await shard(env, id, 'history', { id: factId, page, include_label: true });
+        // The previous shard release returns the original array during a canary.
+        if (Array.isArray(result)) {
+          const fact = await shard(env, id, 'fact', { id: factId });
+          result = fact ? { label: fact.label, history: result } : null;
+        }
+        if (result) return pageResponse(request, 'history', { title: `${result.label} history`, history: result.history, page }, path);
+      }
       else { const entity = await shard(env, id, 'entity', { id }); if (entity) return pageResponse(request, 'history', { title: `${entity.title} history`, facts: entity.facts, history: [] }, path); }
     }
     if (type === 'changes') { const changes = await shard(env, id, 'changes', { entity: id, id: key, page: integer(url.searchParams.get('page'), 1, 1, 1000000) }); if (changes.length) return pageResponse(request, 'changes', { title: key ? 'Observed change' : `${id} changes`, changes, page: integer(url.searchParams.get('page'), 1, 1, 1000000) }, path); }
@@ -358,9 +367,11 @@ export default {
       if (decoded.includes('\\') || decoded.includes('\0') || decoded.includes('%') || decoded.includes('//') || /[\u0000-\u0020]/.test(decoded)) return json({ error: 'invalid_path' }, 400);
       if (decoded !== '/' && decoded.endsWith('/')) return new Response(null, { status: 308, headers: { location: `${ORIGIN}${decoded.replace(/\/+$/, '')}${url.search}`, ...securityHeaders() } });
       if (decoded !== url.pathname) { url.pathname = decoded; request = new Request(url, request); }
-      const cacheable = request.method === 'GET' && !url.search && !request.headers.has('authorization') && !request.headers.has('cookie') && !/^\/(admin|healthz|readyz|a2a\/health|status|corrections|search|evidence)/.test(url.pathname);
-      const format = negotiate(request.headers.get('accept'));
-      const cacheKey = new Request(`${url.origin}${url.pathname}?__live_format=${format || 'none'}&__live_build=${env.CF_VERSION_METADATA?.id || VERSION}`);
+      const explicit = /^\/(live|fact|history|changes|topics)\//.test(url.pathname) && /^\?format=(json|markdown|html)$/.exec(url.search)?.[1];
+      const cacheable = request.method === 'GET' && (!url.search || explicit) && !request.headers.has('authorization') && !request.headers.has('cookie') && !/^\/(admin|healthz|readyz|a2a\/health|status|corrections|search|evidence)/.test(url.pathname);
+      const format = explicit || negotiate(request.headers.get('accept'));
+      // Explicit formats have different indexing metadata from Accept negotiation.
+      const cacheKey = new Request(`${url.origin}${url.pathname}?__live_format=${explicit ? 'explicit-' : ''}${format || 'none'}&__live_build=${env.CF_VERSION_METADATA?.id || VERSION}`);
       const edgeCache = (globalThis as any).caches?.default;
       const cached = cacheable && edgeCache ? await edgeCache.match(cacheKey) : null;
       const expires = cached ? Number(cached.headers.get('x-xguard-cache-until')) : 0;

@@ -1,6 +1,7 @@
 import { digest, fail, sign } from '../compute/common.js';
 import { executeAction } from './catalog.js';
 import { paypalApi, paypalOrderBody, validatePaypalOrder, paypalConfig } from './paypal.js';
+import { storageQuotaCode } from '../live/util.ts';
 
 const stamp = () => new Date().toISOString();
 const terminal = new Set(['SUCCEEDED', 'REFUND_REQUIRED', 'REVERSED', 'REFUNDED', 'REVIEW_REQUIRED', 'EXPIRED']);
@@ -77,7 +78,7 @@ export async function actionState(state, env, action, body) {
       return { order: view(row) };
     }));
     throw fail('unknown_checkout_action', 404);
-  } catch (error) { return json({ error: error.code || 'checkout_state_unavailable' }, error.status || 503); }
+  } catch (error) { return json({ error: storageQuotaCode(error) || error.code || 'checkout_state_unavailable' }, error.status || 503); }
 }
 
 export async function createPaypalOrder(env, id, token_hash) {

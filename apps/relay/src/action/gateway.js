@@ -4,6 +4,7 @@ import { actionCall, createPaypalOrder, capturePaypalOrder, reconcilePaypalOrder
 import { paypalConfig, paypalCredentialCheck, verifyPaypalWebhook } from './paypal.js';
 import { actionPage, ACTION_CSS, ACTION_BROWSER } from './site.js';
 import { productModule, commerceSaleEnabled } from '../products/registry.js';
+import { storageQuotaCode } from '../live/util.ts';
 
 const allowedOrigins = ['https://xguardgate.com', 'https://api.xguardgate.com'];
 const base = '/v1/checkout';
@@ -19,6 +20,18 @@ function response(request, env, value, status = 200, contentType = 'application/
 function assertOrigin(request) {
   const origin = request.headers.get('origin');
   if (origin && !allowedOrigins.includes(origin)) throw fail('origin_not_allowed', 403);
+}
+async function checkoutReadiness(env, config) {
+  if (!config.ready) return { ready: false, blockers: config.blockers };
+  try {
+    // This reserved reference cannot be issued by PayPal. The lookup reads the
+    // same durable ledger used during order creation and never admits a buyer.
+    const probe = await actionCall(env, 'references', 'lookup', { reference: '__checkout_readiness__' });
+    if (probe.id !== null) throw new Error('Unexpected ledger response');
+    return { ready: true, blockers: [] };
+  } catch (error) {
+    return { ready: false, blockers: [storageQuotaCode(error) || 'checkout_storage_unavailable'] };
+  }
 }
 export async function actionFetch(request, env) {
   const url = new URL(request.url), path = url.pathname;
@@ -52,7 +65,13 @@ export async function actionFetch(request, env) {
       if (!['/checkout', '/dashboard'].includes(path)) r.headers.delete('x-robots-tag');
       return r;
     }
-    if (path === base + '/catalog' && ['GET', 'HEAD'].includes(request.method)) return response(request, env, { name: 'XGuard Action Cloud', services: actionCatalog(), payment: { provider: 'paypal', ready: config.ready, environment: config.sandbox ? 'sandbox' : 'live', guest_card: 'Offered only when PayPal determines eligibility. No guarantee for every buyer.', blockers: config.blockers }, compute: { checkout: '/compute', card_ready: false, blocker: 'Requires separately funded and approved execution provider plus card adapter; no new charge accepted.' }, legacy_x402: '/api/paid/v1/catalog' });
+    if (path === base + '/catalog' && ['GET', 'HEAD'].includes(request.method)) return response(request, env, { name: 'XGuard Action Cloud', services: actionCatalog(), payment: { provider: 'paypal', ready: config.ready, readiness_scope: 'merchant_configuration', readiness_url: base + '/readiness', environment: config.sandbox ? 'sandbox' : 'live', guest_card: 'Offered only when PayPal determines eligibility. No guarantee for every buyer.', blockers: config.blockers }, compute: { checkout: '/compute', card_ready: false, blocker: 'Requires separately funded and approved execution provider plus card adapter; no new charge accepted.' }, legacy_x402: '/api/paid/v1/catalog' });
+    if (path === base + '/readiness' && ['GET', 'HEAD'].includes(request.method)) {
+      const readiness = await checkoutReadiness(env, config);
+      const result = response(request, env, { ...readiness, configured: config.ready, environment: config.sandbox ? 'sandbox' : 'live', scope: 'merchant_configuration_and_ledger_read' }, readiness.ready ? 200 : 503);
+      if (!readiness.ready) result.headers.set('retry-after', '60');
+      return result;
+    }
     if (path === '/.well-known/xguard-action-cloud.json' && ['GET', 'HEAD'].includes(request.method)) return response(request, env, { name: 'XGuard Action Cloud', catalog: 'https://xguardgate.com' + base + '/catalog', checkout: 'https://xguardgate.com/marketplace', docs: 'https://xguardgate.com/action/docs', payment_methods: { paypal: config.ready, x402: 'preserved' }, operational_scope: 'bounded CSV processing and existing public read-only task adapters' });
     if (path === base + '/config' && ['GET', 'HEAD'].includes(request.method)) return response(request, env, { ready: config.ready, blockers: config.blockers, ...(config.ready ? { client_id: env.PAYPAL_CLIENT_ID, merchant_id: config.merchant_id, environment: config.sandbox ? 'sandbox' : 'live' } : {}), currency: 'USD' });
     if (path === base + '/proof-key' && ['GET', 'HEAD'].includes(request.method)) {
@@ -97,7 +116,8 @@ export async function actionFetch(request, env) {
       assertOrigin(request);
       const body = await boundedJson(request, 100000), { product, input } = normalizeAction(body.service, body.input);
       if (Object.keys(body).some(k => !['service', 'input'].includes(k))) throw fail('unsupported_checkout_field', 422);
-      return response(request, env, { service: product.id, name: product.name, amount_cents: product.card_amount_cents, currency: 'USD', input_sha256: await actionFingerprint(product.id, input), card_ready: config.ready, blockers: config.blockers });
+      const readiness = await checkoutReadiness(env, config);
+      return response(request, env, { service: product.id, name: product.name, amount_cents: product.card_amount_cents, currency: 'USD', input_sha256: await actionFingerprint(product.id, input), card_ready: readiness.ready, blockers: readiness.blockers });
     }
     if (path === base + '/orders' && request.method === 'POST') {
       assertOrigin(request);
@@ -128,5 +148,13 @@ export async function actionFetch(request, env) {
       if (match[2] === 'capture' && request.method === 'POST') { assertOrigin(request); return response(request, env, await capturePaypalOrder(env, match[1], token_hash)); }
     }
     return response(request, env, { error: 'checkout_route_not_found' }, 404);
-  } catch (error) { return response(request, env, { error: error.code || 'checkout_temporarily_unavailable', ...(error.details || {}) }, error.status || 503); }
+  } catch (error) {
+    const quota = storageQuotaCode(error);
+    if (quota) {
+      const result = response(request, env, { error: quota, quota_reset_at: new Date(new Date().setUTCHours(24, 0, 0, 0)).toISOString() }, 503);
+      result.headers.set('retry-after', '300');
+      return result;
+    }
+    return response(request, env, { error: error.code || 'checkout_temporarily_unavailable', ...(error.details || {}) }, error.status || 503);
+  }
 }
