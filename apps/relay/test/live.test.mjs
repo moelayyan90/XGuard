@@ -4,7 +4,7 @@ import worker, { classify } from '../src/live/worker.ts';
 import { sourceSpec, parseSource } from '../src/live/adapters.ts';
 import { allowedUrl, boundedBody, robotsAllows, safeFetch } from '../src/live/security.ts';
 import { stable, changeType, negotiate, retryDelay, shardName, shardOf, controlName, hash } from '../src/live/util.ts';
-import { storage, environment, seed } from './live-harness.mjs';
+import { storage, environment, seed, seedCollectionAllowance } from './live-harness.mjs';
 import { Store } from '../src/live/store.ts';
 import { refreshOne } from '../src/live/refresh.ts';
 import { parseHTML } from 'linkedom';
@@ -295,6 +295,10 @@ test('public indexes share one durable snapshot across concurrent requests and o
     await seed(h, '2.0.0'); reads = 0;
     const fact = await (await request('/fact/npm/react/latest-version')).json();
     assert.equal(fact.fact.current_value, '2.0.0'); assert.equal(reads, 1, 'a fact and its history use one storage request');
+    reads = 0;
+    const history = await (await request('/history/npm/react/latest-version?page=1')).json();
+    assert.equal(history.history.length, 2); assert.equal(history.page, 1);
+    assert.equal(reads, 1, 'the public history page needs one shard request');
   } finally { await h.drain(); h.close(); }
 });
 
@@ -388,6 +392,7 @@ test('pricing adapters normalize version punctuation and require explicit USD pe
 test('revalidation cannot freshen an older fact omitted from a later partial extraction', () => {
   const db = storage(), store = new Store(db), spec = sourceSpec('pricing','openai');
   try {
+    seedCollectionAllowance(store);
     store.enqueue(spec);
     store.observe({ spec, facts:[{key:'older-price',label:'Older price',value:1}], observedAt:'2020-01-01T00:00:00Z', hash:'a'.repeat(64), fetchId:'old', method:'fixture', exhaustive:false },0);
     store.observe({ spec, facts:[{key:'current-price',label:'Current price',value:2}], observedAt:new Date().toISOString(), hash:'b'.repeat(64), fetchId:'new', method:'fixture', exhaustive:false },0);
@@ -666,4 +671,29 @@ test('selected-change RPC limits and aggregate entity listings retain existing f
     const old = store.rows('SELECT e.id,e.title,e.topic,e.updated_at,count(d.id) AS facts FROM entities e JOIN fact_definitions d ON d.entity_id=e.id WHERE e.published=1 AND e.suppressed=0 GROUP BY e.id ORDER BY e.id LIMIT 100 OFFSET 0');
     assert.deepEqual(store.list(null), old); assert.equal(store.stats().entities, 2); assert.equal(store.list(null).length, 1);
   } finally { h.close(); }
+});
+
+test('explicit public formats share the edge cache without crossing representations or private boundaries', async () => {
+  const h = environment(), previous = globalThis.caches, entries = new Map();
+  globalThis.caches = { default: {
+    async put(key, response) { entries.set(key.url, response.clone()); },
+    async match(key) { return entries.get(key.url)?.clone(); },
+  } };
+  try {
+    await seed(h);
+    const path = 'https://xguardgate.com/history/npm/react/latest-version';
+    async function read(query, accept, extra = {}) {
+      const r = await worker.fetch(new Request(path + query, {headers:{accept,'user-agent':'XGuard-test',...extra}}), h.env, h.ctx);
+      await h.drain(); return r;
+    }
+    const first = await read('?format=json', 'text/html');
+    assert.equal(first.headers.get('x-xguard-cache'), 'MISS');
+    assert.equal((await read('?format=json', 'text/markdown')).headers.get('x-xguard-cache'), 'HIT');
+    const md = await read('?format=markdown', 'application/json');
+    assert.match(md.headers.get('content-type'), /markdown/); assert.equal(md.headers.get('x-xguard-cache'), 'MISS');
+    assert.match(first.headers.get('x-robots-tag'), /noindex/);
+    assert.doesNotMatch((await read('', 'application/json')).headers.get('x-robots-tag') || '', /noindex/);
+    for (const q of ['?format=json&page=2','?format=json&format=markdown']) assert.equal((await read(q, 'text/html')).headers.get('x-xguard-cache'), 'BYPASS');
+    assert.equal((await read('?format=json','text/html',{cookie:'private=1'})).headers.get('x-xguard-cache'), 'BYPASS');
+  } finally { globalThis.caches = previous; await h.drain(); h.close(); }
 });

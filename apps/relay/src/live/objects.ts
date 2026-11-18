@@ -104,7 +104,12 @@ export class LiveShard {
         return json(body.facts.map((id: string) => this.store.paidRead(id, body)));
       }
       if (op === 'fact-page') return json(this.publicRead(body, () => { const fact = this.store.fact(body.id); return fact ? { fact, history: this.store.history(body.id, 1, 10) } : null; }));
-      if (op === 'history') return json(this.publicRead(body, () => this.store.history(body.id, integer(body.page, 1, 1, 1000000))));
+      if (op === 'history') return json(this.publicRead(body, () => {
+        const page = integer(body.page, 1, 1, 1000000);
+        if (!body.include_label) return this.store.history(body.id, page);
+        const fact = this.store.fact(body.id);
+        return fact ? { label: fact.label, history: this.store.history(body.id, page) } : null;
+      }));
       if (op === 'evidence') return json(this.store.evidence(body.entity, body.observation));
       if (op === 'changes') return json(this.publicRead(body, () => this.store.changes(body.entity, body.id, integer(body.page, 1, 1, 1000000))));
       if (op === 'list') return json(this.store.list(body.topic || null, integer(body.page, 1, 1, 1000000), integer(body.size, 100, 1, 1000)));

@@ -37,6 +37,12 @@ export async function runActionSmoke({
   const quote = await (await read('/v1/checkout/quote', { service: 'csv-clean', input: { csv: 'email,name\nsmoke@example.com,Synthetic smoke\n' } })).json();
   assert.equal(quote.amount_cents, 200);
   assert.equal(quote.currency, 'USD');
+  if (catalog.payment?.ready && catalog.payment.readiness_url === '/v1/checkout/readiness') {
+    assert.equal(quote.card_ready, true, 'Configured checkout could not read the order ledger');
+    const ledger = await (await read('/v1/checkout/readiness')).json();
+    assert.equal(ledger.scope, 'merchant_configuration_and_ledger_read');
+    assert.equal(ledger.ready, true);
+  }
   const checkout = await (await read('/checkout?service=csv-clean')).text();
   assert.match(checkout, /Review final price/);
   const spec = await (await read('/openapi.json')).json();

@@ -171,3 +171,27 @@ test('PayPal returns resume only the original local purchase and cancellations p
   }
   assert.deepEqual(calls, Array(2).fill(['/v1/checkout/orders/' + saved.id + '/capture', 'POST', saved.token]));
 });
+
+test('quote and readiness report an exhausted checkout ledger without contacting PayPal', async () => {
+  const config = { PAYPAL_ENVIRONMENT: 'live', PAYPAL_CLIENT_ID: 'fixture', PAYPAL_CLIENT_SECRET: 'fixture', PAYPAL_WEBHOOK_ID: 'fixture', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_VERIFIED_EMAIL: 'moelayyan2026@gmail.com', PAYPAL_ENABLED: 'on' };
+  let blocked = true, reads = 0;
+  config.PAID_GATEWAY = { idFromName: name => name, get: name => ({ async fetch(url, init) {
+    assert.equal(name, 'action-cloud-v1:references');
+    assert.equal(url, 'https://action.internal/action/lookup');
+    assert.equal(JSON.parse(init.body).reference, '__checkout_readiness__');
+    reads++;
+    if (blocked) throw Error('Exceeded allowed volume of requests in Durable Objects free tier');
+    return Response.json({id:null});
+  } }) };
+  const check = () => actionFetch(new Request('https://xguardgate.com/v1/checkout/readiness'), config);
+  const unavailable = await check();
+  assert.equal(unavailable.status, 503);
+  assert.match(unavailable.headers.get('cache-control'), /no-store/);
+  const quote = await actionFetch(new Request('https://xguardgate.com/v1/checkout/quote', {method:'POST',body:JSON.stringify({service:'csv-clean',input:{csv:'h\na'}})}), config);
+  const data = await quote.json();
+  assert.equal(data.amount_cents, 200); assert.equal(data.card_ready, false);
+  assert.deepEqual(data.blockers, ['storage_request_quota_exhausted']);
+  blocked = false;
+  assert.equal((await (await check()).json()).ready, true);
+  assert.equal(reads, 3);
+});

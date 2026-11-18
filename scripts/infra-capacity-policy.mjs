@@ -1,4 +1,19 @@
-const allowances = { rows_read: 5000000, rows_written: 100000 };
+export const allowances = { rows_read: 5000000, rows_written: 100000, requests: 100000 };
+
+export function providerCounters(datasets) {
+  function total(dataset, field) {
+    const groups = datasets.find(item => item.dataset === dataset)?.groups;
+    if (!Array.isArray(groups) || !groups.length) return null;
+    const values = groups.map(group => group.sum?.[field]);
+    if (values.some(value => !Number.isSafeInteger(value) || value < 0)) return null;
+    return values.reduce((sum, value) => sum + value, 0);
+  }
+  return {
+    rows_read: total('durableObjectsPeriodicGroups', 'rowsRead'),
+    rows_written: total('durableObjectsPeriodicGroups', 'rowsWritten'),
+    requests: total('durableObjectsInvocationsAdaptiveGroups', 'requests'),
+  };
+}
 
 // A rate projection is an early warning, never a measured remaining balance.
 export function capacitySignals(totals, start, end) {

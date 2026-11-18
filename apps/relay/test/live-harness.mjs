@@ -18,11 +18,21 @@ export function storage(filename = ':memory:') {
     async setAlarm(time) { state.alarm = time; },
   }; return state;
 }
+// Behavioral fixtures need the same collection capacity at every UTC hour.
+export function seedCollectionAllowance(store) {
+  const day = new Date(Date.now()).toISOString().slice(0, 10);
+  store.set('source-write-budget-v1', { day, rows_written: 0, allocation: 1600, limit: 1600, paused: false });
+  store.set('source-read-budget-v1', { day, rows_read: 0, allocation: 100000, limit: 100000, paused: false });
+}
 export function environment(options = {}) {
   const objects = new Map(), controls = new Map();
   const env = { LIVE_SOURCE_FETCHES: 'off', LIVE_BOOTSTRAP: 'off', LIVE_ADMIN_KEY: 'test-key-'.repeat(8), ...options };
   const ns = (Class, map) => ({ idFromName: name => name, get(id) {
-    if (!map.has(id)) { const s = storage(); map.set(id, new Class({ storage: s, blockConcurrencyWhile: fn => fn() }, env)); }
+    if (!map.has(id)) {
+      const object = new Class({ storage: storage(), blockConcurrencyWhile: fn => fn() }, env);
+      if (Class === LiveShard) seedCollectionAllowance(object.store);
+      map.set(id, object);
+    }
     return map.get(id);
   } });
   env.LIVE_SHARDS = ns(LiveShard, objects); env.LIVE_CONTROL = ns(LiveControl, controls);
