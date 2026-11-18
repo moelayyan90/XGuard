@@ -5,6 +5,7 @@
   "compatibility_date": "2026-08-25",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
+  "preview_urls": true,
   // Canonical custom domains are provisioned separately because the CI token is
   // intentionally limited to Workers Scripts. Post-deploy verification enforces
   // the apex, www redirect and API surfaces without requiring Zone Routes access.
