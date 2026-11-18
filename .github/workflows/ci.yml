@@ -78,6 +78,7 @@ jobs:
       - name: Preserve financial state and recovery invariants
         run: |
           node --test scripts/durable-object-deploy-guard-test.mjs
+          node --test scripts/canary-release-policy-test.mjs
           node --test apps/relay/test/payment-context.mjs
           node apps/relay/test/settlement-safety.mjs
           node --test apps/relay/src/core/payment-rail-test.js apps/relay/src/core/reconcile-payment-test.js apps/relay/src/core/settlement-proof-test.js

@@ -78,3 +78,26 @@ protocol/settlement compatibility, CodeQL and the existing guarded canary.
 No financial transaction, paid resource purchase, plan upgrade or data reset is
 part of this supporting recovery change. Record the actual deployment run and
 post-release provider usage separately; local tests are not deployment proof.
+# Live credential verification and subsequent canary
+
+A follow-up owner-only endpoint verifies the existing Live OAuth pair without
+creating an order, capturing funds, confirming merchant eligibility or changing
+either payment gate. Authentication errors remain failures, and the access token
+is discarded. The credential-check workflow reuses existing encrypted operator
+and provider credentials without expanding permissions.
+
+The first recovery deployed successfully as Worker version
+`c52d0733-e1b2-46e8-a155-6a59b92775b8`, source `git-c676b4365a69`.
+It used the existing coordinated deployment path because a settlement test fixture
+changed. The follow-up release policy gives compatible relay runtime changes a
+5% canary even when settlement test fixtures change; settlement runtime, config,
+dependencies, billing and Durable Object/financial compatibility guards retain
+their coordinated deployment requirements. Canary promotion retains exact-version
+checks, propagation waits and the existing automatic rollback path. No production
+failure is injected merely to demonstrate rollback.
+
+Live checkout remains disabled. The authenticated merchant account shows an
+unconfirmed withdrawal card. OAuth success does not prove card acceptance,
+withdrawal eligibility or a real sale. No new confirmation charge, live purchase,
+refund or transfer was initiated in this recovery.
+

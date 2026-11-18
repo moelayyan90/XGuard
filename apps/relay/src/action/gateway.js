@@ -1,7 +1,7 @@
 import { boundedJson, digest, fail, proofStub } from '../compute/common.js';
 import { actionCatalog, normalizeAction, actionPreflight, actionFingerprint } from './catalog.js';
 import { actionCall, createPaypalOrder, capturePaypalOrder, reconcilePaypalOrder } from './state.js';
-import { paypalConfig, verifyPaypalWebhook } from './paypal.js';
+import { paypalConfig, paypalCredentialCheck, verifyPaypalWebhook } from './paypal.js';
 import { actionPage, ACTION_CSS, ACTION_BROWSER } from './site.js';
 import { productModule, commerceSaleEnabled } from '../products/registry.js';
 
@@ -23,16 +23,17 @@ function assertOrigin(request) {
 export async function actionFetch(request, env) {
   const url = new URL(request.url), path = url.pathname;
   const publicPage = ['/', '/marketplace', '/checkout', '/dashboard', '/action/docs', '/action/how-it-works', '/action/pricing'].includes(path);
-  if (!path.startsWith(base + '/') && path !== base && !publicPage && !['/.well-known/xguard-action-cloud.json', '/assets/action-v1.css', '/assets/action-v1.js', '/admin/action-cloud'].includes(path)) return null;
+  if (!path.startsWith(base + '/') && path !== base && !publicPage && !['/.well-known/xguard-action-cloud.json', '/assets/action-v1.css', '/assets/action-v1.js', '/admin/action-cloud', '/admin/action-cloud/paypal-readiness'].includes(path)) return null;
   try {
     if (!['xguardgate.com', 'api.xguardgate.com', 'localhost', '127.0.0.1'].includes(url.hostname)) return null;
     if (request.method === 'OPTIONS') { assertOrigin(request); return response(request, env, null, 204); }
     if (path === '/assets/action-v1.css' && ['GET', 'HEAD'].includes(request.method)) return response(request, env, ACTION_CSS, 200, 'text/css; charset=utf-8');
     if (path === '/assets/action-v1.js' && ['GET', 'HEAD'].includes(request.method)) return response(request, env, ACTION_BROWSER, 200, 'text/javascript; charset=utf-8');
     const config = paypalConfig(env);
-    if (path === '/admin/action-cloud' && ['GET', 'HEAD'].includes(request.method)) {
+    if (['/admin/action-cloud', '/admin/action-cloud/paypal-readiness'].includes(path) && ['GET', 'HEAD'].includes(request.method)) {
       const key = env.LIVE_ADMIN_KEY || env.XGUARD_OPERATOR_KEY;
       if (!key || key.length < 24 || request.headers.get('authorization') !== 'Bearer ' + key) throw fail('operator_authentication_required', 401);
+      if (path.endsWith('/paypal-readiness')) return response(request, env, await paypalCredentialCheck(env));
       const id = url.searchParams.get('order_id');
       if (!id) return response(request, env, { card_ready: config.ready, blockers: config.blockers, account_revenue: 'UNKNOWN', instruction: 'Supply one known order_id for a bounded inspection. No global financial scan or account revenue inference.' });
       if (!orderPattern.test(id)) throw fail('invalid_order_id', 400);
