@@ -31,6 +31,30 @@ export class Store {
   run(sql: string, ...values: any[]): void { this.rows(sql, ...values); }
   get(key: string, fallback: any = null): any { const row = this.one('SELECT value FROM settings WHERE key=?', key); return row ? JSON.parse(row.value) : fallback; }
   set(key: string, value: any): void { this.run('INSERT INTO settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify(value)); }
+  collectionReadBudget(now = Date.now()): Row {
+    const day = iso(now).slice(0, 10), prior = this.get('source-read-budget-v1');
+    if (prior?.day === day) {
+      if (!Number.isSafeInteger(prior.rows_read) || prior.rows_read < 0 || !Number.isSafeInteger(prior.allocation) || prior.allocation < 0 || prior.allocation > 100000) return { day, rows_read: 0, allocation: 0, limit: 100000, paused: true, error: 'invalid_collection_read_budget' };
+      return prior;
+    }
+    // Collector-only allocation across 32 fixed shards: 3.2M/day, leaving
+    // room for the paced catalog, public reads and financial services. Bounded
+    // paused/scheduling metadata reads remain outside this component budget.
+    // Initial rollout withholds 25% of the remaining UTC-day allocation.
+    return { day, rows_read: 0, allocation: Math.floor(100000 * (1 - (now % 86400000) / 86400000) * (prior ? 1 : .75)), limit: 100000, paused: false };
+  }
+  checkpointCollectionReads(start: number): Row {
+    return this.storage.transactionSync(() => {
+      const budget = this.collectionReadBudget(), before = budget.paused;
+      // Include the checkpoint's bounded indexed lookup/update. Concurrent
+      // public reads may be charged conservatively; never refund uncertainty.
+      budget.rows_read += Math.max(0, this.rowsRead - start) + 2;
+      budget.paused ||= budget.rows_read + 4096 > budget.allocation;
+      this.set('source-read-budget-v1', budget);
+      if (!before && budget.paused) console.warn(JSON.stringify({ event: 'source_collection_read_budget_paused', ...budget }));
+      return budget;
+    });
+  }
   collectionBudget(now = Date.now()): Row {
     const day = iso(now).slice(0, 10), prior = this.get('source-write-budget-v1');
     // Fixed shard placement: at most 51,200 SQL rows/day across all 32 shards.

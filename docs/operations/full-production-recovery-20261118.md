@@ -120,3 +120,29 @@ service. The paid web-fetch annotation now conservatively reflects its possible
 payment/ledger effects; public preflight and fact reads retain their existing
 safety hints. Actual modern and legacy clients, x402 rejection and receipt
 recovery remain required checks.
+
+## Bounded collector reads
+
+Post-release account counters still projected above the free daily allowance.
+The source collector now has a persistent, collector-only 100,000-row allocation
+per fixed shard per UTC day (3.2M across 32 shards), with a 4096-row safety margin.
+An initial mid-day rollout receives only 75% of its remaining-day fraction.
+Each active alarm checkpoints measured SQLite reads including its scheduling
+queries once; it stops further source work near the allocation and schedules
+resumption after UTC midnight. Paused alarms do not repeatedly write counters.
+The small bounded scheduling/paused metadata reads are outside this allocation;
+it is not an account-wide remaining-balance claim or a traffic-volume guarantee.
+
+Contention no longer causes unbounded repeated source scans after this local
+allocation. Sources, current facts, immutable history, financial objects, balances
+and payment gates are preserved. Public fact reads and paid reads remain available
+through their existing contracts. Delayed source verification ages to STALE; no
+freshness is invented and no automatic allowance or plan purchase is made.
+
+Paired real workerd SQLite using an equal 80-source fixture, 64 forced contended
+alarms and a small test allocation measured **20,936 to 920 reads** and **69 to 9
+writes**. The budget survived Store recreation, resumed after UTC rollover,
+rejected malformed counters, and retained the original public value/history and
+uncached paid reads (12 to 12). See
+`docs/evidence/commerce/collector-read-budget-20261118.json`. This fixture proves
+the pacing boundary, not a measured full-day production reduction.
