@@ -22,11 +22,12 @@ try {
           // Measure domain-contention writes under equal admitted capacity,
           // independently of how many UTC minutes remain when CI starts.
           this.store.set('source-write-budget-v1', {day:new Date().toISOString().slice(0,10),rows_written:0,paused:false,allocation:1600,limit:1600});
+          this.store.set('source-read-budget-v1', {day:new Date().toISOString().slice(0,10),rows_read:0,paused:false,allocation:100000,limit:100000});
           this.store.enqueue(sourceSpec('npm', 'react'));
           this.store.set('cleanup-day', new Date().toISOString().slice(0, 10));
           const before = this.store.rowsWritten;
           await this.alarm();
-          return Response.json({ rows_written: this.store.rowsWritten - before, source: this.store.one('SELECT id,lease_until,next_fetch FROM sources'), observations: this.store.one('SELECT count(*) AS n FROM fact_observations').n });
+          return Response.json({ rows_written: this.store.rowsWritten - before, read_checkpoint: typeof this.store.collectionReadBudget === 'function' && this.store.get('source-read-budget-v1').rows_read > 0, source: this.store.one('SELECT id,lease_until,next_fetch FROM sources'), observations: this.store.one('SELECT count(*) AS n FROM fact_observations').n });
         }
       }
       export class BusyDomain { async fetch() { return Response.json({ token: null, retry_after_ms: 120000 }); } }
@@ -48,7 +49,11 @@ try {
   }
   assert.equal(measured.after.source.next_fetch, 0, 'a denied domain lease must not rewrite the source');
   assert.ok(measured.after.rows_written > 0, 'use real workerd SQLite row counters');
-  assert.ok(measured.after.rows_written <= measured.before.rows_written, JSON.stringify(measured));
+  // The new persistent read meter adds exactly one settings upsert per active
+  // alarm (two indexed writes). Repeated paused alarms have their own paired
+  // read-budget fixture and must not keep writing checkpoints.
+  const checkpointWrites = measured.after.read_checkpoint && !measured.before.read_checkpoint ? 2 : 0;
+  assert.ok(measured.after.rows_written <= measured.before.rows_written + checkpointWrites, JSON.stringify(measured));
   if (measured.before.source.next_fetch > 0) assert.ok(measured.after.rows_written < measured.before.rows_written);
   const report = { baseline_sha: process.env.LIVE_BASELINE_SHA || null, scope: 'One real collector alarm with one due source and a busy upstream domain, in isolated workerd SQLite. Excludes alarm metadata and other account workloads; not a production bill or account-wide capacity claim.', before_rows_written: measured.before.rows_written, after_rows_written: measured.after.rows_written, source_fetches: 0, payments: 0 };
   console.log(JSON.stringify(report));

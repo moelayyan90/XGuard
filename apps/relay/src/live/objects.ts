@@ -41,8 +41,8 @@ export class LiveShard {
     const existing = await this.state.storage.getAlarm(), now = Date.now();
     // A pending automatic alarm already owns the next scheduling decision.
     if (!urgent && existing !== null && existing > now) return;
-    const budget = this.store.collectionBudget();
-    if (budget.paused || budget.rows_written + 48 > budget.allocation) {
+    const budget = this.store.collectionBudget(), reads = this.store.collectionReadBudget();
+    if (budget.paused || budget.rows_written + 48 > budget.allocation || reads.paused || reads.rows_read + 4096 > reads.allocation) {
       const reset = Date.parse(budget.day + 'T00:00:00Z') + 86400000;
       if (existing === null || existing < reset) await this.state.storage.setAlarm(reset + 1000 + Math.random() * 180000);
       return;
@@ -58,21 +58,30 @@ export class LiveShard {
   async alarm(): Promise<void> {
     if (this.running || this.env.LIVE_SOURCE_FETCHES === 'off') return;
     this.running = true;
+    let readStart: number | null = null;
     try {
       try { this.flushTelemetry(); } catch { console.warn(JSON.stringify({ event: 'telemetry_flush_unavailable' })); }
-      const budget = this.store.collectionBudget();
-      if (budget.paused || budget.rows_written + 48 > budget.allocation) return;
+      const start = this.store.rowsRead, budget = this.store.collectionBudget(), reads = this.store.collectionReadBudget();
+      if (budget.paused || budget.rows_written + 48 > budget.allocation || reads.paused || reads.rows_read + 4096 > reads.allocation) return;
+      readStart = start;
       // Existing bounded scheduling metadata is outside the source allocation.
       // Do not add another checkpoint to every contended alarm.
       this.store.set('last-tick', iso());
       for (let i = 0; i < 4; i++) {
+        if (reads.rows_read + this.store.rowsRead - start + 4096 > reads.allocation) break;
         const source = this.store.peekDue(); if (!source) break;
         try { await refreshOne(this.store, this.env, source); }
         catch (error) { if (error instanceof Error && error.message === 'source_collection_capacity_deferred') break; throw error; }
         if (this.store.collectionBudget().paused) break;
       }
       if (this.store.get('cleanup-day') !== iso().slice(0, 10)) { this.store.cleanOperationalData(); this.store.set('cleanup-day', iso().slice(0, 10)); }
-    } finally { this.running = false; await this.wake(); }
+    } finally {
+      this.running = false;
+      try { await this.wake(); }
+      finally {
+        if (readStart !== null && this.store.checkpointCollectionReads(readStart).paused) await this.wake(true);
+      }
+    }
   }
   async fetch(request: Request): Promise<Response> {
     try {
