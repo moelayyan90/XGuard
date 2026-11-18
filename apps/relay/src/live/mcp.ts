@@ -78,12 +78,47 @@ async function toolFailure({ response, id }: PaymentResponse) {
   return result;
 }
 
+const toolTitles: Record<string, string> = {
+  'xguard.fact.get': 'Read a free published software fact',
+  'xguard.action.catalog': 'Review task prices and PayPal availability',
+  'xguard.action.quote': 'Review a digital task price in USD',
+  'xguard.action.result': 'Recover a paid digital task and receipt',
+  'xguard.authority.catalog': 'Inspect delegated authority sandbox limits',
+  'xguard.authority.command': 'Submit an authorized delegation command',
+  'xguard.authority.verify_receipt': 'Verify a delegated authority receipt',
+  list_compute_providers: 'Inspect compute provider connections',
+  list_models: 'List eligible compute models and templates',
+  compute_health: 'Check compute availability before quoting',
+  quote_inference: 'Quote eligible inference in USDC',
+  execute_inference: 'Execute an authorized paid inference quote',
+  quote_gpu_job: 'Quote a reviewed bounded GPU job',
+  execute_gpu_job: 'Execute an authorized paid GPU quote',
+  get_execution_receipt: 'Recover the original compute receipt',
+  xguard_search_offers: 'Search approved partner offers',
+  xguard_compare_suppliers: 'Compare approved partner offers',
+  xguard_find_enterprise_software: 'Find contracted software partners',
+  xguard_find_gpu_capacity: 'Inspect approved GPU partner availability',
+  xguard_request_quote: 'Review a digital task price without paying',
+  xguard_get_verified_facts: 'Find the paid fact bundle checkout',
+  xguard_negotiate_offer: 'Inspect supplier negotiation activation requirements',
+  xguard_create_deal: 'Inspect deal execution activation requirements',
+  xguard_purchase_service: 'Get a service checkout link without paying',
+  xguard_verify_payment: 'Read the original private order state',
+  xguard_get_receipt: 'Recover the original paid delivery receipt',
+  'xguard.extract': 'Extract one to three public web pages with x402',
+  ...Object.fromEntries(OPERATIONS.map(d => ['xguard.' + d.route.replaceAll('-', '_'), d.name])),
+  ...Object.fromEntries(PRODUCT_SERVICES.map(d => ['xguard.commerce_' + d.route.replaceAll('-', '_'), d.name])),
+};
+
 function list(env: Env): ListToolsResult {
   const existingTools = mcpToolsForEnv(env).map(tool => {
     // The HTTP payment transport is deliberately distinct from x402's in-band
     // MCP extension. An agent retries this same POST with the returned headers.
     if (tool.name === 'xguard.web.fetch') tool.description =
       'Fetch one public HTTPS resource after x402 v2 payment and on-chain settlement verification. Retry the identical MCP call with Payment-Signature and X-XGuard-Quote. A completed retry returns the prior receipt.';
+    // Reading a public page may still settle an authorized payment and mutate
+    // its ledger. Clients must not infer that this call has no side effects.
+    if (tool.name === 'xguard.web.fetch') tool.annotations = { ...tool.annotations, readOnlyHint: false };
     if (tool.name === 'xguard.pricing.quote') tool.description =
       'Get an optional signed quote for xguard.web.fetch. Call xguard.web.fetch directly to receive the price in an HTTP 402 challenge.';
     const meta = tool._meta as Record<string, Record<string, unknown> | undefined> | undefined;
@@ -92,12 +127,13 @@ function list(env: Env): ListToolsResult {
     if (meta?.['xguard/next']) delete meta['xguard/next'].quote_url_optional;
     return { ...tool, inputSchema: { ...tool.inputSchema, type: 'object' as const } };
   }) as ListToolsResult['tools'];
-  return { tools: [...actionTools as unknown as ListToolsResult['tools'], ...computeTools as ListToolsResult['tools'], {
+  const tools: ListToolsResult['tools'] = [...actionTools as unknown as ListToolsResult['tools'], ...computeTools as ListToolsResult['tools'], {
     name: factTool,
     description: 'Read one free published software fact by canonical ID. Returns the primary source, verification status and timestamp. Use xguard.web.fetch for a separate paid fetch of a public URL.',
     inputSchema: { type: 'object', properties: { factId: factIdSchema }, required: ['factId'], additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, ...[{ name: 'xguard.authority.catalog', description: 'Inspect the signed delegation sandbox, limits and unactivated service-fee contract.', inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, idempotentHint: true } }, { name: 'xguard.authority.command', description: 'Submit an owner/agent-signed authority envelope. Requires explicit key-holder authorization; the tool cannot sign for the caller. Sandbox is not a payment.', inputSchema: { type: 'object' as const, required: ['envelope', 'organization_token'], additionalProperties: false, properties: { envelope: authorityEnvelopeSchema, organization_token: { type: 'string', minLength: 43, maxLength: 43 } } }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true } }, { name: 'xguard.authority.verify_receipt', description: 'Verify a financial authority receipt against the existing ProofRail key, without charging.', inputSchema: { type: 'object' as const, required: ['receipt'], additionalProperties: false, properties: { receipt: { type: 'string', maxLength: 8192 } } }, annotations: { readOnlyHint: true, idempotentHint: true } }], ...commercialMcpTools(), ...existingTools, ...OPERATIONS.map(d => ({ name: 'xguard.' + d.route.replaceAll('-', '_'), description: d.description + ` Price: ${Number(d.amount) / 1e6} USDC on Base. Sign only the canonical HTTP x402 offer and preserve the idempotency key and original quote.`, inputSchema: { ...paidInputSchema(d.route), type: 'object' as const, properties: { ...paidInputSchema(d.route).properties, idempotency_key: { type: 'string', minLength: 8, maxLength: 128 } }, required: [...paidInputSchema(d.route).required, 'idempotency_key'] }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } })), ...(extractEnabled() ? [{ name: 'xguard.extract', description: EXTRACT_SERVICE.description + ' Price: 0.012 USDC on Base. Uses x402 v2 HTTP payment headers: retry identical arguments and idempotency key with Payment-Signature and X-XGuard-Quote; the authorization is for the canonical HTTP API resource. No source is fetched before payment.', inputSchema: { ...paidInputSchema('extract'), type: 'object' as const, properties: { ...paidInputSchema('extract').properties, idempotency_key: { type: 'string', minLength: 8, maxLength: 128 } }, required: ['urls', 'max_amount_atomic', 'idempotency_key'] }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } }] : [])] };
+  }, ...[{ name: 'xguard.authority.catalog', description: 'Inspect the signed delegation sandbox, limits and unactivated service-fee contract.', inputSchema: { type: 'object' as const, properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, idempotentHint: true } }, { name: 'xguard.authority.command', description: 'Submit an owner/agent-signed authority envelope. Requires explicit key-holder authorization; the tool cannot sign for the caller. Sandbox is not a payment.', inputSchema: { type: 'object' as const, required: ['envelope', 'organization_token'], additionalProperties: false, properties: { envelope: authorityEnvelopeSchema, organization_token: { type: 'string', minLength: 43, maxLength: 43 } } }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true } }, { name: 'xguard.authority.verify_receipt', description: 'Verify a financial authority receipt against the existing ProofRail key, without charging.', inputSchema: { type: 'object' as const, required: ['receipt'], additionalProperties: false, properties: { receipt: { type: 'string', maxLength: 8192 } } }, annotations: { readOnlyHint: true, idempotentHint: true } }], ...commercialMcpTools(), ...existingTools, ...OPERATIONS.map(d => ({ name: 'xguard.' + d.route.replaceAll('-', '_'), description: d.description + ` Price: ${Number(d.amount) / 1e6} USDC on Base. Sign only the canonical HTTP x402 offer and preserve the idempotency key and original quote.`, inputSchema: { ...paidInputSchema(d.route), type: 'object' as const, properties: { ...paidInputSchema(d.route).properties, idempotency_key: { type: 'string', minLength: 8, maxLength: 128 } }, required: [...paidInputSchema(d.route).required, 'idempotency_key'] }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } })), ...(extractEnabled() ? [{ name: 'xguard.extract', description: EXTRACT_SERVICE.description + ' Price: 0.012 USDC on Base. Uses x402 v2 HTTP payment headers: retry identical arguments and idempotency key with Payment-Signature and X-XGuard-Quote; the authorization is for the canonical HTTP API resource. No source is fetched before payment.', inputSchema: { ...paidInputSchema('extract'), type: 'object' as const, properties: { ...paidInputSchema('extract').properties, idempotency_key: { type: 'string', minLength: 8, maxLength: 128 } }, required: ['urls', 'max_amount_atomic', 'idempotency_key'] }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } }] : [])];
+  return { tools: tools.map(tool => ({ ...tool, title: tool.title || toolTitles[tool.name] || tool.name })) };
 }
 
 function commercialMcpTools(): ListToolsResult['tools'] {
@@ -194,7 +230,7 @@ async function transport(request: Request, env: Env, readPublishedFact: (request
     scope.legacy = era === 'legacy';
     const server = new Server({ name: 'xguard-live', version: VERSION }, {
       capabilities: { tools: { listChanged: false } },
-      instructions: 'Read published facts for free with xguard.fact.get. Paid web fetch uses x402 v2 HTTP headers and executes only after a verified settlement.',
+      instructions: 'Start with xguard.capabilities to choose an available service. Read published facts for free with xguard.fact.get. Use xguard.extract for one to three public web pages, and xguard.web.fetch for a single guarded fetch. xguard.action.catalog reports USD task prices and current PayPal activation blockers; quotes and checkout links do not charge a buyer. Check compute_health before compute quotes or execution. Negotiation, deals and commercial products may report activation_pending; never treat that as completed work or a sale. Paid APIs require explicit buyer authorization and verified x402 settlement. Preserve the original quote, inputs and idempotency key when recovering payment or delivery.',
     });
     server.setRequestHandler('tools/list', () => list(env));
     server.setRequestHandler('tools/call', async ({ params }, ctx) => {

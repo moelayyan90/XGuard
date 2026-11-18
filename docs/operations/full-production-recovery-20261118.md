@@ -78,7 +78,7 @@ protocol/settlement compatibility, CodeQL and the existing guarded canary.
 No financial transaction, paid resource purchase, plan upgrade or data reset is
 part of this supporting recovery change. Record the actual deployment run and
 post-release provider usage separately; local tests are not deployment proof.
-# Live credential verification and subsequent canary
+## Live credential verification and subsequent canary
 
 A follow-up owner-only endpoint verifies the existing Live OAuth pair without
 creating an order, capturing funds, confirming merchant eligibility or changing
@@ -101,3 +101,22 @@ unconfirmed withdrawal card. OAuth success does not prove card acceptance,
 withdrawal eligibility or a real sale. No new confirmation charge, live purchase,
 refund or transfer was initiated in this recovery.
 
+The second release deployed as `e74efa27-68f2-4135-a3d8-0aa2384b5c1d`,
+source `git-e07704b7fe25`, through a successful 5% canary and 100% promotion.
+Deployment run: https://github.com/moelayyan90/XGuard/actions/runs/44245248212.
+The no-transaction Live credential workflow fails explicitly because the
+existing operator credential is not available to Actions. It is not replaced,
+rotated or bypassed. Provider OAuth validity remains unproven until that
+credential can authenticate the operator-only check.
+
+## Directory readiness follow-up
+
+The live Glama connector is ownership-verified and approved. Its human-readable
+description was updated to distinguish working public facts/x402 services from
+pending PayPal Live activation. The directory identified missing titles on 49
+of 53 tools. The follow-up supplies titles for every advertised tool and adds
+service-selection guidance without removing or renaming any tool or paid
+service. The paid web-fetch annotation now conservatively reflects its possible
+payment/ledger effects; public preflight and fact reads retain their existing
+safety hints. Actual modern and legacy clients, x402 rejection and receipt
+recovery remain required checks.
