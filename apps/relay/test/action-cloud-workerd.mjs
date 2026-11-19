@@ -18,6 +18,11 @@ export class TestGateway extends PaidGatewayState {
   async fetch(request) {
     const path = new URL(request.url).pathname;
     if(path === '/fixture/alarm') { await this.alarm(); return new Response('ok'); }
+    if(path === '/fixture/age-order') {
+      const order = await this.state.storage.get('action:v1');
+      order.created_at = new Date(Date.now() - 31 * 60000).toISOString();
+      await this.state.storage.put('action:v1', order); return new Response('ok');
+    }
     if(path === '/fixture/fail-next-update') { await this.state.storage.put('fixture:fail', true); return new Response('ok'); }
     if(path === '/action/update' && await this.state.storage.get('fixture:fail')) { await this.state.storage.delete('fixture:fail'); return Response.json({error:'simulated_quota_exhaustion'},{status:503}); }
     return super.fetch(request);
@@ -26,7 +31,7 @@ export class TestGateway extends PaidGatewayState {
 export default app;
 ` }, bundle: true, write: false, format: 'esm', platform: 'node', external: ['node:*', 'cloudflare:*'], target: 'es2023' });
 const bundle = join(dir, 'worker.mjs'); await writeFile(bundle, built.outputFiles[0].text);
-let count = { create: 0, capture: 0, get: 0, verify: 0 }, captureMode = 'ok'; const orders = new Map();
+let count = { create: 0, capture: 0, get: 0, verify: 0 }, captureMode = 'ok'; const orders = new Map(), refunds = new Map();
 const worker = { name: 'action-test', modules: true, modulesRoot: dir, scriptPath: bundle, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: { PAID_GATEWAY: { className: 'TestGateway', useSQLite: true }, PROOF_AUTHORITY: { className: 'ProofAuthority', useSQLite: true } },
   bindings: { PAYPAL_ENVIRONMENT: 'sandbox', PAYPAL_ENABLED: 'on', PAYPAL_CLIENT_ID: 'synthetic-client', PAYPAL_CLIENT_SECRET: 'synthetic-secret', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_VERIFIED_EMAIL: 'moelayyan2026@gmail.com', PAYPAL_WEBHOOK_ID: 'synthetic-webhook' },
@@ -41,6 +46,9 @@ const worker = { name: 'action-test', modules: true, modulesRoot: dir, scriptPat
       const id = 'TESTORDER' + String(count.create).padStart(5, '0');
       const order = { id, intent: b.intent, status: 'CREATED', purchase_units: b.purchase_units };
       orders.set(id, order); return MFResponse.json(order);
+    }
+    if (request.method === 'GET' && u.pathname.startsWith('/v2/payments/refunds/')) {
+      const refund = refunds.get(u.pathname.split('/').pop()); assert.ok(refund); return MFResponse.json(refund);
     }
     const m = u.pathname.match(/^\/v2\/checkout\/orders\/([A-Z0-9]+)(\/capture)?$/); assert.ok(m);
     const order = orders.get(m[1]); assert.ok(order);
@@ -116,13 +124,48 @@ try {
   const unsigned = await dispatch('/v1/checkout/webhooks/paypal', { body: { event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } } }); assert.equal(unsigned.status, 401);
   const bad = await dispatch('/v1/checkout/webhooks/paypal', { body: { event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } }, headers: { 'paypal-auth-algo': 'SHA256withRSA', 'paypal-cert-url': 'https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-fixture', 'paypal-transmission-id': 'fixture', 'paypal-transmission-time': new Date().toISOString(), 'paypal-transmission-sig': 'bad' } }); assert.equal(bad.status, 401);
   const webhookHeaders = { 'paypal-auth-algo': 'SHA256withRSA', 'paypal-cert-url': 'https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-fixture', 'paypal-transmission-id': 'fixture', 'paypal-transmission-time': new Date().toISOString(), 'paypal-transmission-sig': 'synthetic-valid' };
-  const webhook = body => dispatch('/v1/checkout/webhooks/paypal', { body, headers: webhookHeaders });
-  const partial = { event_type: 'PAYMENT.CAPTURE.REFUNDED', resource: { id: 'TESTREFUND001', status: 'COMPLETED', amount: { currency_code: 'USD', value: '1.00' }, links: [{ rel: 'up', href: 'https://api-m.sandbox.paypal.com/v2/payments/captures/' + delivered.order.receipt.payload.paypal_capture_id }] } };
+  const webhook = event => dispatch('/v1/checkout/webhooks/paypal', { body: { id: 'WH-' + crypto.randomUUID(), ...event }, headers: webhookHeaders });
+  const inspectEvent = async (id, event_id) => (await stub(id).fetch('https://action.internal/action/inspect', { method: 'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ event_id }) })).json();
+  const orphan = await webhook({ event_type: 'PAYMENT.CAPTURE.COMPLETED', resource:{ id:'UNMAPPED123456' } });
+  assert.equal(orphan.status, 503, 'A provider retry is required until the durable mapping exists');
+  const late = await create('expired-before-capture-notice');
+  await stub(late.id).fetch('https://fixture/fixture/age-order'); await alarm(late.id);
+  assert.equal((await inspectEvent(late.id)).record.status, 'EXPIRED');
+  const providerLate = orders.get(late.paypal_order_id);
+  const lateCapture = { id:'TESTLATECAPTURE001', status:'COMPLETED', amount:providerLate.purchase_units[0].amount, final_capture:true };
+  const lateNotice = { id:'WH-LATE001', event_type:'PAYMENT.CAPTURE.COMPLETED', resource:{id:lateCapture.id, supplementary_data:{related_ids:{order_id:late.paypal_order_id}}} };
+  assert.equal((await webhook(lateNotice)).status, 503, 'Await independent capture evidence');
+  providerLate.status = 'COMPLETED'; providerLate.purchase_units[0].payments = { captures:[lateCapture] };
+  assert.equal((await webhook(lateNotice)).status, 200);
+  const lateResult = await (await dispatch('/v1/checkout/orders/' + late.id)).json();
+  assert.equal(lateResult.order.status, 'REFUND_REQUIRED'); assert.equal(lateResult.result, undefined);
+  assert.deepEqual([lateResult.order.liability.capture_id, lateResult.order.liability.amount_cents], [lateCapture.id,200]);
+  const partial = { id: 'WH-PARTIAL1', event_type: 'PAYMENT.CAPTURE.REFUNDED', resource: { id: 'TESTREFUND001', status: 'COMPLETED', amount: { currency_code: 'USD', value: '1.00' }, links: [{ rel: 'up', href: 'https://api-m.sandbox.paypal.com/v2/payments/captures/' + delivered.order.receipt.payload.paypal_capture_id }] } };
   assert.equal((await webhook(partial)).status, 200);
   const held = await (await dispatch('/v1/checkout/orders/' + q.id)).json(); assert.equal(held.order.status, 'REVIEW_REQUIRED'); assert.equal(held.result, undefined);
   await webhook({ event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } });
   assert.equal((await (await dispatch('/v1/checkout/orders/' + q.id)).json()).order.status, 'REVIEW_REQUIRED', 'Delayed completion cannot release a partial refund hold');
-  partial.resource.amount.value = '2.00'; await webhook(partial); await webhook(partial);
+  const duplicates = await Promise.all([webhook(partial), webhook({ ...partial, id: 'WH-DELIVERY2' })]);
+  assert.ok(duplicates.every(r => r.status === 200));
+  assert.equal((await inspectEvent(q.id, partial.id)).record.confirmed_refund_cents, 100, 'Duplicate notices cannot count a refund twice');
+  const conflicting = await webhook({ ...partial, resource: { ...partial.resource, amount: { currency_code: 'USD', value: '2.00' } } });
+  assert.equal(conflicting.status, 409);
+  const remaining = { ...partial, id:'WH-PARTIAL2', resource:{ ...partial.resource, id:'TESTREFUND002' } };
+  const pending = { ...remaining, resource:{...remaining.resource, status:'PENDING'} };
+  refunds.set(pending.resource.id, pending.resource);
+  assert.equal((await webhook(pending)).status, 503);
+  assert.equal((await inspectEvent(q.id, remaining.id)).record.confirmed_refund_cents, 100);
+  refunds.set(pending.resource.id, remaining.resource);
+  assert.equal((await webhook(pending)).status, 200);
+  assert.equal((await inspectEvent(q.id, remaining.id)).record.confirmed_refund_cents, 200);
+  const dispute = { id:'WH-DISPUTE1', event_type:'CUSTOMER.DISPUTE.CREATED', resource:{disputed_transactions:[{seller_transaction_id:quota.paypal_order_id}]} };
+  await webhook(dispute);
+  assert.equal((await inspectEvent(quota.id, dispute.id)).record.status, 'REVIEW_REQUIRED');
+  const resolved = { ...dispute, id:'WH-DISPUTE2', event_type:'CUSTOMER.DISPUTE.RESOLVED', resource:{...dispute.resource,dispute_outcome:{outcome_code:'RESOLVED_SELLER_FAVOUR'}} };
+  await webhook(resolved);
+  const audited = await inspectEvent(quota.id, resolved.id);
+  assert.equal(audited.seen_event.dispute_outcome, 'RESOLVED_SELLER_FAVOUR');
+  assert.equal(audited.record.status, 'REVIEW_REQUIRED');
   assert.equal((await (await dispatch('/v1/checkout/orders/' + q.id)).json()).order.status, 'REFUNDED');
   await webhook({ event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } }); assert.equal((await (await dispatch('/v1/checkout/orders/' + q.id)).json()).order.status, 'REFUNDED');
   captureMode = 'ok'; const declined = await create('provider-declined-event-order');
@@ -133,5 +176,5 @@ try {
   for (let i = 0; i < 12; i++) await dispatch('/v1/checkout/orders', { body: input, key: 'daily-cap-fixture-order-' + i });
   assert.equal((await dispatch('/v1/checkout/orders', { body: input, key: 'daily-cap-final-fixture-order' })).status, 429);
   assert.equal((await dispatch('/openapi.json')).status, 200);
-  console.log(JSON.stringify({ result: 'passed', scope: 'Real workerd SQLite and ES256; all provider calls simulated', verified: ['concurrent idempotency', 'tenant recovery isolation', 'no execution before capture', 'CSV result delivery', 'receipt signature', 'lost capture recovery without recapture', 'storage interruption after payment', 'exact amount validation', 'signed webhook boundary', 'daily capacity cap'], counts: count, real_payments: 0, real_sales: 0 }));
+  console.log(JSON.stringify({ result: 'passed', scope: 'Real workerd SQLite and ES256; all provider calls simulated', verified: ['concurrent idempotency', 'tenant recovery isolation', 'no execution before capture', 'CSV result delivery', 'receipt signature', 'lost capture recovery without recapture', 'storage interruption after payment', 'exact amount validation', 'signed webhook boundary', 'webhook retries and permanent deduplication', 'cumulative completed refunds', 'disputes and late capture liability', 'daily capacity cap'], counts: count, real_payments: 0, real_sales: 0 }));
 } finally { await mf.dispose(); await rm(dir, { recursive: true, force: true }); }
