@@ -219,6 +219,11 @@ jobs:
       - name: Verify Action Cloud checkout and final pricing without payment
         run: EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node scripts/action-production-check.mjs
 
+      - name: Verify owner payment report access and bounded ledger without logging sales
+        env:
+          LIVE_ADMIN_KEY: ${{ secrets.LIVE_ADMIN_KEY || secrets.XGUARD_OPERATOR_KEY }}
+        run: EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node scripts/owner-finance-check.mjs
+
       - name: Verify commercial product scope and no-charge payment boundary
         run: EXPECTED_XGUARD_TAG="git-${DEPLOY_SHA:0:12}" node scripts/commerce-production-check.mjs
 

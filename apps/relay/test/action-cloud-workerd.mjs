@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions, Response as MFResponse } from 'miniflare';
 import { PRODUCT_SERVICES } from '../src/products/registry.js';
+import { financePage, financialRow } from '../src/action/finance.js';
 
 const root = fileURLToPath(new URL('../src/live-entry.js', import.meta.url));
 const paid = fileURLToPath(new URL('../src/paid-agent-entry.js', import.meta.url));
@@ -32,9 +33,10 @@ export default app;
 ` }, bundle: true, write: false, format: 'esm', platform: 'node', external: ['node:*', 'cloudflare:*'], target: 'es2023' });
 const bundle = join(dir, 'worker.mjs'); await writeFile(bundle, built.outputFiles[0].text);
 let count = { create: 0, capture: 0, get: 0, verify: 0 }, captureMode = 'ok'; const orders = new Map(), refunds = new Map();
+const fixtureOwner = 'owner-finance-fixture-only-0123456789';
 const worker = { name: 'action-test', modules: true, modulesRoot: dir, scriptPath: bundle, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
   durableObjects: { PAID_GATEWAY: { className: 'TestGateway', useSQLite: true }, PROOF_AUTHORITY: { className: 'ProofAuthority', useSQLite: true } },
-  bindings: { PAYPAL_ENVIRONMENT: 'sandbox', PAYPAL_ENABLED: 'on', PAYPAL_CLIENT_ID: 'synthetic-client', PAYPAL_CLIENT_SECRET: 'synthetic-secret', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_VERIFIED_EMAIL: 'moelayyan2026@gmail.com', PAYPAL_WEBHOOK_ID: 'synthetic-webhook' },
+  bindings: { LIVE_ADMIN_KEY: fixtureOwner, PAYPAL_ENVIRONMENT: 'sandbox', PAYPAL_ENABLED: 'on', PAYPAL_CLIENT_ID: 'synthetic-client', PAYPAL_CLIENT_SECRET: 'synthetic-secret', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_VERIFIED_EMAIL: 'moelayyan2026@gmail.com', PAYPAL_WEBHOOK_ID: 'synthetic-webhook' },
   outboundService: async request => {
     const u = new URL(request.url);
     assert.equal(u.hostname, 'api-m.sandbox.paypal.com', 'No real financial or provider network calls permitted');
@@ -125,6 +127,9 @@ try {
   const bad = await dispatch('/v1/checkout/webhooks/paypal', { body: { event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: q.paypal_order_id } }, headers: { 'paypal-auth-algo': 'SHA256withRSA', 'paypal-cert-url': 'https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-fixture', 'paypal-transmission-id': 'fixture', 'paypal-transmission-time': new Date().toISOString(), 'paypal-transmission-sig': 'bad' } }); assert.equal(bad.status, 401);
   const webhookHeaders = { 'paypal-auth-algo': 'SHA256withRSA', 'paypal-cert-url': 'https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-fixture', 'paypal-transmission-id': 'fixture', 'paypal-transmission-time': new Date().toISOString(), 'paypal-transmission-sig': 'synthetic-valid' };
   const webhook = event => dispatch('/v1/checkout/webhooks/paypal', { body: { id: 'WH-' + crypto.randomUUID(), ...event }, headers: webhookHeaders });
+  const oldVoid = { event_type:'CHECKOUT.ORDER.VOIDED', resource:{ id:q.paypal_order_id } };
+  assert.equal((await webhook(oldVoid)).status, 200);
+  assert.equal((await (await dispatch('/v1/checkout/orders/' + q.id)).json()).order.status, 'SUCCEEDED');
   const inspectEvent = async (id, event_id) => (await stub(id).fetch('https://action.internal/action/inspect', { method: 'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ event_id }) })).json();
   const orphan = await webhook({ event_type: 'PAYMENT.CAPTURE.COMPLETED', resource:{ id:'UNMAPPED123456' } });
   assert.equal(orphan.status, 503, 'A provider retry is required until the durable mapping exists');
@@ -173,8 +178,33 @@ try {
   assert.equal((await (await dispatch('/v1/checkout/orders/' + declined.id)).json()).order.status, 'REVIEW_REQUIRED');
   await webhook({ event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: declined.paypal_order_id } });
   assert.equal((await (await dispatch('/v1/checkout/orders/' + declined.id)).json()).order.status, 'REVIEW_REQUIRED', 'Late completion cannot release a declined-payment hold');
+  await webhook({ event_type:'CHECKOUT.ORDER.VOIDED', resource:{id:declined.paypal_order_id} });
+  assert.equal((await (await dispatch('/v1/checkout/orders/' + declined.id)).json()).order.error, 'provider_approval_reversed');
   for (let i = 0; i < 12; i++) await dispatch('/v1/checkout/orders', { body: input, key: 'daily-cap-fixture-order-' + i });
   assert.equal((await dispatch('/v1/checkout/orders', { body: input, key: 'daily-cap-final-fixture-order' })).status, 429);
   assert.equal((await dispatch('/openapi.json')).status, 200);
+  assert.equal((await dispatch('/admin/paypal/ledger', { body: {} })).status, 401);
+  const auth = { authorization: 'Bearer ' + fixtureOwner };
+  const privatePage = await dispatch('/admin/paypal', { headers:auth });
+  assert.equal(privatePage.status, 200);
+  const ownerHtml = await privatePage.text();
+  assert.ok(ownerHtml.includes('مدفوعات XGuard') && ownerHtml.includes('/admin/paypal/ledger'));
+  assert.match(privatePage.headers.get('cache-control'), /no-store/);
+  const logged = await dispatch('/admin/paypal/ledger', { body: {}, headers:auth });
+  assert.equal(logged.status, 200); assert.deepEqual((await logged.json()).rows, [], 'Sandbox orders cannot enter the live owner report');
+  assert.equal((await dispatch('/admin/paypal/ledger', { body:{after:'invalid/ref'}, headers:auth })).status, 400);
+  const paidRow = { ...(await inspectEvent(q.id)).record, environment:'live' };
+  const projected = financialRow(paidRow);
+  assert.deepEqual([projected.captured_cents,projected.fee_cents,projected.refund_cents,projected.delivered], [200,40,200,true]);
+  assert.ok(!('input' in projected) && !('token_hash' in projected) && !('paypal_order_id' in projected));
+  assert.equal(financialRow({ ...paidRow, status:'REVIEW_REQUIRED', error:'provider_partial_refund_requires_reconciliation', confirmed_refund_cents:undefined }).refund_cents, null);
+  const index = [paidRow.capture.id, paidRow.paypal_order_id];
+  const stubEnv = { PAID_GATEWAY:{ idFromName: id => id, get: () => ({ fetch: async (url, init) => {
+    if (url.endsWith('/inspect')) return Response.json({record:paidRow});
+    const second = Boolean(JSON.parse(init.body).after);
+    return Response.json({entries:[{ref:index[second ? 1 : 0],id:paidRow.id}],next:second ? null : index[0]});
+  } }) } };
+  const firstReport = await financePage(stubEnv, null), nextReport = await financePage(stubEnv, firstReport.next);
+  assert.equal(firstReport.rows.length, 0); assert.deepEqual(nextReport.rows,[projected]); assert.equal(nextReport.next, null);
   console.log(JSON.stringify({ result: 'passed', scope: 'Real workerd SQLite and ES256; all provider calls simulated', verified: ['concurrent idempotency', 'tenant recovery isolation', 'no execution before capture', 'CSV result delivery', 'receipt signature', 'lost capture recovery without recapture', 'storage interruption after payment', 'exact amount validation', 'signed webhook boundary', 'webhook retries and permanent deduplication', 'cumulative completed refunds', 'disputes and late capture liability', 'daily capacity cap'], counts: count, real_payments: 0, real_sales: 0 }));
 } finally { await mf.dispose(); await rm(dir, { recursive: true, force: true }); }

@@ -13,7 +13,7 @@ const trackedEvents = new Set([
   'PAYMENT.CAPTURE.COMPLETED', 'PAYMENT.CAPTURE.PENDING', 'PAYMENT.CAPTURE.DENIED',
   'PAYMENT.CAPTURE.DECLINED', 'PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.CAPTURE.REVERSED',
   'CHECKOUT.PAYMENT-APPROVAL.REVERSED', 'CUSTOMER.DISPUTE.CREATED',
-  'CUSTOMER.DISPUTE.UPDATED', 'CUSTOMER.DISPUTE.RESOLVED',
+  'CUSTOMER.DISPUTE.UPDATED', 'CUSTOMER.DISPUTE.RESOLVED', 'CHECKOUT.ORDER.VOIDED', 'CHECKOUT.ORDER.DECLINED',
 ]);
 const token = request => request.headers.get('x-xguard-checkout-token') || '';
 const tokenHash = async request => { if (!/^[A-Za-z0-9_-]{40,128}$/.test(token(request))) throw fail('checkout_recovery_token_required', 401); return digest(token(request)); };
@@ -27,7 +27,7 @@ function assertOrigin(request) {
   const origin = request.headers.get('origin');
   if (origin && !allowedOrigins.includes(origin)) throw fail('origin_not_allowed', 403);
 }
-async function checkoutReadiness(env, config) {
+export async function checkoutReadiness(env, config = paypalConfig(env)) {
   if (!config.ready) return { ready: false, blockers: config.blockers };
   try {
     // This reserved reference cannot be issued by PayPal. The lookup reads the
@@ -144,7 +144,9 @@ export async function actionFetch(request, env) {
           update.expected = ['AWAITING_PAYMENT', 'CAPTURING'];
           update.patch = { status: 'PAYMENT_UNKNOWN', error: 'capture_pending_final_confirmation' };
         } else {
-          update.patch = { status: 'REVIEW_REQUIRED', error: 'provider_payment_denied_or_approval_reversed' };
+          const cancelled = ['CHECKOUT.PAYMENT-APPROVAL.REVERSED', 'CHECKOUT.ORDER.VOIDED'].includes(event.event_type);
+          update.expected = q.capture ? [] : ['AWAITING_PAYMENT', 'CAPTURING', 'PAYMENT_UNKNOWN', 'REVIEW_REQUIRED', 'EXPIRED'];
+          update.patch = { status: 'REVIEW_REQUIRED', error: cancelled ? 'provider_approval_reversed' : 'provider_capture_denied' };
         }
         await actionCall(env, q.id, 'update', update);
       }

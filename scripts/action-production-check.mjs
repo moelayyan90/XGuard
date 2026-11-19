@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 export async function runActionSmoke({
   fetchImpl = globalThis.fetch,
   expectedTag = process.env.EXPECTED_XGUARD_TAG,
+  requireReady = false,
   origin = process.env.LIVE_ORIGIN || 'https://xguardgate.com',
   pause = ms => new Promise(resolve => setTimeout(resolve, ms)),
 } = {}) {
@@ -34,6 +35,11 @@ export async function runActionSmoke({
   const catalog = await (await read('/v1/checkout/catalog')).json();
   assert.equal(catalog.name, 'XGuard Action Cloud');
   assert.ok(catalog.services.some(s => s.id === 'csv-clean' && s.card_amount_cents === 200));
+  if (requireReady) {
+    assert.equal(catalog.payment?.environment, 'live', 'Expected live PayPal configuration');
+    assert.equal(catalog.payment?.ready, true, 'PayPal configuration unavailable');
+    assert.equal(catalog.payment?.readiness_url, '/v1/checkout/readiness', 'Missing checkout ledger readiness');
+  }
   const quote = await (await read('/v1/checkout/quote', { service: 'csv-clean', input: { csv: 'email,name\nsmoke@example.com,Synthetic smoke\n' } })).json();
   assert.equal(quote.amount_cents, 200);
   assert.equal(quote.currency, 'USD');
@@ -58,5 +64,5 @@ export async function runActionSmoke({
   };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  console.log(JSON.stringify(await runActionSmoke()));
+  console.log(JSON.stringify(await runActionSmoke({ requireReady: process.argv.includes('--require-ready') })));
 }
