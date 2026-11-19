@@ -1,7 +1,7 @@
 import { boundedJson, digest, fail, proofStub } from '../compute/common.js';
 import { actionCatalog, normalizeAction, actionPreflight, actionFingerprint } from './catalog.js';
 import { actionCall, createPaypalOrder, capturePaypalOrder, reconcilePaypalOrder } from './state.js';
-import { paypalConfig, paypalCredentialCheck, verifyPaypalWebhook } from './paypal.js';
+import { paypalApi, paypalConfig, paypalCredentialCheck, verifyPaypalWebhook } from './paypal.js';
 import { actionPage, ACTION_CSS, ACTION_BROWSER } from './site.js';
 import { productModule, commerceSaleEnabled } from '../products/registry.js';
 import { storageQuotaCode } from '../live/util.ts';
@@ -9,6 +9,12 @@ import { storageQuotaCode } from '../live/util.ts';
 const allowedOrigins = ['https://xguardgate.com', 'https://api.xguardgate.com'];
 const base = '/v1/checkout';
 const orderPattern = /^xgo_[a-f0-9]{40}$/;
+const trackedEvents = new Set([
+  'PAYMENT.CAPTURE.COMPLETED', 'PAYMENT.CAPTURE.PENDING', 'PAYMENT.CAPTURE.DENIED',
+  'PAYMENT.CAPTURE.DECLINED', 'PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.CAPTURE.REVERSED',
+  'CHECKOUT.PAYMENT-APPROVAL.REVERSED', 'CUSTOMER.DISPUTE.CREATED',
+  'CUSTOMER.DISPUTE.UPDATED', 'CUSTOMER.DISPUTE.RESOLVED',
+]);
 const token = request => request.headers.get('x-xguard-checkout-token') || '';
 const tokenHash = async request => { if (!/^[A-Za-z0-9_-]{40,128}$/.test(token(request))) throw fail('checkout_recovery_token_required', 401); return digest(token(request)); };
 function response(request, env, value, status = 200, contentType = 'application/json') {
@@ -80,6 +86,9 @@ export async function actionFetch(request, env) {
     if (path === base + '/webhooks/paypal' && request.method === 'POST') {
       const event = await boundedJson(request, 65536);
       await verifyPaypalWebhook(env, request, event);
+      if (!trackedEvents.has(event.event_type)) return response(request, env, { accepted: true });
+      if (!/^[A-Za-z0-9-]{1,128}$/.test(event.id || '')) throw fail('paypal_event_id_invalid', 422);
+      const notice = { id: event.id, type: event.event_type, fingerprint: await digest(event) };
       const related = event.resource?.supplementary_data?.related_ids;
       // Refunds may identify their capture through the official "up" link.
       // Parse its reference only; never fetch an event-supplied URL.
@@ -87,29 +96,58 @@ export async function actionFetch(request, env) {
       for (const link of Array.isArray(event.resource?.links) ? event.resource.links : []) if (link.rel === 'up' && typeof link.href === 'string') {
         try { const u = new URL(link.href); if (['api.paypal.com', 'api-m.paypal.com', 'api.sandbox.paypal.com', 'api-m.sandbox.paypal.com'].includes(u.hostname) && u.protocol === 'https:' && !u.username && !u.password && !u.port) parentCapture = /^\/v2\/payments\/captures\/([A-Z0-9]{8,32})$/.exec(u.pathname)?.[1]; } catch {}
       }
-      const reference = event.resource?.disputed_transactions?.[0]?.seller_transaction_id || related?.order_id || related?.capture_id || parentCapture || event.resource?.id;
-      if (!/^[A-Z0-9]{8,32}$/.test(reference || '')) return response(request, env, { accepted: true });
-      const found = await actionCall(env, 'references', 'lookup', { reference });
-      if (!found.id) return response(request, env, { accepted: true });
-      const { record: q } = await actionCall(env, found.id, 'inspect');
-      if (event.resource?.payee?.merchant_id && event.resource.payee.merchant_id !== config.merchant_id) throw fail('paypal_webhook_payee_mismatch', 409);
-      if (related?.order_id && related.order_id !== q.paypal_order_id) throw fail('paypal_webhook_order_mismatch', 409);
-      if (['PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.CAPTURE.REVERSED', 'CUSTOMER.DISPUTE.CREATED'].includes(event.event_type)) {
-        const refund = event.event_type === 'PAYMENT.CAPTURE.REFUNDED';
-        let status = refund ? 'REFUNDED' : 'REVERSED', error = 'provider_refund_reversal_or_dispute';
-        if (refund) {
-          const amount = event.resource?.amount;
+      const references = event.event_type.startsWith('CUSTOMER.DISPUTE.')
+        ? [...new Set((event.resource?.disputed_transactions || []).map(item => item.seller_transaction_id))]
+        : [related?.order_id || related?.capture_id || parentCapture || event.resource?.id];
+      if (!references.length || references.some(ref => !/^[A-Z0-9]{8,32}$/.test(ref || ''))) throw fail('paypal_event_reference_invalid', 422);
+      for (const reference of references) {
+        const found = await actionCall(env, 'references', 'lookup', { reference });
+        // A signed notification can arrive before a local mapping commits.
+        // PayPal retries non-2xx deliveries. Never acknowledge an unrecorded financial event.
+        if (!found.id) throw fail('paypal_reference_not_ready', 503);
+        const { record: q, seen_event } = await actionCall(env, found.id, 'inspect', { event_id: event.id });
+        if (seen_event) {
+          if (seen_event.fingerprint !== notice.fingerprint) throw fail('paypal_event_conflict', 409);
+          continue;
+        }
+        if (event.resource?.payee?.merchant_id && event.resource.payee.merchant_id !== config.merchant_id) throw fail('paypal_webhook_payee_mismatch', 409);
+        if (!q.paypal_order_id) throw fail('paypal_reference_not_ready', 503);
+        if (related?.order_id && related.order_id !== q.paypal_order_id) throw fail('paypal_webhook_order_mismatch', 409);
+        if (related?.capture_id && parentCapture && related.capture_id !== parentCapture) throw fail('paypal_webhook_capture_mismatch', 409);
+        const reportedCapture = related?.capture_id || parentCapture;
+        if (q.capture && reportedCapture && q.capture.id !== reportedCapture) throw fail('paypal_webhook_capture_mismatch', 409);
+        if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
+          await reconcilePaypalOrder(env, q, undefined, notice);
+          continue;
+        }
+        const update = { notice, expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAID', 'EXECUTING', 'RUNNING', 'DELIVERY_PENDING', 'SUCCEEDED', 'REFUND_REQUIRED', 'REVIEW_REQUIRED', 'PAYMENT_UNKNOWN'], patch: {} };
+        if (event.event_type === 'PAYMENT.CAPTURE.REFUNDED') {
+          if (!/^[A-Z0-9]{8,32}$/.test(event.resource?.id || '')) throw fail('paypal_refund_reference_invalid', 422);
+          const refund = event.resource.status === 'COMPLETED' ? event.resource
+            : await paypalApi(env, 'GET', '/v2/payments/refunds/' + event.resource.id);
+          if (refund.id !== event.resource.id || refund.status !== 'COMPLETED') throw fail('paypal_refund_evidence_not_ready', 503);
+          const amount = refund.amount;
           if (amount?.currency_code !== 'USD' || !/^(0|[1-9]\d{0,10})\.\d{2}$/.test(amount.value || '')) throw fail('paypal_refund_amount_invalid', 409);
           const cents = Number(amount.value.replace('.', ''));
           if (cents < 1 || cents > q.amount_cents) throw fail('paypal_refund_amount_invalid', 409);
-          if (cents < q.amount_cents) { status = 'REVIEW_REQUIRED'; error = 'provider_partial_refund_requires_reconciliation'; }
+          update.expected.push('EXPIRED');
+          update.refund = { id: event.resource.id, cents };
+          update.patch = { status: 'REVIEW_REQUIRED', error: 'provider_partial_refund_requires_reconciliation' };
+        } else if (event.event_type === 'PAYMENT.CAPTURE.REVERSED') {
+          update.expected.push('EXPIRED');
+          update.patch = { status: 'REVERSED', error: 'provider_capture_reversed' };
+        } else if (event.event_type.startsWith('CUSTOMER.DISPUTE.')) {
+          const outcome = event.resource?.dispute_outcome?.outcome_code;
+          if (/^[A-Z_]{1,64}$/.test(outcome || '')) update.notice = { ...notice, dispute_outcome: outcome };
+          update.patch = { status: 'REVIEW_REQUIRED', error: event.event_type === 'CUSTOMER.DISPUTE.RESOLVED' ? 'provider_dispute_resolution_requires_reconciliation' : 'provider_dispute_open' };
+        } else if (event.event_type === 'PAYMENT.CAPTURE.PENDING') {
+          update.expected = ['AWAITING_PAYMENT', 'CAPTURING'];
+          update.patch = { status: 'PAYMENT_UNKNOWN', error: 'capture_pending_final_confirmation' };
+        } else {
+          update.patch = { status: 'REVIEW_REQUIRED', error: 'provider_payment_denied_or_approval_reversed' };
         }
-        await actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAID', 'EXECUTING', 'RUNNING', 'DELIVERY_PENDING', 'SUCCEEDED', 'REFUND_REQUIRED', 'REVIEW_REQUIRED', 'PAYMENT_UNKNOWN'], patch: { status, error } });
-      } else if (['PAYMENT.CAPTURE.DENIED', 'PAYMENT.CAPTURE.DECLINED', 'CHECKOUT.PAYMENT-APPROVAL.REVERSED'].includes(event.event_type)) {
-        await actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAID', 'EXECUTING', 'RUNNING', 'DELIVERY_PENDING', 'SUCCEEDED', 'PAYMENT_UNKNOWN', 'REVIEW_REQUIRED'], patch: { status: 'REVIEW_REQUIRED', error: 'provider_payment_denied_or_approval_reversed' } });
-      } else if (event.event_type === 'PAYMENT.CAPTURE.PENDING') {
-        await actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING'], patch: { status: 'PAYMENT_UNKNOWN', error: 'capture_pending_final_confirmation' } });
-      } else if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') await reconcilePaypalOrder(env, q);
+        await actionCall(env, q.id, 'update', update);
+      }
       return response(request, env, { accepted: true });
     }
     if (path === base + '/quote' && request.method === 'POST') {

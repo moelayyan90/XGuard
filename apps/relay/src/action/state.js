@@ -56,7 +56,7 @@ export async function actionState(state, env, action, body) {
       if (q.token_hash !== body.token_hash) throw fail('order_not_found', 404);
       return json({ order: view(q), ...(q.status === 'SUCCEEDED' ? { result: await readResult(state.storage, q) } : {}) });
     }
-    if (action === 'inspect') return json({ record: q }); // Internal binding only.
+    if (action === 'inspect') return json({ record: q, ...(body.event_id ? { seen_event: await state.storage.get('action:event:' + body.event_id) } : {}) }); // Internal binding only.
     if (action === 'claim') return json(await state.storage.transaction(async tx => {
       const row = await tx.get('action:v1');
       if (row.token_hash !== body.token_hash) throw fail('order_not_found', 404);
@@ -67,10 +67,42 @@ export async function actionState(state, env, action, body) {
     }));
     if (action === 'update') return json(await state.storage.transaction(async tx => {
       const row = await tx.get('action:v1');
-      if (!body.expected.includes(row.status)) return { order: view(row) };
-      if (body.patch.status === 'PAID' && row.error?.startsWith('provider_')) return { order: view(row) };
+      let patch = body.patch;
+      if (body.notice) {
+        const eventKey = 'action:event:' + body.notice.id;
+        const seen = await tx.get(eventKey);
+        if (seen) {
+          if (seen.fingerprint !== body.notice.fingerprint) throw fail('paypal_event_conflict', 409);
+          return { order: view(row) };
+        }
+        await tx.put(eventKey, { ...body.notice, received_at: stamp(), previous_state: row.status, ...(body.refund ? { refund: body.refund } : {}) });
+      }
+      if (body.refund) {
+        const refundKey = 'action:refund:' + body.refund.id;
+        const known = await tx.get(refundKey);
+        if (known !== undefined && known !== body.refund.cents) throw fail('paypal_refund_amount_conflict', 409);
+        if (known === undefined) {
+          const cents = (row.confirmed_refund_cents || 0) + body.refund.cents;
+          if (cents > row.amount_cents) throw fail('paypal_refund_total_invalid', 409);
+          row.confirmed_refund_cents = cents;
+          await tx.put(refundKey, body.refund.cents);
+          await tx.put('action:v1', row);
+        }
+        if (row.confirmed_refund_cents === row.amount_cents) {
+          patch = { status: 'REFUNDED', error: 'provider_refund_confirmed' };
+        }
+      }
+      // Capture confirmation can race with local expiry, denial or a refund.
+      // Retain the independently verified financial record on the held order.
+      if (patch.status === 'PAID' && (['EXPIRED', 'REFUNDED', 'REVERSED'].includes(row.status) || row.error?.startsWith('provider_'))) {
+        if (row.capture || patch.capture?.status !== 'COMPLETED') return { order: view(row) };
+        patch = row.status === 'EXPIRED' ? {
+          capture: patch.capture, status: 'REFUND_REQUIRED', error: 'completed_capture_after_expiry',
+          liability: { capture_id: patch.capture.id, amount_cents: row.amount_cents, currency: 'USD', reason: 'Capture confirmed after the unpaid order expired and its input was removed.' },
+        } : { capture: patch.capture };
+      } else if (!body.expected.includes(row.status)) return { order: view(row) };
       const permitted = ['status', 'paypal_order_id', 'capture', 'error', 'liability', 'attempts'];
-      for (const key of permitted) if (body.patch[key] !== undefined) row[key] = body.patch[key];
+      for (const key of permitted) if (patch[key] !== undefined) row[key] = patch[key];
       row.updated_at = stamp(); row.events.push({ state: row.status, at: row.updated_at });
       row.events = row.events.slice(-32);
       await tx.put('action:v1', row);
@@ -98,15 +130,19 @@ export async function createPaypalOrder(env, id, token_hash) {
     return actionCall(env, id, 'update', { expected: ['CREATING'], patch: { status: 'REVIEW_REQUIRED', error: code } });
   }
 }
-export async function reconcilePaypalOrder(env, q, confirmedOrder) {
+export async function reconcilePaypalOrder(env, q, confirmedOrder, notice) {
   // A delayed completion event cannot release a refund, dispute or denial hold.
-  if (['REFUNDED', 'REVERSED'].includes(q.status) || q.error?.startsWith('provider_')) return { order: view(q) };
+  if (q.capture && terminal.has(q.status)) {
+    if (notice) return actionCall(env, q.id, 'update', { notice, expected: [], patch: {} });
+    return { order: view(q) };
+  }
   const order = confirmedOrder ?? await paypalApi(env, 'GET', '/v2/checkout/orders/' + q.paypal_order_id);
   const capture = validatePaypalOrder(order, q, env, true);
   if (capture) {
     await actionCall(env, 'references', 'map', { reference: capture.id, id: q.id });
-    return actionCall(env, q.id, 'update', { expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAYMENT_UNKNOWN', 'REVIEW_REQUIRED'], patch: { status: 'PAID', capture, attempts: 0, error: null } });
+    return actionCall(env, q.id, 'update', { notice, expected: ['AWAITING_PAYMENT', 'CAPTURING', 'PAYMENT_UNKNOWN', 'REVIEW_REQUIRED'], patch: { status: 'PAID', capture, attempts: 0, error: null } });
   }
+  if (notice) throw fail('paypal_capture_evidence_not_ready', 503);
   return { order: view(q) };
 }
 export async function capturePaypalOrder(env, id, token_hash) {
@@ -152,18 +188,31 @@ export async function actionAlarm(state, env, fetchSource) {
   }
   try {
     if (['NEW', 'AWAITING_PAYMENT'].includes(q.status)) {
-      if (Date.now() - Date.parse(q.created_at) >= 30 * 60000) { q.status = 'EXPIRED'; delete q.input; }
-      else { await state.storage.setAlarm(Date.parse(q.created_at) + 30 * 60000); return true; }
-    } else if (q.status === 'CREATING') { q.status = 'REVIEW_REQUIRED'; q.error = 'order_creation_interrupted'; }
+      await state.storage.transaction(async tx => {
+        const row = await tx.get('action:v1');
+        if (!['NEW', 'AWAITING_PAYMENT'].includes(row.status)) return;
+        const expires = Date.parse(row.created_at) + 30 * 60000;
+        if (Date.now() < expires) { await tx.setAlarm(expires); return; }
+        row.status = 'EXPIRED'; row.updated_at = stamp(); delete row.input;
+        row.events.push({ state: row.status, at: row.updated_at }); await tx.put('action:v1', row);
+      });
+      return true;
+    } else if (q.status === 'CREATING') {
+      await actionCall(env, q.id, 'update', { expected: ['CREATING'], patch: { status: 'REVIEW_REQUIRED', error: 'order_creation_interrupted' } });
+      return true;
+    }
     else if (['CAPTURING', 'PAYMENT_UNKNOWN'].includes(q.status)) {
       await reconcilePaypalOrder(env, q);
-      q = await state.storage.get('action:v1');
-      if (!['CAPTURING', 'PAYMENT_UNKNOWN', 'PAID'].includes(q.status)) return true;
-      if (q.status !== 'PAID') {
-        q.attempts++;
-        if (q.attempts >= 3) { q.status = 'REVIEW_REQUIRED'; q.error = 'payment_outcome_unknown'; }
-        else { q.status = 'PAYMENT_UNKNOWN'; await state.storage.put('action:v1', q); await state.storage.setAlarm(Date.now() + 30000 * 2 ** q.attempts); return true; }
-      }
+      q = await state.storage.transaction(async tx => {
+        const row = await tx.get('action:v1');
+        if (row.status === 'PAID') return row;
+        if (!['CAPTURING', 'PAYMENT_UNKNOWN'].includes(row.status)) return null;
+        row.attempts++;
+        if (row.attempts >= 3) { row.status = 'REVIEW_REQUIRED'; row.error = 'payment_outcome_unknown'; }
+        else { row.status = 'PAYMENT_UNKNOWN'; await tx.setAlarm(Date.now() + 30000 * 2 ** row.attempts); }
+        await tx.put('action:v1', row); return null;
+      });
+      if (!q) return true;
     }
     if (['PAID', 'EXECUTING', 'RUNNING'].includes(q.status)) {
       q = await state.storage.transaction(async tx => {
@@ -201,17 +250,18 @@ export async function actionAlarm(state, env, fetchSource) {
       await state.storage.transaction(async tx => { const latest = await tx.get('action:v1'); if (latest.status !== 'DELIVERY_PENDING') return; latest.receipt = { payload: receipt, proof }; latest.status = 'SUCCEEDED'; latest.updated_at = stamp(); delete latest.input; latest.events.push({ state: 'SUCCEEDED', at: latest.updated_at }); await tx.put('action:v1', latest); await tx.setAlarm(Date.parse(latest.result_expires_at)); });
       return true;
     }
-    await state.storage.put('action:v1', q);
   } catch (error) {
-    q = await state.storage.get('action:v1');
-    if (terminal.has(q.status)) return true;
-    q.attempts++;
-    if (q.attempts >= 3) {
-      q.status = q.capture ? 'REFUND_REQUIRED' : 'REVIEW_REQUIRED';
-      q.error = 'task_or_payment_dependency_unavailable';
-      if (q.capture) q.liability = { amount_cents: q.amount_cents, currency: 'USD', capture_id: q.capture.id, reason: 'Paid output was not delivered. Operator reconciliation/refund required; no automatic funds movement authorized.' };
-    } else await state.storage.setAlarm(Date.now() + 30000 * 2 ** q.attempts);
-    await state.storage.put('action:v1', q);
+    await state.storage.transaction(async tx => {
+      const row = await tx.get('action:v1');
+      if (terminal.has(row.status)) return;
+      row.attempts++;
+      if (row.attempts >= 3) {
+        row.status = row.capture ? 'REFUND_REQUIRED' : 'REVIEW_REQUIRED';
+        row.error = 'task_or_payment_dependency_unavailable';
+        if (row.capture) row.liability = { amount_cents: row.amount_cents, currency: 'USD', capture_id: row.capture.id, reason: 'Paid output was not delivered. Operator reconciliation/refund required; no automatic funds movement authorized.' };
+      } else await tx.setAlarm(Date.now() + 30000 * 2 ** row.attempts);
+      await tx.put('action:v1', row);
+    });
   }
   return true;
 }
