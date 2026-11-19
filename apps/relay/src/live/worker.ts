@@ -15,6 +15,7 @@ import { FACILITATOR_IDENTITY } from '../facilitator-surface.js';
 import { BUSINESS_PRODUCTS } from '../business/catalog.js';
 import { financePage } from '../action/finance.js';
 import { financeDashboard } from '../action/finance-site.js';
+import { ownerReportHealth, refreshOwnerReportCheck } from './owner-report-check.ts';
 
 const control = (env: Env, op: string, body = {}) => rpc(env.LIVE_CONTROL, controlName, op, body);
 const publicCatalog = (env: Env) => control(env, 'catalog', { public_snapshot: true });
@@ -171,6 +172,7 @@ const ARTICLES: Record<string, { title: string; description?: string; html: stri
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url), path = url.pathname;
   if (path.startsWith('/admin')) return admin(request, env);
+  if (path === '/healthz' && READ.has(request.method) && url.searchParams.get('check') === 'owner-report') return ownerReportHealth(env);
   if (path === '/corrections' && request.method === 'POST') {
     if (request.headers.has('origin') && request.headers.get('origin') !== ORIGIN) return json({ error: 'origin_rejected' }, 403);
     const client = await hash(`${request.headers.get('cf-connecting-ip') || 'unknown'}|correction|${iso().slice(0, 10)}`);
@@ -443,7 +445,8 @@ export default {
     ctx.waitUntil(telemetry(request, response.clone(), env, performance.now() - started, cacheStatus).catch(error => console.error(JSON.stringify({ event: 'telemetry_failed', message: String(error) }))));
     return response;
   },
-  async scheduled(_controller: unknown, env: Env, _ctx: Context): Promise<void> {
+  async scheduled(_controller: unknown, env: Env, ctx: Context): Promise<void> {
+    ctx.waitUntil(refreshOwnerReportCheck(env, admin).catch(() => console.warn('owner_report_health_store_unavailable')));
     await bootstrap(env);
     await all(env, 'tick');
     if (env.LIVE_SOURCE_FETCHES !== 'off') { await discover(env); await expandDemand(env); }
