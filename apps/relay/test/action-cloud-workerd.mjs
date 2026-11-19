@@ -13,6 +13,8 @@ const paid = fileURLToPath(new URL('../src/paid-agent-entry.js', import.meta.url
 const dir = await mkdtemp(join(tmpdir(), 'xguard-action-'));
 const built = await build({ stdin: { resolveDir: dirname(root), contents: `
 import app from ${JSON.stringify(root)};
+import { refreshOwnerReportCheck } from ${JSON.stringify(fileURLToPath(new URL('../src/live/owner-report-check.ts', import.meta.url)))};
+export { LiveControl } from ${JSON.stringify(fileURLToPath(new URL('../src/live/objects.ts', import.meta.url)))};
 import { PaidGatewayState } from ${JSON.stringify(paid)};
 export { ProofAuthority } from ${JSON.stringify(paid)};
 export class TestGateway extends PaidGatewayState {
@@ -29,13 +31,20 @@ export class TestGateway extends PaidGatewayState {
     return super.fetch(request);
   }
 }
-export default app;
+export default { ...app, async fetch(req, env, ctx) {
+  if (new URL(req.url).pathname === '/fixture/check-owner-report') {
+    const settings = new URL(req.url).searchParams.has('missing-owner') ? { ...env, LIVE_ADMIN_KEY: undefined } : env;
+    await refreshOwnerReportCheck(settings, (r, e) => app.fetch(r, e, ctx));
+    return new Response('done');
+  }
+  return app.fetch(req, env, ctx);
+} };
 ` }, bundle: true, write: false, format: 'esm', platform: 'node', external: ['node:*', 'cloudflare:*'], target: 'es2023' });
 const bundle = join(dir, 'worker.mjs'); await writeFile(bundle, built.outputFiles[0].text);
 let count = { create: 0, capture: 0, get: 0, verify: 0 }, captureMode = 'ok'; const orders = new Map(), refunds = new Map();
 const fixtureOwner = 'owner-finance-fixture-only-0123456789';
 const worker = { name: 'action-test', modules: true, modulesRoot: dir, scriptPath: bundle, compatibilityDate: '2026-08-25', compatibilityFlags: ['nodejs_compat'],
-  durableObjects: { PAID_GATEWAY: { className: 'TestGateway', useSQLite: true }, PROOF_AUTHORITY: { className: 'ProofAuthority', useSQLite: true } },
+  durableObjects: { LIVE_CONTROL: { className: 'LiveControl', useSQLite: true }, PAID_GATEWAY: { className: 'TestGateway', useSQLite: true }, PROOF_AUTHORITY: { className: 'ProofAuthority', useSQLite: true } },
   bindings: { LIVE_ADMIN_KEY: fixtureOwner, PAYPAL_ENVIRONMENT: 'sandbox', PAYPAL_ENABLED: 'on', PAYPAL_CLIENT_ID: 'synthetic-client', PAYPAL_CLIENT_SECRET: 'synthetic-secret', PAYPAL_MERCHANT_ID: 'TESTMERCHANT1', PAYPAL_VERIFIED_EMAIL: 'moelayyan2026@gmail.com', PAYPAL_WEBHOOK_ID: 'synthetic-webhook' },
   outboundService: async request => {
     const u = new URL(request.url);
@@ -64,6 +73,7 @@ const worker = { name: 'action-test', modules: true, modulesRoot: dir, scriptPat
     return MFResponse.json(order);
   },
 };
+worker.bindings.CF_VERSION_METADATA = { id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', tag: 'git-fixture' };
 const mf = new Miniflare(convertV4MiniflareOptions({ host: '127.0.0.1', port: 0, workers: [worker] }));
 const token = 'a'.repeat(64), otherToken = 'b'.repeat(64);
 const input = { service: 'csv-clean', input: { csv: 'email,name\na@example.com, Alice \na@example.com,Alice\n', key_columns: ['email'] } };
@@ -191,6 +201,19 @@ try {
   assert.ok(ownerHtml.includes('مدفوعات XGuard') && ownerHtml.includes('/admin/paypal/ledger'));
   assert.match(privatePage.headers.get('cache-control'), /no-store/);
   const logged = await dispatch('/admin/paypal/ledger', { body: {}, headers:auth });
+  const healthPath = '/healthz?check=owner-report';
+  assert.equal((await dispatch(healthPath)).status, 503, 'An untested release must not pass');
+  await dispatch('/fixture/check-owner-report?missing-owner');
+  const failedHealth = await dispatch(healthPath);
+  assert.equal(failedHealth.status, 503);
+  assert.equal((await failedHealth.json()).status, 'unavailable');
+  assert.equal((await dispatch('/fixture/check-owner-report')).status, 200);
+  const health = await dispatch(healthPath);
+  assert.equal(health.status, 200);
+  const marker = await health.json();
+  assert.deepEqual(Object.keys(marker).sort(), ['checked_at', 'status', 'worker_id']);
+  assert.equal(marker.status, 'verified');
+  assert.equal(marker.worker_id, worker.bindings.CF_VERSION_METADATA.id);
   assert.equal(logged.status, 200); assert.deepEqual((await logged.json()).rows, [], 'Sandbox orders cannot enter the live owner report');
   assert.equal((await dispatch('/admin/paypal/ledger', { body:{after:'invalid/ref'}, headers:auth })).status, 400);
   const paidRow = { ...(await inspectEvent(q.id)).record, environment:'live' };
