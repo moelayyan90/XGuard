@@ -24,6 +24,9 @@ jobs:
       - name: Check isolated paid availability without a transaction
         if: always()
         run: node scripts/live-paid-smoke.mjs --require-ready
+      - name: Check PayPal Live configuration, final price and order storage without a transaction
+        if: always()
+        run: node scripts/action-production-check.mjs --require-ready
   provider-usage:
     runs-on: ubuntu-latest
     timeout-minutes: 4

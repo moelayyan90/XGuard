@@ -13,6 +13,8 @@ import { extractEnabled, extractPage } from './extract-page.ts';
 import extractionClient from './extract-client.generated.js';
 import { FACILITATOR_IDENTITY } from '../facilitator-surface.js';
 import { BUSINESS_PRODUCTS } from '../business/catalog.js';
+import { financePage } from '../action/finance.js';
+import { financeDashboard } from '../action/finance-site.js';
 
 const control = (env: Env, op: string, body = {}) => rpc(env.LIVE_CONTROL, controlName, op, body);
 const publicCatalog = (env: Env) => control(env, 'catalog', { public_snapshot: true });
@@ -109,10 +111,18 @@ async function admin(request: Request, env: Env): Promise<Response> {
   if (!identity) return READ.has(request.method) ? pageResponse(request, 'login', {}, '/admin', true, 401) : json({ error: 'owner_authentication_required' }, 401);
   const cookie = request.headers.get('cookie')?.match(/(?:^|;\s*)__Host-xguard-live=([^;]+)/)?.[1] || '';
   const csrf = await hash(`${cookie}:csrf`);
+  if (READ.has(request.method) && path === '/admin/paypal') return financeDashboard(csrf);
   if (READ.has(request.method) && path === '/admin/paid-revenue') return json(await paidOwnerState(env), 200, { 'cache-control': 'no-store' });
   if (request.method === 'POST') {
     const body = await parseInput(request);
     if (identity === 'session' && (request.headers.get('origin') !== ORIGIN || !await equalSecret(String(body.csrf || ''), csrf))) return json({ error: 'csrf_rejected' }, 403);
+    if (path === '/admin/paypal/ledger') {
+      const headers = { 'cache-control': 'private, no-store', 'x-robots-tag': 'noindex' };
+      if (body.after != null && (typeof body.after !== 'string' || !/^[A-Z0-9]{8,32}$/.test(body.after))) return json({ error: 'invalid_finance_cursor' }, 400, headers);
+      if (!env.PAID_GATEWAY) return json({ error: 'financial_storage_unavailable' }, 503, headers);
+      try { return json(await financePage(env, body.after || null), 200, headers); }
+      catch { return json({ error: 'financial_records_unavailable' }, 503, headers); }
+    }
     if (path === '/admin/logout') return new Response(null, { status: 303, headers: { location: '/admin', 'cache-control': 'no-store', 'set-cookie': `${COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0` } });
     const action = path.slice('/admin/'.length);
     let result: any;

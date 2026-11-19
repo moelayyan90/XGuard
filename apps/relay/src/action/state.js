@@ -40,6 +40,13 @@ export async function actionState(state, env, action, body) {
       await tx.put('action:admission', rate); return { admitted: true };
     }));
     if (action === 'lookup') return json({ id: await state.storage.get('action:map:' + body.reference) ?? null });
+    if (action === 'finance-page') {
+      if (body.after && !/^[A-Z0-9]{8,32}$/.test(body.after)) throw fail('invalid_finance_cursor', 400);
+      const prefix = 'action:map:', limit = 12;
+      const rows = await state.storage.list({ prefix, limit: limit + 1, ...(body.after ? { startAfter: prefix + body.after } : {}) });
+      const entries = [...rows].slice(0, limit).map(([key, id]) => ({ ref: key.slice(prefix.length), id }));
+      return json({ entries, next: rows.size > limit ? entries[limit - 1].ref : null });
+    }
     if (action === 'map') {
       await state.storage.transaction(async tx => { const key = 'action:map:' + body.reference, previous = await tx.get(key); if (previous && previous !== body.id) throw fail('payment_reference_conflict', 409); await tx.put(key, body.id); });
       return json({ ok: true });
@@ -101,6 +108,7 @@ export async function actionState(state, env, action, body) {
           liability: { capture_id: patch.capture.id, amount_cents: row.amount_cents, currency: 'USD', reason: 'Capture confirmed after the unpaid order expired and its input was removed.' },
         } : { capture: patch.capture };
       } else if (!body.expected.includes(row.status)) return { order: view(row) };
+      if (row.capture && ['provider_approval_reversed', 'provider_capture_denied'].includes(patch.error)) return { order: view(row) };
       const permitted = ['status', 'paypal_order_id', 'capture', 'error', 'liability', 'attempts'];
       for (const key of permitted) if (patch[key] !== undefined) row[key] = patch[key];
       row.updated_at = stamp(); row.events.push({ state: row.status, at: row.updated_at });

@@ -45,3 +45,8 @@ test('action smoke rejects invalid prices and HTTP failures after correct revisi
   await assert.rejects(runActionSmoke({ fetchImpl: fixture({ price: 1 }).fetchImpl, expectedTag: 'git-current', pause: async () => {} }));
   await assert.rejects(runActionSmoke({ fetchImpl: fixture({ status: 503 }).fetchImpl, expectedTag: 'git-current', pause: async () => {} }));
 });
+test('scheduled PayPal monitor fails when live checkout is unavailable', async () => {
+  const mock = fixture();
+  await assert.rejects(runActionSmoke({ fetchImpl: mock.fetchImpl, requireReady: true }), /live PayPal configuration/);
+  assert.equal(mock.calls.has('/v1/checkout/orders'), false);
+});
