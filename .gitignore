@@ -16,3 +16,7 @@ integrations/compute/quote-token.txt
 integrations/compute/payment-signature.txt
 .live-build/
 apps/relay/src/live/extract-client.generated.js
+
+# One-time Token Kiosk evaluation state and issued API key
+token-kiosk-private*.json
+token-kiosk-private*.tmp
