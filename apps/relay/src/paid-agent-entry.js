@@ -1043,7 +1043,7 @@ async function syncCommerce(state, env, record) {
   try {
     await state.storage.put("commerce_pending", true);
     const financials = executionEconomics(record);
-    const response = await postStub(gatewayIndex(env), "/index/commerce", { operation_hash: record.authorization_fingerprint, capability: record.input?.capability, payer_hash: await sha256(`${record.network}:${String(record.payer || "").toLowerCase()}`), financials, status: record.credit_redeemed ? "succeeded" : record.status });
+    const response = await postStub(gatewayIndex(env), "/index/commerce", { operation_hash: record.authorization_fingerprint, capability: record.input?.capability, ...(definitionFor(record.input?.capability) ? {transaction:record.transaction,network:record.network,transport:record.transport}:{}), payer_hash: await sha256(`${record.network}:${String(record.payer || "").toLowerCase()}`), financials, status: record.credit_redeemed ? "succeeded" : record.status });
     if (!response.ok) throw new Error("commerce_sync_failed");
     await state.storage.delete("commerce_pending");
     await state.storage.delete("commerce_sync_attempts");

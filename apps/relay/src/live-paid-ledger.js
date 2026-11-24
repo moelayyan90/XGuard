@@ -1,3 +1,4 @@
+import { costLedger } from './intelligence/revenue.js';
 import { SERVICES as INTELLIGENCE } from './intelligence/catalog.js';
 import { OPERATIONS } from './network/catalog.ts';
 import { PRODUCT_SERVICES } from './products/registry.js';
@@ -33,6 +34,10 @@ export function applyLivePaidMetric(current, body) {
 }
 export async function applyLivePaidCommerce(tx, body, previous, snapshot) {
   if (!SERVICES.includes(body.capability)) return;
+  if (INTELLIGENCE.some(d=>d.id===body.capability) && snapshot.successful_paid_executions && !previous?.successful_paid_executions && /^0x[a-fA-F0-9]{64}$/.test(body.transaction || '')) {
+    const date=new Date().toISOString();
+    await tx.put('intel-delivery:'+date+':'+body.operation_hash,{date,service:body.capability,units:snapshot.recognized_revenue_usd_micros/1000,usdc_atomic:snapshot.recognized_revenue_usd_micros,transaction:body.transaction,network:body.network,transport:body.transport || 'unknown'});
+  }
   const live = await tx.get('live-commerce:v1') || { since: new Date().toISOString(), services: {} };
   const item = live.services[body.capability] ||= { settled_cash_usd_micros: 0, recognized_revenue_usd_micros: 0, unfulfilled_liability_usd_micros: 0, successful_paid_executions: 0, estimated_contribution_usd_micros: 0 };
   const day = new Date().toISOString().slice(0, 10);
@@ -49,6 +54,7 @@ export async function applyLivePaidCommerce(tx, body, previous, snapshot) {
 }
 export async function livePaidLedgerRoute(state, path, body) {
   const json = (v, status = 200) => Response.json(v, { status });
+  if (path.startsWith('/live/intelligence/')) return await costLedger(state,path,body) || json({error:'unknown_financial_operation'},404);
   if (path === '/live/reserve-request') {
     if (![body.key_hash, body.operation_hash, body.request_digest].every(x => /^[a-f0-9]{64}$/.test(x || ''))) return json({ error: 'invalid_live_reservation' }, 400);
     let conflict = false;

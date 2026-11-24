@@ -21,7 +21,7 @@ export function card() {
     skills:SERVICES.map(d => ({id:toolName(d),name:d.name,description:d.description,tags:['paid','x402'],inputModes:['application/json'],outputModes:['application/json']})) };
 }
 export function toolsList() {
-  return {tools:SERVICES.map(d => ({ name:toolName(d),title:d.name,description:d.description + ' USD 0.001 per atomic result.',inputSchema:d.schema,
+  return {tools:SERVICES.map(d => ({ name:toolName(d),title:d.name,description:d.description + ' USD 0.001 per atomic result.',inputSchema:{type:'object',...d.schema},
     annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true},_meta:{'xguard/payment':price()} }))};
 }
 export function landing() {

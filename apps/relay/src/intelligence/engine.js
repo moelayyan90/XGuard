@@ -1,6 +1,7 @@
 import { BASE, definitionFor, routeFor } from './catalog.js';
 import { compareOpenApi } from './openapi.js';
-import { advisories, compatibility, diagnose, npmRelease } from './sources.js';
+import { tokenCost } from './model-card.js';
+import { advisories, compatibility, diagnose, npmRelease, modelCard } from './sources.js';
 import { rpc, shardName, shardOf, hash } from '../live/util.ts';
 import { canonicalFact } from '../live/paid-data.ts';
 import { sourceSpec } from '../live/adapters.ts';
@@ -70,6 +71,11 @@ export async function prepareIntelligence(input,env,fetcher=fetch) {
       data = { observation:q.observation, fact:e.fact_id, value:JSON.parse(e.value_json), observed_at:e.observed_at, source:e.source_url, hash:e.source_hash, method:e.method }; break;
     }
     case 'models':
+      if (q.model) { data=await modelCard(q.model,fetcher); break; }
+      if (q.models) {
+        const cards=await Promise.all(q.models.map(m=>modelCard(m,fetcher)));
+        data={input_tokens:q.input_tokens,output_tokens:q.output_tokens,comparison:cards.map(c=>({model:c.model,status:c.status,estimated_text_cost_usd:tokenCost(c.text_price_usd_per_million,q.input_tokens,q.output_tokens),context_tokens:c.context_tokens,features:c.features,evidence:c.evidence})),scope:'Published text input and output rates; excludes tool fees, caching, account-specific discounts and tax.'}; break;
+      }
       if (!/^pricing\/(openai|anthropic)\/[a-z0-9-]+(input|output)-price$/.test(q.fact)) throw new Error('unsupported_model_price_field');
       data = await oneFact(env,q.fact); break;
     case 'breaking-changes': data = await compareOpenApi(q.before,q.after); break;

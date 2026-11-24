@@ -1,4 +1,5 @@
 import semver from 'semver';
+import { parseModelCard } from './model-card.js';
 import { parseHTML } from 'linkedom';
 import { boundedBody } from '../live/security.ts';
 const cache = new Map(), inFlight = new Map();
@@ -75,6 +76,14 @@ export async function advisories(q,fetcher) {
     return { verdict: identifiers.length ? 'published_advisories_found' : partial ? 'incomplete' : 'no_matching_advisory_reported', advisories:identifiers, partial,
       evidence:[{...evidence, query}], confidence:partial ? 'partial_index_response' : 'exact_version_index_query',
       scope:'OSV coverage at verification time. Fix events are per advisory and range. Confirm the proposed replacement in a new exact-version query.' };
+  });
+}
+export async function modelCard(model,fetcher) {
+  if(!/^[a-z0-9][a-z0-9.-]{0,79}$/.test(model) || model.includes('..')) throw new Error('invalid_model_id');
+  const url='https://developers.openai.com/api/docs/models/'+model+'.md';
+  return cached(url,async()=>{
+    const {body,...evidence}=await read(url,fetcher,{headers:{accept:'text/markdown'}},160000);
+    return {...parseModelCard(body,model),evidence:[evidence],scope:'Public provider documentation. Project-specific access, quotas and current service uptime require separately authorized checks.'};
   });
 }
 export async function diagnose(code,fetcher) {

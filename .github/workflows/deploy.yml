@@ -339,6 +339,18 @@ jobs:
           curl --silent --show-error --retry 3 --retry-all-errors --retry-delay 2 --max-time 12 https://xguardgate.com/healthz || true
           exit 1
 
+      - name: Exercise changed paid-only entry at zero percent of normal traffic
+        if: success() && steps.deploy.outcome == 'success'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIOUS_GIT_REF: ${{ steps.previous.outputs.git_ref }}
+        shell: bash
+        run: |
+          if ! git diff --quiet "$PREVIOUS_GIT_REF" "$DEPLOY_SHA" -- apps/relay/src/intelligence apps/relay/src/paid-only-entry.js apps/relay/deployment-state.json; then
+            node scripts/intelligence-zero-canary.mjs
+          fi
+
       - name: Keep storage-quota recovery deployed and report incomplete verification
         if: failure() && steps.deploy.outcome == 'success' && steps.production_smoke.outputs.quota_exhausted == 'true' && steps.glama_smoke.outcome != 'failure' && steps.paid_smoke.outcome == 'success' && steps.gateway_smoke.outcome != 'failure' && steps.mcp_smoke.outcome != 'failure' && steps.a2a_smoke.outcome != 'failure'
         run: |

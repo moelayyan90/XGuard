@@ -2,6 +2,7 @@ import { BASE, routeFor, fits, amountFor, price } from './catalog.js';
 import { ROOT, TITLE, MCP, A2A, catalog, card, openApi, toolsList, landing } from './discovery.js';
 import { handlePaidWebFetch, livePaidProofKey, recoverOutcome } from '../paid-agent-entry.js';
 import { readPublicJson } from '../core/public-contract.js';
+import { ownerRevenue } from './revenue.js';
 import { adminIdentity } from '../live/security.ts';
 import { glamaOwnershipFetch } from '../glama-ownership.js';
 import deployment from '../../deployment-state.json' with { type:'json' };
@@ -55,7 +56,10 @@ async function protocol(req,env,kind) {
   if (req.method !== 'POST') return error('json_rpc_post_required',405);
   const msg = await read(req);
   if (!msg || Array.isArray(msg) || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') return rpcError(null,-32600,'Invalid JSON-RPC request');
-  const rid = msg.id, ok = result => json({jsonrpc:'2.0',id:rid,result});
+  const rid = msg.id;
+  const modern = kind === 'mcp' && (msg.method === 'server/discover' || req.headers.get('mcp-protocol-version') === '2026-07-28' || msg.params?._meta?.['io.modelcontextprotocol/protocolVersion'] === '2026-07-28');
+  const wire = result => modern ? {...result, resultType:'complete', ttlMs:0, cacheScope:'private'} : result;
+  const ok = result => json({jsonrpc:'2.0',id:rid,result:wire(result)});
   if (kind === 'mcp' && msg.method === 'notifications/initialized' && rid === undefined) return new Response(null,{status:202});
   if (typeof rid !== 'string' && !Number.isSafeInteger(rid)) return rpcError(null,-32600,'Request ID required');
   let name, args, key;
@@ -63,7 +67,7 @@ async function protocol(req,env,kind) {
     const versions = ['2025-11-25','2025-06-18','2025-03-26','2026-07-28'];
     const info = {name:'xguard-paid-intelligence',version:'1.0.0'};
     if (msg.method === 'initialize') return ok({protocolVersion:versions.includes(msg.params?.protocolVersion) ? msg.params.protocolVersion : versions[0],capabilities:{tools:{}},serverInfo:info});
-    if (msg.method === 'server/discover') return ok({serverInfo:info,protocolVersions:versions,capabilities:{tools:{}}});
+    if (msg.method === 'server/discover') return ok({serverInfo:info,supportedVersions:versions,ttlMs:0,cacheScope:'private',capabilities:{tools:{}}});
     if (msg.method === 'ping') return ok({});
     if (msg.method === 'tools/list') return ok(toolsList());
     if (msg.method !== 'tools/call') return rpcError(rid,-32601,'Unsupported method');
@@ -82,7 +86,7 @@ async function protocol(req,env,kind) {
   const r = await purchase(req,env,d,args,kind === 'mcp' ? 'intelligence-mcp':'intelligence-a2a',key);
   const payload = await r.json(), h = new Headers(r.headers);
   const result = kind === 'mcp' ? {content:[{type:'text',text:JSON.stringify(payload)}],structuredContent:payload} : {message:{messageId:crypto.randomUUID(),role:'ROLE_AGENT',parts:[{data:payload}]}};
-  const envelope = r.ok ? {jsonrpc:'2.0',id:rid,result} : {jsonrpc:'2.0',id:rid,error:{code:r.status===402?-32042:-32000,message:r.status===402?'Payment required':'Operation unavailable',data:payload}};
+  const envelope = r.ok ? {jsonrpc:'2.0',id:rid,result:wire(result)} : {jsonrpc:'2.0',id:rid,error:{code:r.status===402?-32042:-32000,message:r.status===402?'Payment required':'Operation unavailable',data:payload}};
   return new Response(JSON.stringify(envelope),{status:r.status,headers:h});
 }
 async function dispatch(req,env,ctx,legacy) {
@@ -94,6 +98,7 @@ async function dispatch(req,env,ctx,legacy) {
   }
   if (req.method === 'OPTIONS') return new Response(null,{status:204});
   const at = path.startsWith(prefix) ? path.slice(ROOT.length) : path;
+  if (at === '/admin/revenue') return ownerRevenue(req,env,read);
   if (isRead(req)) {
     if (at === '/catalog' || path === ROOT || discoveryPaths.has(path)) return json({...catalog(),new_payments_enabled:deployment.payment_state_write_version >= 7});
     if (at === '/openapi.json') return json(openApi());
