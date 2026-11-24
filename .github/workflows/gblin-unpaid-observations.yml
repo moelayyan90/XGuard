@@ -1,0 +1,61 @@
+name: GBLIN isolated unpaid observations
+on:
+  push:
+    branches: [audit/gblin-unpaid-20261124]
+    paths: [.github/workflows/gblin-unpaid-observations.yml]
+permissions:
+  contents: read
+jobs:
+  observations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare unpaid challenges and invalid payloads
+        run: |
+          python3 - <<'PY'
+          import urllib.request, urllib.error, time, json, base64, hashlib, statistics
+          routes={"control":"https://gblin.digital/api/x402/attestation","canary":"https://mcp.gblin.digital/canary/attestation"}
+          def b64(x): return base64.b64encode(json.dumps(x,separators=(",",":")).encode()).decode()
+          def fetch(url,signature=None):
+              h={"Accept":"application/json","User-Agent":"XGuard-GBLIN-unpaid-audit/1.0"}
+              if signature is not None: h["PAYMENT-SIGNATURE"]=signature
+              start=time.monotonic()
+              try:
+                  try: r=urllib.request.urlopen(urllib.request.Request(url,headers=h),timeout=15)
+                  except urllib.error.HTTPError as e: r=e
+                  with r:
+                      raw=r.read(65536); headers={k.lower():v for k,v in r.headers.items()}
+                      try: body=json.loads(raw)
+                      except Exception: body=None
+                      try: required=json.loads(base64.b64decode(headers.get("payment-required",""),validate=True))
+                      except Exception: required=None
+                      return {"status":r.status,"ms":round((time.monotonic()-start)*1000,2),"sha256":hashlib.sha256(raw).hexdigest(),"bytes":len(raw),"headers":headers,"body":body,"payment_required_decoded":required}
+              except Exception as e: return {"error":str(e),"ms":round((time.monotonic()-start)*1000,2)}
+          out={"scope":"unpaid only; no valid authorization, no settle, no redirects to other hosts intended","routes":{}}
+          for name in routes: out["routes"][name]={"anonymous":[],"malformed":[],"invalid":[]}
+          for i in range(5):
+              for name in (["control","canary"] if i%2==0 else ["canary","control"]):
+                  out["routes"][name]["anonymous"].append(fetch(routes[name])); time.sleep(.5)
+          for name,url in routes.items():
+              first=out["routes"][name]["anonymous"][0]
+              challenge=first.get("payment_required_decoded") or first.get("body") or {}
+              reqs=challenge.get("accepts",[]) if isinstance(challenge,dict) else []
+              req=reqs[0] if reqs else {}
+              for _ in range(2):
+                  out["routes"][name]["malformed"].append(fetch(url,"%%%invalid-base64%%%"))
+                  if req:
+                      invalid={"x402Version":2,"accepted":req,"resource":challenge.get("resource",{}),"payload":{"signature":"0x"+"00"*65,"authorization":{"from":"0x"+"00"*20,"to":req.get("payTo","0x"+"00"*20),"value":str(req.get("amount","0")),"validAfter":"0","validBefore":"0","nonce":"0x"+"00"*32}}}
+                  else: invalid={"x402Version":2,"payload":{}}
+                  out["routes"][name]["invalid"].append(fetch(url,b64(invalid))); time.sleep(.5)
+          for name,cases in out["routes"].items():
+              vals=[v["ms"] for v in cases["anonymous"] if v.get("status")==402]
+              cases["anonymous_median_ms"]=statistics.median(vals) if vals else None
+          a=out["routes"]["control"]["anonymous"][0]; b=out["routes"]["canary"]["anonymous"][0]
+          out["comparison"]={"both_402":a.get("status")==b.get("status")==402,"raw_body_equal":a.get("sha256")==b.get("sha256") if a.get("sha256") and b.get("sha256") else None,"payment_required_header_equal":a.get("headers",{}).get("payment-required")==b.get("headers",{}).get("payment-required") if a.get("headers",{}).get("payment-required") and b.get("headers",{}).get("payment-required") else None,"accepts_equal": (a.get("payment_required_decoded") or {}).get("accepts")== (b.get("payment_required_decoded") or {}).get("accepts") if a.get("payment_required_decoded") and b.get("payment_required_decoded") else None}
+          with open("gblin-unpaid.json","w") as f: json.dump(out,f,indent=2)
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gblin-unpaid-observations
+          path: gblin-unpaid.json
