@@ -5,9 +5,11 @@ function encodePaymentSignatureHeader(payload) {
 }
 const API = 'https://api.xguardgate.com';
 const ASSET = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const intelligencePath = /^\/api\/intelligence\/v1\/[a-z][a-z-]{1,39}$/;
+const intelligenceTreasury = '0x8e526ba9b0b348c1b6935176719d7acf0225aabf';
 function paidUrl(value) {
   const url = new URL(value);
-  if (url.origin !== API || !(url.pathname.startsWith('/p/') || /^\/api\/paid\/v1\/(batch|history|compare|extract|route-resolve|route-compare|discover|platform-discovery|crawl|fact|task|schedule|verify)$/.test(url.pathname)) || url.username || url.password || url.hash) throw new Error('Use an XGuard paid API endpoint.');
+  if (url.origin !== API || !(url.pathname.startsWith('/p/') || intelligencePath.test(url.pathname) || /^\/api\/paid\/v1\/(batch|history|compare|extract|route-resolve|route-compare|discover|platform-discovery|crawl|fact|task|schedule|verify)$/.test(url.pathname)) || url.username || url.password || url.hash) throw new Error('Use an XGuard paid API endpoint.');
   return url.href;
 }
 // One spending decision and one authorization per invocation. No automatic
@@ -32,6 +34,11 @@ export function createPaidAPIClient({ payer, maxAmountAtomic, fetchImpl = global
       const requirement = challenge.accepts?.[0];
       if (!/^[1-9][0-9]{0,8}$/.test(String(maxAmountAtomic || ''))) throw new Error('An explicit positive spending cap is required.');
       if (challenge.x402Version !== 2 || challenge.resource?.url !== url || challenge.accepts?.length !== 1 || requirement.scheme !== 'exact' || requirement.network !== 'eip155:8453' || requirement.asset?.toLowerCase() !== ASSET.toLowerCase() || !/^[1-9][0-9]{0,8}$/.test(requirement.amount || '') || BigInt(requirement.amount) > BigInt(maxAmountAtomic)) throw new Error('Payment requirements exceed the authorized policy. No authorization was created.');
+      if (intelligencePath.test(new URL(url).pathname)) {
+        const query = JSON.parse(init.body || '{}');
+        const units = url.endsWith('/batch') ? query.facts?.length : 1;
+        if (!Number.isSafeInteger(units) || units < 1 || units > 100 || requirement.amount !== String(1000n * BigInt(units)) || requirement.payTo?.toLowerCase() !== intelligenceTreasury || first.headers.get('x-xguard-intelligence-writer') !== 'enabled') throw new Error('Intelligence pricing, treasury or purchase availability does not match the buyer policy.');
+      }
       const quote = first.headers.get('x-xguard-quote'), payment_identifier = challenge.extensions?.xguard?.paymentIdentifier;
       if (!quote || !/^pay_[A-Za-z0-9_-]+$/.test(payment_identifier || '')) throw new Error('Missing signed quote or recovery identifier.');
       const payload = await payer.createPaymentPayload(challenge);
@@ -43,7 +50,9 @@ export function createPaidAPIClient({ payer, maxAmountAtomic, fetchImpl = global
     },
     async recover({ payment_identifier, quote, endpoint }) {
       if (!/^pay_[A-Za-z0-9_-]+$/.test(payment_identifier || '') || typeof quote !== 'string' || !quote) throw new Error('Original payment identifier and quote are required.');
-      const live = endpoint && new URL(paidUrl(endpoint)).pathname.startsWith('/api/paid/v1/');
+      const path = endpoint && new URL(paidUrl(endpoint)).pathname;
+      if (path && intelligencePath.test(path)) return fetchImpl(API + '/api/intelligence/v1/results/' + payment_identifier, { headers: { 'x-xguard-quote': quote }, redirect: 'error' });
+      const live = path && path.startsWith('/api/paid/v1/');
       return fetchImpl(`${API}${live ? '/api/paid/v1/results/' : '/v1/marketplace/results/'}${payment_identifier}`, { headers: { 'x-xguard-quote': quote, ...(trafficClass ? { 'x-xguard-traffic-class': trafficClass } : {}) }, redirect: 'error' });
     },
   };

@@ -1,0 +1,71 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { SERVICES, amountFor, fits, routeFor } from '../src/intelligence/catalog.js';
+import { compareOpenApi } from '../src/intelligence/openapi.js';
+import { prepareIntelligence } from '../src/intelligence/engine.js';
+import { intelligenceSurface } from '../src/intelligence/surface.js';
+import { gatewayConfig } from '../src/paid-agent-entry.js';
+import { environment, seed } from './live-harness.mjs';
+const base = 'https://api.xguardgate.com', root = '/api/intelligence/v1';
+const get = (path, init,env={}) => intelligenceSurface(new Request(base+path,init),env,{});
+const post = (path,body,headers={}) => get(path,{method:'POST',body:JSON.stringify(body),headers:{'content-type':'application/json',...headers}});
+const input = (route,query) => ({capability:'intel-'+route,query,idempotency_key:'intelligence-test'});
+test('atomic units use integers for all batch sizes; malformed batches never obtain a price',()=>{
+  for (let n=1;n<=100;n++) assert.equal(amountFor(input('batch',{facts:Array(n).fill('a')})),String(n*1000));
+  assert.throws(()=>amountFor(input('batch',{facts:[]})));
+  assert.throws(()=>amountFor(input('batch',{facts:Array(101)})));
+  const env = {XGUARD_PAYMENT_ENVIRONMENT:'production',XGUARD_TREASURY_USDC_ADDRESS:'0x1111111111111111111111111111111111111111',XGUARD_PAID_FACILITATOR:'https://facilitator.example',XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS:'100',XGUARD_PAYMENT_COST_BUDGET_USD_MICROS:'0'};
+  assert.equal(gatewayConfig(env,false,input('batch',{facts:Array(100)})).amount,'100000');
+  assert.equal(gatewayConfig({...env,XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS:'250'},false,input('facts',{})).configured,false);
+});
+test('registered handlers, discovery and both transports agree',async()=>{
+  const c=await (await get(root+'/catalog')).json();
+  const s=await (await get(root+'/openapi.json')).json();
+  const t=await (await post('/mcp',{jsonrpc:'2.0',id:1,method:'tools/list'})).json();
+  const a=await (await get('/.well-known/agent-card.json')).json();
+  assert.equal(c.services.length,SERVICES.length);
+  assert.equal(Object.keys(s.paths).length,SERVICES.length);
+  assert.deepEqual(t.result.tools.map(x=>x.name),a.skills.map(x=>x.id));
+  assert.equal(c.price.unit_price,'0.001');
+  assert.equal((await get('/',{method:'HEAD'})).body,null);
+});
+test('strict entry fails closed before legacy routes, streams, finance, caches and private checks',async()=>{
+  const fixtures=['/changes.atom','/topics','/live/npm/react','/witness/add-checkpoint','/verify','/settle','/v1/checkout/orders','/api/paid/v1/extract','/v1/new-service','/healthz','/api/paid/v1/readiness','/admin/paid-revenue','/future-handler','/mcp'];
+  for(const path of fixtures) for(const method of ['GET','HEAD','POST']) {
+    let calls=0;
+    const r=await intelligenceSurface(new Request(base+path,{method,headers:{authorization:'Bearer ordinary-api-key'}}),{}, {},async()=>{calls++;return new Response('private-data')});
+    assert.equal(calls,0,path); assert.ok(r.status>=400,path); assert.equal(r.headers.get('cache-control'),'private, no-store'); assert.doesNotMatch(await r.text(),/private-data/);
+  }
+  assert.equal((await intelligenceSurface(new Request('https://unregistered.example'+root+'/catalog'),{},{})).status,421);
+});
+test('missing financial bindings and unavailable data never yield a paid service result',async()=>{
+  const ab=await get('/fact/npm/react/latest-version');assert.equal(ab.status,503);assert.equal((await ab.json()).result,undefined);
+  const r=await post(root+'/facts',{fact:'npm/react/latest-version',max_amount_atomic:'999'});assert.equal(r.status,400);
+  assert.equal((await post(root+'/batch',{facts:Array(101).fill('x')})).status,400);
+  assert.equal((await post('/a2a',{jsonrpc:'2.0',id:1,method:'SendMessage',params:{message:{messageId:'req',role:'ROLE_USER',parts:[{data:{action:'xguard.fact.get',factId:'npm/react/latest-version'}}]}}})).status,503);
+});
+test('facts, history, model status and all-or-nothing batch preserve observed evidence',async()=>{
+  const h=environment();try{
+    await seed(h); const f=await prepareIntelligence(input('facts',{fact:'npm/react/latest-version'}),h.env);
+    assert.equal(f.data.source,'https://registry.npmjs.org/react/latest'); assert.equal(f.data.value,'1.0.0');assert.ok(f.data.age_seconds>=0);
+    const batch=await prepareIntelligence(input('batch',{facts:Array(100).fill(f.data.id)}),h.env); assert.equal(batch.data.units,100);
+    assert.equal((await prepareIntelligence(input('history',{fact:f.data.id}),h.env)).data.observations.length,1);
+    await assert.rejects(prepareIntelligence(input('batch',{facts:[f.data.id,'npm/react/unavailable']}),h.env));
+    await assert.rejects(prepareIntelligence(input('models',{fact:f.data.id}),h.env));
+    await assert.rejects(prepareIntelligence(input('infrastructure',{provider:'github'}),h.env));
+  }finally{h.close()}
+});
+test('OpenAPI comparison identifies consumer breaks and reports unresolved coverage',()=>{
+  const p={openapi:'3.1.0',paths:{'/x':{get:{responses:{200:{content:{'application/json':{schema:{$ref:'#/components/schemas/R'}}}}}}},'/gone':{get:{}}},components:{schemas:{R:{type:'object',properties:{qty:{type:'integer'},name:{type:'string'}}}}}};
+  const q=structuredClone(p); delete q.paths['/gone'];q.paths['/x'].get.parameters=[{name:'auth',in:'header',required:true,schema:{type:'string'}}];q.components.schemas.R.properties.qty.type='string';delete q.components.schemas.R.properties.name;
+  const v=compareOpenApi(p,q);assert.equal(v.verdict,'breaking_changes_found');for(const k of ['schema_type_changed','field_removed','path_removed','parameter_now_required']) assert.ok(v.findings.some(x=>x.change===k));
+  q.components.schemas.R.properties.qty={$ref:'https://example.org/schema'};assert.ok(compareOpenApi(p,q).coverage_limits.length);
+});
+test('OSV partial responses cannot certify safety and npm semver respects prereleases',async()=>{
+  const fn=async url=>Response.json(String(url).includes('osv.dev')?{next_page_token:'next'}:{name:'test-lib',version:'1.0.0',engines:{node:'>=20 <23'}});
+  const sec=await prepareIntelligence(input('decisions',{question:'known-vulnerabilities',ecosystem:'Go',name:'example.org/a',version:'1.0.0'}),{},fn);
+  assert.equal(sec.data.decision,'incomplete');
+  const comp=await prepareIntelligence(input('compatibility',{name:'test-lib',version:'1.0.0',target:'node',target_version:'22.0.0'}),{},fn);assert.equal(comp.data.verdict,'matches_declared_range');
+  const pre=await prepareIntelligence(input('compatibility',{name:'test-lib',version:'1.0.0',target:'node',target_version:'22.0.0-beta.1'}),{},fn);assert.equal(pre.data.verdict,'outside_declared_range');
+  assert.equal(fits(routeFor('tools').schema,{task:'arbitrary',url:'https://example.net'}),false);
+});

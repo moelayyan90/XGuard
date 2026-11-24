@@ -1,7 +1,8 @@
+import { SERVICES as INTELLIGENCE } from './intelligence/catalog.js';
 import { OPERATIONS } from './network/catalog.ts';
 import { PRODUCT_SERVICES } from './products/registry.js';
-const SERVICES = ['live-batch', 'live-history', 'live-compare', 'live-extract', ...OPERATIONS.map(d => d.id), ...PRODUCT_SERVICES.map(d => d.id)];
-const HTTP_SERVICES = ['batch', 'history', 'compare', 'extract', ...OPERATIONS.map(d => d.route), ...PRODUCT_SERVICES.map(d => d.route)];
+const SERVICES = [...INTELLIGENCE.map(d => d.id), 'live-batch', 'live-history', 'live-compare', 'live-extract', ...OPERATIONS.map(d => d.id), ...PRODUCT_SERVICES.map(d => d.id)];
+const HTTP_SERVICES = [...INTELLIGENCE.map(d => d.id), 'batch', 'history', 'compare', 'extract', ...OPERATIONS.map(d => d.route), ...PRODUCT_SERVICES.map(d => d.route)];
 const writableByState = new WeakMap();
 
 async function checkWritable(state) {
@@ -79,7 +80,8 @@ export async function livePaidLedgerRoute(state, path, body) {
       item.p50_origin_ms_upper_bound = quantile(.5);
       item.p95_origin_ms_upper_bound = quantile(.95);
     }
-    return json({ metrics, commerce, http, payment_attempts: events.payment_attempt ?? null, verified_authorizations: events.payment_verified ?? null, settlement_success_events: events.settlement_success ?? null, signed_results_delivered: sum('successful_paid_executions'), confirmed_cash_usdc_atomic: sum('settled_cash_usd_micros'), recognized_revenue_usdc_atomic: sum('recognized_revenue_usd_micros'), unfulfilled_usdc_atomic: sum('unfulfilled_liability_usd_micros'), top_services_by_demand: Object.entries(metrics?.services || {}).map(([service, v]) => ({ service, requests: v.events.request_received || 0 })).sort((a, b) => b.requests - a.requests), top_services_by_revenue: Object.entries(commerce?.services || {}).map(([service, v]) => ({ service, usdc_atomic: v.recognized_revenue_usd_micros })).sort((a, b) => b.usdc_atomic - a.usdc_atomic), discovery_to_delivered_ratio: events.discovery && commerce ? sum('successful_paid_executions') / events.discovery : null, actual_cost_usd: null, net_profit_usd: null, payout_due_usd: null,
+    const totals = await state.storage.get('commerce:v1');
+    return json({ metrics, commerce, http, all_service_paying_wallets: totals?.paying_wallets ?? null, blocked_unpaid_challenges: events.payment_required ?? null, failed_settlements: events.settlement_failed ?? null, payment_attempts: events.payment_attempt ?? null, verified_authorizations: events.payment_verified ?? null, settlement_success_events: events.settlement_success ?? null, signed_results_delivered: sum('successful_paid_executions'), confirmed_cash_usdc_atomic: sum('settled_cash_usd_micros'), recognized_revenue_usdc_atomic: sum('recognized_revenue_usd_micros'), unfulfilled_usdc_atomic: sum('unfulfilled_liability_usd_micros'), top_services_by_demand: Object.entries(metrics?.services || {}).map(([service, v]) => ({ service, requests: v.events.request_received || 0 })).sort((a, b) => b.requests - a.requests), top_services_by_revenue: Object.entries(commerce?.services || {}).map(([service, v]) => ({ service, usdc_atomic: v.recognized_revenue_usd_micros })).sort((a, b) => b.usdc_atomic - a.usdc_atomic), discovery_to_delivered_ratio: events.discovery && commerce ? sum('successful_paid_executions') / events.discovery : null, actual_cost_usd: null, net_profit_usd: null, payout_due_usd: null,
       scope: 'Live services only, since instrumentation. Counters are external production attempts; repeated attempts are not unique buyers. Commerce deduplicates confirmed external settlements and delivered revenue. Synthetic/internal/self-payments are excluded. Legacy internal usd_micros fields denote nominal USDC atomic units, not a fiat conversion. Direct USDC settlement is distinct from Cloudflare payout reports; actual cost and net profit are unknown.' });
   }
   if (path === '/live/response') {
