@@ -18,7 +18,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const [previous, current] = process.argv.slice(2);
   if (!previous || !current) throw new Error('Previous and current source commits are required');
   const files = execFileSync('git', ['diff', '--name-only', '-z', previous, current], { encoding: 'utf8' }).split('\0').filter(Boolean);
-  const result = selectCanary(files, process.env.ROLLBACK_ALLOWED === 'true');
+  // A separately promoted, observed private Worker already matches this exact tree.
+  const verified = process.env.VERIFIED_SETTLEMENT_TREE;
+  if (verified && verified !== execFileSync('git',['rev-parse',current+':apps/settlement-gateway'],{encoding:'utf8'}).trim()) throw Error('Private settlement tree differs from its verified deployment');
+  const remaining = verified ? files.filter(path=>!path.startsWith('apps/settlement-gateway/')) : files;
+  const result = selectCanary(remaining, process.env.ROLLBACK_ALLOWED === 'true');
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(result).map(([key, value]) => `${key}=${value}\n`).join(''));
   console.log(JSON.stringify(result));
 }
