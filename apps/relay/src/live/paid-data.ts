@@ -1,3 +1,4 @@
+import { definitionFor } from '../intelligence/catalog.js';
 import { FEE_SERVICE } from '../financial-authority/fees.js';
 import { normalizeAuthorityFee, authorityFeeSchema, authorityInvoicePreflight, completeAuthorityInvoice } from '../financial-authority/paid.js';
 import type { Env, Row } from './types.ts';
@@ -20,7 +21,7 @@ export const LIVE_PAID = [
   ...OPERATIONS,
   ...PRODUCT_SERVICES,
 ] as const;
-export function livePaidDefinition(id: string): any { return LIVE_PAID.find(d => d.id === id) || (id === EXTRACT_SERVICE.id ? EXTRACT_SERVICE : id === FEE_SERVICE.id ? FEE_SERVICE : null); }
+export function livePaidDefinition(id: string): any { return definitionFor(id) || LIVE_PAID.find(d => d.id === id) || (id === EXTRACT_SERVICE.id ? EXTRACT_SERVICE : id === FEE_SERVICE.id ? FEE_SERVICE : null); }
 export function canonicalFact(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 300 || /[%?#\\\s]/.test(value)) return null;
   const parts = value.split('/'), key = parts.pop() || '';

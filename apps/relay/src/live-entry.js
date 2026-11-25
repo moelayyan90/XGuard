@@ -1,3 +1,5 @@
+import { intelligenceSurface } from './intelligence/surface.js';
+import { ROOT as INTELLIGENCE_ROOT } from './intelligence/discovery.js';
 import { financialAuthorityFetch } from './financial-authority/http.js';
 import { computeFetch } from './compute/gateway.js';
 import { actionFetch } from './action/gateway.js';
@@ -105,6 +107,7 @@ export default {
       if (url.hostname === 'www.xguardgate.com') url.hostname = 'xguardgate.com';
       return Response.redirect(url.href, 308);
     }
+    if (url.pathname === INTELLIGENCE_ROOT || url.pathname.startsWith(INTELLIGENCE_ROOT + '/')) return intelligenceSurface(request, env, ctx);
     return publicAnalyticsResponse(request, await worker.fetch(request, env, ctx));
   },
 };

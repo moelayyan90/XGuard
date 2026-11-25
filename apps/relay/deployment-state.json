@@ -1,5 +1,5 @@
 {
-  "payment_state_version": 6,
+  "payment_state_version": 7,
   "payment_state_write_version": 6,
-  "description": "Writer 6 activation release after reader 6 compatibility has been deployed. Enables new bounded commerce and PayPal checkout orders only when live PayPal merchant credentials, verified receiving identity, signed webhook configuration and PAYPAL_ENABLED=on pass the runtime fail-closed checks. Existing signed receipts, Durable Object state, x402 payment contracts and recovery records remain compatible. Never downgrade to a pre-reader-6 release after new payments; do not claim payment activation or customer revenue until a confirmed live transaction and delivery canary."
+  "description": "Reader 7 understands precomputed intelligence delivery and its recovery. Writer 6 preserves the existing production rollback boundary. Advance to writer 7 only after this reader is deployed; a valid external settlement and delivered receipt establish a sale."
 }

@@ -24,6 +24,8 @@ import { executeSellerUpstream, sellerDeliveryResponse } from "./seller-upstream
 import app from "./product-entry.js";
 export * from "./product-entry.js";
 
+import { BASE as INTEL_BASE, definitionFor, amountFor } from "./intelligence/catalog.js";
+import { prepareIntelligence } from "./intelligence/engine.js";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import {
@@ -254,11 +256,12 @@ export function gatewayConfig(env, testnet = false, outcomeInput = null) {
   const payTo = String(testnet ? env.XGUARD_TESTNET_PAY_TO || "" : env.XGUARD_TREASURY_USDC_ADDRESS || "");
   const marketplace = outcomeInput?.marketplace;
   const live = livePaidDefinition(outcomeInput?.capability);
-  const amount = live ? live.amount : marketplace ? marketplace.split.gross_atomic : outcomeInput ? outcomeAmount(env, outcomeInput.capability) : String(testnet ? env.XGUARD_TESTNET_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC : env.XGUARD_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC);
+  const intel = definitionFor(outcomeInput?.capability);
+  const amount = intel ? amountFor(outcomeInput) : live ? live.amount : marketplace ? marketplace.split.gross_atomic : outcomeInput ? outcomeAmount(env, outcomeInput.capability) : String(testnet ? env.XGUARD_TESTNET_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC : env.XGUARD_WEB_FETCH_PRICE_ATOMIC || DEFAULT_PRICE_ATOMIC);
   const facilitator = String(testnet ? env.XGUARD_TESTNET_FACILITATOR || "" : env.XGUARD_PAID_FACILITATOR || env.X402_BASE_PRIMARY || "").replace(/\/+$/, "");
   const marginMicros = outcomeInput ? Number(amount) : Number(testnet ? env.XGUARD_TESTNET_MARGIN_USD_MICROS || amount : env.XGUARD_MARGIN_USD_MICROS || amount);
   const railValidation = validatePaymentRailConfig({ environment, network, asset, payTo, amount, facilitator });
-  const budgetEnv = live ? { ...env, XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: String(env.XGUARD_LIVE_PAID_COST_BUDGET_USD_MICROS || '1500') } : outcomeInput ? { ...env, XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: String(Number(env.XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS) * 6) } : env;
+  const budgetEnv = intel ? { ...env, XGUARD_MIN_CONTRIBUTION_BPS: "8000" } : live ? { ...env, XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: String(env.XGUARD_LIVE_PAID_COST_BUDGET_USD_MICROS || '1500') } : outcomeInput ? { ...env, XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS: String(Number(env.XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS) * 6) } : env;
   const economics = pricingEconomics(budgetEnv, Number(marketplace?.split.platform_fee_atomic ?? amount));
   const economicsValid = Number.isSafeInteger(marginMicros) && marginMicros >= 0 && marginMicros === Number(amount) && economics.available;
   const payoutReady = !marketplace || (!testnet && sellerPayoutConfiguration(env, marketplace.payout_destination, marketplace.split.seller_proceeds_atomic).ready);
@@ -294,7 +297,7 @@ export function gatewayConfig(env, testnet = false, outcomeInput = null) {
     upstreamCostMaxUsdMicros: 0,
     marginUsdMicros: marginMicros,
     customerPriceUsdMicros: Number(amount),
-    resource: live ? `${PAID_BASE}/${live.route}` : marketplace ? marketplace.resource : outcomeInput ? `${API}/v1/execute` : `${API}/v1/tools/web.fetch${testnet ? "/testnet" : ""}`,
+    resource: intel ? INTEL_BASE + "/" + intel.route : live ? `${PAID_BASE}/${live.route}` : marketplace ? marketplace.resource : outcomeInput ? `${API}/v1/execute` : `${API}/v1/tools/web.fetch${testnet ? "/testnet" : ""}`,
   };
 }
 
@@ -857,9 +860,9 @@ export async function issueQuote(env, raw, id, observation = {}, outcomeInput = 
     aud: config.resource,
     quote_id: quoteId,
     payment_identifier: paymentIdentifier,
-    payment_flow: "upfront",
+    payment_flow: definitionFor(input.capability) ? "prepare_before_settlement" : "upfront",
     tool: outcomeInput ? `xguard.${outcomeInput.capability}` : TOOL,
-    input,
+    input: definitionFor(input.capability) ? { capability: input.capability } : input,
     input_digest: inputDigest,
     scheme: "exact",
     payment_environment: config.environment,
@@ -1040,7 +1043,7 @@ async function syncCommerce(state, env, record) {
   try {
     await state.storage.put("commerce_pending", true);
     const financials = executionEconomics(record);
-    const response = await postStub(gatewayIndex(env), "/index/commerce", { operation_hash: record.authorization_fingerprint, capability: record.input?.capability, payer_hash: await sha256(`${record.network}:${String(record.payer || "").toLowerCase()}`), financials, status: record.credit_redeemed ? "succeeded" : record.status });
+    const response = await postStub(gatewayIndex(env), "/index/commerce", { operation_hash: record.authorization_fingerprint, capability: record.input?.capability, ...(definitionFor(record.input?.capability) ? {transaction:record.transaction,network:record.network,transport:record.transport}:{}), payer_hash: await sha256(`${record.network}:${String(record.payer || "").toLowerCase()}`), financials, status: record.credit_redeemed ? "succeeded" : record.status });
     if (!response.ok) throw new Error("commerce_sync_failed");
     await state.storage.delete("commerce_pending");
     await state.storage.delete("commerce_sync_attempts");
@@ -1300,7 +1303,10 @@ export class PaidGatewayState {
       await this.state.storage.transaction(async tx => {
         const existing = await tx.get("operation");
         if (!existing || existing.status !== "verified" || existing.settlement_reserved_at) { output = doJson({ error: "settlement_already_reserved_or_unverified" }, 409); return; }
-        const record = { ...advanceLifecycle(advanceLifecycle(existing, "SETTLEMENT_RESERVED"), "SETTLEMENT_PENDING"), settlement_reserved_at: new Date().toISOString() };
+        if (definitionFor(existing.input?.capability) && (!body.prepared || body.prepared.status !== 200 || !body.prepared.body_sha256 || !body.prepared.data)) {
+          output = doJson({ error: "prepared_result_required" }, 409); return;
+        }
+        const record = { ...advanceLifecycle(advanceLifecycle(existing, "SETTLEMENT_RESERVED"), "SETTLEMENT_PENDING"), settlement_reserved_at: new Date().toISOString(), ...(body.prepared ? { prepared_intelligence: body.prepared } : {}) };
         await tx.put("operation", record);
         output = doJson({ ok: true, record });
       });
@@ -1326,7 +1332,7 @@ export class PaidGatewayState {
       if (existing.status === "succeeded") return doJson({ ok: true, replay: true, record: existing });
       if (!new Set(["settled", "credited"]).has(existing.status)) return doJson({ error: "operation_not_settled", status: existing.status }, 409);
       const activeUntil = Date.parse(existing.execution_claim?.expires_at || "");
-      if (existing.lifecycle_version === 1 && existing.execution_claim) return doJson({ error: "execution_outcome_unknown", retry_with_same_key_only: true }, 409);
+      if (existing.lifecycle_version === 1 && existing.execution_claim && !existing.prepared_intelligence) return doJson({ error: "execution_outcome_unknown", retry_with_same_key_only: true }, 409);
       if (Number.isFinite(activeUntil) && activeUntil > Date.now()) return doJson({ error: "execution_in_progress", status: existing.status }, 409);
       const claim = { token: crypto.randomUUID(), claimed_at: new Date().toISOString(), expires_at: new Date(Date.now() + 60000).toISOString() };
       const record = { ...advanceLifecycle(existing, "EXECUTION_STARTED"), execution_claim: claim, execution_attempts: Number(existing.execution_attempts || 0) + 1, updated_at: claim.claimed_at };
@@ -1350,6 +1356,7 @@ export class PaidGatewayState {
         succeeded_at: new Date().toISOString(),
       });
       delete record.payment_payload;
+      delete record.prepared_intelligence;
       await this.state.storage.put("operation", record);
       await syncCommerce(this.state, this.env, record);
       return doJson({ ok: true, record });
@@ -1527,7 +1534,7 @@ async function paymentRequired(env, config, quoteToken, quote, id, reason = "pay
   // Legacy outcomes use /v1/execute; Live examples follow their isolated contract.
   const discovery = outcome ? declareDiscoveryExtension({
     method: "POST", bodyType: "json", input: live ? live.example : { ...outcome.example, capability: outcome.id },
-    inputSchema: live ? paidInputSchema(live.route) : { ...EXECUTE_SCHEMA, required: ["capability"], properties: { ...EXECUTE_SCHEMA.properties, capability: { const: outcome.id } } },
+    inputSchema: live ? (definitionFor(live.id)?.schema || paidInputSchema(live.route)) : { ...EXECUTE_SCHEMA, required: ["capability"], properties: { ...EXECUTE_SCHEMA.properties, capability: { const: outcome.id } } },
     output: { schema: live ? paidResultSchema : RESULT_SCHEMA, example: live ? {
       ok: true, result: { example_only: true }, receipt: { example_only: true },
       settlement: { example_only: true }, proofrail: { example_only: true },
@@ -1785,7 +1792,10 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
   await sellerStage(env, record, "upstream_execution_started");
   let result;
   try {
-    result = livePaidDefinition(record.input?.capability) ? await executeLivePaid(record.input, env, performWebFetch, { payment_identifier: record.payment_identifier, ...(record.input?.capability === FEE_SERVICE.id ? { authority_payment: { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, chain_verified: record.chain_verified === true, amount_atomic: record.amount, network: record.network, asset: record.asset, payee: record.pay_to, transaction: record.transaction } } : {}) }) : record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
+    if (definitionFor(record.input?.capability)) {
+      if (!record.chain_verified || !record.prepared_intelligence) return error("intelligence_delivery_pending", 503, record.request_id, { retryable: true });
+      result = record.prepared_intelligence;
+    } else result = livePaidDefinition(record.input?.capability) ? await executeLivePaid(record.input, env, performWebFetch, { payment_identifier: record.payment_identifier, ...(record.input?.capability === FEE_SERVICE.id ? { authority_payment: { payment_identifier: record.payment_identifier, authorization_fingerprint: record.authorization_fingerprint, chain_verified: record.chain_verified === true, amount_atomic: record.amount, network: record.network, asset: record.asset, payee: record.pay_to, transaction: record.transaction } } : {}) }) : record.input?.marketplace ? await executeSellerUpstream(record.input, env, owned => executeOutcome(owned, env, performWebFetch)) : record.input?.capability ? await executeOutcome(record.input, env, performWebFetch, (event, outcome) => observeStage(env, event, record.request_id, { traffic_class: record.traffic_class, environment: record.environment, tool, outcome })) : await performWebFetch(record.input);
     if (result.status >= 500) throw Object.assign(new Error("upstream_failed"), { code: "upstream_failed" });
   } catch (cause) {
     const code = cause?.code || "upstream_failed";
@@ -1826,6 +1836,12 @@ async function executeSettledOperation({ stub, env, record, settlement, observat
 
 async function reconcileStoredOperation(state, env) {
   let record = await state.storage.get("operation");
+  if (record?.status === "settled" && record.chain_verified && record.prepared_intelligence) {
+    const stub = { fetch: (url, init) => new PaidGatewayState(state, env).fetch(new Request(url, init)) };
+    await state.storage.setAlarm(Date.now() + 65000);
+    await executeSettledOperation({ stub, env, record, settlement: record.settlement, resumed: true });
+    return;
+  }
   if (!record || record.status !== "ambiguous" || !record.payment_payload || !record.requirements) return;
   const attempts = Number(record.reconciliation_attempts || 0);
   if (attempts >= MAX_RECONCILIATION_ATTEMPTS) {
@@ -1873,7 +1889,7 @@ async function reconcileStoredOperation(state, env) {
   await observeStage(env, "settlement_success", record.request_id, {
     traffic_class: record.traffic_class,
     transport: record.transport || "reconcile",
-    tool: record.input?.capability === FEE_SERVICE.id ? record.tool : TOOL,
+    tool: record.input?.capability === FEE_SERVICE.id || definitionFor(record.input?.capability) ? record.tool : TOOL,
     network: record.network,
     amount_atomic: record.amount,
     environment: record.environment,
@@ -1951,7 +1967,8 @@ async function useExecutionCredit(request, env, quote, config, input, id) {
 
 export async function handlePaidWebFetch(request, env, id, rawInput, forceTestnet = false, transport = "http", outcomeInput = null) {
   const tool = outcomeInput ? `xguard.${outcomeInput.capability}` : TOOL;
-  const requireChainEvidence = transport === "mcp-live" || outcomeInput?.capability === FEE_SERVICE.id;
+  const intel = definitionFor(outcomeInput?.capability);
+  const requireChainEvidence = Boolean(intel) || transport === "mcp-live" || outcomeInput?.capability === FEE_SERVICE.id;
   const observation = { trafficClass: outcomeInput?.capability === FEE_SERVICE.id ? "synthetic" : trafficClass(request), transport, ...(requireChainEvidence ? { resource: request.url } : {}) };
   await observeStage(env, "request_received", id, { traffic_class: observation.trafficClass, transport, tool, environment: forceTestnet ? "test" : "production" });
   if (!env.PROOF_AUTHORITY || !env.PAID_GATEWAY) return error("payment_not_configured", 503, id);
@@ -1960,7 +1977,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   const normalizedInput = outcomeInput ? { ok: true, input: outcomeInput } : normalizeFetchInputDetailed(rawInput);
   if (!normalizedInput.ok) return validationError("invalid_input", id, normalizedInput.issues);
   const input = normalizedInput.input;
-  if (livePaidDefinition(input.capability)) {
+  if (!intel && livePaidDefinition(input.capability)) {
     try { await livePaidCapacity(env, input); }
     catch (cause) { return error(cause.code || 'live_data_unavailable', cause.status || 503, id, { retryable: cause.status !== 404 }); }
   }
@@ -2059,6 +2076,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
   }
   const begin = await postStub(stub, "/operation/begin", {
     lifecycle_version: 1,
+    ...(intel ? { require_finality: true } : {}),
     request_id: reserve.body.record.request_id || id,
     payment_identifier: paymentIdentifier,
     authorization_fingerprint: authorizationFingerprint,
@@ -2147,6 +2165,15 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
       return error("seller_idempotency_conflict", 409, id, { details: { new_payment_required: false, retry_same_authorization_only: true } });
     }
   }
+  let prepared;
+  if (intel) {
+    try { prepared = await prepareIntelligence(input, env); }
+    catch {
+      await postStub(stub, "/operation/transition", { status: "failed", patch: { failure_stage: "prepare", failure_reason: "intelligence_result_unavailable" } });
+      await postStub(gatewayIndex(env), "/index/finalize", { payment_identifier: paymentIdentifier, authorization_fingerprint: authorizationFingerprint, status: "failed" });
+      return error("intelligence_result_unavailable", 503, id, { details: { settled: false, charge_atomic: "0" } });
+    }
+  }
   if (livePaidDefinition(input.capability)) {
     const reserved = await postStub(gatewayIndex(env), '/live/reserve-request', { key_hash: await sha256(`${input.capability}:${identity.from}:${input.idempotency_key}`), operation_hash: authorizationFingerprint, request_digest: digest });
     if (!reserved.ok) {
@@ -2164,7 +2191,7 @@ export async function handlePaidWebFetch(request, env, id, rawInput, forceTestne
       return error(cause.code || 'invoice_already_claimed', cause.status || 409, id, { details: { new_payment_required: false } });
     }
   }
-  const reservation = await postStub(stub, "/operation/reserve-settlement", {});
+  const reservation = await postStub(stub, "/operation/reserve-settlement", intel ? { prepared } : {});
   if (!reservation.ok) return error("settlement_already_reserved", 409, id);
   await observeStage(env, "payment_verified", id, { traffic_class: observation.trafficClass, transport, tool, network: config.network, amount_atomic: config.amount, environment: config.environment, payment_state: "verified" });
 
@@ -2672,7 +2699,7 @@ export async function recoverOutcome(env, paymentIdentifier, quoteToken, id) {
   const quote = await verifyJws(env, quoteToken);
   const sellerQuote = quote?.input?.marketplace && quote.aud === quote.input.marketplace.resource && quote.aud.startsWith(`${API}/p/`);
   const liveQuote = livePaidDefinition(quote?.input?.capability);
-  const validLiveQuote = liveQuote && quote.aud === `${PAID_BASE}/${liveQuote.route}`;
+  const validLiveQuote = liveQuote && quote.aud === (definitionFor(liveQuote.id) ? INTEL_BASE : PAID_BASE) + "/" + liveQuote.route;
   if (!quote || quote.typ !== "xguard-price-quote" || quote.iss !== API || (quote.aud !== `${API}/v1/execute` && !sellerQuote && !validLiveQuote) || quote.payment_identifier !== paymentIdentifier) return error("quote_invalid", 403, id);
   const lookup = await postStub(gatewayIndex(env), "/index/lookup", { payment_identifier: paymentIdentifier });
   if (!lookup.ok) return error("not_found", 404, id);
