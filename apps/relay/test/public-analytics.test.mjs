@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
-import app from '../src/live-entry.js';
+import app from '../src/live-handler.js';
 import { publicAnalyticsResponse } from '../src/public-analytics.js';
 import { environment, seed } from './live-harness.mjs';
 

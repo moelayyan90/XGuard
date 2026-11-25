@@ -1,3 +1,4 @@
+import { existingObligation } from './obligations.js';
 import { sourceSpec } from '../live/adapters.ts';
 import { canonicalFact } from '../live/paid-data.ts';
 import { BASE, routeFor, fits, amountFor, price } from './catalog.js';
@@ -20,7 +21,7 @@ function final(request,res,env) {
   const h = new Headers(res.headers);
   h.set('cache-control','private, no-store'); h.set('cdn-cache-control','no-store'); h.set('cloudflare-cdn-cache-control','no-store');
   h.set('access-control-allow-origin','*'); h.set('access-control-allow-methods','GET, HEAD, POST, OPTIONS');
-  h.set('access-control-allow-headers','Content-Type, Accept, Idempotency-Key, Payment-Signature, X-XGuard-Quote, MCP-Protocol-Version, A2A-Version');
+  h.set('access-control-allow-headers','Content-Type, Accept, Idempotency-Key, Payment-Signature, Authorization, X-XGuard-Credit, X-XGuard-Checkout-Token, X-XGuard-Quote, MCP-Protocol-Version, A2A-Version');
   h.set('access-control-expose-headers','Payment-Required, Payment-Response, X-XGuard-Quote, X-XGuard-Payment-Identifier, Idempotency-Key, X-XGuard-Worker-Version-Tag, X-XGuard-Intelligence-Writer');
   h.set('x-content-type-options','nosniff'); h.set('referrer-policy','no-referrer');
   if (env.CF_VERSION_METADATA?.tag) h.set('x-xguard-worker-version-tag',env.CF_VERSION_METADATA.tag);
@@ -127,9 +128,8 @@ async function dispatch(req,env,ctx,legacy) {
     if (path !== '/admin/login' && !await adminIdentity(req,env)) return error('owner_authentication_required',401);
     return legacy(req,env,ctx);
   }
-  if (legacy && path === '/v1/checkout/webhooks/paypal' && req.method === 'POST') return legacy(req,env,ctx);
-  if (legacy && isRead(req) && path === '/witness/verifier-key') return legacy(req,env,ctx);
-  if (legacy && isRead(req) && /^\/v1\/checkout\/orders\/[a-zA-Z0-9_-]+(?:\/(?:receipt|result))?$/.test(path)) return legacy(req,env,ctx);
+  const obligation = await existingObligation(req,env,ctx);
+  if (obligation) return obligation;
   if (isRead(req)) {
     const alias = path.match(/^\/(live|fact|history|changes|evidence)\/(.+)$/);
     if (alias) {

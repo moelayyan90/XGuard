@@ -6,6 +6,7 @@ export const toolName = d => 'xguard.' + d.route.replaceAll('-','_');
 export function catalog() {
   return { name:TITLE, price:price(), services:SERVICES.map(d => ({ id:d.route, name:d.name, description:d.description, method:'POST', endpoint:BASE+'/'+d.route, input_schema:d.schema })),
     payment:{ protocol:'x402 v2 exact', network:'eip155:8453', asset:'USDC', first_request:'POST the input. Preserve Idempotency-Key and X-XGuard-Quote from HTTP 402.', retry:'Sign the exact requirements and retry the identical operation with Payment-Signature. Recover a pending result with the original quote.', recovery:BASE+'/results/{payment_identifier}', public_key:BASE+'/proof-key' },
+    existing_witness_agreement:{origin:'gblin.digital/receipts-log',scope:'Previously agreed C2SP witnessing. A new paid rate requires the partner’s acceptance.',discussion:'https://github.com/moelayyan90/XGuard/issues/211'},
     transports:{ mcp:MCP, a2a:A2A, openapi:BASE+'/openapi.json', setup:BASE+'/install' } };
 }
 export function connections() {

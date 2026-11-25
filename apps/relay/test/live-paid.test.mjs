@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { encodePaymentSignatureHeader } from '@x402/core/http';
 import { validateDiscoveryExtension } from '@x402/extensions/bazaar';
-import app from '../src/live-entry.js';
+import app from '../src/live-handler.js';
 import live from '../src/live/worker.ts';
 import { PaidGatewayState, ProofAuthority, livePaidState } from '../src/paid-agent-entry.js';
 import { environment, seed } from './live-harness.mjs';

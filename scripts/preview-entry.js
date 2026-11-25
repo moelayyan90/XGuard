@@ -1,6 +1,6 @@
 // Local browser QA only. The production Wrangler entry remains unchanged.
 export * from '../apps/relay/src/live-entry.js';
-import app from '../apps/relay/src/live-entry.js';
+import app from '../apps/relay/src/live-handler.js';
 export default {
   ...app,
   async fetch(request, env, ctx) {
