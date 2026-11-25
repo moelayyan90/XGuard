@@ -1,9 +1,11 @@
-import previous from './live-entry.js';
+import XGuard from './live-entry.js';
+import handler from './live-handler.js';
 import { intelligenceSurface } from './intelligence/surface.js';
 
-// Keep deployed object classes and alarms readable by both sides of the cutover.
 export * from './live-entry.js';
-export default {
-  scheduled: previous.scheduled,
-  fetch(request,env,ctx) { return intelligenceSurface(request,env,ctx,previous.fetch); },
-};
+
+export default class PaidXGuard extends XGuard {
+  fetch(request) {
+    return intelligenceSurface(request, this.env, this.ctx, handler.fetch);
+  }
+}

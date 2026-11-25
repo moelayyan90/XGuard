@@ -23,6 +23,10 @@ const fetcher=async(url,init)=>mf.dispatchFetch(url instanceof Request?url.url:S
 const headers={'content-type':'application/json','x-xguard-traffic-class':'synthetic'};
 try {
   await mf.ready;
+  const bound=await mf.getWorker('paid-only-runtime');
+  assert.equal((await bound.readSettlementFact('all-records')).status,400);
+  assert.equal((await fetcher(origin+'/readSettlementFact')).status,404);
+  assert.equal((await fetcher('https://xguard-origin.internal/fact/npm/react/latest-version')).status,421);
   const docs={openapi:'3.1.0',paths:{}};
   for(const d of SERVICES) {
     const q=d.route==='breaking-changes'?{before:docs,after:docs}:d.route==='evidence'?{entity:'npm/react',observation:'immutable-record'}:d.example;

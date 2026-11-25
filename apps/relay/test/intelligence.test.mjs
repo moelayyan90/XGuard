@@ -123,3 +123,29 @@ test('dependency evidence distinguishes a yanked PyPI release and a linked archi
   assert.equal(result.data.maintenance,'publisher_linked_repository_archived');
   assert.equal(result.data.advisory.verdict,'no_matching_advisory_reported');
 });
+
+test('the retained witness agreement uses only the pinned production log and published monitor', async () => {
+  const { originHashHex, PINNED_LOGS } = await import('../src/c2sp-witness.js');
+  const origin = 'gblin.digital/receipts-log';
+  const hash = await originHashHex(origin);
+  assert.deepEqual(Object.keys(PINNED_LOGS), [origin]);
+  const forwarded = [];
+  const env = { C2SP_WITNESS: {
+    idFromName: name => { assert.equal(name, 'xguard-c2sp-witness-v1'); return name; },
+    get: () => ({ fetch: async request => {
+      forwarded.push([new URL(request.url).pathname, request.method]);
+      return new Response('existing C2SP route');
+    } }),
+  } };
+  for (const path of ['/witness','/witness/metadata','/witness/verifier-key','/witness/'+hash+'/status','/witness/'+hash+'/checkpoint']) {
+    assert.equal((await get(path, {method:'HEAD'}, env)).status, 200, path);
+  }
+  const post = await get('/witness/add-checkpoint',{method:'POST',body:'checkpoint'},env);
+  assert.equal(post.status, 200);
+  assert.equal((await get('/witness/'+'0'.repeat(64)+'/checkpoint',{},env)).status, 503);
+  assert.equal((await get('/witness/add-checkpoint',{method:'GET'},env)).status, 503);
+  assert.equal(forwarded.length, 6);
+  assert.equal((await get('/v1/checkout/orders/xgo_'+'0'.repeat(40))).status,401);
+  assert.equal((await get('/v1/compute/receipts/xcq_'+'0'.repeat(32))).status,404);
+  assert.equal((await get('/v1/tasks/xgtask_'+'0'.repeat(32))).status,404);
+});

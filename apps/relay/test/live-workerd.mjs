@@ -34,6 +34,13 @@ try {
     throw new Error('Durable collector did not publish the expected fixture');
   };
   const first=await waitForValue('1.0.0'); assert.equal(first.verification,'VERIFIED');
+  const bound = await mf.getWorker('live-test');
+  const privateFact = await bound.readSettlementFact('npm/react/latest-version');
+  assert.equal(privateFact.status, 200);
+  const privateResult = await privateFact.json();
+  assert.equal(privateResult.fact.current_value, '1.0.0');
+  assert.equal(privateResult.fact.verification, 'VERIFIED');
+  assert.equal((await bound.readSettlementFact('https://example.com/')).status, 400);
   fixtureVersion='2.0.0'; await rpc('refresh',{id:'npm/react'});
   const second=await waitForValue('2.0.0'); assert.equal(second.previous_value,'1.0.0');
   const history=await rpc('history',{id:'npm/react/latest-version',page:1}); assert.equal(history.length,2);

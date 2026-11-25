@@ -1,113 +1,26 @@
-import { intelligenceSurface } from './intelligence/surface.js';
-import { ROOT as INTELLIGENCE_ROOT } from './intelligence/discovery.js';
-import { financialAuthorityFetch } from './financial-authority/http.js';
-import { computeFetch } from './compute/gateway.js';
-import { actionFetch } from './action/gateway.js';
-import { commerceFetch } from './business/http.js';
-import { glamaOwnershipFetch } from './glama-ownership.js';
-import { publicAnalyticsResponse } from './public-analytics.js';
-import { checkoutPreviewFetch } from './action/checkout-preview.js';
-// Existing Durable Object classes must remain exported so old durable records,
-// alarms, receipts and financial recovery state are preserved across deployment.
-export * from './canonical-entry.js';
-export { LiveShard, LiveControl } from './live/objects.ts';
-export { C2SPWitness } from './c2sp-witness.js';
+import { WorkerEntrypoint } from 'cloudflare:workers';
+import handler from './live-handler.js';
 import live from './live/worker.ts';
-import { A2A_CARD_PATH, A2A_PATH, liveA2aFetch, liveAgentCard } from './live/a2a.ts';
-import { liveMcpFetch } from './live/mcp.ts';
-import { recoverOutcome, performWebFetch } from './paid-agent-entry.js';
-import { livePaidFetch } from './live-paid-entry.js';
-import { facilitatorSurface } from './facilitator-surface.js';
-import { networkFetch } from './network-entry.js';
-import { refreshCapabilityGraph } from './network/engine.ts';
-import { c2spWitnessRoute } from './c2sp-witness.js';
-const worker = {
-  ...live,
-  async scheduled(event, env, ctx) {
-    await live.scheduled(event, env, ctx);
-    ctx.waitUntil(refreshCapabilityGraph(env, performWebFetch).catch(() => console.warn(JSON.stringify({event:'network_graph_refresh_unavailable'}))));
-  },
-  async fetch(request, env, ctx) {
-    const preview = await checkoutPreviewFetch(request, env);
-    if (preview) return preview;
-    const url = new URL(request.url);
-    const path = url.pathname;
-    // Public ownership proof must run before product routing, auth and the
-    // retired /.well-known/* fallback, without touching storage or upstreams.
-    const glama = glamaOwnershipFetch(request, env);
-    if (glama) return glama;
-    const commerce = await commerceFetch(request, env);
-    if (commerce) return commerce;
-    const action = await actionFetch(request, env);
-    if (action) return action;
-    if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
-      const compute = await computeFetch(request, env);
-      if (compute) return compute;
-    }
-    const authority = await financialAuthorityFetch(request, env);
-    if (authority) return authority;
-    const witness = await c2spWitnessRoute(request, env);
-    if (witness) {
-      const headers = new Headers(witness.headers);
-      if (env.CF_VERSION_METADATA?.id) headers.set('x-xguard-worker-version-id', env.CF_VERSION_METADATA.id);
-      if (env.CF_VERSION_METADATA?.tag) headers.set('x-xguard-worker-version-tag', env.CF_VERSION_METADATA.tag);
-      return new Response(witness.body, { status: witness.status, headers });
-    }
-    const network = await networkFetch(request, env, ctx);
-    if (network) return network;
-    if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
-      const facilitator = await facilitatorSurface(request, env);
-      if (facilitator) {
-        const headers = new Headers(facilitator.headers);
-        if (env.CF_VERSION_METADATA?.id) headers.set('x-xguard-worker-version-id', env.CF_VERSION_METADATA.id);
-        if (env.CF_VERSION_METADATA?.tag) headers.set('x-xguard-worker-version-tag', env.CF_VERSION_METADATA.tag);
-        return new Response(facilitator.body, { status: facilitator.status, headers });
-      }
-    }
-    const readFact = factRequest => live.fetch(factRequest, env, ctx);
-    if (['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
-      if ([A2A_CARD_PATH, A2A_PATH + A2A_CARD_PATH].includes(path) && ['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return liveAgentCard(request, env);
-      if (path === A2A_PATH) return liveA2aFetch(request, env, readFact);
-    }
-    if (path === '/mcp' && ['xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
-      if (['GET', 'HEAD', 'POST', 'OPTIONS', 'DELETE'].includes(request.method)) return liveMcpFetch(request, env, readFact);
-    }
-    if (path === '/api/gateway/v1' || path.startsWith('/api/gateway/v1/')) {
-      if (['www.xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
-        // The x402 authorization is bound to the canonical resource.
-        return Response.redirect('https://xguardgate.com' + path + url.search, 308);
-      }
-      if (!env.XGUARD_SETTLEMENT) {
-        return Response.json({ error: 'gateway_unavailable' }, { status: 503, headers: { 'cache-control': 'private, no-store' } });
-      }
-      try {
-        return await env.XGUARD_SETTLEMENT.fetch(request);
-      } catch {
-        return Response.json({ error: 'gateway_unavailable' }, { status: 503, headers: { 'cache-control': 'private, no-store' } });
-      }
-    }
-    if (/^\/api\/paid\/v1(?:\/|$)/.test(path)) return livePaidFetch(request, env, ctx);
-    // Preserve access to results already paid for, without new execution or settlement.
-    const match = path.match(/^\/v1\/(?:marketplace\/)?results\/(pay_[A-Za-z0-9_-]+)$/);
-    if (match && ['GET', 'HEAD'].includes(request.method)) {
-      const response = await recoverOutcome(env, match[1], request.headers.get('x-xguard-quote') || '', `xgr_${crypto.randomUUID().replaceAll('-', '')}`);
-      const headers = new Headers(response.headers);
-      headers.set('cache-control', 'no-store'); headers.set('x-robots-tag', 'noindex');
-      return new Response(request.method === 'HEAD' ? null : response.body, { status: response.status, headers });
-    }
-    return live.fetch(request, env, ctx);
-  },
-};
-export default {
-  ...worker,
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    if (url.protocol === 'http:' && ['xguardgate.com', 'www.xguardgate.com', 'api.xguardgate.com'].includes(url.hostname)) {
-      url.protocol = 'https:';
-      if (url.hostname === 'www.xguardgate.com') url.hostname = 'xguardgate.com';
-      return Response.redirect(url.href, 308);
-    }
-    if (url.pathname === INTELLIGENCE_ROOT || url.pathname.startsWith(INTELLIGENCE_ROOT + '/')) return intelligenceSurface(request, env, ctx);
-    return publicAnalyticsResponse(request, await worker.fetch(request, env, ctx));
-  },
-};
+import { canonicalFact } from './live/paid-data.ts';
+
+export * from './live-handler.js';
+
+export default class XGuard extends WorkerEntrypoint {
+  fetch(request) {
+    return handler.fetch(request, this.env, this.ctx);
+  }
+
+  scheduled(event) {
+    return handler.scheduled(event, this.env, this.ctx);
+  }
+
+  // Workers RPC is available only through an account-owned service binding.
+  // The caller can read one canonical fact. It cannot supply an origin or headers.
+  readSettlementFact(id) {
+    if (!canonicalFact(id)) return Response.json({error: 'invalid_fact'}, {status: 400});
+    const request = new Request('https://xguard-origin.internal/fact/' + id + '?format=json', {
+      headers: {accept: 'application/json'},
+    });
+    return live.fetch(request, this.env, this.ctx);
+  }
+}
