@@ -49,8 +49,8 @@ async function advertisedKinds(env, url, fetchImpl) {
   const kinds = (async () => {
     try {
       const response = await fetchImpl(url + '/supported', {
-        headers: { accept: 'application/json' }, credentials: 'omit',
-        redirect: 'error', signal: AbortSignal.timeout(3000),
+        headers: { accept: 'application/json' },
+        redirect: 'manual', signal: AbortSignal.timeout(3000),
       });
       if (!response.ok) return [];
       const bytes = await readBoundedBody(response.body, 131072);

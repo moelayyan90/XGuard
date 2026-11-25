@@ -81,7 +81,8 @@ test('new payments select an advertised compatible rail during a primary outage'
   const kind = { x402Version: 2, scheme: 'exact', network: config.network };
   const fetchImpl = async (url, init) => {
     calls.push(url);
-    assert.equal(init.credentials, 'omit');
+    assert.deepEqual(Object.keys(init.headers), ['accept']);
+    assert.equal(init.redirect, 'manual');
     assert.equal(url.endsWith('/supported'), true);
     return url.startsWith(fallback + '/') ? Response.json({ kinds: [kind] }) : new Response(null, { status: 503 });
   };
