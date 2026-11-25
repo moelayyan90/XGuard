@@ -1,5 +1,5 @@
 {
   "payment_state_version": 7,
-  "payment_state_write_version": 6,
-  "description": "Reader 7 understands precomputed intelligence delivery and its recovery. Writer 6 preserves the existing production rollback boundary. Advance to writer 7 only after this reader is deployed; a valid external settlement and delivered receipt establish a sale."
+  "payment_state_write_version": 7,
+  "description": "Writer 7 stores privately prepared intelligence results before settlement. Roll back only to a reader that supports payment state 7 or later."
 }

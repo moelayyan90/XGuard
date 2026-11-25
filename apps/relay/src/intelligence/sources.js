@@ -31,21 +31,66 @@ async function cached(key, load) {
   return fetchData;
 }
 async function read(url, fetcher, init, limit) {
-  const r = await fetcher(url,{ ...init, redirect: 'error', signal: AbortSignal.timeout(6000) });
+  const r = await fetcher(url,{ ...init, redirect: 'manual', signal: AbortSignal.timeout(6000) });
   if (!r.ok) throw new Error('official_source_unavailable');
   const body = await boundedBody(r,limit);
   return { body, verified_at: new Date().toISOString(), source: url };
 }
+function githubRepository(raw) {
+  if (typeof raw !== 'string') return null;
+  const match = raw.match(/^(?:git\+)?https:\/\/github\.com\/([a-z\d][a-z\d-]{0,38})\/([a-z\d_.-]{1,100})\/?$/i);
+  if (!match || match[2].includes('..')) return null;
+  const name = match[2].replace(/\.git$/i, '');
+  return name ? match[1] + '/' + name : null;
+}
+async function archiveStatus(repository,fetcher) {
+  if (!repository) return null;
+  const url = 'https://api.github.com/repos/' + repository;
+  try {
+    return await cached(url,async () => {
+      const { body, ...evidence } = await read(url,fetcher,{headers:{accept:'application/vnd.github+json','user-agent':'XGuard-Dependency-Intelligence'}},100000);
+      const repo = JSON.parse(body);
+      if (repo.full_name?.toLowerCase() !== repository.toLowerCase() || typeof repo.archived !== 'boolean') throw new Error('repository_identity_mismatch');
+      return { archived:repo.archived, ...evidence };
+    });
+  } catch { return null; }
+}
 export async function npmRelease(name,version,fetcher) {
-  if (!validNpm(name,version)) throw new Error('invalid_npm_release');
+  if (version === 'latest' ? !npmName.test(name) : !validNpm(name,version)) throw new Error('invalid_npm_release');
   const url = 'https://registry.npmjs.org/' + encodeURIComponent(name) + '/' + encodeURIComponent(version);
   return cached(url,async () => {
     const { body, ...evidence } = await read(url,fetcher,{ headers:{ accept:'application/json' } },400000);
     const p = JSON.parse(body);
-    if (p.name !== name || p.version !== version) throw new Error('registry_identity_mismatch');
-    return { ...evidence, deprecated: typeof p.deprecated === 'string' ? p.deprecated.slice(0,400) : null,
-      engines: p.engines || {}, peers: p.peerDependencies || {} };
+    if (p.name !== name || !validNpm(name,p.version) || (version !== 'latest' && p.version !== version)) throw new Error('registry_identity_mismatch');
+    return { ...evidence, version:p.version, deprecated:typeof p.deprecated === 'string' ? p.deprecated.slice(0,400) : null,
+      repository:githubRepository(typeof p.repository === 'string' ? p.repository : p.repository?.url),
+      engines:p.engines || {}, peers:p.peerDependencies || {} };
   });
+}
+export async function packageHealth(q,fetcher) {
+  if (q.ecosystem === 'npm') {
+    if (!validNpm(q.name,q.version)) throw new Error('invalid_exact_version');
+    const exact = await npmRelease(q.name,q.version,fetcher);
+    const [latest, repository] = await Promise.all([
+      npmRelease(q.name,'latest',fetcher).catch(() => null), archiveStatus(exact.repository,fetcher),
+    ]);
+    return { exact, latest_version:latest?.version ?? null, latest_source:latest ? {source:latest.source,verified_at:latest.verified_at} : null,
+      semver_change:latest ? semver.diff(exact.version,latest.version) : null, repository };
+  }
+  if (q.ecosystem !== 'PyPI') return null;
+  const name = q.name.toLowerCase().replace(/[-_.]+/g,'-');
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/.test(name) || !/^[a-z0-9][a-z0-9_.!+-]{0,99}$/i.test(q.version)) throw new Error('invalid_pypi_release');
+  const url = 'https://pypi.org/pypi/' + name + '/' + encodeURIComponent(q.version) + '/json';
+  const exact = await cached(url,async () => {
+    const {body,...evidence} = await read(url,fetcher,{headers:{accept:'application/json'}},600000);
+    const data = JSON.parse(body), info = data.info;
+    if (typeof info?.name !== 'string' || info.name.toLowerCase().replace(/[-_.]+/g,'-') !== name || info.version !== q.version || !Array.isArray(data.urls)) throw new Error('registry_identity_mismatch');
+    const files = data.urls;
+    return {version:info.version,requires_python:info.requires_python ?? null,
+      yanked:files.length && files.every(file => typeof file.yanked === 'boolean') ? files.every(file => file.yanked) : null,
+      repository:githubRepository(info.project_urls?.Source || info.project_urls?.Repository || info.project_urls?.['Source Code']),...evidence};
+  });
+  return {exact,repository:await archiveStatus(exact.repository,fetcher)};
 }
 export async function compatibility(q,fetcher) {
   if (!validNpm(q.name,q.version) || !validNpm(q.target,q.target_version)) throw new Error('invalid_exact_version');

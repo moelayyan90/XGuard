@@ -1,3 +1,5 @@
+import { sourceSpec } from '../live/adapters.ts';
+import { canonicalFact } from '../live/paid-data.ts';
 import { BASE, routeFor, fits, amountFor, price } from './catalog.js';
 import { ROOT, TITLE, MCP, A2A, catalog, card, openApi, toolsList, landing } from './discovery.js';
 import { handlePaidWebFetch, livePaidProofKey, recoverOutcome } from '../paid-agent-entry.js';
@@ -48,7 +50,7 @@ async function purchase(req,env,def,query,transport,providedKey) {
   const result = await handlePaidWebFetch(financialRequest,env,id(),{},false,transport,input);
   const responseHeaders = new Headers(result.headers); responseHeaders.set('idempotency-key',key);
   responseHeaders.set('x-xguard-intelligence-writer',deployment.payment_state_write_version >= 7 ? 'enabled' : 'pending');
-  const invalidAuthorization = sig && result.status === 400 && ['payment_payload_invalid','quote_invalid','quote_required','quote_expired'].includes((await result.clone().json()).error);
+  const invalidAuthorization = sig && result.status === 400 && ['payment_payload_invalid','quote_invalid','quote_required','quote_expired'].includes((await result.clone().json()).error_code);
   return new Response(result.body,{status:invalidAuthorization ? 402 : result.status,headers:responseHeaders});
 }
 const rpcError = (id,code,message,status=400,data) => json({jsonrpc:'2.0',id:id??null,error:{code,message,...(data?{data}:{})}},status);
@@ -128,12 +130,31 @@ async function dispatch(req,env,ctx,legacy) {
   if (legacy && isRead(req) && path === '/witness/verifier-key') return legacy(req,env,ctx);
   if (legacy && isRead(req) && /^\/v1\/checkout\/orders\/[a-zA-Z0-9_-]+(?:\/(?:receipt|result))?$/.test(path)) return legacy(req,env,ctx);
   if (isRead(req)) {
-    const alias=path.match(/^\/(fact|history)\/(.+)$/);
-    if (alias) return purchase(req,env,routeFor(alias[1]==='fact'?'facts':'history'),{fact:alias[2],...(alias[1]==='history'?{page:Number(url.searchParams.get('page')||1)}:{})},'intelligence-http');
-    const evidence=path.match(/^\/evidence\/(.+)\/([^/]+)$/);
-    if (evidence) return purchase(req,env,routeFor('evidence'),{entity:evidence[1],observation:evidence[2]},'intelligence-http');
+    const alias = path.match(/^\/(live|fact|history|changes|evidence)\/(.+)$/);
+    if (alias) {
+      const [adapter,...parts] = alias[2].split('/');
+      let entity;
+      try { entity = sourceSpec(adapter,parts.join('/')).id; } catch { /* A final segment may identify a fact or observation. */ }
+      const last = parts.at(-1);
+      if (!entity && parts.length > 1) {
+        try { entity = sourceSpec(adapter,parts.slice(0,-1).join('/')).id; } catch { /* Unknown resource. */ }
+      }
+      if (!entity) return error('unknown_source',404);
+      const hasField = entity !== alias[2], route = alias[1];
+      const page = Number(url.searchParams.get('page') || 1);
+      if (route === 'evidence' && hasField) return purchase(req,env,routeFor('evidence'),{entity,observation:last},'intelligence-http');
+      if (route === 'changes') return purchase(req,env,routeFor('changes'),{entity,...(hasField ? {change:last} : {}),page},'intelligence-http');
+      const defaultField = {npm:'latest-version',pypi:'latest-version',github:'latest-release',nodejs:'latest-version',python:'latest-listed-version',status:'service-status'};
+      const field = hasField ? last : (url.searchParams.get('field') || defaultField[adapter]);
+      const fact = field && canonicalFact(entity+'/'+field);
+      if (!fact) return error('one_fact_field_required',400,{catalog:BASE+'/catalog'});
+      if (route === 'history') return purchase(req,env,routeFor('history'),{fact,page},'intelligence-http');
+      if (route === 'fact' || route === 'live') return purchase(req,env,routeFor('facts'),{fact},'intelligence-http');
+      return error('observation_required',400);
+    }
   }
-  if (path === '/api/paid/v1/batch' && req.method === 'POST') return purchase(req,env,routeFor('batch'),await read(req),'intelligence-http');
+  const oldPaid = path.match(/^\/api\/paid\/v1\/(batch|history|compare)$/);
+  if (oldPaid && req.method === 'POST') return purchase(req,env,routeFor(oldPaid[1]),await read(req),'intelligence-http');
   // Retained legacy addresses cannot dispatch data, old prices, streams, or financial side effects.
   // Only registered and cost-bounded operations above can authorize settlement.
   if (/^\/(?:live|changes|corrections|status|search|topics|evidence|witness|verify|settle|v1|api|hooks|webhooks|routes|compute|network)(?:[./]|$)/.test(path))

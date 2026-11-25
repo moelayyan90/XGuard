@@ -95,3 +95,31 @@ test('new payments select an advertised compatible rail during a primary outage'
   assert.equal(acceptsExactAuthorization({ ...kind, extra: { asset: config.asset, assetTransferMethod: 'eip3009', minPaymentAmountAtomic: '1000' } }, config), true);
   await assert.rejects(selectFacilitator({ ...env }, { ...config, testnet: true, network: 'eip155:84532' }, { fetchImpl, requireAdvertisement: true }));
 });
+
+test('one historical comparison and one bounded history query use the requested timestamps', async () => {
+  const h=environment();
+  try {
+    await seed(h,'1.0.0','2026-10-01T00:00:00.000Z');
+    await seed(h,'2.0.0','2026-10-05T00:00:00.000Z');
+    const query={fact:'npm/react/latest-version',from:'2026-10-02T00:00:00Z',to:'2026-10-06T00:00:00Z'};
+    const comparison=await prepareIntelligence(input('compare',query),h.env);
+    assert.equal(comparison.data.before.value,'1.0.0');
+    assert.equal(comparison.data.after.value,'2.0.0');
+    const history=await prepareIntelligence(input('history',{...query,limit:5}),h.env);
+    assert.deepEqual(history.data.observations.map(row=>row.value),['2.0.0']);
+    await assert.rejects(prepareIntelligence(input('compare',{...query,to:'2025-10-06T00:00:00Z'}),h.env));
+  } finally { h.close(); }
+});
+test('dependency evidence distinguishes a yanked PyPI release and a linked archived repository', async () => {
+  const get=async url=>{
+    if (url==='https://api.osv.dev/v1/query') return Response.json({});
+    if (url==='https://pypi.org/pypi/xguard-fixture/2.0.1/json') return Response.json({info:{name:'XGuard_fixture',version:'2.0.1',requires_python:'>=3.10',project_urls:{Source:'https://github.com/example/fixture'}},urls:[{yanked:true}]});
+    if (url==='https://api.github.com/repos/example/fixture') return Response.json({full_name:'example/fixture',archived:true});
+    throw Error('unexpected source');
+  };
+  const result=await prepareIntelligence(input('dependencies',{ecosystem:'PyPI',name:'XGuard_fixture',version:'2.0.1'}),{},get);
+  assert.equal(result.data.publisher.exact.yanked,true);
+  assert.equal(result.data.publisher.exact.requires_python,'>=3.10');
+  assert.equal(result.data.maintenance,'publisher_linked_repository_archived');
+  assert.equal(result.data.advisory.verdict,'no_matching_advisory_reported');
+});

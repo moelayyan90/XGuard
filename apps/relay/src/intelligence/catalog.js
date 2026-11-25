@@ -5,6 +5,9 @@ const text = (maxLength = 180) => ({ type: 'string', minLength: 1, maxLength });
 const choice = (...values) => ({ type: 'string', enum: values });
 const object = (properties, required = Object.keys(properties)) => ({ type: 'object', additionalProperties: false, properties, required });
 const fact = text(300);
+const page = { type:'integer',minimum:1,maximum:10000 };
+const timeRange = { fact, from:text(24), to:text(24) };
+const cursor = object({observed_at:text(24), id:text(100)});
 const ecosystem = choice('npm','PyPI','Go','crates.io','Maven','NuGet');
 const pkg = { ecosystem, name: text(180), version: text(100) };
 const providers = choice('github','cloudflare','anthropic','openai','npm');
@@ -14,7 +17,7 @@ const service = (route, name, description, schema, example) => ({
 const definitions = [
   service('facts','Live Facts 2.0','Read one recorded primary-source fact, its verification time, age, confidence and recent observations.',
     object({ fact }), { fact: 'npm/react/latest-version' }),
-  service('dependencies','Dependency Intelligence','Check one named release against OSV and, for npm, its publisher deprecation and engine declarations.',
+  service('dependencies','Dependency Intelligence','Check an exact release against OSV. For npm and PyPI, include publisher evidence, withdrawal or deprecation, and the linked GitHub repository’s archive state when available.',
     object(pkg), { ecosystem: 'npm', name: 'react', version: '19.0.0' }),
   service('breaking-changes','API Breaking Changes','Compare two supplied OpenAPI 3 documents for route, parameter, authentication and JSON contract changes. Unsupported constructs are reported explicitly.',
     object({ before: { type: 'object' }, after: { type: 'object' } }), {}),
@@ -41,9 +44,11 @@ const definitions = [
   service('batch','Fact batch','Return all requested fact units in order. One unavailable item aborts the entire batch before settlement.',
     object({ facts: { type: 'array', minItems: 1, maxItems: BATCH_LIMIT, items: fact } }), { facts: ['npm/react/latest-version'] }),
   service('history','Fact history','Read a bounded page of observations for one fact.',
-    object({ fact, page: { type: 'integer', minimum: 1, maximum: 10000 } }, ['fact']), { fact: 'npm/react/latest-version' }),
-  service('changes','Fact changes','Read recent changes for one canonical fact.',
-    object({ fact }), { fact: 'npm/react/latest-version' }),
+    {oneOf:[object({fact,page},['fact']),object({...timeRange,limit:{type:'integer',minimum:1,maximum:300},cursor},['fact','from','to'])]}, { fact:'npm/react/latest-version' }),
+  service('compare','Historical value comparison','Compare recorded observations for one fact at two UTC timestamps.',
+    object(timeRange),{fact:'npm/react/latest-version',from:'2026-10-01T00:00:00Z',to:'2026-11-01T00:00:00Z'}),
+  service('changes','Fact changes','Read adjacent observations for a fact or one page of recorded changes to a source.',
+    {oneOf:[object({fact}),object({entity:text(220),change:text(100),page},['entity'])]}, {fact:'npm/react/latest-version'}),
   service('evidence','Observation evidence','Retrieve one primary-source evidence record by canonical source and observation ID.',
     object({ entity: text(220), observation: text(100) }), {}),
 ];
