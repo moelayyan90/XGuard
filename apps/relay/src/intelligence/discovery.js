@@ -6,7 +6,19 @@ export const toolName = d => 'xguard.' + d.route.replaceAll('-','_');
 export function catalog() {
   return { name:TITLE, price:price(), services:SERVICES.map(d => ({ id:d.route, name:d.name, description:d.description, method:'POST', endpoint:BASE+'/'+d.route, input_schema:d.schema })),
     payment:{ protocol:'x402 v2 exact', network:'eip155:8453', asset:'USDC', first_request:'POST the input. Preserve Idempotency-Key and X-XGuard-Quote from HTTP 402.', retry:'Sign the exact requirements and retry the identical operation with Payment-Signature. Recover a pending result with the original quote.', recovery:BASE+'/results/{payment_identifier}', public_key:BASE+'/proof-key' },
-    transports:{ mcp:MCP, a2a:A2A, openapi:BASE+'/openapi.json' } };
+    transports:{ mcp:MCP, a2a:A2A, openapi:BASE+'/openapi.json', setup:BASE+'/install' } };
+}
+export function connections() {
+  const name = 'xguard-intelligence';
+  return { mcp:MCP, a2a_agent_card:BASE+'/.well-known/agent-card.json', openapi:BASE+'/openapi.json',
+    codex:'codex mcp add '+name+' --url '+MCP,
+    claude_code:'claude mcp add --transport http '+name+' '+MCP,
+    gemini_cli:'gemini mcp add --transport http '+name+' '+MCP,
+    vscode:{ servers:{[name]:{type:'http',url:MCP}} }, cursor:{ mcpServers:{[name]:{url:MCP}} },
+    chatgpt:{transport:'remote MCP',url:MCP,setup:'Add the URL through the custom app settings available in your workspace.'},
+    github_action:'moelayyan90/XGuard/integrations/intelligence',
+    buyer:'https://github.com/moelayyan90/XGuard/tree/main/integrations/intelligence',
+    payment:'Discovery needs no signature. Paid calls require an x402-capable buyer and an explicit spending policy. Client setup alone does not authorize spending.' };
 }
 export function openApi() {
   const responses = { '200':{description:'Settled result with signed receipt and Payment-Response header'}, '402':{description:'Payment required or rejected',headers:{'Payment-Required':{schema:{type:'string'}}}},'503':{description:'Unavailable or settlement pending. Use the original recovery credentials.'} };

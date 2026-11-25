@@ -1,7 +1,7 @@
 import { sourceSpec } from '../live/adapters.ts';
 import { canonicalFact } from '../live/paid-data.ts';
 import { BASE, routeFor, fits, amountFor, price } from './catalog.js';
-import { ROOT, TITLE, MCP, A2A, catalog, card, openApi, toolsList, landing } from './discovery.js';
+import { ROOT, TITLE, MCP, A2A, catalog, card, connections, openApi, toolsList, landing } from './discovery.js';
 import { handlePaidWebFetch, livePaidProofKey, recoverOutcome } from '../paid-agent-entry.js';
 import { readPublicJson } from '../core/public-contract.js';
 import { ownerRevenue } from './revenue.js';
@@ -103,6 +103,7 @@ async function dispatch(req,env,ctx,legacy) {
   if (at === '/admin/revenue') return ownerRevenue(req,env,read);
   if (isRead(req)) {
     if (at === '/catalog' || path === ROOT || discoveryPaths.has(path)) return json({...catalog(),new_payments_enabled:deployment.payment_state_write_version >= 7});
+    if (at === '/install' || path === '/connect') return json(connections());
     if (at === '/openapi.json') return json(openApi());
     if (['/.well-known/agent-card.json','/.well-known/agent.json','/a2a/.well-known/agent-card.json'].includes(at)) return json(card());
     if (['/','/pricing','/marketplace','/developers','/install','/connect','/products'].includes(path)) return landing();
