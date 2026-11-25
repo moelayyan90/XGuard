@@ -69,3 +69,28 @@ test('OSV partial responses cannot certify safety and npm semver respects prerel
   const pre=await prepareIntelligence(input('compatibility',{name:'test-lib',version:'1.0.0',target:'node',target_version:'22.0.0-beta.1'}),{},fn);assert.equal(pre.data.verdict,'outside_declared_range');
   assert.equal(fits(routeFor('tools').schema,{task:'arbitrary',url:'https://example.net'}),false);
 });
+
+import { acceptsExactAuthorization, selectFacilitator } from '../src/core/payment-health.js';
+test('new payments select an advertised compatible rail during a primary outage', async () => {
+  const config = { facilitator: 'https://facilitator.xpay.sh', network: 'eip155:8453', amount: '1000', asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' };
+  const fallback = 'https://facilitator.payai.network';
+  const env = { X402_GLOBAL_PRIMARY: fallback, PAID_GATEWAY: {
+    idFromName: name => name, get: () => ({ fetch: async () => Response.json({ facilitators: [] }) }),
+  } };
+  const calls = [];
+  const kind = { x402Version: 2, scheme: 'exact', network: config.network };
+  const fetchImpl = async (url, init) => {
+    calls.push(url);
+    assert.equal(init.credentials, 'omit');
+    assert.equal(url.endsWith('/supported'), true);
+    return url.startsWith(fallback + '/') ? Response.json({ kinds: [kind] }) : new Response(null, { status: 503 });
+  };
+  assert.equal(await selectFacilitator(env, config, { fetchImpl }), fallback);
+  assert.equal(await selectFacilitator(env, config, { fetchImpl, requireAdvertisement: true }), fallback);
+  assert.deepEqual(calls, [config.facilitator + '/supported', fallback + '/supported']);
+  for (const extra of [{ assetTransferMethod: 'permit2' }, { asset: '0x00' }, { minPaymentAmountAtomic: '1001' }]) {
+    assert.equal(acceptsExactAuthorization({ ...kind, extra }, config), false);
+  }
+  assert.equal(acceptsExactAuthorization({ ...kind, extra: { asset: config.asset, assetTransferMethod: 'eip3009', minPaymentAmountAtomic: '1000' } }, config), true);
+  await assert.rejects(selectFacilitator({ ...env }, { ...config, testnet: true, network: 'eip155:84532' }, { fetchImpl, requireAdvertisement: true }));
+});
