@@ -526,10 +526,39 @@ async function parsePayment(raw: string, offer: ReturnType<typeof challenge>): P
   return { x402Version: 2, resource: offer.resource, accepted: expected, payload: { authorization, signature } };
 }
 
-async function xpay(env: Env, step: "verify" | "settle", payment: Payment) {
+const PUBLIC_BASE_RAILS = [XPAY, "https://facilitator.payai.network"] as const;
+let providerDiscovery: { expires: number, result: Promise<string | null> } | undefined;
+async function availableBaseProvider(): Promise<string | null> {
+  if (providerDiscovery && Date.now() < providerDiscovery.expires) return providerDiscovery.result;
+  const result = (async () => {
+    for (const url of PUBLIC_BASE_RAILS) {
+      try {
+        const response = await fetch(url + "/supported", { headers: { Accept: "application/json" }, redirect: "manual", signal: AbortSignal.timeout(3000) });
+        if (!response.ok) continue;
+        const raw = record(JSON.parse(await readLimited(response, 131072)));
+        if (!Array.isArray(raw.kinds)) continue;
+        for (const value of raw.kinds) {
+          const kind = record(value);
+          if (kind.x402Version !== 2 || kind.scheme !== "exact" || kind.network !== NETWORK) continue;
+          const extra = kind.extra ? record(kind.extra) : {};
+          if (extra.assetTransferMethod && extra.assetTransferMethod !== "eip3009") continue;
+          if (extra.asset && String(extra.asset).toLowerCase() !== USDC.toLowerCase()) continue;
+          const floor = extra.minPaymentAmountAtomic;
+          if (floor != null && (!/^\d{1,18}$/.test(String(floor)) || BigInt(String(floor)) > BigInt(PRICE))) continue;
+          return url;
+        }
+      } catch { /* An unreachable provider cannot receive a new authorization. */ }
+    }
+    return null;
+  })();
+  providerDiscovery = { expires: Date.now()+30000, result };
+  return result;
+}
+
+async function callProvider(env: Env, provider: string, step: "verify" | "settle", payment: Payment) {
   const headers = new Headers({ "Content-Type": "application/json", "Accept": "application/json" });
-  if (env.XPAY_AUTHORIZATION) headers.set("Authorization", env.XPAY_AUTHORIZATION);
-  const result = await fetch(XPAY + "/" + step, {
+  if (provider === XPAY && env.XPAY_AUTHORIZATION) headers.set("Authorization", env.XPAY_AUTHORIZATION);
+  const result = await fetch(provider + "/" + step, {
     method: "POST", headers, redirect: "manual", signal: AbortSignal.timeout(7_000),
     body: JSON.stringify({ x402Version: 2, paymentPayload: payment, paymentRequirements: payment.accepted }),
   });
@@ -794,7 +823,9 @@ async function paidRead(request: Request, env: Env, cfg: Config, r: Route, id: s
       }
       const client = baseClient(env);
       if (await client.getChainId() !== base.id) reject(503, "wrong_rpc_chain");
-      const checked = await xpay(env, "verify", payment);
+      const selectedProvider = await availableBaseProvider();
+      if (!selectedProvider) reject(503, "facilitator_unavailable");
+      const checked = await callProvider(env, selectedProvider, "verify", payment);
       const verified = (checked.isValid === true || checked.valid === true) &&
         checked.isValid !== false && checked.valid !== false;
       if (!verified || (checked.payer !== undefined && addr(checked.payer) !== who.wallet)) {
@@ -808,7 +839,7 @@ async function paidRead(request: Request, env: Env, cfg: Config, r: Route, id: s
       journaled = true;
       let hint: Hex | undefined;
       try {
-        const settlement = await xpay(env, "settle", payment);
+        const settlement = await callProvider(env, selectedProvider, "settle", payment);
         const tx = hex32(settlement.transaction), alias = hex32(settlement.txHash);
         hint = tx && alias && tx !== alias ? undefined : tx ?? alias;
         if (hint && await receiptTruth(client, cfg, auth, hint, BigInt(start))) {
@@ -848,6 +879,7 @@ export default {
       if (prefix && url.origin === cfg.origin && url.pathname === prefix + "/catalog" &&
           !url.search && request.method === "GET") return json({
         name: "XGuard paid validation gateway",
+        base_facilitator: await availableBaseProvider(),
         public_facts_remain_free: true,
         sample: cfg.origin + prefix + "/fact/npm/react/latest-version",
         checkout_url: cfg.origin + prefix + "/checkout",
