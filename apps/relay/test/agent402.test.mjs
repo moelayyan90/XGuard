@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import app from '../src/live-entry.js';
+import app from '../src/live-handler.js';
 import { environment } from './live-harness.mjs';
 
 const kind = { x402Version: 2, scheme: 'exact', network: 'eip155:8453' };

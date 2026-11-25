@@ -10,7 +10,11 @@ The transition entry serves the new API under `/api/intelligence/v1`. Its MCP en
 
 ## GBLIN witness transition
 
-GBLIN confirmed automatic C2SP checkpoint submission in [issue 211](https://github.com/moelayyan90/XGuard/issues/211#issuecomment-6796198734). XGuard and GBLIN originally agreed to keep witnessing separate from the payment path. The operator requested an isolated paid compatibility test and written acceptance of the new price on [November 24](https://github.com/moelayyan90/XGuard/issues/211#issuecomment-7127915193). An attestation canary on GBLIN's separate endpoint has different authorization and settlement terms. It does not authorize billing for witness submissions. Until the witness transition is agreed, the normal deployment uses the existing C2SP interface. The strict entry exposes its public verifier key and suspends cosignature delivery.
+GBLIN confirmed automatic C2SP checkpoint submission in [issue 211](https://github.com/moelayyan90/XGuard/issues/211#issuecomment-6796198734). XGuard and GBLIN originally agreed to keep witnessing separate from the payment path. The operator requested an isolated paid compatibility test and written acceptance of the new price on [November 24](https://github.com/moelayyan90/XGuard/issues/211#issuecomment-7127915193). An attestation canary on GBLIN's separate endpoint has different authorization and settlement terms. It does not authorize billing for witness submissions. Until the witness transition is agreed, the normal deployment uses the existing C2SP interface. Both entries preserve that one pinned log and its existing monitoring URLs while awaiting the partner’s response. Signed submissions remain subject to the production key and consistency checks. Additional signers require a separate agreement.
+
+## Existing purchase recovery
+
+The strict entry accepts the original recovery credentials for paid results, compute receipts, task and schedule state, checkout orders and execution credits. Existing credits are verified against the original order. The public Worker also exposes a service-binding-only RPC method for one canonical fact, allowing the private gateway to migrate its paid data read without exposing a public origin URL.
 
 ## Evidence and coverage
 

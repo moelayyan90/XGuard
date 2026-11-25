@@ -12,6 +12,19 @@ function paidUrl(value) {
   if (url.origin !== API || !(url.pathname.startsWith('/p/') || intelligencePath.test(url.pathname) || /^\/api\/paid\/v1\/(batch|history|compare|extract|route-resolve|route-compare|discover|platform-discovery|crawl|fact|task|schedule|verify)$/.test(url.pathname)) || url.username || url.password || url.hash) throw new Error('Use an XGuard paid API endpoint.');
   return url.href;
 }
+export function inspectIntelligenceOffer(url, input, challenge) {
+  const endpoint = new URL(paidUrl(url));
+  if (!intelligencePath.test(endpoint.pathname)) throw new Error('Expected a paid intelligence endpoint.');
+  const units = endpoint.pathname.endsWith('/batch') ? input?.facts?.length : 1;
+  const terms = challenge?.accepts?.[0];
+  if (!Number.isSafeInteger(units) || units < 1 || units > 100 || challenge?.x402Version !== 2 ||
+      challenge.resource?.url !== endpoint.href || challenge.accepts?.length !== 1 || terms?.scheme !== 'exact' ||
+      terms.network !== 'eip155:8453' || terms.asset?.toLowerCase() !== ASSET.toLowerCase() ||
+      terms.payTo?.toLowerCase() !== intelligenceTreasury || terms.amount !== String(1000n * BigInt(units))) {
+    throw new Error('The advertised resource, price, treasury or settlement network differs from the intelligence contract.');
+  }
+  return { units, amount_atomic:terms.amount, network:terms.network, asset:terms.asset, recipient:terms.payTo };
+}
 // One spending decision and one authorization per invocation. No automatic
 // resubmission after an uncertain response; recovery is read-only.
 export function createPaidAPIClient({ payer, maxAmountAtomic, fetchImpl = globalThis.fetch, onPaymentPrepared, trafficClass } = {}) {
@@ -35,9 +48,8 @@ export function createPaidAPIClient({ payer, maxAmountAtomic, fetchImpl = global
       if (!/^[1-9][0-9]{0,8}$/.test(String(maxAmountAtomic || ''))) throw new Error('An explicit positive spending cap is required.');
       if (challenge.x402Version !== 2 || challenge.resource?.url !== url || challenge.accepts?.length !== 1 || requirement.scheme !== 'exact' || requirement.network !== 'eip155:8453' || requirement.asset?.toLowerCase() !== ASSET.toLowerCase() || !/^[1-9][0-9]{0,8}$/.test(requirement.amount || '') || BigInt(requirement.amount) > BigInt(maxAmountAtomic)) throw new Error('Payment requirements exceed the authorized policy. No authorization was created.');
       if (intelligencePath.test(new URL(url).pathname)) {
-        const query = JSON.parse(init.body || '{}');
-        const units = url.endsWith('/batch') ? query.facts?.length : 1;
-        if (!Number.isSafeInteger(units) || units < 1 || units > 100 || requirement.amount !== String(1000n * BigInt(units)) || requirement.payTo?.toLowerCase() !== intelligenceTreasury || first.headers.get('x-xguard-intelligence-writer') !== 'enabled') throw new Error('Intelligence pricing, treasury or purchase availability does not match the buyer policy.');
+        inspectIntelligenceOffer(url, JSON.parse(init.body || '{}'), challenge);
+        if (first.headers.get('x-xguard-intelligence-writer') !== 'enabled') throw new Error('New intelligence purchases are pending activation.');
       }
       const quote = first.headers.get('x-xguard-quote'), payment_identifier = challenge.extensions?.xguard?.paymentIdentifier;
       if (!quote || !/^pay_[A-Za-z0-9_-]+$/.test(payment_identifier || '')) throw new Error('Missing signed quote or recovery identifier.');

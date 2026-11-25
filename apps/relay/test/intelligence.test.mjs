@@ -95,3 +95,57 @@ test('new payments select an advertised compatible rail during a primary outage'
   assert.equal(acceptsExactAuthorization({ ...kind, extra: { asset: config.asset, assetTransferMethod: 'eip3009', minPaymentAmountAtomic: '1000' } }, config), true);
   await assert.rejects(selectFacilitator({ ...env }, { ...config, testnet: true, network: 'eip155:84532' }, { fetchImpl, requireAdvertisement: true }));
 });
+
+test('one historical comparison and one bounded history query use the requested timestamps', async () => {
+  const h=environment();
+  try {
+    await seed(h,'1.0.0','2026-10-01T00:00:00.000Z');
+    await seed(h,'2.0.0','2026-10-05T00:00:00.000Z');
+    const query={fact:'npm/react/latest-version',from:'2026-10-02T00:00:00Z',to:'2026-10-06T00:00:00Z'};
+    const comparison=await prepareIntelligence(input('compare',query),h.env);
+    assert.equal(comparison.data.before.value,'1.0.0');
+    assert.equal(comparison.data.after.value,'2.0.0');
+    const history=await prepareIntelligence(input('history',{...query,limit:5}),h.env);
+    assert.deepEqual(history.data.observations.map(row=>row.value),['2.0.0']);
+    await assert.rejects(prepareIntelligence(input('compare',{...query,to:'2025-10-06T00:00:00Z'}),h.env));
+  } finally { h.close(); }
+});
+test('dependency evidence distinguishes a yanked PyPI release and a linked archived repository', async () => {
+  const get=async url=>{
+    if (url==='https://api.osv.dev/v1/query') return Response.json({});
+    if (url==='https://pypi.org/pypi/xguard-fixture/2.0.1/json') return Response.json({info:{name:'XGuard_fixture',version:'2.0.1',requires_python:'>=3.10',project_urls:{Source:'https://github.com/example/fixture'}},urls:[{yanked:true}]});
+    if (url==='https://api.github.com/repos/example/fixture') return Response.json({full_name:'example/fixture',archived:true});
+    throw Error('unexpected source');
+  };
+  const result=await prepareIntelligence(input('dependencies',{ecosystem:'PyPI',name:'XGuard_fixture',version:'2.0.1'}),{},get);
+  assert.equal(result.data.publisher.exact.yanked,true);
+  assert.equal(result.data.publisher.exact.requires_python,'>=3.10');
+  assert.equal(result.data.maintenance,'publisher_linked_repository_archived');
+  assert.equal(result.data.advisory.verdict,'no_matching_advisory_reported');
+});
+
+test('the retained witness agreement uses only the pinned production log and published monitor', async () => {
+  const { originHashHex, PINNED_LOGS } = await import('../src/c2sp-witness.js');
+  const origin = 'gblin.digital/receipts-log';
+  const hash = await originHashHex(origin);
+  assert.deepEqual(Object.keys(PINNED_LOGS), [origin]);
+  const forwarded = [];
+  const env = { C2SP_WITNESS: {
+    idFromName: name => { assert.equal(name, 'xguard-c2sp-witness-v1'); return name; },
+    get: () => ({ fetch: async request => {
+      forwarded.push([new URL(request.url).pathname, request.method]);
+      return new Response('existing C2SP route');
+    } }),
+  } };
+  for (const path of ['/witness','/witness/metadata','/witness/verifier-key','/witness/'+hash+'/status','/witness/'+hash+'/checkpoint']) {
+    assert.equal((await get(path, {method:'HEAD'}, env)).status, 200, path);
+  }
+  const post = await get('/witness/add-checkpoint',{method:'POST',body:'checkpoint'},env);
+  assert.equal(post.status, 200);
+  assert.equal((await get('/witness/'+'0'.repeat(64)+'/checkpoint',{},env)).status, 503);
+  assert.equal((await get('/witness/add-checkpoint',{method:'GET'},env)).status, 503);
+  assert.equal(forwarded.length, 6);
+  assert.equal((await get('/v1/checkout/orders/xgo_'+'0'.repeat(40))).status,401);
+  assert.equal((await get('/v1/compute/receipts/xcq_'+'0'.repeat(32))).status,404);
+  assert.equal((await get('/v1/tasks/xgtask_'+'0'.repeat(32))).status,404);
+});

@@ -1,7 +1,7 @@
 import { BASE, definitionFor, routeFor } from './catalog.js';
 import { compareOpenApi } from './openapi.js';
 import { tokenCost } from './model-card.js';
-import { advisories, compatibility, diagnose, npmRelease, modelCard } from './sources.js';
+import { advisories, compatibility, diagnose, packageHealth, modelCard } from './sources.js';
 import { rpc, shardName, shardOf, hash } from '../live/util.ts';
 import { canonicalFact } from '../live/paid-data.ts';
 import { sourceSpec } from '../live/adapters.ts';
@@ -52,8 +52,27 @@ export async function prepareIntelligence(input,env,fetcher=fetch) {
   switch (d.route) {
     case 'facts': data = await oneFact(env,q.fact); break;
     case 'batch': data = await batch(env,q.facts); break;
+    case 'compare':
     case 'history':
+      if (q.from !== undefined) {
+        const id = ensureFact(q.fact);
+        const validTime = s => typeof s === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(s) && Number.isFinite(Date.parse(s)) && new Date(s).toISOString().slice(0,19) === s.slice(0,19);
+        if (!validTime(q.from) || !validTime(q.to) || Date.parse(q.from) > Date.parse(q.to) ||
+            (q.cursor && (!validTime(q.cursor.observed_at) || !/^[a-zA-Z0-9_-]{1,100}$/.test(q.cursor.id)))) throw new Error('invalid_fact_time_range');
+        const params = {kind:d.route,facts:[id],from:new Date(q.from).toISOString(),to:new Date(q.to).toISOString(),limit:q.limit,cursor:q.cursor ? {...q.cursor, observed_at:new Date(q.cursor.observed_at).toISOString()} : undefined};
+        const rows = await queryShard(env,sourceId(id),'paid-read',params);
+        if (!Array.isArray(rows) || rows.length !== 1 || rows[0].id !== id || rows[0].status === 'UNKNOWN') throw new Error('fact_not_available');
+        data=rows[0]; break;
+      }
+      // Page-based fact history shares the observation reader below.
     case 'changes': {
+      if (q.entity) {
+        const [adapter,...rest] = q.entity.split('/');
+        if (sourceSpec(adapter,rest.join('/')).id !== q.entity || (q.change && !/^[a-zA-Z0-9_-]{1,100}$/.test(q.change))) throw new Error('invalid_change_query');
+        const rows=await queryShard(env,q.entity,'changes',{entity:q.entity,id:q.change,page:q.page || 1});
+        if (!Array.isArray(rows) || (q.change && !rows.length)) throw new Error('change_unavailable');
+        data={entity:q.entity,page:q.page || 1,changes:rows.map(row=>({id:row.id,fact:row.fact_id,previous:row.previous_value,current:row.current_value,at:row.observed_at,source:row.source_url,hash:row.source_hash})),scope:'Recorded changes for the requested source.'}; break;
+      }
       const id = ensureFact(q.fact);
       const page = await queryShard(env,sourceId(id),'history',{id,page:q.page || 1,include_label:true});
       if (!page || !Array.isArray(page.history)) throw new Error('history_unavailable');
@@ -84,10 +103,14 @@ export async function prepareIntelligence(input,env,fetcher=fetch) {
     case 'compatibility': data = await compatibility(q,fetcher); break;
     case 'security': data = await advisories(q,fetcher); break;
     case 'dependencies': {
-      const advisory = await advisories(q,fetcher);
-      const manifest = q.ecosystem === 'npm' ? await npmRelease(q.name,q.version,fetcher) : null;
-      data = { package:q, advisory, publisher:manifest, action:advisory.advisories.length ? 'Review published fixed ranges and test an exact replacement.' : manifest?.deprecated ? 'Replace the deprecated release and test compatibility.' : 'Review the supplied evidence before updating.',
-        abandonment:'unknown', scope:'Publisher deprecation and vulnerability declarations do not establish abandonment or whole-project compatibility.' }; break;
+      const [advisory,publisher] = await Promise.all([advisories(q,fetcher),packageHealth(q,fetcher)]);
+      const retired = publisher?.exact?.deprecated || publisher?.exact?.yanked === true;
+      data = {package:q,advisory,publisher,
+        action:advisory.advisories.length ? 'Check the published fix ranges and test the replacement release.' :
+          retired ? 'Select a maintained release and check its dependency ranges before upgrading.' :
+          publisher?.repository?.archived ? 'Review the archived repository and the publisher’s supported successor.' : 'Review the cited version and project tests before upgrading.',
+        maintenance:publisher?.repository?.archived ? 'publisher_linked_repository_archived' : 'abandonment_not_established',
+        scope:'One exact release. OSV coverage applies to all supported ecosystems. Publisher manifests are available for npm and PyPI. A version difference or repository archive does not establish compatibility with a particular project.'}; break;
     }
     case 'decisions': {
       if (q.question === 'provider-available') data = await infrastructure(env,q.provider);

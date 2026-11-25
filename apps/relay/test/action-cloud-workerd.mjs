@@ -8,7 +8,7 @@ import { Miniflare, convertV4MiniflareOptions, Response as MFResponse } from 'mi
 import { PRODUCT_SERVICES } from '../src/products/registry.js';
 import { financePage, financialRow } from '../src/action/finance.js';
 
-const root = fileURLToPath(new URL('../src/live-entry.js', import.meta.url));
+const root = fileURLToPath(new URL('../src/live-handler.js', import.meta.url));
 const paid = fileURLToPath(new URL('../src/paid-agent-entry.js', import.meta.url));
 const dir = await mkdtemp(join(tmpdir(), 'xguard-action-'));
 const built = await build({ stdin: { resolveDir: dirname(root), contents: `

@@ -360,6 +360,17 @@ jobs:
             node scripts/intelligence-zero-canary.mjs
           fi
 
+      - name: Exercise the consumer GitHub action against the verified production offer
+        if: success() && steps.deploy.outcome == 'success'
+        shell: bash
+        run: |
+          echo '{"fact":"npm/react/latest-version"}' > "$RUNNER_TEMP/xguard-intelligence-request.json"
+      - uses: ./integrations/intelligence
+        if: success() && steps.deploy.outcome == 'success'
+        with:
+          service: facts
+          input-file: ${{ runner.temp }}/xguard-intelligence-request.json
+
       - name: Keep storage-quota recovery deployed and report incomplete verification
         if: failure() && steps.deploy.outcome == 'success' && steps.production_smoke.outputs.quota_exhausted == 'true' && steps.glama_smoke.outcome != 'failure' && steps.paid_smoke.outcome == 'success' && steps.gateway_smoke.outcome != 'failure' && steps.mcp_smoke.outcome != 'failure' && steps.a2a_smoke.outcome != 'failure'
         run: |

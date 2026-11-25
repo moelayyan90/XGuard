@@ -1,0 +1,17 @@
+name: XGuard intelligence price check
+description: Inspect the actual Base USDC payment challenge for a specific operation.
+inputs:
+  service:
+    description: Intelligence operation (for example facts or batch).
+    required: true
+  input-file:
+    description: Path to the request JSON in the caller's workspace.
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        XGUARD_ACTION_SERVICE: ${{ inputs.service }}
+        XGUARD_ACTION_INPUT: ${{ inputs.input-file }}
+      run: node "$GITHUB_ACTION_PATH/request.mjs" quote "$XGUARD_ACTION_SERVICE" "$XGUARD_ACTION_INPUT"
