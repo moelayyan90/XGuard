@@ -1,4 +1,4 @@
-import { digestBytes } from "./execution-contract.js";
+import { digestBytes, readBoundedBody } from "./execution-contract.js";
 const validUrl = value => { try { const u = new URL(value); return u.protocol === "https:" && !u.username && !u.password && !u.search && !u.hash ? u.href.replace(/\/$/, "") : null; } catch { return null; } };
 export function paymentHealthStub(env) { return env.PAID_GATEWAY.get(env.PAID_GATEWAY.idFromName("payment-health-v1")); }
 export async function recordPaymentHealth(storage, body, now = Date.now()) {
@@ -40,26 +40,67 @@ export async function paymentHealthSnapshot(storage, now = Date.now()) {
     return { url: row.url, network: row.network, circuit: row.circuit_until > now ? "open" : "closed", circuit_until: row.circuit_until, last_success: row.last_success ? new Date(row.last_success).toISOString() : null, verify: phase("verify"), settle: phase("settle") };
   }) };
 }
-export async function selectFacilitator(env, config) {
-  let fallback = [];
-  try { fallback = JSON.parse(env.XGUARD_PAID_FACILITATOR_FALLBACKS || "[]"); } catch { throw new Error("invalid_facilitator_fallback_config"); }
-  if (!Array.isArray(fallback) || fallback.length > 4 || fallback.some(x => !validUrl(x))) throw new Error("invalid_facilitator_fallback_config");
-  const candidates = [...new Set([config.facilitator, ...(!config.testnet ? fallback : [])])];
-  const response = await paymentHealthStub(env).fetch("https://health/facilitator/snapshot");
-  if (!response.ok) throw new Error("facilitator_health_unavailable");
+const capabilityCache = new WeakMap();
+async function advertisedKinds(env, url, fetchImpl) {
+  let cache = capabilityCache.get(env);
+  if (!cache) { cache = new Map(); capabilityCache.set(env, cache); }
+  const prior = cache.get(url);
+  if (prior && prior.until > Date.now()) return prior.kinds;
+  const kinds = (async () => {
+    try {
+      const response = await fetchImpl(url + '/supported', {
+        headers: { accept: 'application/json' },
+        redirect: 'manual', signal: AbortSignal.timeout(3000),
+      });
+      if (!response.ok) return [];
+      const bytes = await readBoundedBody(response.body, 131072);
+      const body = JSON.parse(new TextDecoder().decode(bytes));
+      return Array.isArray(body?.kinds) ? body.kinds : [];
+    } catch { return []; }
+  })();
+  if (cache.size >= 8) cache.delete(cache.keys().next().value);
+  cache.set(url, { kinds, until: Date.now() + 30000 });
+  return kinds;
+}
+export function acceptsExactAuthorization(kind, config) {
+  if (kind?.x402Version !== 2 || kind.scheme !== 'exact' || kind.network !== config.network) return false;
+  const extra = kind.extra || {};
+  if (extra.assetTransferMethod && extra.assetTransferMethod !== 'eip3009') return false;
+  if (extra.asset && String(extra.asset).toLowerCase() !== String(config.asset).toLowerCase()) return false;
+  const floor = extra.minPaymentAmountAtomic;
+  return floor == null || (/^[0-9]{1,18}$/.test(String(floor)) && BigInt(floor) <= BigInt(config.amount));
+}
+function configuredCandidates(env, config) {
+  if (config.testnet) return [config.facilitator];
+  // Both URLs are already configured in the production Worker. The PayAI
+  // public lane has no account credentials or automatic top-ups.
+  let fallback = config.facilitator === 'https://facilitator.xpay.sh' &&
+    env.X402_GLOBAL_PRIMARY === 'https://facilitator.payai.network' ? [env.X402_GLOBAL_PRIMARY] : [];
+  if (env.XGUARD_PAID_FACILITATOR_FALLBACKS != null) {
+    try { fallback = JSON.parse(env.XGUARD_PAID_FACILITATOR_FALLBACKS); } catch { throw new Error('invalid_facilitator_fallback_config'); }
+  }
+  if (!Array.isArray(fallback) || fallback.length > 4 || fallback.some(url => !validUrl(url))) throw new Error('invalid_facilitator_fallback_config');
+  return [...new Set([config.facilitator, ...fallback.map(validUrl)])];
+}
+export async function selectFacilitator(env, config, { requireAdvertisement = false, fetchImpl = fetch } = {}) {
+  const candidates = configuredCandidates(env, config);
+  const response = await paymentHealthStub(env).fetch('https://health/facilitator/snapshot');
+  if (!response.ok) throw new Error('facilitator_health_unavailable');
   const health = await response.json();
   for (const url of candidates) {
-    const row = health.facilitators?.find(x => x.url === url && x.network === config.network);
-    if (row?.circuit === "open") continue;
-    if (url !== config.facilitator) {
-      try {
-        const supported = await fetch(`${url}/supported`, { redirect: "manual", signal: AbortSignal.timeout(3000) });
-        if (!supported.ok || !(await supported.json()).kinds?.some(k => k.x402Version === 2 && k.scheme === "exact" && k.network === config.network)) continue;
-      } catch { continue; }
+    if (health.facilitators?.some(row => row.url === url && row.network === config.network && row.circuit === 'open')) continue;
+    if (requireAdvertisement || candidates.length > 1) {
+      const kinds = await advertisedKinds(env, url, fetchImpl);
+      if (!kinds.some(kind => acceptsExactAuthorization(kind, config))) continue;
     }
-    return url; // Pinned durably before verify; never changed during settlement or reconciliation.
+    return url;
   }
-  throw new Error("all_facilitator_circuits_open");
+  throw new Error('no_compatible_facilitator_available');
+}
+export async function hasSupportedFacilitator(env, config) {
+  if (!config.configured) return false;
+  try { await selectFacilitator(env, config, { requireAdvertisement: true }); return true; }
+  catch { return false; }
 }
 export async function observePaymentHealth(env, config, phase, started, details) {
   try { await paymentHealthStub(env).fetch("https://health/facilitator/record", { method: "POST", body: JSON.stringify({ url: config.facilitator, network: config.network, phase, latency_ms: Date.now() - started, ...details }) }); }

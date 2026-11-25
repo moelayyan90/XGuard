@@ -15,7 +15,7 @@ import { networkState, networkAlarm } from './network/state.ts';
 import { applyOutcomeMetric, applyOutcomeCommerce, outcomeMetrics } from "./outcome-metrics.js";
 import { readBoundedBody } from "./core/execution-contract.js";
 import { advanceLifecycle, financialLifecycle } from "./core/payment-lifecycle.js";
-import { recordPaymentHealth, paymentHealthSnapshot, selectFacilitator, observePaymentHealth } from "./core/payment-health.js";
+import { recordPaymentHealth, paymentHealthSnapshot, selectFacilitator, hasSupportedFacilitator, observePaymentHealth } from "./core/payment-health.js";
 import { reconcilePayment } from "./core/reconcile-payment.js";
 import { sellerStateRoute, sellerPayoutAlarm, syncSellerCommerce, sellerCall, sellerStage } from "./seller-commerce.js";
 import { sellerTraffic } from "./core/seller-policy.js";
@@ -2665,16 +2665,9 @@ export async function readiness(env) {
   checks.testnet_config = testConfig.configured;
   try { checks.proof_authority = (await proofStub(env).fetch("https://proofrail/public")).ok; } catch {}
   try { checks.paid_state = (await gatewayIndex(env).fetch("https://paid-gateway/ping")).ok; } catch {}
-  const facilitatorSupports = async selected => {
-    if (!selected.configured || !env || Object.keys(env).length === 0) return false;
-    try {
-      const response = await fetch(`${selected.facilitator}/supported`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(5000) });
-      const body = await response.json();
-      return response.ok && Array.isArray(body?.kinds) && body.kinds.some(kind => kind?.x402Version === 2 && kind?.scheme === "exact" && kind?.network === selected.network);
-    } catch { return false; }
-  };
-  checks.facilitator = await facilitatorSupports(config);
-  checks.testnet_facilitator = await facilitatorSupports(testConfig);
+  [checks.facilitator, checks.testnet_facilitator] = await Promise.all([
+    hasSupportedFacilitator(env, config), hasSupportedFacilitator(env, testConfig),
+  ]);
   const productionReady = checks.mainnet_config && checks.facilitator && config.environment === PAYMENT_ENVIRONMENTS.PRODUCTION;
   const testReady = checks.testnet_config && checks.testnet_facilitator && testConfig.environment === PAYMENT_ENVIRONMENTS.TEST;
   let realRevenueObserved = false;

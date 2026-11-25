@@ -1,3 +1,4 @@
+import { hasSupportedFacilitator } from './core/payment-health.js';
 import { FEE_SERVICE } from './financial-authority/fees.js';
 import { authorityFeeEnabled } from './financial-authority/paid.js';
 import { handlePaidWebFetch, recoverOutcome, gatewayConfig, jsonBody, rateLimit, livePaidState, livePaidProofKey, livePaidVerifyReceipt, recordLivePaidDiscovery, recordLivePaidResponse } from './paid-agent-entry.js';
@@ -25,7 +26,7 @@ export async function livePaidReadiness(env) {
       livePaidState(env, '/live/readiness').then(c => { checks.financial_storage = c.writable === true; if (c.paused_until > Date.now()) errors.push('paid_circuit_open'); }).catch(e => errors.push(storageQuotaCode(e) || 'financial_storage_unavailable')),
       (async () => {
         if (!config.configured) return;
-        try { const r = await fetch(`${config.facilitator}/supported`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(5000) }); const b = await r.json(); checks.facilitator = r.ok && b?.kinds?.some(k => k.x402Version === 2 && k.scheme === 'exact' && k.network === config.network) === true; } catch {}
+        checks.facilitator = await hasSupportedFacilitator(env, config);
         if (!checks.facilitator) errors.push('facilitator_support_unavailable');
       })(),
     ]);
