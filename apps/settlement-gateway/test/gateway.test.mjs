@@ -67,7 +67,12 @@ async function fixture(t) {
       },
       outboundService: async (request) => {
         const url = new URL(request.url);
-        if (url.origin === "https://facilitator.xpay.sh") {
+        if (["https://facilitator.xpay.sh","https://facilitator.payai.network"].includes(url.origin)) {
+          if (url.pathname === "/supported") {
+            if (url.hostname === "facilitator.xpay.sh" && modes.primaryDown) return new Response(null,{ status:503 });
+            return Response.json({ kinds:[{ x402Version:2,scheme:"exact",network:"eip155:8453" }] });
+          }
+          if (url.hostname === "facilitator.payai.network") assert.equal(request.headers.has("authorization"),false);
           const input = await request.json();
           assert.equal(input.x402Version, 2);
           assert.equal(input.paymentRequirements.amount, "1000");
@@ -75,10 +80,12 @@ async function fixture(t) {
           authorization = input.paymentPayload.payload.authorization;
           if (url.pathname === "/verify") {
             calls.verify++;
+            modes.verifiedProvider = url.origin;
             modes.submissionPending = true;
             return Response.json({ isValid: !modes.verifyInvalid, payer: authorization.from });
           }
           assert.equal(url.pathname, "/settle");
+          assert.equal(url.origin,modes.verifiedProvider);
           calls.settle++;
           modes.submissionPending = false;
           if (modes.lostSettle) return Response.json({ error: "lost_response" }, { status: 503 });
@@ -166,6 +173,16 @@ test("wrong signature, altered amount, and facilitator rejection fail closed", a
   assert.equal(f.calls.verify, 1);
   assert.equal(f.calls.origin, 0);
   assert.equal(f.calls.settle, 0);
+});
+
+test("an unavailable primary permits only the compatible anonymous provider before verification", async t => {
+  const f = await fixture(t);
+  f.modes.primaryDown = true;
+  f.modes.verifyInvalid = true;
+  assert.equal((await f.request(path, await f.proof())).status,402);
+  assert.equal(f.modes.verifiedProvider,"https://facilitator.payai.network");
+  assert.equal(f.calls.settle,0);
+  assert.equal(f.calls.origin,0);
 });
 
 test("48 parallel same-nonce requests settle once; cache survives workerd restart", async (t) => {

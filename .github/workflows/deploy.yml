@@ -73,11 +73,20 @@ jobs:
           PREVIOUS_WORKER_ID: ${{ steps.previous.outputs.version_id }}
         run: node scripts/live-capacity-preflight.mjs
 
+      - name: Verify the private settlement provider update independently
+        id: private_rail
+        env:
+          PREVIOUS_GIT_REF: ${{ steps.previous.outputs.git_ref }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/deploy-settlement-provider-update.mjs
+
       - name: Select compatible code-only canary deployment
         id: protocol_release
         env:
           PREVIOUS_GIT_REF: ${{ steps.previous.outputs.git_ref }}
           ROLLBACK_ALLOWED: ${{ steps.do_guard.outputs.rollback_allowed }}
+          VERIFIED_SETTLEMENT_TREE: ${{ steps.private_rail.outputs.verified_tree }}
         shell: bash
         run: node scripts/canary-release-policy.mjs "$PREVIOUS_GIT_REF" "$DEPLOY_SHA"
 

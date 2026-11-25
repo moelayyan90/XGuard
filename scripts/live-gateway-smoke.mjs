@@ -39,9 +39,10 @@ assert.match(await checkout.text(), /Buy credits/);
 assert.equal(script.status, 200);
 assert.equal(css.status, 200);
 
-const supported = await fetch("https://facilitator.xpay.sh/supported", { redirect: "error", signal: AbortSignal.timeout(12000) });
+assert.ok(["https://facilitator.xpay.sh", "https://facilitator.payai.network"].includes(spec.base_facilitator), "Gateway must select a compatible Base provider");
+const supported = await fetch(spec.base_facilitator + "/supported", { redirect: "error", signal: AbortSignal.timeout(12000) });
 assert.equal(supported.status, 200);
 assert.ok((await supported.json()).kinds.some(k => k.x402Version === 2 && k.scheme === "exact" && k.network === "eip155:8453"));
 console.log(JSON.stringify({ gateway: "production", no_payment: offer.status, malformed: 402,
-  existing_lemon_binding: true, invalid_license_denied: billing.status, base_xpay_supported: true,
+  existing_lemon_binding: true, invalid_license_denied: billing.status, selected_base_provider: spec.base_facilitator,
   real_transfers: 0, real_credit_debits: 0 }));
