@@ -168,3 +168,15 @@ test('release health accepts a signed identity only for the two production workf
   assert.equal(await workflowMonitor(await make({},'other-audience'),publicKey),false);
   assert.equal(await workflowMonitor('missing.signature',publicKey),false);
 });
+
+test('a stale observation cannot authorize a current single or batch result; dated history remains available',async()=>{
+  const h=environment();
+  const fact='npm/react/latest-version';
+  try {
+    await seed(h,'1.0.0','2025-01-01T00:00:00Z');
+    await assert.rejects(prepareIntelligence(input('facts',{fact}),h.env),/current_fact_unavailable/);
+    await assert.rejects(prepareIntelligence(input('batch',{facts:[fact,fact]}),h.env),/current_fact_unavailable/);
+    const history=await prepareIntelligence(input('history',{fact}),h.env);
+    assert.equal(history.data.observations[0].value,'1.0.0');
+  } finally { h.close(); }
+});

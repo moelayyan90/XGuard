@@ -2,7 +2,7 @@ import { BASE, definitionFor, routeFor } from './catalog.js';
 import { compareOpenApi } from './openapi.js';
 import { tokenCost } from './model-card.js';
 import { advisories, compatibility, diagnose, packageHealth, modelCard } from './sources.js';
-import { rpc, shardName, shardOf, hash } from '../live/util.ts';
+import { rpc, shardName, shardOf, hash, agePublicFact } from '../live/util.ts';
 import { canonicalFact } from '../live/paid-data.ts';
 import { sourceSpec } from '../live/adapters.ts';
 const toolTasks = { fact:'facts', dependency:'dependencies', 'api-diff':'breaking-changes', 'model-price':'models', compatibility:'compatibility', diagnosis:'failures', 'cloud-status':'infrastructure', advisory:'security', decision:'decisions' };
@@ -12,8 +12,13 @@ function ensureFact(id) {
   if (!canonicalFact(id)) throw new Error('invalid_fact_id');
   return id;
 }
-function compact(f) {
-  if (!f || typeof f.source_url !== 'string' || !Number.isFinite(Date.parse(f.verified_at))) throw new Error('fact_not_available');
+function compact(record,expectedId) {
+  if (!record || record.id !== expectedId || !Number.isFinite(record.max_age_seconds) || record.max_age_seconds <= 0)
+    throw new Error('fact_not_available');
+  const f = agePublicFact(record);
+  if (f.verification !== 'VERIFIED' || f.current_value == null || !Number.isFinite(Date.parse(f.verified_at)) ||
+      !/^https:\/\//.test(f.source_url || '') || !/^(?:sha256:)?[a-f0-9]{64}$/i.test(f.source_hash || ''))
+    throw new Error('current_fact_unavailable');
   return { id:f.id, value:f.current_value, last_observed:f.last_observed_value, verification:f.verification, confidence:f.confidence,
     verified_at:f.verified_at, age_seconds:Math.max(0,Math.floor((Date.now()-Date.parse(f.verified_at))/1000)),
     source:f.source_url, source_hash:f.source_hash, unit:f.unit, changed_at:f.changed_at };
@@ -21,7 +26,7 @@ function compact(f) {
 async function oneFact(env,id) {
   ensureFact(id);
   const record = await queryShard(env,sourceId(id),'fact-page',{id});
-  return { ...compact(record?.fact), recent_history:(record.history || []).map(o => ({ at:o.observed_at, value:o.value, source:o.source_url, hash:o.source_hash })) };
+  return { ...compact(record?.fact,id), recent_history:(record.history || []).map(o => ({ at:o.observed_at, value:o.value, source:o.source_url, hash:o.source_hash })) };
 }
 async function batch(env,ids) {
   const shards = new Map();
@@ -35,14 +40,14 @@ async function batch(env,ids) {
   for (let i=0;i<chunks.length;i+=5) await Promise.all(chunks.slice(i,i+5).map(async ([n,facts]) => {
     const rows = await rpc(env.LIVE_SHARDS,shardName(n),'paid-read',{kind:'batch',facts});
     if (!Array.isArray(rows) || rows.length !== facts.length) throw new Error('incomplete_batch');
-    for (const row of rows) results.set(row.id,compact(row.fact));
+    for (const row of rows) results.set(row.id,compact(row.fact,row.id));
   }));
   return { units:ids.length, facts:ids.map(id => { if (!results.has(id)) throw new Error('incomplete_batch'); return results.get(id); }) };
 }
 async function infrastructure(env,provider) {
   const f = await oneFact(env,'status/' + provider + '/service-status');
-  return { verdict:f.verification !== 'VERIFIED' ? 'unknown' : f.value === 'none' ? 'no_reported_incident' : 'review_provider_incident',
-    action:f.verification !== 'VERIFIED' ? 'Check the current provider status before deploying.' : f.value === 'none' ? 'Use application-level checks before deployment.' : 'Review the provider incident and affected components before deployment.',
+  return { verdict:f.value === 'none' ? 'no_reported_incident' : 'review_provider_incident',
+    action:f.value === 'none' ? 'Use application-level checks before deployment.' : 'Review the provider incident and affected components before deployment.',
     evidence:[f], scope:'Provider-wide status can differ from regional and application availability.' };
 }
 export async function prepareIntelligence(input,env,fetcher=fetch) {
