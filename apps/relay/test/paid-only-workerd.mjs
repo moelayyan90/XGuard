@@ -7,16 +7,21 @@ import { decodePaymentRequiredHeader } from '@x402/core/http';
 import { Client,StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { Message } from '@a2a-js/sdk';
 import { ClientFactory,ClientFactoryOptions,DefaultAgentCardResolver,JsonRpcTransportFactory } from '@a2a-js/sdk/client';
+import { checkProduction } from '../../../scripts/paid-intelligence-production.mjs';
 import { SERVICES } from '../src/intelligence/catalog.js';
 const relay=fileURLToPath(new URL('../',import.meta.url)), bundle=resolve(relay,'../../.live-build/paid-only/paid-only-entry.js');
 execFileSync(process.execPath,[resolve(relay,'node_modules/wrangler/bin/wrangler.js'),'deploy','src/paid-only-entry.js','--config','wrangler.live-local.jsonc','--dry-run','--outdir',dirname(bundle)],{cwd:relay,env:{...process.env,WRANGLER_SEND_METRICS:'false'},stdio:'pipe'});
 const origin='https://api.xguardgate.com',root=origin+'/api/intelligence/v1';
 const payTo='0x8e526ba9b0b348c1b6935176719d7acf0225aabf';
-const ns={PAID_GATEWAY:{className:'PaidGatewayState',useSQLite:true},PROOF_AUTHORITY:{className:'ProofAuthority',useSQLite:true}};
+const ns={LIVE_CONTROL:{className:'LiveControl',useSQLite:true},PAID_GATEWAY:{className:'PaidGatewayState',useSQLite:true},PROOF_AUTHORITY:{className:'ProofAuthority',useSQLite:true}};
 let outside=0;
 const mf=new Miniflare(convertV4MiniflareOptions({host:'127.0.0.1',port:0,workers:[{
   name:'paid-only-runtime',modules:true,modulesRoot:dirname(bundle),scriptPath:bundle,compatibilityDate:'2026-08-25',compatibilityFlags:['nodejs_compat'],
-  bindings:{XGUARD_PAYMENT_ENVIRONMENT:'production',XGUARD_PAID_FACILITATOR:'https://unreachable.invalid',XGUARD_TREASURY_USDC_ADDRESS:payTo,XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS:'100',XGUARD_PAYMENT_COST_BUDGET_USD_MICROS:'0'},durableObjects:ns,
+  serviceBindings:{XGUARD_SETTLEMENT: async req=>{
+    if(req.headers.has('authorization')) return Response.json({error:'lemon_license_not_authorized'},{status:402});
+    return Response.json({error:'payment_required'},{status:402,headers:{'payment-required':btoa(JSON.stringify({accepts:[{amount:'1000'}]}))}});
+  }},
+  bindings:{CF_VERSION_METADATA:{id:'a1234567-bcde-4567-abcd-123456789abc',tag:'git-123456789abc'},LIVE_ADMIN_KEY:'isolated-contract-check-credential',XGUARD_PAYMENT_ENVIRONMENT:'production',XGUARD_PAID_FACILITATOR:'https://unreachable.invalid',XGUARD_TREASURY_USDC_ADDRESS:payTo,XGUARD_INFRASTRUCTURE_COST_BUDGET_USD_MICROS:'100',XGUARD_PAYMENT_COST_BUDGET_USD_MICROS:'0'},durableObjects:ns,
   outboundService:async()=>{outside++;throw new Error('All external requests disabled during these contract checks');},
 }]}));
 const fetcher=async(url,init)=>mf.dispatchFetch(url instanceof Request?url.url:String(url),init);
@@ -58,6 +63,7 @@ try {
   const agent=await factory.createFromUrl(origin);
   const message=await agent.sendMessage({message:Message.fromJSON({messageId:crypto.randomUUID(),role:'ROLE_USER',parts:[{data:{action:'xguard.discover'}}]})});
   assert.ok(message);
+  await checkProduction({tag:'git-123456789abc',full:true,fetchImpl:fetcher,credential:async()=>'isolated-contract-check-credential'});
   assert.equal(outside,0,'Quoting and discovery must never contact payment, data or other third parties.');
   console.log(JSON.stringify({services_challenged:SERVICES.length,batch_units:100,batch_atomic:'100000',mcp_sdk:true,a2a_sdk:true,external_calls:outside}));
 } finally {await mf.dispose();}
