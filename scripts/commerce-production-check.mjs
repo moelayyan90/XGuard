@@ -35,7 +35,7 @@ const partners = await (await fetchPath('/v1/commerce/partners')).json(); assert
 const blocked = await fetchPath('/v1/commerce/purchase', { service: 'escrow' }); assert.equal(blocked.status, 503);
 const productPage = await fetchPath('/products/pii-redaction'); assert.equal(productPage.status, 200);
 assert.match(await productPage.text(), /Pattern-based redaction/);
-const manifest = await (await fetchPath('/server.json')).json(); assert.equal(manifest.name, 'io.github.moelayyan90/xguard'); assert.equal(manifest.version, '6.1.0');
+const manifest = await (await fetchPath('/server.json')).json(); assert.equal(manifest.name, 'io.github.moelayyan90/xguard'); assert.equal(manifest.version, '6.2.0');
 const service = PRODUCT_SERVICES.find(p => p.route === 'redact');
 const unpaid = await fetchPath('/api/paid/v1/redact', service.example);
 if (catalog.new_service_purchase_enabled) {

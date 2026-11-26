@@ -18,6 +18,23 @@ function businessStateUnchanged(oldRef,newRef) {
   const tail=s=>s.slice(s.indexOf('      const verified = (checked.isValid')).replace(/await (?:xpay\(env, |callProvider\(env, selectedProvider, )"settle", payment\)/g,'SETTLE_SAME_PROVIDER').replace('        base_facilitator: await availableBaseProvider(),\n','');
   assert.equal(tail(before),tail(after),'Durable settlement or recovery changed.');
 }
+function isOriginMigration(oldRef,newRef) {
+  const file = ':'+dir+'/xguard-gateway.ts';
+  const before=git('show',oldRef+file), after=git('show',newRef+file);
+  if (before.includes('async function factOriginProtocol(') || !after.includes('async function factOriginProtocol(')) return false;
+  const previousStart='async function prepareFacts(env: Env, r: Route): Promise<string> {';
+  const nextStart='async function factOriginProtocol(env: Env) {';
+  const end='  if (origin.status !== 200 ||';
+  function checkedSource(source, start) {
+    const a=source.indexOf(start), b=source.indexOf(end,a);
+    assert.ok(a>=0 && b>a,'Expected the isolated origin read');
+    return (source.slice(0,a) + source.slice(b))
+      .replace('Fetcher & { readSettlementFact(id: string): Promise<Response> }','Fetcher')
+      .replace('        fact_origin: await factOriginProtocol(env),\n','');
+  }
+  assert.equal(checkedSource(before,previousStart),checkedSource(after,nextStart),'Only the private source read and its catalog readiness may change.');
+  return true;
+}
 const token=(process.env.CLOUDFLARE_API_TOKEN||'').trim().replace(/^Bearer\s+/i,'').replace(/^"(.*)"$/,'$1');
 const wr=(...args)=>execFileSync('node_modules/.bin/wrangler',[...args,'--config','wrangler.jsonc'],{cwd:dir,encoding:'utf8',env:{...process.env,CLOUDFLARE_API_TOKEN:token,WRANGLER_SEND_METRICS:'false'},maxBuffer:5000000});
 const deployments=()=>JSON.parse(wr('deployments','list','--json')).at(-1).versions;
@@ -31,26 +48,30 @@ const tree=git('rev-parse',sha+':'+dir);
 if (git('rev-parse',priorRef+':'+dir)!==tree) {
   const privateFiles=git('diff','--name-only',priorRef,sha,'--',dir).split('\n').filter(path=>path&&!path.startsWith(dir+'/test/'));
   assert.deepEqual(privateFiles,[dir+'/xguard-gateway.ts'],'The private Worker has additional undeployed runtime changes.');
-  businessStateUnchanged(priorRef,sha);
-  const output=wr('versions','upload','--tag','git-'+sha.slice(0,12),'--message','Compatible settlement provider selection');
+  const originMigration=isOriginMigration(priorRef,sha);
+  if (!originMigration) businessStateUnchanged(priorRef,sha);
+  const output=wr('versions','upload','--tag','git-'+sha.slice(0,12),'--message','Compatible private settlement update');
   const candidate=output.match(/Worker Version ID:\s*([0-9a-f-]{36})/)?.[1];
   assert.ok(candidate && candidate!==prior);
   async function check(expected, override) {
     for(let attempt=0;attempt<8;attempt++) {
       try {
         const r=await fetch('https://xguardgate.com/api/gateway/v1/catalog',{headers:{accept:'application/json','cache-control':'no-cache',...(override?{'cloudflare-workers-version-overrides':'xguard-settlement-gateway="'+expected+'"'}:{})},signal:AbortSignal.timeout(9000)});
-        assert.equal(r.status,200);const catalog=await r.json();assert.ok(['https://facilitator.xpay.sh','https://facilitator.payai.network'].includes(catalog.base_facilitator));return;
+        assert.equal(r.status,200);const catalog=await r.json();
+        assert.ok(['https://facilitator.xpay.sh','https://facilitator.payai.network'].includes(catalog.base_facilitator));
+        if (originMigration) assert.equal(catalog.fact_origin,'private-worker-rpc-v1');
+        return;
       } catch(e) {if(attempt===7)throw e;await wait(3000);}
     }
   }
   try {
-    wr('versions','deploy',prior+'@100',candidate+'@0','--yes','--message','Test private facilitator selection');
+    wr('versions','deploy',prior+'@100',candidate+'@0','--yes','--message','Test private settlement compatibility');
     await check(candidate,true);
-    wr('versions','deploy',candidate+'@100','--yes','--message','Promote private settlement discovery');
+    wr('versions','deploy',candidate+'@100','--yes','--message','Promote verified private settlement');
     await check(candidate,false);
     assert.equal(deployments()[0].version_id,candidate);
     assert.equal(tag(candidate),'git-'+sha.slice(0,12));
-  } catch(e) {wr('versions','deploy',prior+'@100','--yes','--message','Restore previous settlement provider');throw e;}
+  } catch(e) {wr('versions','deploy',prior+'@100','--yes','--message','Restore previous private settlement');throw e;}
 }
 appendFileSync(process.env.GITHUB_OUTPUT,'verified_tree='+tree+'\n');
 console.log(JSON.stringify({worker:'xguard-settlement-gateway',verified_tree:tree,payments_submitted:0}));

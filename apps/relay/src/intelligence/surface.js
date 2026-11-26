@@ -1,3 +1,5 @@
+import { registryManifest, mcpServerCard } from '../live/integrations.ts';
+import { releaseHealth } from './release-health.js';
 import { existingObligation } from './obligations.js';
 import { sourceSpec } from '../live/adapters.ts';
 import { canonicalFact } from '../live/paid-data.ts';
@@ -101,6 +103,7 @@ async function dispatch(req,env,ctx,legacy) {
   }
   if (req.method === 'OPTIONS') return new Response(null,{status:204});
   const at = path.startsWith(prefix) ? path.slice(ROOT.length) : path;
+  if (legacy && path === '/internal/release-health' && isRead(req)) return releaseHealth(req,env,ctx,legacy);
   if (at === '/admin/revenue') return ownerRevenue(req,env,read);
   if (isRead(req)) {
     if (at === '/catalog' || path === ROOT || discoveryPaths.has(path)) return json({...catalog(),new_payments_enabled:deployment.payment_state_write_version >= 7});
@@ -108,7 +111,8 @@ async function dispatch(req,env,ctx,legacy) {
     if (at === '/openapi.json') return json(openApi());
     if (['/.well-known/agent-card.json','/.well-known/agent.json','/a2a/.well-known/agent-card.json'].includes(at)) return json(card());
     if (['/','/pricing','/marketplace','/developers','/install','/connect','/products'].includes(path)) return landing();
-    if (at === '/server.json' || path === '/mcp/server-card') return json({name:'io.github.moelayyan90/xguard',description:TITLE,version:'1.0.0',remotes:[{type:'streamable-http',url:MCP}]});
+    if (at === '/server.json') return json(registryManifest);
+    if (path === '/mcp/server-card') return json(mcpServerCard);
     if (at === '/.well-known/x402' || at === '/supported') return json({x402Version:2,service_role:'resource_server',pricing:price(),services:BASE+'/catalog'});
     if (at === '/proof-key' || path === '/api/paid/v1/proof-key' || path === '/.well-known/xguard-proof-key.json') return json(await livePaidProofKey(env));
     if (path === '/llms.txt' || path === '/robots.txt') return new Response(path === '/robots.txt' ? 'User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: https://xguardgate.com/sitemap.xml\n' : TITLE+'\n'+BASE+'/catalog\n'+MCP+'\n'+A2A+'\n', {headers:{'content-type':'text/plain; charset=utf-8'}});
@@ -153,6 +157,34 @@ async function dispatch(req,env,ctx,legacy) {
       if (route === 'fact' || route === 'live') return purchase(req,env,routeFor('facts'),{fact},'intelligence-http');
       return error('observation_required',400);
     }
+  }
+  const gatewayPrefix = '/api/gateway/v1';
+  if (path === gatewayPrefix || path.startsWith(gatewayPrefix + '/')) {
+    const suffix = path.slice(gatewayPrefix.length);
+    if (isRead(req) && ['', '/catalog', '/checkout', '/test-base'].includes(suffix)) {
+      let connected = {};
+      if (suffix === '/catalog') {
+        if (!env.XGUARD_SETTLEMENT) return error('gateway_unavailable',503);
+        const response = await env.XGUARD_SETTLEMENT.fetch(new Request('https://xguardgate.com/api/gateway/v1/catalog',{headers:{accept:'application/json'}}));
+        if (!response.ok) return error('gateway_unavailable',503);
+        const gateway = await response.json();
+        if (gateway.fact_origin !== 'private-worker-rpc-v1' || !['https://facilitator.xpay.sh','https://facilitator.payai.network'].includes(gateway.base_facilitator))
+          return error('gateway_unavailable',503);
+        connected = {base_facilitator:gateway.base_facilitator,fact_origin:gateway.fact_origin};
+      }
+      return json({ ...catalog(), ...connected, existing_prepaid_access: {
+        method: 'GET', resource: 'https://xguardgate.com/api/gateway/v1/fact/{fact_id}',
+        credentials: 'Use the original prepaid credential and Idempotency-Key. A completed order can be recovered with the original request.'
+      } });
+    }
+    const atomicFact = suffix.startsWith('/fact/') && canonicalFact(suffix.slice(6));
+    const priorCredential = req.headers.has('authorization') || req.headers.has('payment-signature');
+    const historicalRead = /^\/(?:live|history|changes|evidence|topics|healthz|status)(?:\/|$)/.test(suffix);
+    if (req.method === 'GET' && (atomicFact || historicalRead && priorCredential)) {
+      if (url.hostname !== 'xguardgate.com') return Response.redirect('https://xguardgate.com'+path+url.search,308);
+      if (env.XGUARD_SETTLEMENT) return env.XGUARD_SETTLEMENT.fetch(req);
+    }
+    return error('legacy_operation_unavailable',503,{new_charge:false});
   }
   const oldPaid = path.match(/^\/api\/paid\/v1\/(batch|history|compare)$/);
   if (oldPaid && req.method === 'POST') return purchase(req,env,routeFor(oldPaid[1]),await read(req),'intelligence-http');

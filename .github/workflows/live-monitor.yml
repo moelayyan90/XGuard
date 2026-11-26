@@ -10,22 +10,32 @@ permissions:
   contents: read
 jobs:
   monitor:
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+      - id: deployed
+        run: node scripts/production-entry-mode.mjs --deployed
+      - name: Verify the paid contract and the private owner ledger check
+        if: steps.deployed.outputs.main == 'src/paid-only-entry.js'
+        run: node scripts/paid-intelligence-production.mjs
       - name: Check canonical public facts and collection heartbeat
+        if: steps.deployed.outputs.main == 'src/live-entry.js'
         run: node scripts/live-smoke.mjs
       - name: Check isolated paid availability without a transaction
-        if: always()
+        if: always() && steps.deployed.outputs.main == 'src/live-entry.js'
         run: node scripts/live-paid-smoke.mjs --require-ready
       - name: Check PayPal Live configuration, final price and order storage without a transaction
-        if: always()
+        if: always() && steps.deployed.outputs.main == 'src/live-entry.js'
         run: node scripts/action-production-check.mjs --require-ready
   provider-usage:
     runs-on: ubuntu-latest

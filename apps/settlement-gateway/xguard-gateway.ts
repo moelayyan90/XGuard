@@ -26,7 +26,7 @@ import { buyerAsset } from "./buyer";
 
 export interface Env {
   XGUARD_STATE: DurableObjectNamespace<XGuardState>;
-  XGUARD_ORIGIN: Fetcher;
+  XGUARD_ORIGIN: Fetcher & { readSettlementFact(id: string): Promise<Response> };
   XGUARD_BILLING?: Fetcher;
   GATEWAY_ENABLED: string;
   GATEWAY_PATH_PREFIX?: string;
@@ -644,12 +644,23 @@ function route(request: Request, cfg: Config, prefix: string): Route {
     group: fact ? "fact" : status ? "status" : "index", paid: Boolean(prefix) };
 }
 
+async function factOriginProtocol(env: Env) {
+  const check = await env.XGUARD_ORIGIN.readSettlementFact("");
+  if (check.status !== 400 || record(await check.json()).error !== "invalid_fact")
+    reject(503, "private_fact_origin_unavailable");
+  return "private-worker-rpc-v1";
+}
+
 async function prepareFacts(env: Env, r: Route): Promise<string> {
-  // The authority here is only the service binding, never public DNS.
-  const origin = await env.XGUARD_ORIGIN.fetch(new Request("https://xguard-origin.internal" + r.upstream, {
-    method: "GET", headers: { Accept: "application/json" }, redirect: "manual",
-    signal: AbortSignal.timeout(8_000),
-  }));
+  const factId = /^\/fact\/(.+)\?format=json$/.exec(r.upstream)?.[1];
+  // Completed old orders are returned from the journal before reaching this point.
+  if (r.paid && !factId) reject(503, "legacy_operation_paused");
+  const origin = r.paid
+    ? await env.XGUARD_ORIGIN.readSettlementFact(factId!)
+    : await env.XGUARD_ORIGIN.fetch(new Request("https://xguard-origin.internal" + r.upstream, {
+        method: "GET", headers: { Accept: "application/json" }, redirect: "manual",
+        signal: AbortSignal.timeout(8_000),
+      }));
   if (origin.status !== 200 || !/^application\/(?:json|[a-z0-9.+-]+\+json)(?:;|$)/i.test(origin.headers.get("Content-Type") ?? "")) {
     void origin.body?.cancel().catch(() => undefined);
     reject(502, "origin_result_unavailable");
@@ -880,6 +891,7 @@ export default {
           !url.search && request.method === "GET") return json({
         name: "XGuard paid validation gateway",
         base_facilitator: await availableBaseProvider(),
+        fact_origin: await factOriginProtocol(env),
         public_facts_remain_free: true,
         sample: cfg.origin + prefix + "/fact/npm/react/latest-version",
         checkout_url: cfg.origin + prefix + "/checkout",

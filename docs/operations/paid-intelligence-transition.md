@@ -6,7 +6,7 @@ The unit price is USD 0.001. The supported settlement rail uses 1,000 atomic USD
 
 The rollback source is `restore/2026-11-24-before-global-paid-infrastructure`, commit `0d33397ec0fc60b63ef0369eb1ed7c0301899578`. The deploy job also snapshots the active Cloudflare version immediately before rollout. Reader 7 understands a stored result prepared after verification and before settlement. Writer 6 can publish discovery and issue an offer but declines intelligence purchase attempts. Writer 7 may be promoted separately after the reader deployment. Preserve this reader or a newer revision for subsequent recovery.
 
-The transition entry serves the new API under `/api/intelligence/v1`. Its MCP endpoint is `/api/intelligence/v1/mcp`, A2A is `/api/intelligence/v1/a2a`, and the schemas are at `/api/intelligence/v1/openapi.json`. The separately built paid-only entry applies the metering policy at the origin before caches, analytics and legacy handlers. Unsupported services return an unavailable response. Administration and existing paid-result recovery require the existing credentials. The production release exercises the strict entry with a version override at 0% normal traffic and then restores the single control version.
+The transition entry serves the new API under `/api/intelligence/v1`. Its MCP endpoint is `/api/intelligence/v1/mcp`, A2A is `/api/intelligence/v1/a2a`, and the schemas are at `/api/intelligence/v1/openapi.json`. The separately built paid-only entry applies the metering policy at the origin before caches, analytics and legacy handlers. Unsupported services return an unavailable response. Administration and existing paid-result recovery require the existing credentials. The reader release exercised that entry at 0% normal traffic. The paid-origin release first checks that the deployed reader and writer support state version 7. It tests the private settlement binding, then the public entry at 0%, 5%, and 100% on both canonical hosts. A failed public check restores the previous compatible version. The private owner-report check accepts the existing owner credential or a short-lived GitHub identity restricted to this repository’s production deployment and monitoring workflows.
 
 ## GBLIN witness transition
 
@@ -14,7 +14,7 @@ GBLIN confirmed automatic C2SP checkpoint submission in [issue 211](https://gith
 
 ## Existing purchase recovery
 
-The strict entry accepts the original recovery credentials for paid results, compute receipts, task and schedule state, checkout orders and execution credits. Existing credits are verified against the original order. The public Worker also exposes a service-binding-only RPC method for one canonical fact, allowing the private gateway to migrate its paid data read without exposing a public origin URL.
+The strict entry accepts the original recovery credentials for paid results, compute receipts, task and schedule state, checkout orders and execution credits. Existing credits are verified against the original order. The settlement gateway uses a service-binding-only RPC call for one canonical fact. Previously completed orders on older resources can still return their original journaled result. New multi-result gateway reads are paused before settlement. The private gateway checks the RPC contract without reading a paid fact during discovery.
 
 ## Evidence and coverage
 

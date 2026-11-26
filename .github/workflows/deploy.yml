@@ -15,8 +15,51 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  entry:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      main: ${{ steps.mode.outputs.main }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - id: mode
+        run: node scripts/production-entry-mode.mjs --source
+
+  paid:
+    needs: entry
+    if: needs.entry.outputs.main == 'src/paid-only-entry.js'
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci --prefix apps/relay --no-audit --no-fund
+      - run: npm ci --prefix apps/settlement-gateway --no-audit --no-fund
+      - run: npm run build && node apps/relay/test/glama-workerd.mjs --require-configured
+      - name: Verify payment recovery and roll out the paid origin at zero, five and one hundred percent
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/release-paid-intelligence.mjs
+
+  deploy:
+    needs: entry
+    if: needs.entry.outputs.main == 'src/live-entry.js'
     runs-on: ubuntu-latest
     timeout-minutes: 28
     env:

@@ -149,3 +149,22 @@ test('the retained witness agreement uses only the pinned production log and pub
   assert.equal((await get('/v1/compute/receipts/xcq_'+'0'.repeat(32))).status,404);
   assert.equal((await get('/v1/tasks/xgtask_'+'0'.repeat(32))).status,404);
 });
+
+test('release health accepts a signed identity only for the two production workflows', async () => {
+  const { SignJWT, generateKeyPair } = await import('jose');
+  const { workflowMonitor, monitorAudience } = await import('../src/intelligence/release-health.js');
+  const {privateKey,publicKey}=await generateKeyPair('RS256');
+  const repository='moelayyan90/XGuard';
+  const claims={repository,repository_id:'1334264385',repository_owner_id:'306228198',ref:'refs/heads/main',
+    workflow_ref:repository+'/.github/workflows/deploy.yml@refs/heads/main',event_name:'workflow_run'};
+  async function make(overrides={},audience=monitorAudience) {
+    return new SignJWT({...claims,...overrides}).setProtectedHeader({alg:'RS256'}).setIssuedAt().setExpirationTime('5m')
+      .setIssuer('https://token.actions.githubusercontent.com').setSubject('release').setAudience(audience).sign(privateKey);
+  }
+  assert.equal(await workflowMonitor(await make(), publicKey),true);
+  assert.equal(await workflowMonitor(await make({event_name:'schedule',workflow_ref:repository+'/.github/workflows/live-monitor.yml@refs/heads/main'}),publicKey),true);
+  for(const claims of [{event_name:'pull_request'},{ref:'refs/heads/feature'},{repository_owner_id:'0'},{repository_id:'0'},{workflow_ref:repository+'/.github/workflows/ci.yml@refs/heads/main'}])
+    assert.equal(await workflowMonitor(await make(claims),publicKey),false);
+  assert.equal(await workflowMonitor(await make({},'other-audience'),publicKey),false);
+  assert.equal(await workflowMonitor('missing.signature',publicKey),false);
+});

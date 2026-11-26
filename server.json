@@ -2,13 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.moelayyan90/xguard",
   "title": "XGuard",
-  "description": "Bounded digital tasks, simple checkout, private result recovery and signed receipts.",
+  "description": "Paid technical intelligence for developers and AI agents. USD 0.001 per successful atomic query.",
   "repository": {
     "url": "https://github.com/moelayyan90/XGuard",
     "source": "github"
   },
   "websiteUrl": "https://xguardgate.com/install",
-  "version": "6.1.0",
+  "version": "6.2.0",
   "remotes": [
     {
       "type": "streamable-http",
