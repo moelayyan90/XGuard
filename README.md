@@ -10,7 +10,8 @@ npm run verifier:test
 The offline demo verifies sample artifacts and tries to use the same approval twice. Its output includes the price in token atomic units, the approval result and the reason the second use was rejected.
 
 - [Operator guide, policy format and spending journal](packages/agent-verifier/README.md)
-- [goose recipe](packages/agent-verifier/goose.yaml)
+- [goose recipe](packages/agent-verifier/goose.yaml) and [installable version 1.0.0, host compatibility and maintainer guide](packages/agent-verifier/RELEASE.md)
+- [Versioned profile, threat model and recovery](packages/agent-verifier/PROFILE.md)
 - [Verifier tests](packages/agent-verifier/verifier.test.mjs) and [official MCP client interoperability test](apps/relay/test/open-agent-verifier.test.mjs)
 - [Apache-2.0 license](LICENSE)
 

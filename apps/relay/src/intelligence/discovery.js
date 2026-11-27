@@ -48,12 +48,14 @@ function htmlPage(title, content) {
 
 export function openVerifierLanding() {
   const source = 'https://github.com/moelayyan90/XGuard/tree/main/packages/agent-verifier';
+  const files = 'https://github.com/moelayyan90/XGuard/blob/main/packages/agent-verifier';
   return htmlPage('XGuard Open Verifier', [
     '<h1>XGuard Open Verifier</h1>',
     '<p>Check what a paid API is asking your agent to spend. Run the verifier locally with Node.js 24 and a public key you trust for that API.</p>',
     '<p>The verifier checks a signed x402 offer and a merchant receipt. Its MCP tools let an agent inspect both. The operator can approve one specific request and enforce a rolling spending limit before a wallet signs.</p>',
     '<h2>Try it offline</h2><p>From the repository root, run <code>npm run verifier:demo</code>. The demo uses a sample merchant and shows what happens when an approval is reused.</p>',
-    '<p><a href="'+source+'">Get the Apache-2.0 source and operator guide</a> · <a href="https://github.com/moelayyan90/XGuard/blob/main/packages/agent-verifier/goose.yaml">Open the goose recipe</a></p>',
+    '<p><a href="'+source+'">Get the Apache-2.0 source and operator guide</a> · <a href="'+files+'/goose.yaml">Open the goose recipe</a></p>',
+    '<p><a href="'+files+'/RELEASE.md">Install version 1.0.0 and reproduce the goose and Pydantic AI tests</a> · <a href="'+files+'/PROFILE.md">Read the signing policy and recovery guide</a></p>',
     '<h2>XGuard paid API</h2><p>See the <a href="'+BASE+'/catalog">service catalog and prices</a> for the hosted API.</p>',
   ].join(''));
 }

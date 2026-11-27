@@ -1,0 +1,242 @@
+{
+  "profile": "xguard-open-verifier/1",
+  "clock": 1800000000,
+  "current": {
+    "policy": {
+      "version": 1,
+      "network": "eip155:84532",
+      "asset": "0x3333333333333333333333333333333333333333",
+      "maxPerCallAtomic": "125",
+      "maxPer24hAtomic": "250",
+      "resources": [
+        {
+          "resourceUrl": "https://maps.example/map",
+          "payTo": "0x2222222222222222222222222222222222222222",
+          "publicKey": {
+            "kty": "EC",
+            "crv": "P-256",
+            "kid": "did:web:maps.example#test-2",
+            "x": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg",
+            "y": "B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E"
+          },
+          "retiredReceiptKeys": [
+            {
+              "publicKey": {
+                "kty": "EC",
+                "crv": "P-256",
+                "kid": "did:web:maps.example#test-1",
+                "x": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY",
+                "y": "T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU"
+              },
+              "lastIssuedAt": 1800000000
+            }
+          ]
+        }
+      ]
+    },
+    "offerInput": {
+      "request": {
+        "method": "GET",
+        "resourceUrl": "https://maps.example/map",
+        "body": ""
+      },
+      "challenge": {
+        "x402Version": 2,
+        "resource": {
+          "url": "https://maps.example/map"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "asset": "0x3333333333333333333333333333333333333333",
+            "payTo": "0x2222222222222222222222222222222222222222",
+            "amount": "125",
+            "maxTimeoutSeconds": 45,
+            "extra": {
+              "name": "Fixture USD",
+              "version": "2"
+            }
+          }
+        ],
+        "extensions": {
+          "offer-receipt": {
+            "info": {
+              "offers": [
+                {
+                  "format": "jws",
+                  "signature": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDp3ZWI6bWFwcy5leGFtcGxlI3Rlc3QtMiJ9.eyJ2ZXJzaW9uIjoxLCJyZXNvdXJjZVVybCI6Imh0dHBzOi8vbWFwcy5leGFtcGxlL21hcCIsInNjaGVtZSI6ImV4YWN0IiwibmV0d29yayI6ImVpcDE1NTo4NDUzMiIsImFzc2V0IjoiMHgzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzIiwicGF5VG8iOiIweDIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIiLCJhbW91bnQiOiIxMjUiLCJ2YWxpZFVudGlsIjoxODAwMDAwMDYwfQ.1_uMUE-OEHuuyGzDMkC0kaCpQlFEyRwpsfk9gXiSUKX2mrojNDDt9T8GjmhdSqyKiAk4L4prqJhVwEtw2zkn8w"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "receiptInput": {
+      "expected": {
+        "resourceUrl": "https://maps.example/map",
+        "payer": "0x5555555555555555555555555555555555555555",
+        "transaction": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "notBefore": 1799999990
+      },
+      "settlement": {
+        "success": true,
+        "network": "eip155:84532",
+        "payer": "0x5555555555555555555555555555555555555555",
+        "transaction": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "extensions": {
+          "offer-receipt": {
+            "info": {
+              "receipt": {
+                "format": "jws",
+                "signature": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDp3ZWI6bWFwcy5leGFtcGxlI3Rlc3QtMiJ9.eyJ2ZXJzaW9uIjoxLCJyZXNvdXJjZVVybCI6Imh0dHBzOi8vbWFwcy5leGFtcGxlL21hcCIsIm5ldHdvcmsiOiJlaXAxNTU6ODQ1MzIiLCJwYXllciI6IjB4NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NSIsInRyYW5zYWN0aW9uIjoiMHhhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiaXNzdWVkQXQiOjE4MDAwMDAwMDB9.COvWrwJrSbtHLnaT6nMNtzW4Usyx6We0QXpn7e9q2sfQPAh2BlA-hH8QlRv3R8iBVV6I58QaNrl6cPTZ0PoFYQ"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "prior": {
+    "offerInput": {
+      "request": {
+        "method": "GET",
+        "resourceUrl": "https://maps.example/map",
+        "body": ""
+      },
+      "challenge": {
+        "x402Version": 2,
+        "resource": {
+          "url": "https://maps.example/map"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:84532",
+            "asset": "0x3333333333333333333333333333333333333333",
+            "payTo": "0x2222222222222222222222222222222222222222",
+            "amount": "125",
+            "maxTimeoutSeconds": 45,
+            "extra": {
+              "name": "Fixture USD",
+              "version": "2"
+            }
+          }
+        ],
+        "extensions": {
+          "offer-receipt": {
+            "info": {
+              "offers": [
+                {
+                  "format": "jws",
+                  "signature": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDp3ZWI6bWFwcy5leGFtcGxlI3Rlc3QtMSJ9.eyJ2ZXJzaW9uIjoxLCJyZXNvdXJjZVVybCI6Imh0dHBzOi8vbWFwcy5leGFtcGxlL21hcCIsInNjaGVtZSI6ImV4YWN0IiwibmV0d29yayI6ImVpcDE1NTo4NDUzMiIsImFzc2V0IjoiMHgzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzIiwicGF5VG8iOiIweDIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIiLCJhbW91bnQiOiIxMjUiLCJ2YWxpZFVudGlsIjoxODAwMDAwMDYwfQ.bMvSyoN1xfB-6Zr8_PqFQ36q4fnTgKSKTUL0ztpjSVNBX8vfWQQTZTPjvHicFqp9UHLKUOBYh5pyCkSS8ZohDQ"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "receiptInput": {
+      "expected": {
+        "resourceUrl": "https://maps.example/map",
+        "payer": "0x5555555555555555555555555555555555555555",
+        "transaction": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "notBefore": 1799999990
+      },
+      "settlement": {
+        "success": true,
+        "network": "eip155:84532",
+        "payer": "0x5555555555555555555555555555555555555555",
+        "transaction": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "extensions": {
+          "offer-receipt": {
+            "info": {
+              "receipt": {
+                "format": "jws",
+                "signature": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDp3ZWI6bWFwcy5leGFtcGxlI3Rlc3QtMSJ9.eyJ2ZXJzaW9uIjoxLCJyZXNvdXJjZVVybCI6Imh0dHBzOi8vbWFwcy5leGFtcGxlL21hcCIsIm5ldHdvcmsiOiJlaXAxNTU6ODQ1MzIiLCJwYXllciI6IjB4NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NSIsInRyYW5zYWN0aW9uIjoiMHhhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiaXNzdWVkQXQiOjE4MDAwMDAwMDB9.PNeDXjbpoS1nAaIh0xtcqtn2WjlZLo8F4mSXy1xc53luNeKgLUIc2HuOwtudrzb8dGDVbh3z44wMAjQD5VcovQ"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "current offer",
+      "action": "offer",
+      "want": "reviewed"
+    },
+    {
+      "name": "current receipt",
+      "action": "receipt",
+      "want": "merchant_receipt_verified"
+    },
+    {
+      "name": "exclusive expiry",
+      "action": "offer",
+      "clockOffset": 60,
+      "want": "expired_or_undated_offer"
+    },
+    {
+      "name": "unsupported wire price",
+      "action": "offer",
+      "set": [
+        [
+          "challenge",
+          "accepts",
+          0,
+          "amount"
+        ],
+        "124"
+      ],
+      "want": "terms_do_not_match_signature"
+    },
+    {
+      "name": "payer differs",
+      "action": "receipt",
+      "set": [
+        [
+          "expected",
+          "payer"
+        ],
+        "0x0101010101010101010101010101010101010101"
+      ],
+      "want": "settlement_mismatch"
+    },
+    {
+      "name": "unsigned URL differs",
+      "action": "offer",
+      "set": [
+        [
+          "challenge",
+          "resource",
+          "url"
+        ],
+        "https://maps.example/other"
+      ],
+      "want": "unsupported_challenge"
+    },
+    {
+      "name": "retired offer",
+      "action": "offer",
+      "old": true,
+      "want": "untrusted_signer_or_header"
+    },
+    {
+      "name": "retired receipt at cutoff",
+      "action": "receipt",
+      "old": true,
+      "want": "merchant_receipt_verified"
+    },
+    {
+      "name": "retired receipt after cutoff",
+      "action": "receipt",
+      "old": true,
+      "cutoffOffset": -1,
+      "want": "retired_key_cutoff"
+    }
+  ]
+}

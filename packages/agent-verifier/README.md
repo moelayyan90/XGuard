@@ -62,3 +62,28 @@ A changed request, signed offer or payment option invalidates the approval. Cons
 Use an operator-owned private directory on a local disk, a trusted clock and one persistent journal per budget. SQLite serializes simultaneous writers. The journal stores hashes, token/network, amounts, operation IDs and consumption times. Keep policy, journal and signer outside the agent's write permissions. Replacing the database or using separate machines with independent copies creates separate spending limits.
 
 The [Apache-2.0 license](../../LICENSE) permits independent reuse. The demo works without an XGuard account, network access or a funded wallet.
+
+## Use the host signing adapter
+
+The [1.0 profile](PROFILE.md) defines signed fields, policy rotation, failure recovery and unsupported cases. The [release and compatibility guide](RELEASE.md) includes the installable bundle, source and reproduction commands for goose and Pydantic AI.
+
+A wallet integration imports signApprovedOffer from signer.mjs into a trusted process. Supply a loaded policy with a signing section, the existing journal, the operator-approved input, the structured result returned by review_offer and a wallet with address and signTypedData. For example, a viem local account supports this interface. Set the token name and version from a trusted operator record. Pass the extension's structured tool content, which is JSON text, directly to the host. Keep wallet output and approval controls outside the agent session.
+
+```js
+import { signApprovedOffer } from './signer.mjs';
+
+const signed = await signApprovedOffer({
+  db, policy, operation, input: originalInput,
+  review: JSON.parse(toolResult.content[0].text), wallet,
+});
+// signed.request holds the exact approved HTTP request.
+// signed.paymentPayload holds the signed x402 v2 payload for the trusted transport.
+```
+
+When an independent transaction record is available, the host can reconcile it with the merchant receipt. Pass a JSON document with request (the original method, resourceUrl and body), expected (the host's payer, transaction, resourceUrl and notBefore) and settlement (the merchant response).
+
+```sh
+node packages/agent-verifier/cli.mjs reconcile policy.json confirmation.json spending.sqlite order-0001
+```
+
+For a bundle-based MCP client, download the .mcpb file from the versioned release, compare its SHA-256 with server.json, and select your policy file at installation time. In goose CLI the recipe in this repository starts the same extension directly. The permitted tools are review_offer and verify_receipt.

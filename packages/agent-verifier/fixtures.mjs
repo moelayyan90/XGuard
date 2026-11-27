@@ -3,7 +3,7 @@ import { nowSeconds } from './verify.mjs';
 
 // Ephemeral merchant signing key for the offline demo and test vectors.
 // Every address and transaction in these fixtures is illustrative.
-export function fixture(host = 'books.example', now = nowSeconds()) {
+export function fixture(host = 'books.example', now = nowSeconds(), payer = '0x' + '56'.repeat(20)) {
   const key = generateKeyPairSync('ec', { namedCurve: 'P-256' });
   const publicKey = { ...key.publicKey.export({ format: 'jwk' }), kid: 'did:web:' + host + '#merchant' };
   function signed(payload, headers = {}) {
@@ -17,14 +17,14 @@ export function fixture(host = 'books.example', now = nowSeconds()) {
   const asset = '0x' + '34'.repeat(20);
   const network = 'eip155:84532';
   const transaction = '0x' + 'ab'.repeat(32);
-  const payer = '0x' + '56'.repeat(20);
   const terms = { scheme: 'exact', network, asset, payTo, amount: '1000' };
   const offer = { version: 1, resourceUrl, ...terms, validUntil: now + 300 };
   const receipt = { version: 1, resourceUrl, network, payer, transaction, issuedAt: now };
   const policy = { version: 1, network, asset, maxPerCallAtomic: '1000', maxPer24hAtomic: '1500',
     resources: [{ resourceUrl, payTo, publicKey }] };
   const offerInput = { request: { method: 'POST', resourceUrl, body: '{"record":"example"}' },
-    challenge: { x402Version: 2, resource: { url: resourceUrl }, accepts: [terms],
+    challenge: { x402Version: 2, resource: { url: resourceUrl }, accepts: [{ ...terms,
+      maxTimeoutSeconds: 60, extra: { name: 'Fixture USD', version: '2', assetTransferMethod: 'eip3009' } }],
       extensions: { 'offer-receipt': { info: { offers: [{ ...signed(offer), acceptIndex: 0 }] } } } } };
   const receiptInput = { expected: { resourceUrl, payer, transaction, notBefore: now - 30 },
     settlement: { success: true, network, payer, transaction,

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.moelayyan90/xguard-open-verifier",
+  "title": "XGuard Open Verifier",
+  "description": "Inspect signed x402 offers and merchant receipts against a local policy.",
+  "repository": {
+    "url": "https://github.com/moelayyan90/XGuard",
+    "source": "github",
+    "subfolder": "packages/agent-verifier"
+  },
+  "version": "1.0.0",
+  "websiteUrl": "https://xguardgate.com/open-verifier",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/moelayyan90/XGuard/releases/download/open-verifier-v1.0.0/xguard-open-verifier.mcpb",
+      "fileSha256": "41b27f6abd2eb44c4a046fb6c031b4afc3bae535b484b72a48f35100f9f40ae5",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+name: Release XGuard Open Verifier
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/agent-verifier/**'
+      - 'apps/relay/test/verifier-hosts.mjs'
+      - '.github/workflows/open-verifier-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: open-verifier-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify profile, merchant, and both agent hosts
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix apps/relay --no-audit --no-fund
+          python -m pip install 'pydantic-ai-slim[mcp]==1.87.0' 'cryptography==50.0.2'
+          npm run verifier:test
+          node --test apps/relay/test/open-agent-verifier.test.mjs
+          package=packages/agent-verifier
+          python "$package/conformance/merchant.py" --vectors | diff - "$package/conformance/v1.json"
+          curl -fsSL --retry 2 --max-time 150 https://github.com/aaif-goose/goose/releases/download/v1.61.1/goose-x86_64-unknown-linux-gnu.tar.gz -o "$RUNNER_TEMP/goose.tar.gz"
+          echo "f578c76447adf07f561201f1984318accc8f907f53e8bc07c350fe31b9c4264b  $RUNNER_TEMP/goose.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/goose.tar.gz" -C "$RUNNER_TEMP" ./goose
+          node apps/relay/test/verifier-hosts.mjs goose "$RUNNER_TEMP/goose"
+          node apps/relay/test/verifier-hosts.mjs pydantic-ai python
+          python "$package/release/build_bundle.py" "$RUNNER_TEMP/open-verifier"
+          diff -u "$package/server.json" "$RUNNER_TEMP/open-verifier/server.json"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: open-verifier-distribution
+          path: ${{ runner.temp }}/open-verifier/
+          if-no-files-found: error
+
+  publish:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: open-verifier-distribution
+          path: dist
+      - name: Publish the verified release and register the local MCP server
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(jq -r .version server.json)
+          tag="open-verifier-v$version"
+          file=xguard-open-verifier.mcpb
+          checksum=$(jq -r '.packages[0].fileSha256' server.json)
+          echo "$checksum  $file" | sha256sum --check
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" "$file" server.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
+              --title "XGuard Open Verifier $version" \
+              --notes "Offline signed-offer and merchant-receipt inspection for goose and MCP hosts. The bundle requires Node.js 24 and an operator-selected policy. The source tag includes the host signing adapter, conformance vectors, and recovery guide."
+          fi
+          mkdir fetched
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir fetched --pattern "$file" --pattern server.json
+          (cd fetched && echo "$checksum  $file" | sha256sum --check)
+          diff -u server.json fetched/server.json
+          name=$(jq -r '.name|@uri' server.json)
+          lookup="https://registry.modelcontextprotocol.io/v0.1/servers/$name/versions/$version"
+          matches() {
+            curl -fsS --max-time 20 "$lookup" | jq -e --slurpfile want server.json \
+              '.server | .name == $want[0].name and .version == $want[0].version and .packages == $want[0].packages' >/dev/null
+          }
+          if matches; then exit 0; fi
+          curl -fsSL --retry 2 --max-time 90 https://github.com/modelcontextprotocol/registry/releases/download/v1.8.7/mcp-publisher_linux_amd64.tar.gz -o "$RUNNER_TEMP/publisher.tar.gz"
+          echo "00b21004149a4ce66f0782508ae4a2bce67d1bea395a8da0bd8028159fb59579  $RUNNER_TEMP/publisher.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/publisher.tar.gz" -C "$RUNNER_TEMP" mcp-publisher
+          "$RUNNER_TEMP/mcp-publisher" validate server.json
+          "$RUNNER_TEMP/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher" publish server.json
+          for attempt in 1 2 3 4 5; do
+            if matches; then exit 0; fi
+            sleep 5
+          done
+          exit 1

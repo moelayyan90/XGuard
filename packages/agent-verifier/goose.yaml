@@ -11,8 +11,7 @@ extensions:
     name: xguard_open_verifier
     cmd: node
     args:
-      - packages/agent-verifier/cli.mjs
-      - mcp
+      - packages/agent-verifier/extension.mjs
     env_keys:
       - XGUARD_VERIFIER_POLICY
     timeout: 15
