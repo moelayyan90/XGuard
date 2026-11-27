@@ -29,7 +29,7 @@ function respond(policy, msg, session) {
     if (typeof msg.params?.protocolVersion !== 'string') return failure(id, -32602, 'Missing protocol version');
     session.initialized = true;
     return ok({ protocolVersion: versions.includes(msg.params.protocolVersion) ? msg.params.protocolVersion : versions[0],
-      capabilities: { tools: {} }, serverInfo: { name: 'xguard-open-verifier', version: '0.1.0' } });
+      capabilities: { tools: {} }, serverInfo: { name: 'xguard-open-verifier', version: '1.0.0' } });
   }
   if (msg.method === 'ping') return ok({});
   if (!session.initialized) return failure(id, -32002, 'Initialize first');

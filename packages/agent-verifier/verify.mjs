@@ -39,6 +39,13 @@ function decode(segment) {
   return raw;
 }
 
+function pin(jwk) {
+  requireValue(jwk?.kty === 'EC' && jwk.crv === 'P-256' && !Object.hasOwn(jwk, 'd') &&
+    typeof jwk.kid === 'string' && jwk.kid.startsWith('did:') && jwk.kid.length <= 512 &&
+    (!jwk.alg || jwk.alg === 'ES256'), 'invalid_pinned_key');
+  return { kid: jwk.kid, publicKey: createPublicKey({ key: jwk, format: 'jwk' }) };
+}
+
 // Policy and keys come from the operator's local file. An artifact cannot add a
 // key, direct a lookup, or choose which resource a trusted key is authorized for.
 export function loadPolicy(raw) {
@@ -52,35 +59,52 @@ export function loadPolicy(raw) {
   for (const entry of raw.resources) {
     const url = validResource(entry.resourceUrl);
     requireValue(!resources.has(url), 'duplicate_resource');
-    const jwk = entry.publicKey;
-    requireValue(jwk?.kty === 'EC' && jwk.crv === 'P-256' && !Object.hasOwn(jwk, 'd') &&
-      typeof jwk.kid === 'string' && jwk.kid.startsWith('did:') && jwk.kid.length <= 512 &&
-      (!jwk.alg || jwk.alg === 'ES256'), 'invalid_pinned_key');
-    resources.set(url, {
-      recipient: evmAddress(entry.payTo),
-      kid: jwk.kid,
-      publicKey: createPublicKey({ key: jwk, format: 'jwk' }),
-    });
+    const current = pin(entry.publicKey);
+    const receiptKeys = new Map([[current.kid, current]]);
+    const retired = entry.retiredReceiptKeys ?? [];
+    requireValue(Array.isArray(retired) && retired.length <= 16, 'invalid_retired_keys');
+    for (const prior of retired) {
+      const key = pin(prior.publicKey);
+      requireValue(!receiptKeys.has(key.kid) && Number.isSafeInteger(prior.lastIssuedAt) &&
+        prior.lastIssuedAt >= 0, 'invalid_retired_keys');
+      receiptKeys.set(key.kid, { ...key, lastIssuedAt: prior.lastIssuedAt });
+    }
+    resources.set(url, { ...current, recipient: evmAddress(entry.payTo), receiptKeys });
   }
-  return { network: raw.network, asset, maxPerCall, maxPerDay, resources };
+  let signing;
+  if (raw.signing !== undefined) {
+    const config = raw.signing;
+    requireValue(config && [config.tokenName, config.tokenVersion].every(s =>
+      typeof s === 'string' && s.trim() === s && s.length > 0 && s.length <= 100) &&
+      Number.isSafeInteger(config.maxValiditySeconds) && config.maxValiditySeconds >= 1 &&
+      config.maxValiditySeconds <= 3600 && Number.isSafeInteger(Number(raw.network.slice(7))), 'invalid_signing_policy');
+    signing = { payer: evmAddress(config.payer), tokenName: config.tokenName,
+      tokenVersion: config.tokenVersion, maxValiditySeconds: config.maxValiditySeconds };
+  }
+  return { network: raw.network, asset, maxPerCall, maxPerDay, resources, signing };
 }
 
-function verifyArtifact(artifact, rule) {
+function verifyArtifact(artifact, rule, receipt = false) {
   requireValue(artifact?.format === 'jws' && !Object.hasOwn(artifact, 'payload') &&
     typeof artifact.signature === 'string' && artifact.signature.length <= 16384, 'unsupported_artifact');
   const parts = artifact.signature.split('.');
   requireValue(parts.length === 3, 'invalid_jws');
   const [h, p, s] = parts;
   const header = JSON.parse(decoder.decode(decode(h)));
-  requireValue(header?.alg === 'ES256' && header.kid === rule.kid &&
+  const key = receipt ? rule.receiptKeys.get(header?.kid) : rule;
+  requireValue(header?.alg === 'ES256' && key && header.kid === key.kid &&
     Object.keys(header).every(k => ['alg', 'kid', 'typ'].includes(k)), 'untrusted_signer_or_header');
   const signature = decode(s);
   requireValue(signature.length === 64 && verify('sha256', Buffer.from(h + '.' + p, 'ascii'),
-    { key: rule.publicKey, dsaEncoding: 'ieee-p1363' }, signature), 'invalid_signature');
+    { key: key.publicKey, dsaEncoding: 'ieee-p1363' }, signature), 'invalid_signature');
   const payload = JSON.parse(decoder.decode(decode(p)));
   requireValue(payload?.version === 1, 'unsupported_artifact_version');
+  if (key.lastIssuedAt !== undefined)
+    requireValue(Number.isSafeInteger(payload.issuedAt) && payload.issuedAt <= key.lastIssuedAt, 'retired_key_cutoff');
   return payload;
 }
+
+export const hashRequest = ({ method, resourceUrl, body }) => digest(JSON.stringify([method, resourceUrl, body]));
 
 function ruleFor(policy, resourceUrl) {
   const rule = policy.resources.get(validResource(resourceUrl));
@@ -106,7 +130,7 @@ export function reviewOffer(policy, { request, challenge }, now = nowSeconds()) 
     evmAddress(terms.asset) === policy.asset && evmAddress(terms.payTo) === rule.recipient, 'terms_do_not_match_signature');
   requireValue(atomic(p.amount) <= policy.maxPerCall, 'per_call_cap_exceeded');
   requireValue(Number.isSafeInteger(p.validUntil) && p.validUntil > now, 'expired_or_undated_offer');
-  const requestHash = digest(JSON.stringify([request.method, request.resourceUrl, request.body]));
+  const requestHash = hashRequest(request);
   return {
     resourceUrl: p.resourceUrl, network: p.network, asset: policy.asset, payTo: rule.recipient,
     amountAtomic: p.amount, expiresAt: p.validUntil, requestHash,
@@ -127,7 +151,7 @@ export function reviewReceipt(policy, { expected, settlement }, now = nowSeconds
     typeof settlement.transaction === 'string' && settlement.transaction.toLowerCase() === tx &&
     (settlement.payer === undefined || evmAddress(settlement.payer) === payer), 'settlement_mismatch');
   const artifact = settlement.extensions?.['offer-receipt']?.info?.receipt;
-  const p = verifyArtifact(artifact, rule);
+  const p = verifyArtifact(artifact, rule, true);
   requireValue(p.resourceUrl === expected.resourceUrl && p.network === policy.network &&
     evmAddress(p.payer) === payer && typeof p.transaction === 'string' && p.transaction.toLowerCase() === tx,
     'receipt_context_mismatch');

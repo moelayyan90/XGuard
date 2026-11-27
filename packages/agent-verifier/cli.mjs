@@ -1,23 +1,12 @@
-import { open } from 'node:fs/promises';
+import { readJSON } from './io.mjs';
 import { loadPolicy, reviewOffer, reviewReceipt } from './verify.mjs';
 import { safeReason, serve } from './mcp.mjs';
-
-async function readJSON(path) {
-  const file = await open(path, 'r');
-  try {
-    const stat = await file.stat();
-    if (!stat.isFile() || stat.size > 256 * 1024) throw new Error('invalid_input_file');
-    return JSON.parse(await file.readFile('utf8'));
-  } finally {
-    await file.close();
-  }
-}
 
 const [, , action, ...args] = process.argv;
 if (action === 'mcp' && args.length === 0 && process.env.XGUARD_VERIFIER_POLICY)
   args.push(process.env.XGUARD_VERIFIER_POLICY);
 const commands = new Map([['demo', 0], ['example', 0], ['mcp', 1],
-  ['review', 2], ['receipt', 2], ['approve', 4], ['consume', 4]]);
+  ['review', 2], ['receipt', 2], ['approve', 4], ['consume', 4], ['reconcile', 4]]);
 const write = value => console.log(JSON.stringify(value, null, 2));
 
 async function main() {
@@ -47,9 +36,12 @@ async function main() {
   const input = await readJSON(inputPath);
   if (action === 'review') return write(reviewOffer(policy, input));
   if (action === 'receipt') return write(reviewReceipt(policy, input));
-  const { openJournal, recordDecision } = await import('./journal.mjs');
+  const { openJournal, recordDecision, reconcileReceipt } = await import('./journal.mjs');
   const db = openJournal(journalPath);
-  try { write(recordDecision(db, action, policy, operation, input)); }
+  try {
+    if (action === 'reconcile') return write(reconcileReceipt(db, policy, operation, input.request, input));
+    write(recordDecision(db, action, policy, operation, input));
+  }
   finally { db.close(); }
 }
 

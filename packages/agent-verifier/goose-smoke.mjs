@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,12 +10,22 @@ import { promisify } from 'node:util';
 import { fixture } from './fixtures.mjs';
 
 const run = promisify(execFile);
-const sample = fixture();
+const sample = process.argv[3] ? JSON.parse(await readFile(process.argv[3], 'utf8')) : fixture();
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const directory = await mkdtemp(join(tmpdir(), 'xguard-goose-'));
 const policyPath = join(directory, 'policy.json');
-const tool = 'xguard_open_verifier__review_offer';
-let discovered = false, verified = false;
+const prefix = 'xguard_open_verifier__';
+const results = {};
+let discovered = false;
+
+function readToolContent(content) {
+  if (typeof content === 'string') {
+    try { return readToolContent(JSON.parse(content)); } catch { return undefined; }
+  }
+  if (Array.isArray(content)) return content.map(readToolContent).find(Boolean);
+  if (content?.status) return content;
+  if (content?.text) return readToolContent(content.text);
+}
 
 // A deterministic local model peer asks goose to call the real extension and
 // checks the returned tool message. The peer never contacts a model provider.
@@ -28,11 +38,17 @@ const server = createServer(async (req, res) => {
     let raw = '';
     for await (const part of req) raw += part;
     const { tools = [], messages = [], stream } = JSON.parse(raw);
-    discovered ||= tools.some(x => x.function?.name === tool);
-    verified ||= messages.some(m => m.role === 'tool' && JSON.stringify(m.content).includes('reviewed'));
-    const call = { id: 'call_fixture', type: 'function',
-      function: { name: tool, arguments: JSON.stringify(sample.offerInput) } };
-    const useTool = discovered && !verified;
+    discovered ||= ['review_offer', 'verify_receipt'].every(name => tools.some(t => t.function?.name === prefix + name));
+    for (const msg of messages.filter(m => m.role === 'tool')) {
+      const result = readToolContent(msg.content);
+      if (msg.tool_call_id === 'call_offer' && result?.status === 'reviewed') results.offer = result;
+      if (msg.tool_call_id === 'call_receipt' && result?.status === 'merchant_receipt_verified') results.receipt = result;
+    }
+    const kind = results.offer ? 'receipt' : 'offer';
+    const call = { id: 'call_' + kind, type: 'function', function: {
+      name: prefix + (kind === 'offer' ? 'review_offer' : 'verify_receipt'),
+      arguments: JSON.stringify(sample[kind + 'Input']) } };
+    const useTool = discovered && !results.receipt;
     const message = useTool ? { role: 'assistant', content: null, tool_calls: [call] }
       : { role: 'assistant', content: 'Fixture complete.' };
     const finish = useTool ? 'tool_calls' : 'stop';
@@ -64,11 +80,11 @@ try {
     OPENAI_HOST: 'http://127.0.0.1:' + server.address().port, OPENAI_BASE_PATH: 'v1/chat/completions',
     HTTP_PROXY: 'http://127.0.0.1:9', HTTPS_PROXY: 'http://127.0.0.1:9', NO_PROXY: '127.0.0.1,localhost',
     XGUARD_VERIFIER_POLICY: policyPath };
-  await run(process.argv[2] || 'goose', ['run', '--no-session', '--max-turns', '3', '--recipe',
+  await run(process.argv[2] || 'goose', ['run', '--no-session', '--max-turns', '5', '--recipe',
     join(root, 'packages/agent-verifier/goose.yaml')], { cwd: root, env, timeout: 30000 });
   assert.ok(discovered, 'goose did not discover the verifier');
-  assert.ok(verified, 'goose did not return the verified offer');
-  console.log('goose called review_offer and returned a verified fixture result.');
+  assert.ok(results.offer?.requestHash && results.receipt?.receiptHash, 'goose did not return both verifier results');
+  console.log(process.argv[3] ? JSON.stringify(results) : 'goose verified the fixture offer and receipt through MCP.');
 } finally {
   if (server.listening) await new Promise(resolve => server.close(resolve));
   await rm(directory, { recursive: true, force: true });

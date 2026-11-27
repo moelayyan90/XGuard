@@ -1,0 +1,32 @@
+{
+  "manifest_version": "0.3",
+  "name": "xguard-open-verifier",
+  "display_name": "XGuard Open Verifier",
+  "version": "1.0.0",
+  "description": "Inspect signed x402 offers and merchant receipts against a local policy.",
+  "author": { "name": "Mohammad Elayyan", "url": "https://github.com/moelayyan90" },
+  "homepage": "https://xguardgate.com/open-verifier",
+  "repository": { "type": "git", "url": "https://github.com/moelayyan90/XGuard" },
+  "license": "Apache-2.0",
+  "compatibility": { "runtimes": { "node": ">=24" } },
+  "server": {
+    "type": "node",
+    "entry_point": "server/extension.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/extension.mjs", "${user_config.policy}"]
+    }
+  },
+  "user_config": {
+    "policy": {
+      "type": "file",
+      "title": "Operator policy",
+      "description": "Select your local JSON policy containing public merchant keys and spending limits.",
+      "required": true
+    }
+  },
+  "tools": [
+    { "name": "review_offer", "description": "Inspect one signed offer for an exact request." },
+    { "name": "verify_receipt", "description": "Verify a merchant receipt against independently recorded context." }
+  ]
+}

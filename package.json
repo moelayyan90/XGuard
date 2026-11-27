@@ -12,7 +12,7 @@
     "check": "npm run --prefix apps/relay live:check && npm run --prefix apps/relay live:typecheck",
     "test": "npm run verifier:test && node --test apps/relay/test/open-agent-verifier.test.mjs && npm run --prefix apps/relay live:test",
     "verifier:demo": "node packages/agent-verifier/cli.mjs demo",
-    "verifier:test": "node --test packages/agent-verifier/verifier.test.mjs",
+    "verifier:test": "node --test packages/agent-verifier/*.test.mjs",
     "build": "npm run --prefix apps/relay live:build",
     "smoke": "node scripts/live-smoke.mjs"
   },
