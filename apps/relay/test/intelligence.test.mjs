@@ -10,6 +10,19 @@ const base = 'https://api.xguardgate.com', root = '/api/intelligence/v1';
 const get = (path, init,env={}) => intelligenceSurface(new Request(base+path,init),env,{});
 const post = (path,body,headers={}) => get(path,{method:'POST',body:JSON.stringify(body),headers:{'content-type':'application/json',...headers}});
 const input = (route,query) => ({capability:'intel-'+route,query,idempotency_key:'intelligence-test'});
+
+test('home offers the local verifier and keeps the hosted pricing and catalog discoverable', async () => {
+  for (const path of ['/', '/open-verifier']) {
+    const page = await get(path);
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    assert.match(html, /XGuard Open Verifier/);
+    assert.match(html, /packages\/agent-verifier/);
+    assert.match(html, /api\/intelligence\/v1\/catalog/);
+    assert.equal((await get(path, { method: 'HEAD' })).body, null);
+  }
+  assert.match(await (await get('/pricing')).text(), /USD 0\.001/);
+});
 test('atomic units use integers for all batch sizes; malformed batches never obtain a price',()=>{
   for (let n=1;n<=100;n++) assert.equal(amountFor(input('batch',{facts:Array(n).fill('a')})),String(n*1000));
   assert.throws(()=>amountFor(input('batch',{facts:[]})));

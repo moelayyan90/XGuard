@@ -1,0 +1,20 @@
+version: "1.0.0"
+title: Review an agent payment offer
+description: Inspect a signed x402 offer or merchant receipt under the operator's local policy.
+instructions: |
+  Use the open verifier extension when the user supplies a signed x402 offer or receipt.
+  For an offer, ask for the intended method, resource URL and exact body as well as the challenge.
+  For a receipt, ask for the expected payer, transaction, resource URL and earliest issue time.
+  Report the returned review status and the units. Operator spending approvals are handled separately.
+extensions:
+  - type: stdio
+    name: xguard_open_verifier
+    cmd: node
+    args:
+      - packages/agent-verifier/cli.mjs
+      - mcp
+    env_keys:
+      - XGUARD_VERIFIER_POLICY
+    timeout: 15
+    description: Local offer and receipt verification
+prompt: Ask which signed offer or merchant receipt the user would like to review.
