@@ -38,5 +38,22 @@ export function toolsList() {
     annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true},_meta:{'xguard/payment':price()} }))};
 }
 export function landing() {
-  return new Response('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>XGuard Paid Intelligence</title><main><h1>XGuard</h1><p>Paid intelligence for developers and AI agents.</p><p>USD 0.001 per successful atomic operation. A batch of 100 costs USD 0.100. Payments settle in USDC on Base.</p><p><a href="'+BASE+'/catalog">Services and payment instructions</a> · <a href="'+BASE+'/openapi.json">OpenAPI</a> · <a href="'+BASE+'/.well-known/agent-card.json">Agent card</a></p></main></html>', {headers:{'content-type':'text/html; charset=utf-8','content-security-policy':"default-src 'none'; base-uri 'none'; frame-ancestors 'none'"}});
+  return htmlPage('XGuard Paid Intelligence', '<h1>XGuard</h1><p>Paid intelligence for developers and AI agents.</p><p>USD 0.001 per successful atomic operation. A batch of 100 costs USD 0.100. Payments settle in USDC on Base.</p><p><a href="'+BASE+'/catalog">Services and payment instructions</a> · <a href="'+BASE+'/openapi.json">OpenAPI</a> · <a href="'+BASE+'/.well-known/agent-card.json">Agent card</a> · <a href="/open-verifier">Open verifier</a></p>');
+}
+
+function htmlPage(title, content) {
+  return new Response('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+title+'</title><main>'+content+'</main></html>',
+    {headers:{'content-type':'text/html; charset=utf-8','content-security-policy':"default-src 'none'; base-uri 'none'; frame-ancestors 'none'"}});
+}
+
+export function openVerifierLanding() {
+  const source = 'https://github.com/moelayyan90/XGuard/tree/main/packages/agent-verifier';
+  return htmlPage('XGuard Open Verifier', [
+    '<h1>XGuard Open Verifier</h1>',
+    '<p>Check what a paid API is asking your agent to spend. Run the verifier locally with Node.js 24 and a public key you trust for that API.</p>',
+    '<p>The verifier checks a signed x402 offer and a merchant receipt. Its MCP tools let an agent inspect both. The operator can approve one specific request and enforce a rolling spending limit before a wallet signs.</p>',
+    '<h2>Try it offline</h2><p>From the repository root, run <code>npm run verifier:demo</code>. The demo uses a sample merchant and shows what happens when an approval is reused.</p>',
+    '<p><a href="'+source+'">Get the Apache-2.0 source and operator guide</a> · <a href="https://github.com/moelayyan90/XGuard/blob/main/packages/agent-verifier/goose.yaml">Open the goose recipe</a></p>',
+    '<h2>XGuard paid API</h2><p>See the <a href="'+BASE+'/catalog">service catalog and prices</a> for the hosted API.</p>',
+  ].join(''));
 }

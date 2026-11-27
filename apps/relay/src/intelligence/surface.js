@@ -4,7 +4,7 @@ import { existingObligation } from './obligations.js';
 import { sourceSpec } from '../live/adapters.ts';
 import { canonicalFact } from '../live/paid-data.ts';
 import { BASE, routeFor, fits, amountFor, price } from './catalog.js';
-import { ROOT, TITLE, MCP, A2A, catalog, card, connections, openApi, toolsList, landing } from './discovery.js';
+import { ROOT, TITLE, MCP, A2A, catalog, card, connections, openApi, toolsList, landing, openVerifierLanding } from './discovery.js';
 import { handlePaidWebFetch, livePaidProofKey, recoverOutcome } from '../paid-agent-entry.js';
 import { readPublicJson } from '../core/public-contract.js';
 import { ownerRevenue } from './revenue.js';
@@ -110,7 +110,8 @@ async function dispatch(req,env,ctx,legacy) {
     if (at === '/install' || path === '/connect') return json(connections());
     if (at === '/openapi.json') return json(openApi());
     if (['/.well-known/agent-card.json','/.well-known/agent.json','/a2a/.well-known/agent-card.json'].includes(at)) return json(card());
-    if (['/','/pricing','/marketplace','/developers','/install','/connect','/products'].includes(path)) return landing();
+    if (path === '/' || path === '/open-verifier') return openVerifierLanding();
+    if (['/pricing','/marketplace','/developers','/products'].includes(path)) return landing();
     if (at === '/server.json') return json(registryManifest);
     if (path === '/mcp/server-card') return json(mcpServerCard);
     if (at === '/.well-known/x402' || at === '/supported') return json({x402Version:2,service_role:'resource_server',pricing:price(),services:BASE+'/catalog'});
