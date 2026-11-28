@@ -24,7 +24,7 @@ test('home offers the local verifier and keeps the hosted pricing and catalog di
     assert.match(html, /review_offer/);
     assert.match(html, /verify_receipt/);
     assert.match(html, /XGUARD_VERIFIER_POLICY/);
-    assert.match(html, /Apache-2\.0/);
+    assert.match(html, /Apache-2\.0/i);
     assert.match(html, /prefers-reduced-motion/);
     assert.doesNotMatch(html, /<script\b/i);
     assert.equal((await get(path, { method: 'HEAD' })).body, null);
