@@ -17,8 +17,16 @@ test('home offers the local verifier and keeps the hosted pricing and catalog di
     assert.equal(page.status, 200);
     const html = await page.text();
     assert.match(html, /XGuard Open Verifier/);
-    assert.match(html, /packages\/agent-verifier/);
-    assert.match(html, /api\/intelligence\/v1\/catalog/);
+    assert.match(html, /packages\\/agent-verifier/);
+    assert.match(html, /api\\/intelligence\\/v1\\/catalog/);
+    assert.match(html, /Goose 1\\.61\\.1/);
+    assert.match(html, /Pydantic AI 1\\.87\\.0/);
+    assert.match(html, /review_offer/);
+    assert.match(html, /verify_receipt/);
+    assert.match(html, /XGUARD_VERIFIER_POLICY/);
+    assert.match(html, /Apache-2\\.0/);
+    assert.match(html, /prefers-reduced-motion/);
+    assert.doesNotMatch(html, /<script\\b/i);
     assert.equal((await get(path, { method: 'HEAD' })).body, null);
   }
   assert.match(await (await get('/pricing')).text(), /USD 0\.001/);
